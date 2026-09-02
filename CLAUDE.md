@@ -35,7 +35,9 @@ gradlew assembleRelease
 
 APK lands at `app/build/outputs/apk/release/pickwick.apk` (renamed in Gradle;
 keep the asset name constant so `releases/latest/download/pickwick.apk` — the
-Downloader-code URL — never goes stale). Release builds are signed with the
+Downloader-code URL — never goes stale), with a versioned copy beside it,
+`pickwick-<versionName>.apk`, which is the one to hand out for sideloading
+(the release asset keeps the constant name). Release builds are signed with the
 **real release keystore** — `PICKWICK_KEYSTORE` (plus `_PASSWORD`,
 `PICKWICK_KEY_ALIAS`, `PICKWICK_KEY_PASSWORD`) in `local.properties` or the
 environment. There is deliberately no debug-key fallback: release packaging

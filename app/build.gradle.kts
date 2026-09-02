@@ -131,6 +131,15 @@ android {
                 (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl)
                     .outputFileName = "pickwick.apk"
             }
+            // A sideloading copy next to it, named by version, so "which
+            // build is this file?" is answered without aapt: a phone's
+            // Downloads folder ends up holding several of these.
+            val versioned = "pickwick-$versionName.apk"
+            assembleProvider.get().doLast {
+                val dir = layout.buildDirectory.dir("outputs/apk/release").get().asFile
+                dir.resolve("pickwick.apk").copyTo(dir.resolve(versioned), overwrite = true)
+                println("release APK: ${dir.resolve("pickwick.apk")} (copy: $versioned)")
+            }
         }
     }
 }
