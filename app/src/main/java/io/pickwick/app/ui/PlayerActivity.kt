@@ -9,8 +9,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -113,6 +120,17 @@ class PlayerActivity : ComponentActivity() {
          * mapped back. Absent → fail-closed on the strictest per-kid verdict.
          */
         const val EXTRA_PROFILE_ID = "profile_id"
+
+        /** The PiP window's play/pause button talks back through this broadcast. */
+        private const val PIP_ACTION = "io.pickwick.app.PIP_CONTROL"
+        private const val PIP_EXTRA_PLAY = "play"
+        /**
+         * The one player that is up. A second launch — a tap on the shelf while
+         * the first floats in its picture-in-picture window, or a LAN /play —
+         * replaces it instead of playing over it. Weak on purpose: a reference
+         * here must never keep a finished activity alive.
+         */
+        private var live: java.lang.ref.WeakReference<PlayerActivity>? = null
     }
 
     private var player: ExoPlayer? = null
@@ -193,6 +211,22 @@ class PlayerActivity : ComponentActivity() {
         mutableStateOf<List<io.pickwick.app.data.SponsorBlock.Segment>>(emptyList())
     /** Parent's SponsorBlock switch, read off-main on first use; null = not read yet. */
     private var sponsorSkipOn: Boolean? = null
+
+    /** True while the system has the video in its picture-in-picture window (phones). */
+    private val inPip = mutableStateOf(false)
+    /**
+     * Phone held upright: the video sits at the top with the lineup below it,
+     * YouTube-style; landscape is the full-screen stage. TVs never leave the
+     * stage, and neither does the PiP window (its shape is the video's).
+     */
+    private val portraitLayout = mutableStateOf(false)
+    /** "More from <channel>" under the portrait video: autoplay's own candidates. */
+    private val moreFromChannel = mutableStateOf<List<io.pickwick.app.data.Video>>(emptyList())
+    /** Where the video is drawn on screen, for the shrink-to-PiP animation. */
+    private var videoBounds: android.graphics.Rect? = null
+    /** Live only while a ⛶ press has the orientation forced; see [forceOrientation]. */
+    private var orientationListener: android.view.OrientationEventListener? = null
+    private var pipReceiver: android.content.BroadcastReceiver? = null
 
     // Queue position, resolved streams, and terminal error, hoisted out of the
     // composition. Deliberate: recomposition needs display frames, which stop
@@ -295,19 +329,16 @@ class PlayerActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         isTv = (getSystemService(UI_MODE_SERVICE) as android.app.UiModeManager)
             .currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+        live?.get()?.takeIf { it !== this && !it.isFinishing }?.finish()
+        live = java.lang.ref.WeakReference(this)
         if (!isTv) {
-            // A phone player is a landscape, edge-to-edge thing: the home
-            // screen's portrait carried into here left a letterboxed band with
-            // the status bar still showing above it. Sensor-landscape rather
-            // than locked, so a tablet in a stand can face either way.
-            requestedOrientation =
-                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            // The player opens the way the phone is held, rotation lock
+            // permitting (USER, not SENSOR): upright is the portrait layout,
+            // sideways the edge-to-edge stage. ⛶ forces a turn on demand —
+            // see forceOrientation. The stage draws under the cutout; the
+            // portrait layout pads itself off the system bars instead.
+            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
             androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
-            androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply {
-                hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-                systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat
-                    .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                 window.attributes = window.attributes.apply {
                     layoutInDisplayCutoutMode =
@@ -315,6 +346,7 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
         }
+        applyLayoutFor(resources.configuration)
 
         // Progress, screen time and channel minutes all belong to the kid the
         // launching screen resolved — delivered in the intent, never re-derived
@@ -464,6 +496,12 @@ class PlayerActivity : ComponentActivity() {
                         wantsPlay.value = playWhenReady
                     }
 
+                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                        // The PiP window takes the video's shape, so a 4:3 or
+                        // vertical video must not float in a 16:9 frame.
+                        refreshPipParams()
+                    }
+
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                         // Never leave a frozen screen: skip ahead (playlist) or say why.
                         onPlaybackFailed(error.message ?: error.errorCodeName)
@@ -474,6 +512,30 @@ class PlayerActivity : ComponentActivity() {
         // Launched into an "Allow listening" window: the player exists now, so
         // the notification and the screen-off handover can be armed.
         if (listenOnlyWindow) armListenOnly()
+
+        // Back while a video plays shrinks it into the picture-in-picture
+        // window (the YouTube reflex) rather than stopping it; paused, ended
+        // or on a card, Back leaves as it always did. TVs never enter PiP, so
+        // there Back is plain finish.
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (!enterPip()) finish()
+            }
+        })
+        if (pipSupported()) {
+            val receiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+                    if (intent.action != PIP_ACTION) return
+                    val exo = player ?: return
+                    if (intent.getBooleanExtra(PIP_EXTRA_PLAY, true)) exo.play() else exo.pause()
+                }
+            }
+            androidx.core.content.ContextCompat.registerReceiver(
+                this, receiver, android.content.IntentFilter(PIP_ACTION),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            pipReceiver = receiver
+        }
 
         // Parent's phone can pause/resume via the LAN server ("come to dinner").
         RemotePlayerControl.owner = remoteToken
@@ -587,189 +649,347 @@ class PlayerActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme(colorScheme = PickwickDarkColors) {
-                val playback by playbackState
-                val error by errorState
-                val played by everPlayed
-                val timeUp by timeUpMessage
-                val blocked by blockedGently
-                val checking by deepChecking
-                val listenOnly by listenOnlyMessage
-                val card by endCard
-                Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-                    when {
-                        timeUp != null -> BlockedCard(timeUp!!, isTv = isTv) { finish() }
-                        // Deliberately reason-free: the AI's explanation goes to
-                        // the parent's phone, not a TV the child is watching.
-                        blocked != null -> BlockedCard(blocked!!, isTv = isTv) { finish() }
-                        // The raw extractor/ExoPlayer message is for logcat (see
-                        // onPlaybackFailed); the kid gets a way forward instead.
-                        error != null -> ErrorCard(
-                            isTv = isTv,
-                            cursor = errorCursor.intValue,
-                            onRetry = { playIndex(indexState.intValue) },
-                            onBack = { finish() }
-                        )
-                        // Sound only, by the parent's window: no video view at
-                        // all, and the screen is no longer held awake, so this
-                        // is what the kid sees for the few seconds before it
-                        // goes dark — and again if they wake the phone.
-                        listenOnly != null -> Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(24.dp)
-                        ) {
-                            Text(
-                                listenOnly!!,
-                                color = Color.White,
-                                style = MaterialTheme.typography.headlineSmall
-                            )
-                            Spacer(Modifier.height(16.dp))
-                            Text(
-                                playback?.title.orEmpty(),
-                                color = Color.White.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                        }
-                        // Before the first resolved video there is no frame to
-                        // hold, so a bare spinner is honest. The label appears
-                        // only while the deep check runs — stream resolution is
-                        // fast enough not to need explaining.
-                        !played -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                if (checking) "Checking this one…" else "Getting it ready…",
-                                color = Color.White.copy(alpha = 0.85f)
-                            )
-                        }
-                        // Composed from the first video onwards and never swapped
-                        // out again — resolving the *next* one used to replace this
-                        // view with a spinner, which destroys the SurfaceView and
-                        // takes the last frame with it. Keeping it mounted holds
-                        // that frame under the spinner instead of cutting to black.
-                        else -> AndroidView(
-                            modifier = Modifier.fillMaxSize(),
-                            factory = { context ->
-                                PlayerView(context).apply {
-                                    this.player = this@PlayerActivity.player
-                                    // No stock controller anywhere: the remote
-                                    // drives a TV directly, and phones get the
-                                    // kid-sized Compose controls below — the
-                                    // Media3 bar's fingertip buttons and its
-                                    // playback-speed menu were never meant for
-                                    // a six-year-old.
-                                    useController = false
-                                    // Without this the view drops its shutter (opaque
-                                    // black) the moment the player is re-prepared with
-                                    // the next video — the other half of the cut to black.
-                                    setKeepContentOnPlayerReset(true)
-                                }
-                            }
-                        )
+                val pip by inPip
+                val portrait by portraitLayout
+                // The PiP parameters (auto-enter, the play/pause button) follow
+                // the same state pipEligible reads, so recomposition is the
+                // one place that keeps them current.
+                val eligible = pipEligible()
+                LaunchedEffect(eligible) { refreshPipParams() }
+                // One stage, *moved* between the two layouts rather than
+                // rebuilt: a rotation would otherwise recreate the AndroidView
+                // and its SurfaceView, and cut to black mid-video.
+                val stage = remember { movableContentOf { compact: Boolean -> PlayerStage(compact) } }
+                if (portrait && !pip) {
+                    PortraitPlayerScaffold { stage(true) }
+                } else {
+                    Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                        stage(false)
                     }
-                    // Spinner over the held frame: resolving the next video's
-                    // streams, initial buffer, seek, or a mid-video stall.
-                    if (timeUp == null && error == null && blocked == null &&
-                        listenOnly == null && played && card == null &&
-                        (playback == null || buffering.value)
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                    val showControls = timeUp == null && blocked == null && error == null &&
-                        listenOnly == null && played && card == null
-                    HeartBurst(heartBurst)
-                    if (!isTv && showControls) {
-                        // Touch layer under the controls: single tap shows/hides
-                        // them, a double tap on either edge hops ±10 s (the
-                        // YouTube gesture every kid already knows), a double tap
-                        // in the middle toggles play. Buttons above it consume
-                        // their own taps, so this only ever sees the bare video.
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .pointerInput(Unit) {
-                                    detectTapGestures(
-                                        onTap = {
-                                            if (System.currentTimeMillis() < controlsVisibleUntil.value) {
-                                                hideControls()
-                                            } else pokeControls()
-                                        },
-                                        onDoubleTap = { offset ->
-                                            val third = size.width / 3f
-                                            when {
-                                                offset.x < third -> seekBy(-10, showFeedback = true)
-                                                offset.x > 2 * third -> seekBy(+10, showFeedback = true)
-                                                else -> togglePlayPause()
-                                            }
-                                        }
-                                    )
-                                }
-                        )
-                        SeekRipple(seekFeedback)
-                    }
-                    if (showControls) {
-                        PlayerControlsOverlay(
-                            isTv = isTv,
-                            visibleUntil = controlsVisibleUntil,
-                            wantsPlay = wantsPlay,
-                            title = currentTitle,
-                            channel = currentChannel,
-                            remainingMs = remainingLeftMs,
-                            sponsorSegments = sponsorSegments.value,
-                            panelState = trackPanel,
-                            cursorState = trackCursor,
-                            playback = playback,
-                            selectedAudio = selectedAudioTrack.intValue,
-                            selectedSubtitle = selectedSubtitleTrack.intValue,
-                            captionsOn = captionsOn,
-                            hasPrevious = indexState.intValue > 0,
-                            hasNext = indexState.intValue < queue.lastIndex,
-                            nextTitle = queueTitles.getOrNull(indexState.intValue + 1),
-                            avatarUrl = channelAvatar.value,
-                            onOpenChannel = {
-                                // Back to the shelf, which opens the channel on resume.
-                                io.pickwick.app.data.PlayerRequests.openChannel = currentChannel
-                                finish()
-                            },
-                            isFavorite = isFavorite.value,
-                            onToggleFavorite = ::toggleFavorite,
-                            stopAfterThis = stopAfterThis.value,
-                            onToggleStopAfter = {
-                                stopAfterThis.value = !stopAfterThis.value
-                                haptic()
-                                notice.value = Notice(
-                                    if (stopAfterThis.value) "Stopping after this one 🌙"
-                                    else "Playing on after this one"
-                                )
-                                pokeControls()
-                            },
-                            onBack = { finish() },
-                            onTogglePlay = ::togglePlayPause,
-                            onSeekBy = { seekBy(it, showFeedback = false) },
-                            onSeekTo = { ms -> player?.seekTo(ms); pokeControls() },
-                            onPrevious = { stepQueue(-1) },
-                            onNext = { stepQueue(+1) },
-                            onToggleCaptions = { toggleCaptions(); pokeControls() },
-                            onPoke = ::pokeControls,
-                            playerProvider = { player }
-                        )
-                    }
-                    card?.let { c ->
-                        EndCardOverlay(
-                            card = c,
-                            isTv = isTv,
-                            cursor = endCardCursor.intValue,
-                            channel = currentChannel,
-                            onPrimary = { endCardPrimary() },
-                            onSecondary = { endCardSecondary() },
-                            onPick = { video -> playExtra(video) }
-                        )
-                    }
-                    if (timeUp == null) NoticeOverlay(notice)
                 }
             }
         }
 
         playIndex(startIndex)
+    }
+
+    /**
+     * The video and everything drawn over it — cards, spinner, gestures, the
+     * controls — filling whatever box it is placed in: the whole screen on
+     * the stage, the 16:9 slot at the top of the portrait layout ([compact]
+     * trims the overlay to fit). In the PiP window only the picture shows.
+     */
+    @Composable
+    private fun PlayerStage(compact: Boolean) {
+        val playback by playbackState
+        val error by errorState
+        val played by everPlayed
+        val timeUp by timeUpMessage
+        val blocked by blockedGently
+        val checking by deepChecking
+        val listenOnly by listenOnlyMessage
+        val card by endCard
+        val pip by inPip
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .onGloballyPositioned { c ->
+                    val b = c.boundsInWindow()
+                    videoBounds = android.graphics.Rect(
+                        b.left.toInt(), b.top.toInt(), b.right.toInt(), b.bottom.toInt()
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                timeUp != null -> BlockedCard(timeUp!!, isTv = isTv) { finish() }
+                // Deliberately reason-free: the AI's explanation goes to
+                // the parent's phone, not a TV the child is watching.
+                blocked != null -> BlockedCard(blocked!!, isTv = isTv) { finish() }
+                // The raw extractor/ExoPlayer message is for logcat (see
+                // onPlaybackFailed); the kid gets a way forward instead.
+                error != null -> ErrorCard(
+                    isTv = isTv,
+                    cursor = errorCursor.intValue,
+                    onRetry = { playIndex(indexState.intValue) },
+                    onBack = { finish() }
+                )
+                // Sound only, by the parent's window: no video view at
+                // all, and the screen is no longer held awake, so this
+                // is what the kid sees for the few seconds before it
+                // goes dark — and again if they wake the phone.
+                listenOnly != null -> Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    Text(
+                        listenOnly!!,
+                        color = Color.White,
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        playback?.title.orEmpty(),
+                        color = Color.White.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+                // Before the first resolved video there is no frame to
+                // hold, so a bare spinner is honest. The label appears
+                // only while the deep check runs — stream resolution is
+                // fast enough not to need explaining.
+                !played -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        if (checking) "Checking this one…" else "Getting it ready…",
+                        color = Color.White.copy(alpha = 0.85f)
+                    )
+                }
+                // Composed from the first video onwards and never swapped
+                // out again — resolving the *next* one used to replace this
+                // view with a spinner, which destroys the SurfaceView and
+                // takes the last frame with it. Keeping it mounted holds
+                // that frame under the spinner instead of cutting to black.
+                else -> AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context ->
+                        PlayerView(context).apply {
+                            this.player = this@PlayerActivity.player
+                            // No stock controller anywhere: the remote
+                            // drives a TV directly, and phones get the
+                            // kid-sized Compose controls below — the
+                            // Media3 bar's fingertip buttons and its
+                            // playback-speed menu were never meant for
+                            // a six-year-old.
+                            useController = false
+                            // Without this the view drops its shutter (opaque
+                            // black) the moment the player is re-prepared with
+                            // the next video — the other half of the cut to black.
+                            setKeepContentOnPlayerReset(true)
+                        }
+                    }
+                )
+            }
+            // Spinner over the held frame: resolving the next video's
+            // streams, initial buffer, seek, or a mid-video stall.
+            if (timeUp == null && error == null && blocked == null &&
+                listenOnly == null && played && card == null &&
+                (playback == null || buffering.value)
+            ) {
+                CircularProgressIndicator()
+            }
+            val showControls = timeUp == null && blocked == null && error == null &&
+                listenOnly == null && played && card == null && !pip
+            if (!pip) HeartBurst(heartBurst)
+            if (!isTv && showControls) {
+                // Touch layer under the controls: single tap shows/hides
+                // them, a double tap on either edge hops ±10 s (the
+                // YouTube gesture every kid already knows), a double tap
+                // in the middle toggles play. Buttons above it consume
+                // their own taps, so this only ever sees the bare video.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = {
+                                    if (System.currentTimeMillis() < controlsVisibleUntil.value) {
+                                        hideControls()
+                                    } else pokeControls()
+                                },
+                                onDoubleTap = { offset ->
+                                    val third = size.width / 3f
+                                    when {
+                                        offset.x < third -> seekBy(-10, showFeedback = true)
+                                        offset.x > 2 * third -> seekBy(+10, showFeedback = true)
+                                        else -> togglePlayPause()
+                                    }
+                                }
+                            )
+                        }
+                )
+                SeekRipple(seekFeedback)
+            }
+            if (showControls) {
+                PlayerControlsOverlay(
+                    isTv = isTv,
+                    compact = compact,
+                    onMinimise = { enterPip() },
+                    // ⛶: the stage wants portrait, the slot wants landscape.
+                    onToggleFullscreen = { forceOrientation(landscape = compact) },
+                    visibleUntil = controlsVisibleUntil,
+                    wantsPlay = wantsPlay,
+                    title = currentTitle,
+                    channel = currentChannel,
+                    remainingMs = remainingLeftMs,
+                    sponsorSegments = sponsorSegments.value,
+                    panelState = trackPanel,
+                    cursorState = trackCursor,
+                    playback = playback,
+                    selectedAudio = selectedAudioTrack.intValue,
+                    selectedSubtitle = selectedSubtitleTrack.intValue,
+                    captionsOn = captionsOn,
+                    hasPrevious = indexState.intValue > 0,
+                    hasNext = indexState.intValue < queue.lastIndex,
+                    nextTitle = queueTitles.getOrNull(indexState.intValue + 1),
+                    avatarUrl = channelAvatar.value,
+                    onOpenChannel = ::openChannel,
+                    isFavorite = isFavorite.value,
+                    onToggleFavorite = ::toggleFavorite,
+                    stopAfterThis = stopAfterThis.value,
+                    onToggleStopAfter = ::toggleStopAfter,
+                    onBack = { finish() },
+                    onTogglePlay = ::togglePlayPause,
+                    onSeekBy = { seekBy(it, showFeedback = false) },
+                    onSeekTo = { ms -> player?.seekTo(ms); pokeControls() },
+                    onPrevious = { stepQueue(-1) },
+                    onNext = { stepQueue(+1) },
+                    onToggleCaptions = { toggleCaptions(); pokeControls() },
+                    onPoke = ::pokeControls,
+                    playerProvider = { player }
+                )
+            }
+            card?.let { c ->
+                EndCardOverlay(
+                    card = c,
+                    isTv = isTv,
+                    compact = compact,
+                    cursor = endCardCursor.intValue,
+                    channel = currentChannel,
+                    onPrimary = { endCardPrimary() },
+                    onSecondary = { endCardSecondary() },
+                    onPick = { video -> playExtra(video) }
+                )
+            }
+            if (timeUp == null && !pip) NoticeOverlay(notice)
+        }
+    }
+
+    /**
+     * Phone held upright: the video slot on top, then the title, the channel
+     * row with the heart and the moon, and what could play next — the rest
+     * of the lineup, then more from the channel. Padded off the system bars,
+     * which stay visible here (the stage hides them).
+     */
+    @Composable
+    private fun PortraitPlayerScaffold(stage: @Composable () -> Unit) {
+        val playback by playbackState
+        val index by indexState
+        val more by moreFromChannel
+        val favorite by isFavorite
+        val stopAfter by stopAfterThis
+        val avatar by channelAvatar
+        // Read under the index: appendToQueue grows the lists just before the
+        // index moves, so a step is what brings the new entries on screen.
+        val upNext = (index + 1..queue.lastIndex).toList()
+        val titles = queueTitles
+        val thumbs = queueThumbs
+        val channel = currentChannel
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .windowInsetsPadding(WindowInsets.systemBars)
+        ) {
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) { stage() }
+            androidx.compose.foundation.lazy.LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
+            ) {
+                item {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text(
+                            playback?.title ?: titles.getOrNull(index).orEmpty(),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .then(if (avatar != null) Modifier.clickable { openChannel() } else Modifier)
+                                    .padding(end = 8.dp)
+                            ) {
+                                if (avatar != null) {
+                                    Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0x33FFFFFF))) {
+                                        coil.compose.AsyncImage(
+                                            model = avatar,
+                                            contentDescription = channel,
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                }
+                                if (channel.isNotBlank()) Text(
+                                    if (avatar != null) "$channel  ›" else channel,
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                            HeartButton(favorite, ::toggleFavorite)
+                            MoonButton(stopAfter, ::toggleStopAfter)
+                        }
+                    }
+                }
+                if (upNext.isNotEmpty()) {
+                    item { SectionLabel("Up next") }
+                    items(upNext) { j ->
+                        SmallVideoRow(
+                            title = titles.getOrNull(j)?.ifBlank { null } ?: "One more",
+                            thumb = thumbs.getOrNull(j)?.ifBlank { null },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                        ) { haptic(); dismissEndCard(); playIndex(j) }
+                    }
+                }
+                if (more.isNotEmpty()) {
+                    item { SectionLabel("More from $channel") }
+                    items(more) { v ->
+                        SmallVideoRow(
+                            title = v.title,
+                            thumb = v.thumbnailUrl,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                        ) { playExtra(v) }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun SectionLabel(text: String) {
+        Text(
+            text,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp)
+        )
+    }
+
+    /** Back to the shelf, which opens the channel on resume. */
+    private fun openChannel() {
+        io.pickwick.app.data.PlayerRequests.openChannel = currentChannel
+        finish()
+    }
+
+    /** The moon: "stop after this one", with the pill that says so. */
+    private fun toggleStopAfter() {
+        stopAfterThis.value = !stopAfterThis.value
+        haptic()
+        notice.value = Notice(
+            if (stopAfterThis.value) "Stopping after this one 🌙"
+            else "Playing on after this one"
+        )
+        pokeControls()
     }
 
     /**
@@ -799,6 +1019,13 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
             val hasNext = i < queue.lastIndex && !stopAfterThis.value
+            // In the PiP window a card is a postage stamp nobody can read or
+            // press: move straight on, or close the window when the lineup
+            // is done.
+            if (inPip.value) {
+                if (hasNext) stepQueue(+1) else finish()
+                return@launch
+            }
             endCardCursor.intValue = 0
             val seconds = if (hasNext) UP_NEXT_SECONDS else END_CARD_SECONDS
             endCard.value = EndCard(
@@ -964,6 +1191,11 @@ class PlayerActivity : ComponentActivity() {
                     isFavorite.value = fav
                     channelSourceId = source?.id
                     if (source?.avatarUrl != null) channelAvatar.value = source.avatarUrl
+                    // The portrait list under the video: the same channel
+                    // candidates autoplay will draw from, computed now so the
+                    // list is there before the video is (cache read, off-main).
+                    val more = if (source != null) channelCandidates().take(12) else emptyList()
+                    if (isActive) moreFromChannel.value = more
                 }
             }
             sponsorSegments.value = emptyList()
@@ -1612,7 +1844,156 @@ class PlayerActivity : ComponentActivity() {
         exitListenMode()
         // Back from HOME onto a paused frame: show where things stand rather
         // than a still picture with no hint that OK resumes it.
-        if (player != null) pokeControls()
+        if (player != null && !inPip.value) pokeControls()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyLayoutFor(newConfig)
+    }
+
+    /**
+     * Portrait or landscape decides the layout and the system bars: the
+     * stage is immersive, the portrait layout lives under a visible status
+     * bar like any other screen. Handled here, not by recreation (see the
+     * manifest's configChanges) — the player must survive a turn.
+     */
+    private fun applyLayoutFor(config: android.content.res.Configuration) {
+        if (isTv) return
+        val portrait = config.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+        portraitLayout.value = portrait
+        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply {
+            val bars = androidx.core.view.WindowInsetsCompat.Type.systemBars()
+            if (portrait) show(bars) else {
+                hide(bars)
+                systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat
+                    .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        }
+    }
+
+    /**
+     * ⛶. The phone's own rotation setting is overridden just long enough to
+     * turn the screen; once the phone is physically held that way (and the
+     * kid has auto-rotate on), the override is released so the next turn
+     * back is followed like any other. With auto-rotate off the override
+     * stays until ⛶ is pressed again — the rotation lock is respected in
+     * spirit: nothing moves unless a button is pressed.
+     */
+    private fun forceOrientation(landscape: Boolean) {
+        haptic()
+        requestedOrientation =
+            if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+        orientationListener?.disable()
+        orientationListener = null
+        val autoRotate = android.provider.Settings.System.getInt(
+            contentResolver, android.provider.Settings.System.ACCELEROMETER_ROTATION, 0
+        ) == 1
+        if (!autoRotate) return
+        val listener = object : android.view.OrientationEventListener(this) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+                // Wide dead zones: a phone tilted halfway must not flip-flop.
+                val heldLandscape = orientation in 60..120 || orientation in 240..300
+                val heldPortrait = orientation <= 30 || orientation >= 330 || orientation in 150..210
+                if ((landscape && heldLandscape) || (!landscape && heldPortrait)) {
+                    requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
+                    disable()
+                    if (orientationListener === this) orientationListener = null
+                }
+            }
+        }
+        if (listener.canDetectOrientation()) {
+            orientationListener = listener
+            listener.enable()
+        }
+    }
+
+    // ---- Picture-in-picture (phones) ------------------------------------
+
+    private fun pipSupported(): Boolean =
+        !isTv && packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    /** Shrinking only makes sense with a video on and playing, and no card over it. */
+    private fun pipEligible(): Boolean =
+        pipSupported() && player != null && everPlayed.value && wantsPlay.value &&
+            timeUpMessage.value == null && blockedGently.value == null &&
+            errorState.value == null && listenOnlyMessage.value == null &&
+            endCard.value == null
+
+    private fun pipParams(): android.app.PictureInPictureParams {
+        val size = player?.videoSize
+        val ratio = if (size != null && size.width > 0 && size.height > 0) {
+            size.width.toFloat() / size.height
+        } else 16f / 9f
+        // The system refuses anything outside 1:2.39 .. 2.39:1.
+        val clamped = ratio.coerceIn(1f / 2.39f, 2.39f)
+        val playing = wantsPlay.value
+        val toggle = android.app.PendingIntent.getBroadcast(
+            this, if (playing) 1 else 2,
+            android.content.Intent(PIP_ACTION).setPackage(packageName)
+                .putExtra(PIP_EXTRA_PLAY, !playing),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        val action = android.app.RemoteAction(
+            android.graphics.drawable.Icon.createWithResource(
+                this,
+                if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            ),
+            if (playing) "Pause" else "Play",
+            if (playing) "Pause the video" else "Play the video",
+            toggle
+        )
+        val builder = android.app.PictureInPictureParams.Builder()
+            .setAspectRatio(android.util.Rational((clamped * 10_000).toInt(), 10_000))
+            .setActions(listOf(action))
+        videoBounds?.takeIf { !it.isEmpty }?.let { builder.setSourceRectHint(it) }
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            // The home gesture shrinks the video on its own (a smooth
+            // animation instead of the app vanishing and a window popping
+            // up), but only while there is a playing video to shrink.
+            builder.setAutoEnterEnabled(pipEligible()).setSeamlessResizeEnabled(true)
+        }
+        return builder.build()
+    }
+
+    private fun refreshPipParams() {
+        if (!pipSupported() || player == null) return
+        runCatching { setPictureInPictureParams(pipParams()) }
+    }
+
+    /** Shrink into the PiP window; false when that isn't possible right now. */
+    private fun enterPip(): Boolean {
+        if (!pipEligible()) return false
+        hideControls()
+        trackPanel.value = TvTrackPanel.Hidden
+        return runCatching { enterPictureInPictureMode(pipParams()) }.getOrDefault(false)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Home on Android 8–11: shrink by hand. 12+ auto-enters (see pipParams).
+        if (android.os.Build.VERSION.SDK_INT < 31) enterPip()
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPip.value = isInPictureInPictureMode
+        when {
+            isInPictureInPictureMode -> {
+                hideControls()
+                trackPanel.value = TvTrackPanel.Hidden
+            }
+            // The window's ✕: the system stops the activity without finishing
+            // it. Finish properly so playback ends and the shelf is what's left.
+            lifecycle.currentState == androidx.lifecycle.Lifecycle.State.CREATED -> finish()
+            // Expanded back to full size: show where things stand.
+            else -> pokeControls()
+        }
     }
 
     override fun onStart() {
@@ -1630,7 +2011,10 @@ class PlayerActivity : ComponentActivity() {
         // The foreground-service start from onStop rides the "leaving a
         // user-visible state" exemption; if an OEM's timing disagrees, losing
         // the race must mean "this leave pauses", not a crash.
-        if (!isFinishing) runCatching { enterListenMode() }
+        // Not from the PiP window, though: it stops for the screen going off
+        // or its own ✕, and a visible window must never be swapped to the
+        // audio-only stream underneath — those leaves simply pause.
+        if (!isFinishing && !inPip.value) runCatching { enterListenMode() }
         // Inline, not dispatched: lifecycleScope dies with the activity, and the
         // exit position is the one write that must not be dropped. Nothing is
         // animating by now, so the blocking commit is harmless.
@@ -1650,6 +2034,11 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (live?.get() === this) live = null
+        orientationListener?.disable()
+        orientationListener = null
+        pipReceiver?.let { runCatching { unregisterReceiver(it) } }
+        pipReceiver = null
         endCardJob?.cancel()
         resolveJob = null
         // A replacement player (LAN /play, a tapped notification) is already
@@ -1938,9 +2327,11 @@ private fun BoxScope.EndCardOverlay(
     channel: String,
     onPrimary: () -> Unit,
     onSecondary: () -> Unit,
-    onPick: (io.pickwick.app.data.Video) -> Unit
+    onPick: (io.pickwick.app.data.Video) -> Unit,
+    /** The portrait video slot: no poster, no "More from" — the list below the video has both. */
+    compact: Boolean = false
 ) {
-    val showMore = !isTv && card.more.isNotEmpty()
+    val showMore = !isTv && !compact && card.more.isNotEmpty()
     Box(
         Modifier.fillMaxSize().background(Color(0xB3000000)),
         contentAlignment = Alignment.Center
@@ -1959,8 +2350,8 @@ private fun BoxScope.EndCardOverlay(
                     color = Color.White.copy(alpha = 0.7f),
                     style = MaterialTheme.typography.titleMedium
                 )
-                Spacer(Modifier.height(8.dp))
-                if (card.nextThumb != null) {
+                Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
+                if (card.nextThumb != null && !compact) {
                     coil.compose.AsyncImage(
                         model = card.nextThumb,
                         contentDescription = card.nextTitle,
@@ -1980,7 +2371,7 @@ private fun BoxScope.EndCardOverlay(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.width(if (isTv) 520.dp else 420.dp)
+                    modifier = Modifier.width(if (isTv) 520.dp else if (compact) 300.dp else 420.dp)
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -1988,7 +2379,7 @@ private fun BoxScope.EndCardOverlay(
                     color = PickwickDarkColors.primary,
                     style = MaterialTheme.typography.bodyLarge
                 )
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     KidButton("▶  Play now", primary = true, highlighted = isTv && cursor == 0, isTv = isTv, onClick = onPrimary)
                     KidButton("Not now", primary = false, highlighted = isTv && cursor == 1, isTv = isTv, onClick = onSecondary)
@@ -1996,9 +2387,9 @@ private fun BoxScope.EndCardOverlay(
             } else {
                 Text(
                     "🎉",
-                    fontSize = androidx.compose.ui.unit.TextUnit(64f, androidx.compose.ui.unit.TextUnitType.Sp)
+                    fontSize = androidx.compose.ui.unit.TextUnit(if (compact) 36f else 64f, androidx.compose.ui.unit.TextUnitType.Sp)
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(if (compact) 2.dp else 8.dp))
                 Text(
                     "That's the end!",
                     color = Color.White,
@@ -2010,7 +2401,7 @@ private fun BoxScope.EndCardOverlay(
                     color = Color.White.copy(alpha = 0.6f),
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(if (compact) 8.dp else 16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     KidButton("↺  Watch again", primary = true, highlighted = isTv && cursor == 0, isTv = isTv, onClick = onPrimary)
                     KidButton("✓  All done", primary = false, highlighted = isTv && cursor == 1, isTv = isTv, onClick = onSecondary)
@@ -2027,37 +2418,137 @@ private fun BoxScope.EndCardOverlay(
                     style = MaterialTheme.typography.labelLarge
                 )
                 card.more.forEach { v ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .width(360.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { onPick(v) }
-                            .padding(4.dp)
-                    ) {
-                        coil.compose.AsyncImage(
-                            model = v.thumbnailUrl,
-                            contentDescription = v.title,
-                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                            modifier = Modifier
-                                .width(128.dp)
-                                .height(72.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x33FFFFFF))
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            v.title,
-                            color = Color.White,
-                            maxLines = 2,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
+                    SmallVideoRow(v.title, v.thumbnailUrl, Modifier.width(360.dp)) { onPick(v) }
                 }
             }
         }
         }
+    }
+}
+
+/**
+ * A poster with its title beside it — the list shape of YouTube's portrait
+ * "Up next", shared by the end card's "More from" column and the portrait
+ * layout's lists. Kid-sized: a 72 dp poster is a target, not a thumbnail.
+ */
+@Composable
+private fun SmallVideoRow(
+    title: String,
+    thumb: String?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+            .padding(4.dp)
+    ) {
+        coil.compose.AsyncImage(
+            model = thumb,
+            contentDescription = title,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier
+                .width(128.dp)
+                .height(72.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0x33FFFFFF))
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            title,
+            color = Color.White,
+            maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+/** ❤️ / 🤍: save for later, with the pop. */
+@Composable
+private fun HeartButton(isFavorite: Boolean, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .clickable { onClick() }
+    ) {
+        Text(
+            if (isFavorite) "❤️" else "🤍",
+            fontSize = androidx.compose.ui.unit.TextUnit(24f, androidx.compose.ui.unit.TextUnitType.Sp)
+        )
+    }
+}
+
+/** 🌙: stop after this one; lit while armed. */
+@Composable
+private fun MoonButton(stopAfterThis: Boolean, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(if (stopAfterThis) Color(0x59FFFFFF) else Color.Transparent)
+            .clickable { onClick() }
+    ) {
+        Text(
+            "🌙",
+            fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp)
+        )
+    }
+}
+
+/** Picture-in-picture: a frame with a small filled one in its corner. Drawn, like the transport glyphs. */
+@Composable
+private fun PipGlyph(size: androidx.compose.ui.unit.Dp, color: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = w * 0.09f
+        drawRoundRect(
+            color = color,
+            topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, h * 0.15f + stroke / 2),
+            size = androidx.compose.ui.geometry.Size(w - stroke, h * 0.7f - stroke),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.08f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(stroke)
+        )
+        drawRoundRect(
+            color = color,
+            topLeft = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.48f),
+            size = androidx.compose.ui.geometry.Size(w * 0.38f, h * 0.26f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.04f)
+        )
+    }
+}
+
+/** ⛶: four corner brackets pointing out (go full screen) or in (come back). */
+@Composable
+private fun FullscreenGlyph(expand: Boolean, size: androidx.compose.ui.unit.Dp, color: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val stroke = w * 0.1f
+        val arm = w * 0.28f
+        val inset = w * 0.12f
+        val cap = androidx.compose.ui.graphics.StrokeCap.Round
+        fun corner(cx: Float, cy: Float, dx: Float, dy: Float) {
+            // Out: the L sits at the corner and opens inward. In: it sits
+            // toward the middle and its arms point at the corner.
+            val ox = if (expand) cx else cx + dx * arm * 1.1f
+            val oy = if (expand) cy else cy + dy * arm * 1.1f
+            val sx = if (expand) dx else -dx
+            val sy = if (expand) dy else -dy
+            drawLine(color, androidx.compose.ui.geometry.Offset(ox, oy),
+                androidx.compose.ui.geometry.Offset(ox + sx * arm, oy), stroke, cap)
+            drawLine(color, androidx.compose.ui.geometry.Offset(ox, oy),
+                androidx.compose.ui.geometry.Offset(ox, oy + sy * arm), stroke, cap)
+        }
+        corner(inset, inset, 1f, 1f)
+        corner(w - inset, inset, -1f, 1f)
+        corner(inset, w - inset, 1f, -1f)
+        corner(w - inset, w - inset, -1f, -1f)
     }
 }
 
@@ -2221,6 +2712,16 @@ private fun Scrubber(
 @Composable
 private fun BoxScope.PlayerControlsOverlay(
     isTv: Boolean,
+    /**
+     * The portrait video slot: title, channel, heart and moon live below the
+     * video there, so the chrome is only what steers playback, at sizes that
+     * fit a 16:9 strip.
+     */
+    compact: Boolean = false,
+    /** Shrink into the PiP window (phones). */
+    onMinimise: (() -> Unit)? = null,
+    /** ⛶ (phones): go full screen from the slot, come back from the stage. */
+    onToggleFullscreen: (() -> Unit)? = null,
     visibleUntil: State<Long>,
     wantsPlay: State<Boolean>,
     title: String,
@@ -2278,7 +2779,7 @@ private fun BoxScope.PlayerControlsOverlay(
         }
     }
 
-    val edge = if (isTv) 32.dp else 16.dp
+    val edge = if (isTv) 32.dp else if (compact) 8.dp else 16.dp
     androidx.compose.animation.AnimatedVisibility(
         visible = visible && durationMs > 0,
         enter = androidx.compose.animation.fadeIn(),
@@ -2287,14 +2788,14 @@ private fun BoxScope.PlayerControlsOverlay(
     ) {
         Box(Modifier.fillMaxSize()) {
             Box(
-                Modifier.align(Alignment.TopCenter).fillMaxWidth().height(140.dp).background(
+                Modifier.align(Alignment.TopCenter).fillMaxWidth().height(if (compact) 72.dp else 140.dp).background(
                     androidx.compose.ui.graphics.Brush.verticalGradient(
                         listOf(Color(0xB3000000), Color.Transparent)
                     )
                 )
             )
             Box(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(180.dp).background(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(if (compact) 96.dp else 180.dp).background(
                     androidx.compose.ui.graphics.Brush.verticalGradient(
                         listOf(Color.Transparent, Color(0xCC000000))
                     )
@@ -2306,25 +2807,26 @@ private fun BoxScope.PlayerControlsOverlay(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
-                    .padding(horizontal = edge, vertical = if (isTv) 20.dp else 10.dp)
+                    .padding(horizontal = edge, vertical = if (isTv) 20.dp else if (compact) 2.dp else 10.dp)
             ) {
                 if (!isTv) {
                     androidx.compose.material3.IconButton(
                         onClick = onBack,
-                        modifier = Modifier.size(52.dp)
+                        modifier = Modifier.size(if (compact) 44.dp else 52.dp)
                     ) {
                         Icon(
                             androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
                             tint = Color.White,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(if (compact) 26.dp else 30.dp)
                         )
                     }
                     Spacer(Modifier.width(4.dp))
                 }
+                if (compact) Spacer(Modifier.weight(1f))
                 // The channel's face: tap to see the rest of its videos. On
                 // TV it's a label only (the remote has no cursor for it).
-                if (avatarUrl != null) {
+                if (avatarUrl != null && !compact) {
                     Box(
                         Modifier
                             .size(40.dp)
@@ -2341,7 +2843,7 @@ private fun BoxScope.PlayerControlsOverlay(
                     }
                     Spacer(Modifier.width(10.dp))
                 }
-                Column(
+                if (!compact) Column(
                     Modifier
                         .weight(1f)
                         .then(if (isTv || avatarUrl == null) Modifier else Modifier.clickable { onOpenChannel() })
@@ -2365,34 +2867,11 @@ private fun BoxScope.PlayerControlsOverlay(
                     Spacer(Modifier.width(12.dp))
                     RemainingChip(ms)
                 }
-                if (!isTv) {
+                if (!isTv && !compact) {
                     // Heart: save for later, with the pop. Moon: stop after this one.
                     Spacer(Modifier.width(4.dp))
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .clickable { onToggleFavorite() }
-                    ) {
-                        Text(
-                            if (isFavorite) "❤️" else "🤍",
-                            fontSize = androidx.compose.ui.unit.TextUnit(24f, androidx.compose.ui.unit.TextUnitType.Sp)
-                        )
-                    }
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(if (stopAfterThis) Color(0x59FFFFFF) else Color.Transparent)
-                            .clickable { onToggleStopAfter() }
-                    ) {
-                        Text(
-                            "🌙",
-                            fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp)
-                        )
-                    }
+                    HeartButton(isFavorite, onToggleFavorite)
+                    MoonButton(stopAfterThis, onToggleStopAfter)
                 }
                 if (!isTv && playback?.subtitles?.isNotEmpty() == true) {
                     Spacer(Modifier.width(8.dp))
@@ -2421,18 +2900,32 @@ private fun BoxScope.PlayerControlsOverlay(
                         }
                     }
                 }
+                if (!isTv && onMinimise != null) {
+                    // Shrink to the floating window and keep browsing.
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .clickable { onMinimise() }
+                    ) {
+                        PipGlyph(size = 26.dp, color = Color.White)
+                    }
+                }
             }
             // Middle: phones get the transport; TV gets the state glyph.
             if (!isTv) {
+                val side = if (compact) 44.dp else 60.dp
+                val main = if (compact) 64.dp else 88.dp
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(40.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (compact) 28.dp else 40.dp),
                     modifier = Modifier.align(Alignment.Center)
                 ) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(60.dp)
+                            .size(side)
                             .clip(CircleShape)
                             .background(Color(0x33FFFFFF))
                             .then(
@@ -2440,23 +2933,23 @@ private fun BoxScope.PlayerControlsOverlay(
                                 else Modifier
                             )
                     ) {
-                        SkipGlyph(forward = false, size = 30.dp,
+                        SkipGlyph(forward = false, size = side / 2,
                             color = if (hasPrevious) Color.White else Color(0x66FFFFFF))
                     }
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(88.dp)
+                            .size(main)
                             .clip(CircleShape)
                             .background(Color.White)
                             .clickable { onTogglePlay() }
                     ) {
-                        PlayPauseGlyph(playing = playing, size = 48.dp, color = Color(0xFF0F0F0F))
+                        PlayPauseGlyph(playing = playing, size = main * 0.55f, color = Color(0xFF0F0F0F))
                     }
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(60.dp)
+                            .size(side)
                             .clip(CircleShape)
                             .background(Color(0x33FFFFFF))
                             .then(
@@ -2464,7 +2957,7 @@ private fun BoxScope.PlayerControlsOverlay(
                                 else Modifier
                             )
                     ) {
-                        SkipGlyph(forward = true, size = 30.dp,
+                        SkipGlyph(forward = true, size = side / 2,
                             color = if (hasNext) Color.White else Color(0x66FFFFFF))
                     }
                 }
@@ -2494,7 +2987,7 @@ private fun BoxScope.PlayerControlsOverlay(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = edge, vertical = if (isTv) 18.dp else 8.dp)
+                    .padding(horizontal = edge, vertical = if (isTv) 18.dp else if (compact) 0.dp else 8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -2515,9 +3008,20 @@ private fun BoxScope.PlayerControlsOverlay(
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.widthIn(max = 320.dp)
+                                modifier = Modifier.widthIn(max = if (compact) 150.dp else 320.dp)
                             )
-                            Spacer(Modifier.width(16.dp))
+                            Spacer(Modifier.width(if (compact) 8.dp else 16.dp))
+                        }
+                        if (!isTv && onToggleFullscreen != null) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .clickable { onToggleFullscreen() }
+                            ) {
+                                FullscreenGlyph(expand = compact, size = 24.dp, color = Color.White)
+                            }
                         }
                         if (isTv && panel != TvTrackPanel.Hidden) {
                             val onToolbar = panel == TvTrackPanel.Toolbar
@@ -2559,7 +3063,7 @@ private fun BoxScope.PlayerControlsOverlay(
                         }
                     }
                 }
-                Spacer(Modifier.height(if (isTv) 10.dp else 2.dp))
+                Spacer(Modifier.height(if (isTv) 10.dp else if (compact) 0.dp else 2.dp))
                 Scrubber(
                     positionMs = positionMs,
                     durationMs = durationMs,

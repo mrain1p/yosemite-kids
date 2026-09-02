@@ -18,6 +18,22 @@ description: Boot the Android emulator, install the debug Pickwick APK, seed a s
 .\scripts\emu.ps1 stop
 ```
 
+## Unattended runs: boot headless
+
+`boot headless` (`-no-window`). With the emulator window up, the host
+mouse resting over it produces a stream of phantom touches — down/up
+pairs at one point, dozens a second (`TaplEvents` in the full logcat).
+They scroll the shelf and tap the player's rows on their own, so a video
+"left for a minute" came back on the channel page. Headless there is no
+window to receive them. Headless runs on the software GPU: expect one
+"System UI isn't responding" early on (tap Wait at about 320,1363) and
+a slower `dumpsys` (~10 s a call — keep polling loops short).
+
+From Git Bash, prefix adb calls that carry a device path with
+`MSYS_NO_PATHCONV=1` (`/data/local/tmp/...` is otherwise rewritten as a
+Windows path). PowerShell's `>` mangles binary output, which is why
+`shot` pulls the PNG instead of redirecting `exec-out`.
+
 ## Always target the emulator by serial
 
 Other Android devices may be plugged into this machine (a Quest headset has
@@ -31,8 +47,12 @@ without the user asking.
 2. Read the PNG (the Read tool renders images). Home should show the seeded
    channels within a few seconds once the emulator has internet.
 3. Drive: `tap` on a channel tile, `shot channel`; `tap` a poster, `shot player`;
-   `key KEYCODE_BACK`. Coordinates are in the 1080x2400 (portrait) frame;
-   the player forces landscape, so screenshots there are 2400x1080.
+   `key KEYCODE_BACK`. Coordinates are in the 1080x2400 (portrait) frame.
+   The player opens in portrait (video slot at the top, 16:9 → roughly
+   y 126–735, list below); `rotate` gives the full-screen stage at
+   2400x1080, `rotate` again brings portrait back. `home` or `back` while
+   playing shrinks it to PiP (`dumpsys activity activities | grep
+   mode=pinned`); tapping a poster on the shelf replaces the PiP player.
 4. Time-based screens: the seed gives the kid a 2-minute session so the "N min
    left" chip, the 1-minute warning and the break card all appear quickly.
 

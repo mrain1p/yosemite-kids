@@ -1,4 +1,4 @@
-# Pickwick pre-commit check: compile, offline unit tests, worker tests.
+﻿# Pickwick pre-commit check: compile, offline unit tests, worker tests.
 # Usage: .\scripts\check.ps1 [-Quick]
 param([switch]$Quick)
 

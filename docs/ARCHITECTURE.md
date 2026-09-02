@@ -143,8 +143,17 @@ PlayerActivity.onCreate
   │     VideoCache of the channel, minus watched/blocked) appends to the
   │     lineup → Up next countdown + "More from <channel>"; last/stop-after →
   │     Watch again / All done
+  ├─ Layout (phones): portraitLayout ← configuration; PortraitPlayerScaffold
+  │     (16:9 slot + title, channel row, Up next, More from <channel>) or the
+  │     full-screen stage; PlayerStage is movableContentOf so a turn keeps
+  │     the SurfaceView. ⛶ = forceOrientation(); TV: stage only.
+  ├─ Picture-in-picture (phones): Back / minimise / Home → enterPip()
+  │     (pipEligible: playing, no card); inPip hides every overlay; the end
+  │     card is skipped (advance or finish); ✕ finishes; a second launch
+  │     finishes the PiP one (companion `live`)
   └─ Overlay: PlayerControlsOverlay (phone: avatar→channel, heart→Favorites,
-        moon = stop after this, transport + scrubber; TV: state glyph)
+        moon = stop after this, transport + scrubber, PiP + ⛶ buttons;
+        compact = the portrait slot; TV: state glyph)
 ```
 
 ### Screen time in one table
@@ -210,6 +219,8 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Add a row to the hold menu | `VideoGrid.kt` (`menuFor` dialog) → `MainViewModel` action |
 | Change the player controls | `PlayerActivity.kt` → `PlayerControlsOverlay` (phone + TV), `onKeyDown` (TV) |
 | Change what happens when a video ends | `PlayerActivity.showEndCard` / `EndCardOverlay` |
+| Change the portrait player (what sits under the video) | `PlayerActivity.PortraitPlayerScaffold`; the slot's chrome is `PlayerControlsOverlay(compact = true)` |
+| Change when the phone shrinks to PiP, or what the window does | `PlayerActivity.pipEligible` / `enterPip` / `onPictureInPictureModeChanged` |
 | Add a screen-time rule | `Whitelist.Limits` + `ConfigStore` (de)serializers + `SessionGuard` + settings section |
 | Add a LAN route | `LanServer.handle` (bound every read!) + `LanClient` + `docs/LAN-API.md` |
 | Add a parent setting | `Settings.kt` AdminScreen section + config field + push |

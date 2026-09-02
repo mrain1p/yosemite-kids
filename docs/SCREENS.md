@@ -17,7 +17,9 @@ channels, 15-minute session) or `seed --real` (the family's whitelist).
 | Favorites / Watch later / Up next / Downloads | `Watchlist` / `WatchLater` / `Queue` / `Downloads` | the saved-list stores | `VideoGrid`, `QueueList` | Favorites tab chips |
 | Surprise | `Surprise` | shuffled cache pool | `VideoGrid` | 🎲 chip in the channel row |
 | Search | `Search` → `SearchResults(q)` | `recentSearches`, `searchScreening` | `SearchField`, `VideoGrid` | Search tab; mic needs a real device |
-| Player | (PlayerActivity) | intent extras, `SessionGuard`, `VideoCache` (autoplay) | `PlayerActivity.kt` `PlayerControlsOverlay` | tap any poster; `wait-stream`; tap centre for controls |
+| Player (phone, portrait) | (PlayerActivity) | intent extras, `SessionGuard`, `moreFromChannel` (= `channelCandidates()`) | `PlayerActivity.kt` `PortraitPlayerScaffold` + `PlayerControlsOverlay(compact)` | tap any poster; `wait-stream`; tap the video for controls; the list below scrolls |
+| Player (phone landscape / TV) | (PlayerActivity) | as above | `PlayerActivity.kt` `PlayerStage` + `PlayerControlsOverlay` | `rotate`, or ⛶ in the portrait slot; TV always |
+| Mini-player (PiP, phone) | (PlayerActivity, `inPip`) | `pipEligible()` | the stage with every overlay hidden | `home` or `back` while a video plays; `dumpsys activity activities` shows `mode=pinned` |
 | Up next / end card | (PlayerActivity `EndCard`) | queue + `channelCandidates()` | `EndCardOverlay` | drag the scrubber to the end |
 | Blocked / time-up | (PlayerActivity) | `SessionGuard.checkStart/tick` | `BlockedCard` | seed a 2-minute session and keep watching |
 | Error | (PlayerActivity) | `errorState` | `ErrorCard` | pull the emulator's network |

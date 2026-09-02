@@ -62,10 +62,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Rotation and the picture-in-picture resize are handled in place
+             (smallestScreenSize is what a PiP window changes): recreating
+             the activity would restart playback. Phones only use PiP; the
+             TV never asks for it. -->
         <activity
             android:name=".ui.PlayerActivity"
             android:exported="false"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize" />
 
         <!-- Fetches parent-approved videos for offline play, one at a time. -->
         <service

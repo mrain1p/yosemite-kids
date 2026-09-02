@@ -1,7 +1,10 @@
 # Round 4 plan — phone mini-player, portrait player, device reach
 
-Status: **proposed** (written 2026-09-02 at the end of round 3, from the
-user's asks; nothing here is built yet).
+Status: **done** — all three items shipped in 0.8.3-fork (32), 2026-09-02.
+Item 1 went with option A (system picture-in-picture), item 2 as written,
+item 3 with round 3. What was built and what was verified is in
+`FORK-NOTES.md` ("Round four"); the plan below is kept as the record of
+the options weighed.
 
 ## 1. Mini-player on phones ("keep watching while I browse")
 

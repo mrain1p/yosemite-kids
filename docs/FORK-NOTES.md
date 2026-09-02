@@ -305,6 +305,78 @@ TV answers `GET /config` without the new keys, so a reinstall-recovery Pull
 from such a TV silently resets `autoplay` / `channelLayout` /
 `channelOrder` (both sides must run the fork).
 
+### Round four: portrait player and the mini-player (phones)
+
+The plan is `docs/PLAN-round4.md`; everything in it is built. Version
+**0.8.3-fork (32)**. The TV is untouched by all of this.
+
+- **Portrait player.** The player no longer forces landscape. Held upright
+  it is YouTube's shape: the video in a 16:9 slot at the top, under a
+  visible status bar, then the title, the channel row (avatar + name opens
+  the channel; the heart and the moon moved down here), then **Up next**
+  (the rest of the lineup, tappable) and **More from <channel>** (the same
+  candidates autoplay draws from, computed when the video resolves).
+  Sideways — by turning the phone with auto-rotate on, or by **⛶** in the
+  slot — it is the full-screen, edge-to-edge stage from before, with ⛶
+  again to come back. ⛶ overrides the phone's rotation lock only until the
+  phone is physically held that way; with auto-rotate off it holds until
+  pressed again (`forceOrientation`). The slot's chrome is
+  `PlayerControlsOverlay(compact = true)`: back, time-left chip, CC, the
+  PiP button, a smaller transport, time and ⛶ above the scrubber; the end
+  card in the slot drops its poster and "More from" column (both are in
+  the list below). The stage and the slot share one `PlayerStage` through
+  `movableContentOf`, so a turn moves the `PlayerView` rather than
+  rebuilding it — playback carries straight through a rotation.
+- **Mini-player = system picture-in-picture** (plan option A). Back, the
+  new ⧉ button, or Home while a video plays shrink it into the floating
+  window (Android 12+ auto-enters on the home gesture with the smooth
+  animation; 8–11 enter from `onUserLeaveHint`); the window carries a
+  play/pause action and takes the video's own aspect ratio. Only a playing
+  video with no card over it is eligible (`pipEligible`) — paused, ended,
+  blocked or erroring, Back still just leaves. In the window every overlay,
+  gesture and notice is hidden. A video ending in the window skips the end
+  card: it moves on (same-channel autoplay included) or closes the window
+  when the lineup is done. The window's ✕ finishes the player properly.
+  Screen-off in the window pauses (listen mode is deliberately not entered
+  from a visible window — the audio-only swap would blank it), and screen
+  time keeps ticking. Picking another video on the shelf under the window
+  **replaces** the floating one (`PlayerActivity.live`) instead of playing
+  two at once.
+- `AndroidManifest`: `supportsPictureInPicture`, `smallestScreenSize` in
+  the player's `configChanges` (the PiP resize is a config change).
+- Harness: `scripts/check.ps1` gained a UTF-8 BOM (Windows PowerShell 5.1
+  read its em-dashes as cp1252 and a smart quote ended a string, so the
+  script would not parse); `emu.ps1 boot headless`, `shot` pulls the PNG
+  instead of redirecting (the redirect re-encoded it), `wait-stream` also
+  matches the `stream[]` line. The emulator skill records the phantom-touch
+  lesson below.
+
+### Verified on the phone emulator (round four, Pixel 6 / API 34, debug)
+
+Seen working, headless: the portrait player (slot, title, channel row,
+More from SciShow Kids with six-plus rows); the compact controls; a
+rotation to the full-screen stage with playback continuing (9:32 → 9:49,
+no re-resolve in the log) and the landscape overlay with ❤️ 🌙 CC ⧉ ⛶;
+rotating back; Home → the PiP window over the launcher (16:9 pinned task);
+Back → PiP; tapping a poster under the window replaces the player (one
+`PlayerActivity`, no pinned task left); seeking to 23 s before the end and
+shrinking: the next video resolved inside the window, no card, window kept.
+
+Not verified: the ✕ on the window (the emulator has no pointer for it —
+`onPictureInPictureModeChanged` + lifecycle `CREATED` is the documented
+signal), the PiP play/pause action, time-up while pinned (the card shows in
+the window and the existing 6-second auto-finish closes it), ⛶ with
+auto-rotate on (the emulator's sensor is fixed; `forceOrientation`'s release
+path needs a real phone), Android 8–11's `onUserLeaveHint` path, and any
+of this on a real phone or a tablet.
+
+The emulator lesson of this round: with the emulator window on screen, the
+host mouse resting over it generates phantom touches (`TaplEvents`
+down/up pairs, dozens a second). Two runs "left the player on their own"
+for the channel page — a phantom tap on the channel row — before the
+cause was found in the full logcat. `emu.ps1 boot headless` is the fix for
+unattended runs.
+
 ### Two form factors, one codebase — how it is kept maintainable
 
 The phone and the TV are deliberately two *layouts*, not two apps. What is
@@ -332,9 +404,9 @@ Kid side:
 1. **Skeleton tiles** instead of one spinner while home/channel loads (the
    debug build on the emulator sat on a spinner for ~13 s; release is faster,
    but a shimmer grid reads as progress).
-2. **Brightness/volume swipe** in the player, and **picture-in-picture** on
-   phones — PiP conflicts with listen mode's "backgrounding = audio only"
-   and needs a decision.
+2. **Brightness/volume swipe** in the player. (Picture-in-picture shipped in
+   round four; the listen-mode decision was: a visible PiP window never
+   enters listen mode, screen-off in it pauses.)
 3. **Sleep timer / "stop after this one"**.
 4. **Profile picker → home transition** (avatar zooms into the header chip).
 5. A kid-scale **search page** (big recent-search chips); today the field

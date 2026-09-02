@@ -1,5 +1,5 @@
 # Pickwick emulator loop. Usage: .\scripts\emu.ps1 <verb> [args]
-#   boot | tv | stop | install | seed [--real] | launch | shot <name>
+#   boot [headless] | tv | stop | install | seed [--real] | launch | shot <name>
 #   tap X Y | key KEYCODE | text "..." | back | home | rotate | logcat | forward
 #   dpad left|right|up|down|ok|back | hold-ok | wait-stream
 # Every adb call targets the emulator serial so a phone/headset on USB is never touched.
@@ -30,7 +30,13 @@ function Wait-Boot {
 
 switch ($Verb) {
     "boot" {
-        Start-Process -FilePath $emu -ArgumentList "-avd pickwick_phone -port 5554 -no-snapshot-load -no-boot-anim -gpu auto -netdelay none -netspeed full -dns-server 8.8.8.8,1.1.1.1" -WindowStyle Normal
+        # `boot headless`: no emulator window. With a window up, the host mouse
+        # resting over it produces a stream of phantom touches (down/up pairs,
+        # dozens a second) that scroll the shelf and tap the player's rows on
+        # their own — an unattended run must be headless. Software GPU only,
+        # so System UI may ANR once early on; tap Wait.
+        $extra = if ($A -eq "headless") { " -no-window -gpu swiftshader_indirect" } else { " -gpu auto" }
+        Start-Process -FilePath $emu -ArgumentList ("-avd pickwick_phone -port 5554 -no-snapshot-load -no-boot-anim -netdelay none -netspeed full -dns-server 8.8.8.8,1.1.1.1" + $extra) -WindowStyle Normal
         Wait-Boot
     }
     "tv" {
@@ -62,7 +68,10 @@ switch ($Verb) {
         $dir = Join-Path $root "build\shots"; New-Item -ItemType Directory -Force $dir | Out-Null
         $name = if ($A) { $A } else { "shot-" + (Get-Date -Format "HHmmss") }
         $out = Join-Path $dir "$name.png"
-        & $adb -s $serial exec-out screencap -p > $out
+        # Not `exec-out ... > $out`: PowerShell's redirect re-encodes the bytes
+        # as text (BOM + mangled high bytes) and the PNG is unreadable.
+        Adb shell screencap -p /sdcard/pickwick-shot.png | Out-Null
+        Adb pull /sdcard/pickwick-shot.png $out | Out-Null
         Write-Host $out
     }
     "tap" { Adb shell input tap $A $B }
@@ -87,7 +96,7 @@ switch ($Verb) {
         for ($i = 0; $i -lt 14; $i++) {
             Start-Sleep -Seconds 5
             $log = (Adb logcat -d -s Pickwick:*) -join "`n"
-            if ($log -match "chunked clen|playback failed") { Write-Host "stream event after $(($i+1)*5)s"; break }
+            if ($log -match "chunked clen|stream\[|playback failed") { Write-Host "stream event after $(($i+1)*5)s"; break }
         }
     }
     "rotate" {
