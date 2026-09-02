@@ -87,6 +87,17 @@ class MainViewModel(
     val state: StateFlow<UiState> = _state
     private var sources: List<Source> = emptyList()
     private var blockedVideoIds: Set<String> = emptySet()
+    /** This kid's "hide videos shorter than" rule, in seconds; 0 = no rule. */
+    private var minVideoSeconds: Long = 0
+
+    /**
+     * The length rule, checked wherever [blockedVideoIds] is: a too-short video
+     * is hidden outright, not held for review, so it never counts as
+     * "waiting on screening" either. Unknown durations (0) pass — a live
+     * stream or a cache row from before durations were stored is not a clip.
+     */
+    private fun tooShort(v: Video): Boolean =
+        minVideoSeconds > 0 && v.durationSeconds in 1 until minVideoSeconds
     /** Channels that exist in the family config but belong to other kids —
      *  used to keep their downloads off this kid's offline shelf. */
     private var hiddenChannelNames: Set<String> = emptySet()
@@ -400,7 +411,7 @@ class MainViewModel(
         // band) — the first screening window should be the results a kid
         // actually searched for, not whatever source iterated first.
         searchMatches = hits.map { it.toVideo() }.distinctBy { it.url }
-            .filter { it.videoId !in blockedVideoIds }
+            .filter { it.videoId !in blockedVideoIds && !tooShort(it) }
             .sortedBy { v -> if (terms.all { it in v.title.lowercase() }) 0 else 1 }
         searchWindow = 0
         searchSent = 0
@@ -499,7 +510,7 @@ class MainViewModel(
     private fun keepWatchingRow(): List<VideoItem> =
         sources.flatMap { videoCache.load(it.id) }
             .distinctBy { it.url }
-            .filter { it.videoId !in blockedVideoIds }
+            .filter { it.videoId !in blockedVideoIds && !tooShort(it) }
             .filter { screener?.isVisible(it) != false }
             .mapNotNull { video ->
                 history.progress(video.url)
@@ -517,7 +528,7 @@ class MainViewModel(
      */
     private fun historyRow(): List<VideoItem> =
         historyItems(history.all(), sources.flatMap { videoCache.load(it.id) }, HISTORY_ROW_MAX)
-            .filter { it.video.videoId !in blockedVideoIds && screener?.isVisible(it.video) != false }
+            .filter { it.video.videoId !in blockedVideoIds && !tooShort(it.video) && screener?.isVisible(it.video) != false }
 
     /** A source gets a NEW badge when its newest cached video postdates the kid's last visit. */
     private fun computeNewBadges(): Set<String> =
@@ -537,7 +548,7 @@ class MainViewModel(
         channels.filter { source ->
             val cached = videoCache.load(source.id)
             cached.isEmpty() || cached.any { v ->
-                v.videoId !in blockedVideoIds && screener?.isVisible(v) != false
+                v.videoId !in blockedVideoIds && !tooShort(v) && screener?.isVisible(v) != false
             }
         }
 
@@ -585,7 +596,7 @@ class MainViewModel(
     private fun buildFeed(channels: List<Source>): List<VideoItem> {
         val perChannel = channels.map { source ->
             videoCache.load(source.id)
-                .filter { it.videoId !in blockedVideoIds && screener?.isVisible(it) != false }
+                .filter { it.videoId !in blockedVideoIds && !tooShort(it) && screener?.isVisible(it) != false }
                 .take(FEED_PER_CHANNEL)
         }
         return interleave(perChannel, FEED_MAX) { it.url }.mapNotNull { video ->
@@ -713,6 +724,7 @@ class MainViewModel(
                 // ("is this video blocked?") stays a plain membership test.
                 blockedVideoIds = list.blockedVideoIds +
                     list.blockedFor.filterValues { activeProfileId in it }.keys
+                minVideoSeconds = (list.limitsFor(activeProfileId).minVideoMinutes ?: 0) * 60L
                 screener?.config = list.ai
                 screener?.profiles = list.profiles
                 screener?.activeProfileId = activeProfileId
@@ -892,7 +904,7 @@ class MainViewModel(
 
     /** Raw videos on the current screen hidden by the screener (no verdict yet or held for review). */
     private fun heldByScreening(): Int = rawVideos.count { v ->
-        v.videoId !in blockedVideoIds && screener?.isVisible(v) == false
+        v.videoId !in blockedVideoIds && !tooShort(v) && screener?.isVisible(v) == false
     }
 
     /**
@@ -966,7 +978,7 @@ class MainViewModel(
                 val known = sources.flatMap { videoCache.load(it.id) } +
                     watchlistStore.load() + watchLaterStore.load()
                 historyItems(history.all(), known, HISTORY_MAX)
-                    .filter { it.video.videoId !in blockedVideoIds && screener?.isVisible(it.video) != false }
+                    .filter { it.video.videoId !in blockedVideoIds && !tooShort(it.video) && screener?.isVisible(it.video) != false }
             }
             // The kid may have moved on while the caches were read.
             if (_state.value.screen != Screen.History) return@launch
@@ -1005,7 +1017,7 @@ class MainViewModel(
 
     private fun annotated(includeFinished: Boolean): List<VideoItem> =
         rawVideos.mapNotNull { video ->
-            if (video.videoId in blockedVideoIds) return@mapNotNull null
+            if (video.videoId in blockedVideoIds || tooShort(video)) return@mapNotNull null
             if (screener?.isVisible(video) == false) return@mapNotNull null
             val p = history.progress(video.url)
             when {
