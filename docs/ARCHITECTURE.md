@@ -220,6 +220,11 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Change the player controls | `PlayerActivity.kt` → `PlayerControlsOverlay` (phone + TV), `onKeyDown` (TV) |
 | Change what happens when a video ends | `PlayerActivity.showEndCard` / `EndCardOverlay` |
 | Change the portrait player (what sits under the video) | `PlayerActivity.PortraitPlayerScaffold`; the slot's chrome is `PlayerControlsOverlay(compact = true)` |
+| Change the kid's sort/filter chips or their defaults | `HomeState.orderChannels` / `filterVideos` (pure), `KidPrefs` (per-kid persistence), `MainViewModel.setChannelSort` / `setHomeFilter` / `setChannelFilter`; chips in `HomeScreens.kt` (`ChannelSortChips`, `VideoFilterChips`, TV `CycleChip`) |
+| Change the You tab | `YouScreen.kt`, `MainViewModel.youShelves` / `openYou` |
+| Change the profile hub or the look editor | `ProfileHub.kt`; the sync-back is `data/ProfileLooks.kt` + `GET /looks` + `MainViewModel.syncConfigState` (`mergeLooks`) + `MainActivity.onChangeLook` |
+| Change what rows sit above a channel's grid | `PlaylistShelves.kt` (`playlistShelves`, `newForYouRow`, `playlistRow`), assembled in `PickwickScreen` (`header`); the data is `MainViewModel.loadPlaylistShelves` / `loadPlaylistRow` |
+| Let the parent pick a channel's playlists | `SettingsChannels.kt` (`playlistEntry` dialog) → `WhitelistEntry.playlistIds` |
 | Change when the phone shrinks to PiP, or what the window does | `PlayerActivity.pipEligible` / `enterPip` / `onPictureInPictureModeChanged` |
 | Add a screen-time rule | `Whitelist.Limits` + `ConfigStore` (de)serializers + `SessionGuard` + settings section |
 | Add a LAN route | `LanServer.handle` (bound every read!) + `LanClient` + `docs/LAN-API.md` |

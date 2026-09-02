@@ -377,6 +377,99 @@ for the channel page — a phantom tap on the channel row — before the
 cause was found in the full logcat. `emu.ps1 boot headless` is the fix for
 unattended runs.
 
+### Round five: settings hub, the kid's corner, sort and filter chips, playlist rows
+
+Plan and decisions: `docs/PLAN-round5.md`. Version **0.9.0-fork (33)**.
+
+- **Upstream `1ae4cf1` adopted whole** (cherry-pick; `docs/UPSTREAM-LOG.md`):
+  the parent settings are a six-row hub with a page per row and a page per
+  kid; edits autosave and push (no Save button); pause is per kid; a per-kid
+  "hide videos shorter than N minutes" rule; every family has a kid. The
+  fork's own settings — autoplay, channel page layout, channel row order
+  (now with *Latest video*), the version line — sit on the hub's Playback
+  page and header. The short-video rule also applies to the fork's feed,
+  channel row and history. `CLAUDE.md` now asks for an upstream check at
+  the start of every round.
+- **The kid's corner (`ProfileHub.kt`).** The avatar top-right opens a
+  dialog: *Switch who's watching* (shared devices), *Change my look*, and
+  *Parent settings* with a lock badge. The gear left the headers; settings
+  is reachable only from there (and from the empty-home / who's-watching
+  screens as before). *Change my look* is the parent's own picker
+  (`LookPicker`, shared with the kid page): colour dots and the avatar
+  grid, applied on Done.
+- **A look travels back to the phone.** `Profile.lookAt` stamps every
+  choice; the newest wins wherever two meet. On a device the phone
+  administers (a TV, a kid's tablet) the choice waits in `ProfileLooks`,
+  is laid over the config on every `ConfigStore.load()` (so it shows at
+  once, and the device's fingerprint moves with it), is served on
+  `GET /looks`, adopted by the phone's config sweep (`mergeLooks` before
+  the hash compare) and pushed back out like any edit; a pushed config
+  that carries the look (or a newer one from the parent) clears the wait.
+  A parent phone, or a phone nobody administers, edits the config
+  directly and lets the sweep push.
+- **You tab** (was Favorites): the kid's avatar, name and time chip, the
+  *Change my look* / *Switch* chips, then every shelf they've built as
+  rows — Favorites, Watch later, Up next, History, Downloads — with *See
+  all* into the grids; Back from a grid returns to You. The tab icon is
+  the kid's own avatar. On TV the top menu is *Home · You*, the Explore
+  row gets a *You* tile, and the You page is the same rows.
+- **Channels tab**: two columns on phones, with sort chips *Most watched ·
+  A to Z · Random · Latest video* (`orderChannels`, unit-tested).
+  *Latest video* uses the upload date now stored as the cache's seventh
+  column (`Video.publishedAt`; older rows read back undated and sort
+  last). The home channel row follows the same choice; on TV a single
+  chip beside the row title cycles through the four.
+- **Filter chips** *New · Random · Popular* under the home feed's title and
+  on every channel page (`filterVideos`); the title follows ("Mixed up for
+  you", "Most watched"). Popular sorts on the hidden view count; Random is
+  a seeded shuffle that holds still until a pull-to-refresh, a reopen, or
+  a fresh press of the chip. Choices persist per kid (`KidPrefs`, beside
+  their recent searches); the parent's layout/order settings are the
+  defaults for a kid who never touched a chip. TV: one cycling chip by the
+  row title on home, the chip row under the channel title on a page.
+- **Playlist rows**: on the phone's Channels & playlists page each channel
+  has a 🎬 button listing the channel's own playlists (the same day-cached
+  listing the *By playlist* layout uses); ticked ones are stored on the
+  entry (`playlistIds`, config `playlists`, in the fingerprint) and show
+  as rows at the top of the channel's page on every device — name with
+  *See all* (the playlist as its own page), then its first videos as
+  shelf tiles, Shorts (≤ 60 s) and finished videos left out. Rows load one
+  by one; a row with nothing to show is absent.
+- **Separation and "New for you"**: rules between the home sections; a
+  channel page opens with a *New for you* row (its newest unstarted
+  videos) above *All videos*; the portrait player's list under the video
+  is *New from <channel>*, newest first where the cache has dates.
+
+### Verified on the emulators (round five, both headless, debug build)
+
+Phone (Pixel 6 / API 34): home with the dividers, the avatar-only header
+and the filter chips; the hub dialog (look, locked settings); the look
+editor — blue + dinosaur applied to the header, the tab icon and the kid
+tint, `lookAt` written to config.json (a phone nobody administers edits
+the config directly); the You tab with the avatar header, time chip,
+*Change my look* and a History row; the Channels tab two-up with the sort
+chips (A to Z re-sorted; the choice and the look both survived a
+relaunch); a channel page with the chips, *New for you*, the divider and
+*All videos*; Popular reordering the grid; the ported settings hub behind
+the PIN; the 🎬 picker listing SciShow Kids' playlists (15, live from
+YouTube), two ticked and saved, then the channel page showing both as
+rows with *See all* above *New for you*.
+
+TV (Android TV / API 34): the header avatar chip focusable from the top
+row; the hub and the look editor entirely by D-pad (yellow + frog, Done),
+the look showing at once through the overlay while config.json stayed
+untouched and `profile_looks.xml` held the pending choice; the *Channels*
+row's cycling sort chip (Most watched → A to Z, row reordered); a channel
+page with the filter chips and the *Home · You* menu; the You page.
+
+Not verified: the phone-side adoption of a TV's pending look (needs two
+paired emulators; the merge rules are unit-tested in `ProfileLooksTest`),
+the *Latest video* sort against real dates (the seed's caches predate the
+column), Random beyond its unit test, playlist rows on the TV, and any of
+this on real devices. The TV channel page's initial focus still lands on
+the grid's first tile, which scrolls the rows above it just out of view
+until the kid presses Up — worth a look on a real TV.
+
 ### Two form factors, one codebase — how it is kept maintainable
 
 The phone and the TV are deliberately two *layouts*, not two apps. What is

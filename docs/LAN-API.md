@@ -34,6 +34,7 @@ and, if the device later changes address, by sweeping its own /24
 | `GET /config` | admin | — | full config JSON, **including** the AI key | Disaster recovery for a reinstalled phone. |
 | `POST /config` | admin | full config JSON | `saved` / `400 bad config` | Validated by `ConfigStore.fromJson`; key stripped before it hits disk; fires `onConfigApplied` (kid notices). |
 | `GET /stats[?profile=<8 hex>]` | admin | — | see `Stats.build` | Per-kid when `profile` is given; else the kid on screen. |
+| `GET /looks` | admin | — | `ProfileLooks.exportJson`: `{profileId:{avatar,color,at}}` | A kid's own restyle waiting for the phone; the sweep adopts the newer `at` and pushes. |
 | `GET /watchstate` | admin | — | `WatchSync.exportJson` | history, favourites, watch-later, per-kid blocks |
 | `POST /watchstate` | admin | same shape | `merged` / `400` | LWW merge per video/url. |
 | `GET /verdicts` | admin | — | `ScreeningStore.exportJson` | AI verdicts for the current rules version |

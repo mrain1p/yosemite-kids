@@ -26,12 +26,23 @@ sealed interface Screen {
     data object Queue : Screen
     /** Everything this kid has watched, across channels, newest first. */
     data object History : Screen
+    /**
+     * The kid's own tab: their avatar, then Favorites / Watch later / Up
+     * next / History / Downloads as rows with "See all" into each shelf.
+     */
+    data object You : Screen
     /** Results of a whitelist-scoped search. */
     data class SearchResults(val query: String) : Screen
 }
 
 /** A video plus its local watch progress (0..1), null if never watched. */
 data class VideoItem(val video: Video, val progress: Float?)
+
+/** One row of the You tab: which shelf it previews, and its first few videos. */
+data class YouShelf(val screen: Screen, val emoji: String, val title: String, val items: List<VideoItem>)
+
+/** One of the parent-picked playlists on a channel's page: the playlist and its first videos. */
+data class PlaylistShelf(val playlist: PlaylistRef, val items: List<VideoItem>)
 
 data class UiState(
     val loading: Boolean = true,
@@ -65,6 +76,16 @@ data class UiState(
      * chose the "By playlist" layout and the channel has any. Empty otherwise.
      */
     val channelPlaylists: List<io.pickwick.app.data.PlaylistRef> = emptyList(),
+    /** The parent-picked playlists of the open channel, each with its first videos, as rows above the grid. */
+    val playlistShelves: List<PlaylistShelf> = emptyList(),
+    /** The You tab's rows (empty shelves are left out). */
+    val youShelves: List<YouShelf> = emptyList(),
+    /** The kid's channel sort in force (CHANNEL_ORDER_*, parent's default until they pick). */
+    val channelSort: String = CHANNEL_ORDER_WATCHED,
+    /** The kid's order for the home feed (VIDEO_FILTER_*). */
+    val homeFilter: String = VIDEO_FILTER_NEW,
+    /** The kid's order for channel pages (VIDEO_FILTER_*), the parent's layout as default. */
+    val channelFilter: String = VIDEO_FILTER_NEW,
     /** The kid's last few searches, newest first — chips on the search page. */
     val recentSearches: List<String> = emptyList(),
     /** Source ids with uploads the kid hasn't seen yet. */
@@ -182,6 +203,43 @@ internal fun orderByPopularity(items: List<VideoItem>): List<VideoItem> =
 /** Watched videos newest-watched first, for the History tile and shelf. */
 internal fun orderByWatched(items: List<VideoItem>, watchedAt: (String) -> Long): List<VideoItem> =
     items.sortedByDescending { watchedAt(it.video.url) }
+
+/**
+ * The channel row / Channels tab in the order the kid (or, by default, the
+ * parent) asked for. Most watched = most opened here; A to Z; a shuffle that
+ * holds still for the whole visit ([seed] — a row that reorders under the
+ * kid's thumb is a bug, not a surprise); latest video = the channel whose
+ * newest upload is newest, channels with no dated upload last. Every sort is
+ * stable, so ties keep the whitelist order.
+ */
+internal fun orderChannels(
+    channels: List<Source>,
+    sort: String,
+    opens: (String) -> Int,
+    latestUpload: (String) -> Long?,
+    seed: Long
+): List<Source> = when (sort) {
+    CHANNEL_ORDER_ALPHA -> channels.sortedBy { it.name.lowercase() }
+    CHANNEL_ORDER_RANDOM -> channels.shuffled(kotlin.random.Random(seed))
+    CHANNEL_ORDER_LATEST -> channels.sortedByDescending { latestUpload(it.id) ?: Long.MIN_VALUE }
+    else -> channels.sortedByDescending { opens(it.id) }
+}
+
+/**
+ * A video list in the order the kid's chip asks for: newest keeps the list's
+ * own order (feeds arrive newest-first), random is a seeded shuffle that
+ * holds until the next refresh, popular is [orderByPopularity].
+ */
+internal fun filterVideos(items: List<VideoItem>, filter: String?, seed: Long): List<VideoItem> =
+    when (filter) {
+        VIDEO_FILTER_RANDOM -> items.shuffled(kotlin.random.Random(seed))
+        VIDEO_FILTER_POPULAR -> orderByPopularity(items)
+        else -> items
+    }
+
+/** The parent's channel page layout as the kid's default filter (the playlist layout keeps newest). */
+internal fun defaultFilterFor(channelLayout: String): String =
+    if (channelLayout == CHANNEL_LAYOUT_POPULAR) VIDEO_FILTER_POPULAR else VIDEO_FILTER_NEW
 
 /**
  * Search hits handed to the AI screener in the current window. [done]/[total]

@@ -60,7 +60,10 @@ class VideoCache(context: Context) {
                 channelName = p[2],
                 thumbnailUrl = p[3].ifEmpty { null },
                 durationSeconds = p[4].toLongOrNull() ?: 0L,
-                viewCount = p.getOrNull(5)?.toLongOrNull()
+                viewCount = p.getOrNull(5)?.toLongOrNull(),
+                // Seventh cell, same append-only rule as the count: rows from
+                // older builds read back with no date.
+                publishedAt = p.getOrNull(6)?.toLongOrNull()
             )
         }
 
@@ -70,7 +73,8 @@ class VideoCache(context: Context) {
             v.channelName.tsvCell(),
             v.thumbnailUrl.orEmpty(),
             v.durationSeconds.toString(),
-            v.viewCount?.toString().orEmpty()
+            v.viewCount?.toString().orEmpty(),
+            v.publishedAt?.toString().orEmpty()
         ).joinToString("\t")
     }
 }

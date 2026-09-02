@@ -303,6 +303,8 @@ class LanServer(
     /** Mergers answer whether the body was even the right shape — a peer that
      *  posts garbage gets a 400 to log, not a "merged" it will trust. */
     private val watchStateMerger: (String) -> Boolean = { false },
+    /** A kid's own restyle waiting for the phone to adopt it — see ProfileLooks. */
+    private val looksProvider: () -> String = { "{}" },
     /** AI verdict-sharing: serve ours, merge a peer's — see ScreeningStore. */
     private val verdictsProvider: () -> String = { "{}" },
     private val verdictsMerger: (String) -> Boolean = { false },
@@ -596,6 +598,7 @@ class LanServer(
                 val profileId = Regex("profile=([0-9a-f]{8})").find(target)?.groupValues?.get(1)
                 respond(200, statsProvider(profileId))
             }
+            method == "GET" && path == "/looks" -> respond(200, looksProvider())
             method == "GET" && path == "/watchstate" -> respond(200, watchStateProvider())
             method == "POST" && path == "/watchstate" -> {
                 if (watchStateMerger(readBody())) respond(200, "merged")
@@ -1022,6 +1025,16 @@ object LanClient {
                     }
                 }
             }.getOrDefault(emptyList())
+        }
+
+    /** The looks a kid chose on that device and the phone hasn't adopted yet (`{}` when none); null when unreachable. */
+    suspend fun looks(device: PairedDevice): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                request(device, "GET", "/looks", null).use { resp ->
+                    if (resp.isSuccessful) resp.body?.string() else null
+                }
+            }.getOrNull()
         }
 
     /** Raw stats JSON from a device (for one kid when [profileId] is set), or null when unreachable. */

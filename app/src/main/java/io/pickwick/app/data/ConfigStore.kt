@@ -32,14 +32,24 @@ class ConfigStore(context: Context) {
         return w
     }
 
-    fun load(): Whitelist = registered(
-        scrubLapsedPasses(
-            runCatching {
-                val text = synchronized(FILE_LOCK) { if (file.exists()) file.readText() else null }
-                text?.let { withSecrets(fromJson(it)) }
-            }.getOrNull() ?: Whitelist(emptyList(), emptySet())
+    fun load(): Whitelist = looks.overlay(
+        registered(
+            scrubLapsedPasses(
+                runCatching {
+                    val text = synchronized(FILE_LOCK) { if (file.exists()) file.readText() else null }
+                    text?.let { withSecrets(fromJson(it)) }
+                }.getOrNull() ?: Whitelist(emptyList(), emptySet())
+            )
         )
     )
+
+    /**
+     * A kid's own restyle, chosen on this device and not yet adopted by the
+     * phone, laid over the file's profiles on every read — so it shows here
+     * at once, and the file itself (the phone's copy) is never rewritten by
+     * a kid. See [ProfileLooks].
+     */
+    private val looks by lazy { ProfileLooks(appContext) }
 
     /**
      * Every write goes through here: to a sibling temp file, then an atomic
@@ -193,6 +203,12 @@ class ConfigStore(context: Context) {
                     if (!it.aiNote.isNullOrBlank()) {
                         append("|n"); append(it.aiNote.trim().replace('\n', ' '))
                     }
+                    // Picked playlists, append-only like the rest: a pick must
+                    // push (the rows are what the kid sees), an empty pick
+                    // keeps the entry's old hash.
+                    if (it.playlistIds.isNotEmpty()) {
+                        append("|p"); append(it.playlistIds.joinToString(","))
+                    }
                     append('\n')
                 }
                 append("B:"); append(w.blockedVideoIds.sorted().joinToString(","))
@@ -228,6 +244,11 @@ class ConfigStore(context: Context) {
                         // family one above: it has to move the hash or the
                         // offline reconcile would never carry it to the TV.
                         p.limits.pausedUntilMillis?.let { append(";P:"); append(it) }
+                        // The look's timestamp rides the same way: a kid's
+                        // restyle on the TV changes avatar/colour (already in
+                        // the hash) *and* this, so both sides settle on one hash
+                        // only once the phone has adopted the newer choice.
+                        if (p.lookAt != 0L) { append(";LA:"); append(p.lookAt) }
                         append('\n')
                     }
                 }
@@ -298,6 +319,7 @@ class ConfigStore(context: Context) {
                         // Omitted when visible to everyone, same reasoning.
                         if (e.profileIds.isNotEmpty()) put("profiles", JSONArray(e.profileIds.toList()))
                         if (!e.aiNote.isNullOrBlank()) put("note", e.aiNote.trim())
+                        if (e.playlistIds.isNotEmpty()) put("playlists", JSONArray(e.playlistIds))
                     })
                 }
             })
@@ -325,6 +347,7 @@ class ConfigStore(context: Context) {
                             put("avatar", p.avatar)
                             p.age?.let { put("age", it) }
                             p.pin?.let { put("pin", it) }
+                            if (p.lookAt != 0L) put("lookAt", p.lookAt)
                             put("limits", limitsToJson(p.limits))
                         })
                     }
@@ -517,7 +540,10 @@ class ConfigStore(context: Context) {
                     profileIds = pidArr?.let { arrPids ->
                         (0 until arrPids.length()).map { arrPids.getString(it) }.toSet()
                     } ?: emptySet(),
-                    aiNote = o.optString("note").ifEmpty { null }
+                    aiNote = o.optString("note").ifEmpty { null },
+                    playlistIds = o.optJSONArray("playlists")?.let { pl ->
+                        (0 until pl.length()).map { pl.getString(it) }.filter { it.isNotBlank() }
+                    } ?: emptyList()
                 )
             }
             val blocked = mutableSetOf<String>()
@@ -551,7 +577,8 @@ class ConfigStore(context: Context) {
                         avatar = o.optString("avatar").ifEmpty { PROFILE_AVATARS.first() },
                         age = if (o.has("age")) o.getInt("age") else null,
                         limits = limitsFromJson(o.optJSONObject("limits") ?: JSONObject()),
-                        pin = o.optString("pin").takeIf { isValidDirectionPin(it) }
+                        pin = o.optString("pin").takeIf { isValidDirectionPin(it) },
+                        lookAt = o.optLong("lookAt", 0L)
                     )
                 }
             }

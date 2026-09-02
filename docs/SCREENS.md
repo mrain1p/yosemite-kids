@@ -14,7 +14,10 @@ channels, 15-minute session) or `seed --real` (the family's whitelist).
 | Channel page | `ChannelVideos(source)` | `videos` (ordered by `channelLayout`), `channelWatched`, `watchedTileAt` (History tile first), `channelPlaylists` (the Playlists row, `PlaylistShelves.kt` `playlistRow`), `held`, `loadingMore` | `PickwickScreen.kt` → `VideoGrid` (+ `header`) | tap a channel chip; hold a poster for the menu; a playlist chip opens the playlist, Back returns (`goBack`); TV: Up from the grid reaches the Home / Favorites / History chips |
 | Channel history | `WatchedVideos(source)` | `channelWatched` | same grid | tap the History tile on a channel page |
 | Global history | `History` | `videos` = `historyItems(...)` | same grid | Favorites tab → 🕘 History chip |
-| Favorites / Watch later / Up next / Downloads | `Watchlist` / `WatchLater` / `Queue` / `Downloads` | the saved-list stores | `VideoGrid`, `QueueList` | Favorites tab chips |
+| You | `You` | `youShelves` (Favorites / Watch later / Up next / History / Downloads rows), `remainingMs` | `YouScreen.kt` | the You tab (phone) / 🙂 You chip or Explore tile (TV); "See all" opens each grid, Back returns here |
+| Favorites / Watch later / Up next / Downloads | `Watchlist` / `WatchLater` / `Queue` / `Downloads` | the saved-list stores | `VideoGrid`, `QueueList` | You tab rows → See all, or the chips above each grid |
+| Profile hub / Change my look | (dialogs over any screen) | `activeProfile`; `ProfileLooks` on administered devices | `ProfileHub.kt` `ProfileHubDialog`, `LookDialog` | tap the avatar top-right (phone and TV); 🎨 on the You tab |
+| Channels tab | `Channels` | `channels` in `channelSort` order | `HomeScreens.kt` `ChannelsScreen` + `ChannelSortChips` | Channels tab; the chips sort, Random re-mixes on each press |
 | Surprise | `Surprise` | shuffled cache pool | `VideoGrid` | 🎲 chip in the channel row |
 | Search | `Search` → `SearchResults(q)` | `recentSearches`, `searchScreening` | `SearchField`, `VideoGrid` | Search tab; mic needs a real device |
 | Player (phone, portrait) | (PlayerActivity) | intent extras, `SessionGuard`, `moreFromChannel` (= `channelCandidates()`) | `PlayerActivity.kt` `PortraitPlayerScaffold` + `PlayerControlsOverlay(compact)` | tap any poster; `wait-stream`; tap the video for controls; the list below scrolls |

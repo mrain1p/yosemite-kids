@@ -46,7 +46,13 @@ data class Video(
      * used to *order* a channel's videos ("Popular first"); no screen shows a
      * number — popularity contests are the part of YouTube this app leaves out.
      */
-    val viewCount: Long? = null
+    val viewCount: Long? = null,
+    /**
+     * Upload time, epoch ms, when the extractor had a date for it. Orders the
+     * channel row by "latest video" and nothing else; a null keeps the feed's
+     * own (newest-first) order, so no build ever needs a re-crawl for it.
+     */
+    val publishedAt: Long? = null
 ) {
     val videoId: String?
         // Sideloaded files carry a synthetic pickwick://local/<hash> URL; the

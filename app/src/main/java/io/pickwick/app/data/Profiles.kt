@@ -26,7 +26,14 @@ data class Profile(
     val age: Int? = null,
     val limits: Limits = Limits(),
     /** 4 chars of U/D/L/R; null = anyone can pick this profile. */
-    val pin: String? = null
+    val pin: String? = null,
+    /**
+     * When the avatar or colour was last chosen, wall-clock ms; 0 = never
+     * changed since the profile was made. A kid can restyle themselves on any
+     * device, and the parent can too, so the newest choice wins wherever the
+     * two meet ([ProfileLooks]). Not a "modified" stamp for anything else.
+     */
+    val lookAt: Long = 0L
 ) {
     companion object {
         fun newId(): String = ByteArray(4)

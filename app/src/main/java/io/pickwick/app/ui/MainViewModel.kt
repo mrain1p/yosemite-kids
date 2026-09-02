@@ -25,6 +25,10 @@ private const val HISTORY_MAX = 120
 private const val HISTORY_ROW_MAX = 12
 /** Playlists shown in a channel page row. */
 private const val PLAYLIST_ROW_MAX = 30
+/** Videos per row on the You tab and per parent-picked playlist row. */
+private const val YOU_ROW_MAX = 12
+/** Parent-picked playlist rows fetched per channel visit (each is one page request when uncached). */
+private const val PLAYLIST_SHELVES_MAX = 6
 
 class MainViewModel(
     private val whitelist: WhitelistRepository,
@@ -41,6 +45,8 @@ class MainViewModel(
     private val pairingStore: PairingStore? = null,
     /** Phone role: lets the periodic sync re-push config a device missed while off. */
     private val configStore: ConfigStore? = null,
+    /** This kid's chip choices (sort, filters); null in tests. */
+    private val kidPrefs: KidPrefs? = null,
     /** Offline downloads (phones); null on TV and in tests. */
     private val downloadStore: DownloadStore? = null,
     /** Parent-sideloaded local files (phones); null on TV and in tests. */
@@ -55,6 +61,11 @@ class MainViewModel(
     private val exportVerdicts: () -> String = { "{}" },
     /** Imports a peer's AI verdicts. Returns true when any were new. */
     private val mergeVerdicts: (String) -> Boolean = { false },
+    /**
+     * Adopts a device's pending kid looks (`GET /looks`) into this phone's
+     * config. Returns true when the config changed — the sweep then pushes it.
+     */
+    private val mergeLooks: (String) -> Boolean = { false },
     /**
      * Snapshots a device's stats into the phone-side cache. Riding the periodic
      * sync keeps the snapshot warm, so the parent's Stats page has yesterday's
@@ -123,6 +134,13 @@ class MainViewModel(
         visibleDownloads().map { it.url }.toSet()
 
     init {
+        // The kid's chips, before the first publish so the rows come up in
+        // their order rather than snapping to it a beat later.
+        kidPrefs?.let { p ->
+            kidChannelSort = p.channelSort()
+            kidHomeFilter = p.homeFilter()
+            kidChannelFilter = p.channelFilter()
+        }
         viewModelScope.launch {
             // All five sets are file reads — off-main like everything else
             // here; the home rows render immediately, badges land a beat later.
@@ -218,6 +236,21 @@ class MainViewModel(
                     val me = pairingStore?.deviceToken() ?: return@launch
                     store.save(loaded.copy(masterDeviceToken = me))
                     android.util.Log.i("Pickwick", "claimed master role (indexing)")
+                }
+                // A kid may have restyled themselves on a device. Adopt that
+                // first, so the hash compared below already carries the new
+                // look and the push that follows delivers it everywhere —
+                // otherwise the device's overlaid hash would read as "differs
+                // but newer" forever. Only parents adopt; a kid device's
+                // pending looks are for its phone to collect.
+                if (isParent) {
+                    devices.forEach { d ->
+                        LanClient.looks(d)?.let { json ->
+                            if (mergeLooks(json)) {
+                                android.util.Log.i("Pickwick", "config sync: adopted a new look from ${d.name}")
+                            }
+                        }
+                    }
                 }
                 val localHash = ConfigStore.fingerprint(store.load())
                 val localAt = store.updatedAt()
@@ -367,21 +400,71 @@ class MainViewModel(
         }
     }
 
-    /** Most-opened first; ties keep whitelist order (sortedByDescending is stable). */
-    /** The parent's channel-row order: most opened, A to Z, or a fresh shuffle. */
-    private fun sortByUsage(channels: List<Source>) = when (channelOrder) {
-        CHANNEL_ORDER_ALPHA -> channels.sortedBy { it.name.lowercase() }
-        // One shuffle per app session: the rows are rebuilt on every verdict,
-        // resume and back press, and a row that reorders under the kid's
-        // thumb each time is a bug, not a surprise. A new order next launch.
-        CHANNEL_ORDER_RANDOM -> channels.shuffled(kotlin.random.Random(shuffleSeed))
-        else -> channels.sortedByDescending { usage.opens(it.id) }
-    }
+    /**
+     * The channel row in the kid's order (their chip), else the parent's.
+     * The shuffle seed holds for a visit: the rows are rebuilt on every
+     * verdict, resume and back press, and a row that reorders under the
+     * kid's thumb each time is a bug, not a surprise. It moves on a
+     * pull-to-refresh and on a fresh press of the Random chip ("mix again").
+     * Cache reads for "latest video" — call off-main.
+     */
+    private fun sortByUsage(channels: List<Source>) =
+        orderChannels(
+            channels, effectiveChannelSort(),
+            opens = { usage.opens(it) },
+            latestUpload = { id -> videoCache.load(id).take(10).mapNotNull { it.publishedAt }.maxOrNull() },
+            seed = shuffleSeed
+        )
 
-    private val shuffleSeed = kotlin.random.Random.nextLong()
+    private fun effectiveChannelSort(): String = kidChannelSort ?: channelOrder
+
+    private var shuffleSeed = kotlin.random.Random.nextLong()
+    /** Seeds for the two video lists' Random chip; each moves when its list is reopened or re-mixed. */
+    private var homeShuffleSeed = kotlin.random.Random.nextLong()
+    private var channelShuffleSeed = kotlin.random.Random.nextLong()
 
     /** From the family config; most-watched until the first refresh reads it. */
     private var channelOrder: String = CHANNEL_ORDER_WATCHED
+    /** The kid's own picks (KidPrefs), read once at init; null = the parent's default. */
+    private var kidChannelSort: String? = null
+    private var kidHomeFilter: String? = null
+    private var kidChannelFilter: String? = null
+
+    private fun effectiveHomeFilter(): String = kidHomeFilter ?: VIDEO_FILTER_NEW
+    private fun effectiveChannelFilter(): String = kidChannelFilter ?: defaultFilterFor(channelLayout)
+
+    /** The Channels tab / home row sort chip. Persisted per kid; a Random press reshuffles. */
+    fun setChannelSort(sort: String) {
+        if (sort == CHANNEL_ORDER_RANDOM) shuffleSeed = kotlin.random.Random.nextLong()
+        kidChannelSort = sort
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { kidPrefs?.setChannelSort(sort) }
+            _state.value = _state.value.copy(channelSort = sort)
+            publishChannels(sources)
+        }
+    }
+
+    /** The home feed's New / Random / Popular chip. */
+    fun setHomeFilter(filter: String) {
+        if (filter == VIDEO_FILTER_RANDOM) homeShuffleSeed = kotlin.random.Random.nextLong()
+        kidHomeFilter = filter
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { kidPrefs?.setHomeFilter(filter) }
+            val feed = withContext(Dispatchers.IO) { buildFeed(_state.value.channels) }
+            _state.value = _state.value.copy(homeFilter = filter, feed = feed)
+        }
+    }
+
+    /** A channel page's New / Random / Popular chip — one choice for every channel page. */
+    fun setChannelFilter(filter: String) {
+        if (filter == VIDEO_FILTER_RANDOM) channelShuffleSeed = kotlin.random.Random.nextLong()
+        kidChannelFilter = filter
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { kidPrefs?.setChannelFilter(filter) }
+            _state.value = _state.value.copy(channelFilter = filter, scrollTo = 0)
+            (_state.value.screen as? Screen.ChannelVideos)?.let { publishChannel(it.source) }
+        }
+    }
 
     /**
      * Whitelist-scoped search over the local index. Visibility gates match the
@@ -599,9 +682,58 @@ class MainViewModel(
                 .filter { it.videoId !in blockedVideoIds && !tooShort(it) && screener?.isVisible(it) != false }
                 .take(FEED_PER_CHANNEL)
         }
-        return interleave(perChannel, FEED_MAX) { it.url }.mapNotNull { video ->
+        val mixed = interleave(perChannel, FEED_MAX) { it.url }.mapNotNull { video ->
             val p = history.progress(video.url)
             if (p?.isFinished == true) null else VideoItem(video, p?.fraction)
+        }
+        return filterVideos(mixed, effectiveHomeFilter(), homeShuffleSeed)
+    }
+
+    /**
+     * The You tab's rows: every shelf the kid has built, first few videos
+     * each, empty shelves left out. File reads throughout — off-main.
+     */
+    private fun youShelves(): List<YouShelf> {
+        fun annotate(videos: List<Video>): List<VideoItem> = videos
+            .filter { it.videoId !in blockedVideoIds && !tooShort(it) && screener?.isVisible(it) != false }
+            .map { VideoItem(it, history.progress(it.url)?.fraction) }
+        val known = sources.flatMap { videoCache.load(it.id) } + watchlistStore.load() + watchLaterStore.load()
+        val historyRow = historyItems(history.all(), known, HISTORY_ROW_MAX)
+            .filter { it.video.videoId !in blockedVideoIds && !tooShort(it.video) && screener?.isVisible(it.video) != false }
+        return listOf(
+            YouShelf(Screen.Watchlist, "❤️", "Favorites", annotate(watchlistStore.load()).take(YOU_ROW_MAX)),
+            YouShelf(Screen.WatchLater, "🕒", "Watch later", annotate(watchLaterStore.load()).take(YOU_ROW_MAX)),
+            YouShelf(Screen.Queue, "📚", "Up next", annotate(queueStore.load()).take(YOU_ROW_MAX)),
+            YouShelf(Screen.History, "🕘", "History", historyRow),
+            // Downloads were approved by the parent one by one: no re-screening.
+            YouShelf(
+                Screen.Downloads, "⬇️", "Downloads",
+                visibleDownloads().map { VideoItem(it, history.progress(it.url)?.fraction) }.take(YOU_ROW_MAX)
+            )
+        ).filter { it.items.isNotEmpty() }
+    }
+
+    /** The You tab. */
+    fun openYou() {
+        playlistParent = null
+        rawVideos = emptyList()
+        feedHandle = null
+        uploadsNextPage = null
+        _state.value = _state.value.copy(
+            screen = Screen.You, loading = false, error = null, videos = emptyList(), held = 0,
+            channelWatched = emptyList(), watchedTileAt = null, scrollTo = null
+        )
+        reloadYou()
+    }
+
+    private fun reloadYou() {
+        viewModelScope.launch {
+            val shelves = withContext(Dispatchers.IO) {
+                pruneFinishedSavedLists()
+                pruneFinishedQueue()
+                youShelves()
+            }
+            if (_state.value.screen == Screen.You) _state.value = _state.value.copy(youShelves = shelves)
         }
     }
 
@@ -680,6 +812,7 @@ class MainViewModel(
         when (val s = _state.value.screen) {
             Screen.Home -> refresh(userInitiated = true)
             Screen.Channels -> openChannels()
+            Screen.You -> openYou()
             Screen.Search -> openSearch()
             Screen.History -> openHistory()
             is Screen.ChannelVideos -> openChannel(s.source)
@@ -708,7 +841,12 @@ class MainViewModel(
             return@launch
         }
         refreshInFlight = true
-        if (userInitiated) _state.value = _state.value.copy(refreshing = true)
+        if (userInitiated) {
+            _state.value = _state.value.copy(refreshing = true)
+            // A pull is "mix again" for the Random chips.
+            shuffleSeed = kotlin.random.Random.nextLong()
+            homeShuffleSeed = kotlin.random.Random.nextLong()
+        }
 
         // Paint instantly from the last successful run while the fresh list loads.
         val cached = sourceCache.load()
@@ -731,6 +869,13 @@ class MainViewModel(
                 screener?.allowedOverrides = list.allowedIdsFor(activeProfileId)
                 channelLayout = list.channelLayout
                 channelOrder = list.channelOrder
+                playlistPicks = list.sources.filter { it.playlistIds.isNotEmpty() }
+                    .associate { it.url to it.playlistIds }
+                _state.value = _state.value.copy(
+                    channelSort = effectiveChannelSort(),
+                    homeFilter = effectiveHomeFilter(),
+                    channelFilter = effectiveChannelFilter()
+                )
                 // Only the kid whose home this is owns these prefs. With nobody
                 // picked yet (who's-watching screen) `sessionGuard` is still the
                 // legacy unsuffixed store — which ProfileNamespace hands to the
@@ -951,11 +1096,9 @@ class MainViewModel(
         )
     }
 
-    /** The parent's channel-page layout, applied to a channel's videos. */
-    private fun orderForLayout(items: List<VideoItem>): List<VideoItem> = when (channelLayout) {
-        CHANNEL_LAYOUT_POPULAR -> orderByPopularity(items)
-        else -> items
-    }
+    /** The kid's chip for channel pages (the parent's layout as its default), applied to a channel's videos. */
+    private fun orderForLayout(items: List<VideoItem>): List<VideoItem> =
+        filterVideos(items, effectiveChannelFilter(), channelShuffleSeed)
 
     /** From the family config; "newest" until the first refresh reads it. */
     private var channelLayout: String = CHANNEL_LAYOUT_NEWEST
@@ -1038,6 +1181,7 @@ class MainViewModel(
                 pruneFinishedQueue()
                 Triple(watchlistStore.urls(), watchLaterStore.urls(), queueStore.urls())
             }
+            if (_state.value.screen == Screen.You) reloadYou()
             if (_state.value.screen == Screen.Home) {
                 val (keepWatching, badges) = withContext(Dispatchers.IO) {
                     keepWatchingRow() to computeNewBadges()
@@ -1122,15 +1266,20 @@ class MainViewModel(
     fun openChannel(source: Source, parent: Source? = null) = viewModelScope.launch {
         playlistParent = parent
         usage.bump(source.id)
+        // A fresh visit is a fresh mix for the Random chip.
+        channelShuffleSeed = kotlin.random.Random.nextLong()
         _state.value = _state.value.copy(
             screen = Screen.ChannelVideos(source), loading = true, videos = emptyList(),
             held = 0, error = null, channelWatched = emptyList(), watchedTileAt = null,
-            channelPlaylists = emptyList(), scrollTo = 0
+            channelPlaylists = emptyList(), playlistShelves = emptyList(), scrollTo = 0
         )
         feedHandle = null
         uploadsNextPage = null
         if (channelLayout == CHANNEL_LAYOUT_PLAYLISTS && source.kind == SourceKind.CHANNEL) {
             launch { loadPlaylistRow(source) }
+        }
+        playlistPicks[source.url]?.let { ids ->
+            if (source.kind == SourceKind.CHANNEL) launch { loadPlaylistShelves(source, ids) }
         }
         // A fresh visit is where the sort catches up with what was watched last
         // time — see [finishedOnArrival].
@@ -1234,6 +1383,59 @@ class MainViewModel(
     /** Which channel a playlist page was opened from, so back returns there rather than home. */
     private var playlistParent: Source? = null
 
+    /** Entry URL → the playlist ids the parent picked for it (config), read at refresh. */
+    private var playlistPicks: Map<String, List<String>> = emptyMap()
+
+    /**
+     * The parent-picked playlists as rows above a channel's grid. Each row
+     * needs the playlist's name (the channel's listing, cached a day) and its
+     * first videos (its own cache, or one page fetch — the same path a
+     * playlist page takes, so a later "See all" opens instantly). Shorts
+     * never belong on a row: anything a minute or under is dropped, on top
+     * of the kid's own rules. Rows arrive one by one as they load; a row
+     * with nothing left in it is simply absent.
+     */
+    private suspend fun loadPlaylistShelves(source: Source, ids: List<String>) {
+        fun stillHere() = (_state.value.screen as? Screen.ChannelVideos)?.source?.id == source.id
+        val cache = playlistsCache
+        val refs = withContext(Dispatchers.IO) { cache?.load(source.id) }
+            ?: runCatching { yt.channelPlaylists(source) }
+                .onSuccess { fresh -> cache?.let { c -> withContext(Dispatchers.IO) { c.save(source.id, fresh) } } }
+                .getOrNull()
+            ?: return
+        val byId = refs.associateBy { it.id }
+        for (id in ids.take(PLAYLIST_SHELVES_MAX)) {
+            if (!stillHere()) return
+            val ref = byId[id] ?: continue
+            val playlist = playlistSource(ref, source)
+            var videos = withContext(Dispatchers.IO) { videoCache.load(id) }
+            if (videos.isEmpty()) {
+                val page = runCatching { yt.uploadsPage(playlist, background = true) }
+                    .onFailure { android.util.Log.w("Pickwick", "playlist row $id failed", it) }
+                    .getOrNull()?.videos.orEmpty()
+                if (page.isEmpty()) continue
+                withContext(Dispatchers.IO) { videoCache.save(id, page.take(500)) }
+                videos = page
+            }
+            val items = withContext(Dispatchers.IO) {
+                videos.asSequence()
+                    .filter { it.durationSeconds !in 1..60 }
+                    .filter { it.videoId !in blockedVideoIds && !tooShort(it) && screener?.isVisible(it) != false }
+                    .map { VideoItem(it, history.progress(it.url)?.fraction) }
+                    .filter { (it.progress ?: 0f) < 0.98f }
+                    .take(YOU_ROW_MAX)
+                    .toList()
+            }
+            if (items.isEmpty() || !stillHere()) continue
+            val shelf = PlaylistShelf(ref, items)
+            _state.value = _state.value.copy(
+                playlistShelves = (_state.value.playlistShelves + shelf).sortedBy { ids.indexOf(it.playlist.id) },
+                // Rows go in above the grid's first item; keep the page at the top.
+                scrollTo = 0
+            )
+        }
+    }
+
     /** A chip on the Playlists row: the playlist as its own page, with the channel behind it for back. */
     fun openPlaylist(ref: PlaylistRef) {
         val parent = (_state.value.screen as? Screen.ChannelVideos)?.source
@@ -1246,12 +1448,16 @@ class MainViewModel(
      */
     fun goBack() {
         val parent = playlistParent
+        val screen = _state.value.screen
         when {
-            _state.value.screen is Screen.WatchedVideos -> backToChannel()
-            _state.value.screen is Screen.ChannelVideos && parent != null -> {
+            screen is Screen.WatchedVideos -> backToChannel()
+            screen is Screen.ChannelVideos && parent != null -> {
                 playlistParent = null
                 openChannel(parent)
             }
+            // A shelf opened from the You tab returns to it.
+            screen == Screen.Watchlist || screen == Screen.WatchLater || screen == Screen.Queue ||
+                screen == Screen.History || screen == Screen.Downloads -> { playlistParent = null; openYou() }
             else -> { playlistParent = null; goHome() }
         }
     }

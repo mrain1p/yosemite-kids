@@ -38,6 +38,7 @@ import io.pickwick.app.data.CHANNEL_LAYOUT_POPULAR
 import io.pickwick.app.data.CHANNEL_ORDER_ALPHA
 import io.pickwick.app.data.CHANNEL_ORDER_RANDOM
 import io.pickwick.app.data.CHANNEL_ORDER_WATCHED
+import io.pickwick.app.data.CHANNEL_ORDER_LATEST
 import io.pickwick.app.data.YouTubeRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -716,7 +717,8 @@ private fun AdminScreen(
                             listOf(
                                 CHANNEL_ORDER_WATCHED to "Most watched",
                                 CHANNEL_ORDER_ALPHA to "A to Z",
-                                CHANNEL_ORDER_RANDOM to "Random"
+                                CHANNEL_ORDER_RANDOM to "Random",
+                                CHANNEL_ORDER_LATEST to "Latest video"
                             ).forEach { (value, label) ->
                                 FilterChip(
                                     selected = channelOrder == value,
@@ -729,7 +731,7 @@ private fun AdminScreen(
                         Text(
                             "The default order of the home screen's row of channels. Most watched " +
                                 "puts the kid's favourites first; A to Z is easiest to scan; Random " +
-                                "reshuffles on each visit, for the kid who always picks the first one.",
+                                "reshuffles on each visit, for the kid who always picks the first one; Latest video puts the channel that uploaded most recently first.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

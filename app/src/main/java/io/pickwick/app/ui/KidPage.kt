@@ -64,13 +64,15 @@ internal fun KidPage(
     var age by remember { mutableStateOf(profile.age) }
     var color by remember { mutableStateOf(profile.colorArgb) }
     var avatar by remember { mutableStateOf(profile.avatar) }
+    var lookAt by remember { mutableStateOf(profile.lookAt) }
     var pin by remember { mutableStateOf(profile.pin) }
     var settingPin by remember { mutableStateOf(false) }
     var limits by remember { mutableStateOf(profile.limits) }
     var confirmRemove by remember { mutableStateOf(false) }
 
     val built = profile.copy(
-        name = name.trim(), age = age, colorArgb = color, avatar = avatar, pin = pin, limits = limits
+        name = name.trim(), age = age, colorArgb = color, avatar = avatar, lookAt = lookAt,
+        pin = pin, limits = limits
     )
     LaunchedEffect(built) {
         if (built != profile && built.name.isNotBlank()) onChanged(built)
@@ -130,44 +132,14 @@ internal fun KidPage(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         SettingsDivider()
-        Text("Color", style = MaterialTheme.typography.labelLarge)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            PROFILE_COLORS.forEach { c ->
-                Box(
-                    Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color(c))
-                        .clickable { color = c },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (c == color) Text("✓", color = Color.White)
-                }
-            }
-        }
-        Text("Avatar", style = MaterialTheme.typography.labelLarge)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            PROFILE_AVATARS.forEach { a ->
-                ProfileAvatar(
-                    Profile(id = "preview", name = a, colorArgb = color, avatar = a),
-                    size = 44,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .clickable { avatar = a }
-                        .let { m ->
-                            if (a == avatar) m.background(
-                                MaterialTheme.colorScheme.primary, CircleShape
-                            ).padding(2.dp) else m
-                        }
-                )
-            }
-        }
+        // The same picker the kid gets behind "Change my look" (ProfileHub.kt).
+        // A parent's choice here stamps lookAt too, so it beats an older
+        // choice waiting on a device — newest wins on both sides.
+        LookPicker(
+            color, avatar,
+            onColor = { color = it; lookAt = System.currentTimeMillis() },
+            onAvatar = { avatar = it; lookAt = System.currentTimeMillis() }
+        )
         SettingsDivider()
         Text("Profile lock", style = MaterialTheme.typography.labelLarge)
         if (settingPin) {

@@ -952,7 +952,7 @@ class PlayerActivity : ComponentActivity() {
                     }
                 }
                 if (more.isNotEmpty()) {
-                    item { SectionLabel("More from $channel") }
+                    item { SectionLabel("✨ New from $channel") }
                     items(more) { v ->
                         SmallVideoRow(
                             title = v.title,
@@ -1194,7 +1194,11 @@ class PlayerActivity : ComponentActivity() {
                     // The portrait list under the video: the same channel
                     // candidates autoplay will draw from, computed now so the
                     // list is there before the video is (cache read, off-main).
-                    val more = if (source != null) channelCandidates().take(12) else emptyList()
+                    val more = if (source != null) {
+                        // Newest first where the cache knows dates ("New from"), else the
+                        // channel order from after the current one.
+                        channelCandidates().sortedByDescending { it.publishedAt ?: Long.MIN_VALUE }.take(12)
+                    } else emptyList()
                     if (isActive) moreFromChannel.value = more
                 }
             }

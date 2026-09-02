@@ -132,6 +132,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     }
                     wellFormed
                 },
+                looksProvider = { io.pickwick.app.data.ProfileLooks(appContext).exportJson() },
                 verdictsProvider = {
                     io.pickwick.app.data.ScreeningStore(appContext)
                         .exportJson(ConfigStore(appContext).load().ai.rulesVersion)
@@ -153,6 +154,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     io.pickwick.app.data.ChannelIndex(appContext).importSourceWithState(sourceId, body)
                 },
                 onConfigApplied = { before, after ->
+                    // The phone adopted (or overrode) a look this device's kid
+                    // chose: the pending copy has done its job.
+                    io.pickwick.app.data.ProfileLooks(appContext).ack(after)
                     // The pill is the only thing that says a rule moved;
                     // otherwise the kid finds out by hitting it. Judged on this
                     // device's own kid, so a change to their sibling's rules
@@ -317,6 +321,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         },
                         exportWatchState = { WatchSync.exportJson(appContext) },
                         mergeWatchState = { WatchSync.mergeJson(appContext, it) },
+                        mergeLooks = { json ->
+                            val merged = io.pickwick.app.data.ProfileLooks.mergeInto(configStore.load(), json)
+                            if (merged != null) {
+                                configStore.save(merged)
+                                // The header avatar on this phone follows too.
+                                ConfigEvents.onConfigChanged?.invoke()
+                            }
+                            merged != null
+                        },
                         exportVerdicts = {
                             io.pickwick.app.data.ScreeningStore(appContext)
                                 .exportJson(configStore.load().ai.rulesVersion)
@@ -339,7 +352,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         activeProfileId = activeProfileId,
                         channelIndex = io.pickwick.app.data.ChannelIndex(applicationContext),
                         searchHistory = if (deviceIsTv) null
-                            else SearchHistoryStore(applicationContext, profileSuffix)
+                            else SearchHistoryStore(applicationContext, profileSuffix),
+                        kidPrefs = io.pickwick.app.data.KidPrefs(applicationContext, profileSuffix)
                     )
                 }
                 // TV: a paired phone just pushed new config — apply it live.
@@ -544,6 +558,38 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             { activeProfileId = null }
                         } else null,
                         onOpenSettings = { showSettings = true },
+                        // "Change my look". A device the parent's phone
+                        // administers can't write the config — its choice
+                        // waits in ProfileLooks for the phone's sweep (and
+                        // shows here at once through ConfigStore.load's
+                        // overlay). A parent phone, or a phone nobody
+                        // administers, edits the config itself and pushes.
+                        onChangeLook = activeProfileId?.let { pid ->
+                            { avatar: String, color: Long ->
+                                lifecycleScope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        val now = System.currentTimeMillis()
+                                        val administered = deviceIsTv ||
+                                            pairingStore.role() == PairingStore.Role.KID ||
+                                            (pairingStore.paired().isEmpty() &&
+                                                pairingStore.approvedPhones().isNotEmpty())
+                                        if (administered) {
+                                            io.pickwick.app.data.ProfileLooks(appContext)
+                                                .record(pid, avatar, color, now)
+                                        } else {
+                                            val c = configStore.load()
+                                            configStore.save(c.copy(profiles = c.profiles.map { p ->
+                                                if (p.id == pid) p.copy(avatar = avatar, colorArgb = color, lookAt = now)
+                                                else p
+                                            }))
+                                        }
+                                    }
+                                    family = withContext(Dispatchers.IO) { configStore.load() }
+                                    // Parent phone: the sweep pushes the new config to every device.
+                                    vm.syncConfigState()
+                                }
+                            }
+                        },
                         onPlayQueue = { startIndex ->
                             // The *visible* lineup: videos blocked or held after
                             // being queued were filtered out and never reach the

@@ -48,6 +48,84 @@ internal fun LazyGridScope.playlistRow(
     }
 }
 
+/**
+ * The parent-picked playlists of a channel, one row each: the playlist's
+ * name with "See all" (the playlist as its own page), then its first videos
+ * as shelf tiles. Above the grid, before the "By playlist" chip row if the
+ * parent chose that layout too. Rows the channel has picked but whose
+ * videos haven't loaded yet are simply not there — never an empty row.
+ */
+internal fun LazyGridScope.playlistShelves(
+    shelves: List<PlaylistShelf>,
+    isTv: Boolean,
+    avatarFor: (String) -> String?,
+    onPlay: (VideoItem) -> Unit,
+    onOpenMenu: ((VideoItem) -> Unit)?,
+    onOpenPlaylist: (PlaylistRef) -> Unit
+) {
+    shelves.forEach { shelf ->
+        if (shelf.items.isEmpty()) return@forEach
+        item(key = "pls:title:${shelf.playlist.id}", span = { GridItemSpan(maxLineSpan) }) {
+            SectionRow("🎬 ${shelf.playlist.name}", action = "See all", onAction = { onOpenPlaylist(shelf.playlist) })
+        }
+        item(key = "pls:row:${shelf.playlist.id}", span = { GridItemSpan(maxLineSpan) }) {
+            VideoShelfRow(shelf.items, isTv, avatarFor, onPlay, onOpenMenu)
+        }
+    }
+}
+
+/** "New for you" on a channel page: the newest videos the kid hasn't started, as a row above the grid. */
+internal fun LazyGridScope.newForYouRow(
+    items: List<VideoItem>,
+    isTv: Boolean,
+    avatarFor: (String) -> String?,
+    onPlay: (VideoItem) -> Unit,
+    onOpenMenu: ((VideoItem) -> Unit)?
+) {
+    if (items.isEmpty()) return
+    item(key = "nfy:title", span = { GridItemSpan(maxLineSpan) }) { SectionRow("✨ New for you") }
+    item(key = "nfy:row", span = { GridItemSpan(maxLineSpan) }) {
+        VideoShelfRow(items, isTv, avatarFor, onPlay, onOpenMenu)
+    }
+}
+
+/** A titled section's rule + "All videos" label under the rows above the grid. */
+internal fun LazyGridScope.allVideosLabel(title: String = "All videos") {
+    item(key = "all:divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
+    item(key = "all:title", span = { GridItemSpan(maxLineSpan) }) { SectionRow(title) }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun VideoShelfRow(
+    items: List<VideoItem>,
+    isTv: Boolean,
+    avatarFor: (String) -> String?,
+    onPlay: (VideoItem) -> Unit,
+    onOpenMenu: ((VideoItem) -> Unit)?
+) {
+    CompositionLocalProvider(
+        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides TvRowPivot
+    ) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(if (isTv) 14.dp else 10.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+            modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
+        ) {
+            items(items.size, key = { items[it].video.url }) { i ->
+                val item = items[i]
+                ShelfVideoTile(
+                    item,
+                    avatarUrl = avatarFor(item.video.channelName),
+                    onPlay = onPlay,
+                    onOpenMenu = onOpenMenu,
+                    width = if (isTv) 236.dp else 200.dp
+                )
+            }
+        }
+    }
+}
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun PlaylistsRow(

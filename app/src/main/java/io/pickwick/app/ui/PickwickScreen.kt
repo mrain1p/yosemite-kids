@@ -126,24 +126,24 @@ private fun FriendlyError(detail: String?, onRetry: () -> Unit) {
     }
 }
 
-/** The phone's bottom tabs — YouTube's mental model, four thumb-sized targets. */
+/** The phone's bottom tabs — YouTube's mental model, four thumb-sized targets. "You" wears the kid's own avatar. */
 private enum class Tab(val label: String, val emoji: String) {
-    Home("Home", "🏠"), Channels("Channels", "📺"), Favorites("Favorites", "❤️"), Search("Search", "🔍")
+    Home("Home", "🏠"), Channels("Channels", "📺"), You("You", "🙂"), Search("Search", "🔍")
 }
 
 private fun tabFor(screen: Screen): Tab? = when (screen) {
     Screen.Home -> Tab.Home
     Screen.Channels, Screen.Surprise, is Screen.ChannelVideos, is Screen.WatchedVideos -> Tab.Channels
-    Screen.Watchlist, Screen.WatchLater, Screen.Queue, Screen.Downloads, Screen.History -> Tab.Favorites
+    Screen.You, Screen.Watchlist, Screen.WatchLater, Screen.Queue, Screen.Downloads, Screen.History -> Tab.You
     Screen.Search, is Screen.SearchResults -> Tab.Search
 }
 
 /** Screens that are a tab's own root: no back arrow, the tab is the way around. */
 private fun isTabRoot(screen: Screen): Boolean =
     screen == Screen.Home || screen == Screen.Channels ||
-        screen == Screen.Watchlist || screen == Screen.Search
+        screen == Screen.You || screen == Screen.Search
 
-/** The TV's top menu on every page below home: Home, Favorites, History, as focusable chips. */
+/** The TV's top menu on every page below home: Home and You (the kid's shelves), as focusable chips. */
 @Composable
 private fun TvTopChips(screen: Screen, vm: MainViewModel) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -152,12 +152,8 @@ private fun TvTopChips(screen: Screen, vm: MainViewModel) {
             label = { Text("🏠 Home") }, modifier = Modifier.tvFocusHighlight()
         )
         FilterChip(
-            selected = screen == Screen.Watchlist, onClick = vm::openWatchlist,
-            label = { Text("❤️ Favorites") }, modifier = Modifier.tvFocusHighlight()
-        )
-        FilterChip(
-            selected = screen == Screen.History, onClick = vm::openHistory,
-            label = { Text("🕘 History") }, modifier = Modifier.tvFocusHighlight()
+            selected = tabFor(screen) == Tab.You, onClick = vm::openYou,
+            label = { Text("🙂 You") }, modifier = Modifier.tvFocusHighlight()
         )
     }
     Spacer(Modifier.width(8.dp))
@@ -206,6 +202,8 @@ fun PickwickScreen(
     activeProfile: io.pickwick.app.data.Profile? = null,
     /** Non-null on shared devices with 2+ kids: header avatar re-opens the picker. */
     onSwitchProfile: (() -> Unit)? = null,
+    /** The kid restyled themselves (avatar, colour): persist it for this kid. Null = not editable here. */
+    onChangeLook: ((avatar: String, colorArgb: Long) -> Unit)? = null,
     /** Starts the Up next queue from this position in the visible lineup. */
     onPlayQueue: (Int) -> Unit = {},
     onPlay: (VideoItem) -> Unit
@@ -217,6 +215,29 @@ fun PickwickScreen(
             .currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     }
     val phone = !isTv
+
+    // The kid's corner behind the header avatar, and the look editor it (and
+    // the You tab) opens. Both are dialogs, so they sit over any screen.
+    var hubOpen by remember { mutableStateOf(false) }
+    var lookOpen by remember { mutableStateOf(false) }
+    val lookEditable = onChangeLook != null && activeProfile != null
+    if (hubOpen) {
+        ProfileHubDialog(
+            profile = activeProfile,
+            onSwitch = onSwitchProfile?.let { switch -> { hubOpen = false; switch() } },
+            onChangeLook = if (lookEditable) { { hubOpen = false; lookOpen = true } } else null,
+            onOpenSettings = { hubOpen = false; onOpenSettings() },
+            onDismiss = { hubOpen = false }
+        )
+    }
+    if (lookOpen && activeProfile != null && onChangeLook != null) {
+        LookDialog(
+            profile = activeProfile,
+            onDone = { avatar, color -> lookOpen = false; onChangeLook(avatar, color) },
+            onDismiss = { lookOpen = false }
+        )
+    }
+    val openHub: () -> Unit = { hubOpen = true }
 
     // The Watched shelf is the app's only second level: back there means back
     // to the channel it belongs to, not all the way out to home.
@@ -343,7 +364,13 @@ fun PickwickScreen(
                             onSearch = vm::search,
                             remainingMs = s.remainingMs,
                             blockReason = s.blockReason,
-                            allHeld = s.allHeld
+                            allHeld = s.allHeld,
+                            onOpenHub = openHub,
+                            onOpenYou = vm::openYou,
+                            channelSort = s.channelSort,
+                            onSort = vm::setChannelSort,
+                            homeFilter = s.homeFilter,
+                            onHomeFilter = vm::setHomeFilter
                         )
                     } else {
                         PullToRefreshBox(
@@ -363,7 +390,10 @@ fun PickwickScreen(
                                 onOpenSettings = onOpenSettings,
                                 activeProfile = activeProfile,
                                 onSwitchProfile = onSwitchProfile,
-                                onSearch = vm::search
+                                onSearch = vm::search,
+                                onOpenHub = openHub,
+                                homeFilter = s.homeFilter,
+                                onHomeFilter = vm::setHomeFilter
                             )
                         }
                     }
@@ -382,7 +412,38 @@ fun PickwickScreen(
                         onSurprise = vm::surpriseMe,
                         onOpenQueue = vm::openQueue,
                         onOpenWatchLater = vm::openWatchLater,
-                        onOpenDownloads = vm::openDownloads
+                        onOpenDownloads = vm::openDownloads,
+                        onSort = vm::setChannelSort
+                    )
+                }
+                s.screen is Screen.You -> Column(Modifier.fillMaxSize()) {
+                    if (isTv) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                        ) {
+                            Spacer(Modifier.weight(1f))
+                            TvTopChips(s.screen, vm)
+                        }
+                    }
+                    YouScreen(
+                        state = s,
+                        profile = activeProfile,
+                        isTv = isTv,
+                        onPlay = onPlay,
+                        onOpenMenu = { feedMenuFor = it },
+                        onSeeAll = { screen ->
+                            when (screen) {
+                                Screen.Watchlist -> vm.openWatchlist()
+                                Screen.WatchLater -> vm.openWatchLater()
+                                Screen.Queue -> vm.openQueue()
+                                Screen.History -> vm.openHistory()
+                                Screen.Downloads -> vm.openDownloads()
+                                else -> {}
+                            }
+                        },
+                        onChangeLook = if (lookEditable) { { lookOpen = true } } else null,
+                        onSwitchProfile = onSwitchProfile
                     )
                 }
                 s.screen is Screen.Search -> Column(Modifier.fillMaxSize()) {
@@ -419,6 +480,7 @@ fun PickwickScreen(
                 }
                 else -> Column(Modifier.fillMaxSize()) {
                     val title = when (val sc = s.screen) {
+                        is Screen.You -> ""
                         is Screen.ChannelVideos -> sc.source.name
                         is Screen.WatchedVideos -> "🕘 History · ${sc.source.name}"
                         is Screen.History -> "🕘 History"
@@ -517,7 +579,13 @@ fun PickwickScreen(
                             onVoiceUnavailable = { vm.showNoticeExternal("Voice search isn't on this device yet") }
                         )
                     }
-                    if (phone && tabFor(s.screen) == Tab.Favorites) ShelfChips(s, vm)
+                    if (phone && tabFor(s.screen) == Tab.You) ShelfChips(s, vm)
+                    // The kid's order for this channel's videos. Under the
+                    // title on both form factors; on TV the chips are the
+                    // second focus row after the top menu.
+                    if (s.screen is Screen.ChannelVideos) {
+                        VideoFilterChips(s.channelFilter, vm::setChannelFilter)
+                    }
                     // Search hits from the crawled index are screened live, in
                     // windows — an honest bar (we know the window's size), with
                     // results appended below as verdicts land.
@@ -616,10 +684,31 @@ fun PickwickScreen(
                         } else null,
                         scrollTo = s.scrollTo,
                         onScrolled = vm::scrollHandled,
-                        // The "By playlist" layout: a playlists row above the
-                        // grid, only once the channel's listing has produced any.
-                        header = if (s.screen is Screen.ChannelVideos && s.channelPlaylists.isNotEmpty()) {
-                            { playlistRow(s.channelPlaylists, isTv, vm::openPlaylist) }
+                        // Above a channel's grid: the parent-picked playlist
+                        // rows, "New for you" (the newest unstarted videos),
+                        // and the "By playlist" chip row when the parent chose
+                        // that layout — then "All videos" and the grid. Only
+                        // when at least one of them has something to show.
+                        header = if (s.screen is Screen.ChannelVideos && s.screen.source.kind == SourceKind.CHANNEL) {
+                            val fresh = s.videos.filter { it.progress == null }.take(12)
+                            val anyRows = s.playlistShelves.any { it.items.isNotEmpty() } ||
+                                s.channelPlaylists.isNotEmpty() || fresh.size >= 3
+                            if (anyRows) {
+                                {
+                                    playlistShelves(
+                                        s.playlistShelves, isTv, { s.channelAvatars[it] },
+                                        onPlay, { feedMenuFor = it }, vm::openPlaylist
+                                    )
+                                    if (fresh.size >= 3) {
+                                        newForYouRow(fresh, isTv, { s.channelAvatars[it] }, onPlay) { feedMenuFor = it }
+                                    }
+                                    if (s.channelPlaylists.isNotEmpty()) {
+                                        playlistRow(s.channelPlaylists, isTv, vm::openPlaylist)
+                                    } else {
+                                        allVideosLabel()
+                                    }
+                                }
+                            } else null
                         } else null
                     )
                     }
@@ -663,12 +752,15 @@ fun PickwickScreen(
                             when (tab) {
                                 Tab.Home -> vm.goHome()
                                 Tab.Channels -> vm.openChannels()
-                                Tab.Favorites -> vm.openWatchlist()
+                                Tab.You -> vm.openYou()
                                 Tab.Search -> vm.openSearch()
                             }
                         },
                         icon = {
-                            Text(
+                            // The You tab is the kid's own face, when they have one.
+                            if (tab == Tab.You && activeProfile != null) {
+                                ProfileAvatar(activeProfile, size = 26)
+                            } else Text(
                                 tab.emoji,
                                 fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp)
                             )

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -52,6 +53,8 @@ internal fun ChannelsSection(
     var pendingAdd by remember { mutableStateOf<WhitelistEntry?>(null) }
     /** The entry whose AI note dialog is open. */
     var noteEntry by remember { mutableStateOf<WhitelistEntry?>(null) }
+    /** The channel whose playlist picker is open. */
+    var playlistEntry by remember { mutableStateOf<WhitelistEntry?>(null) }
 
     fun displayName(entry: WhitelistEntry) =
         entry.label ?: resolvedNames[entry.url] ?: entry.id
@@ -117,6 +120,90 @@ internal fun ChannelsSection(
             },
             dismissButton = {
                 TextButton(onClick = { noteEntry = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Which of this channel's own playlists become rows on its page. The
+    // listing is the same one the kid's "By playlist" layout uses (cached a
+    // day per channel), so the phone pays one small request per channel
+    // the parent actually opens this for.
+    playlistEntry?.let { entry ->
+        val context = androidx.compose.ui.platform.LocalContext.current
+        var refs by remember(entry.id) { mutableStateOf<List<io.pickwick.app.data.PlaylistRef>?>(null) }
+        var failed by remember(entry.id) { mutableStateOf(false) }
+        var picked by remember(entry.id) { mutableStateOf(entry.playlistIds) }
+        LaunchedEffect(entry.id) {
+            val cache = io.pickwick.app.data.ChannelPlaylistsCache(context)
+            val source = io.pickwick.app.data.Source(
+                entry.id, entry.url, displayName(entry), null, SourceKind.CHANNEL
+            )
+            refs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                cache.load(entry.id)?.takeIf { cache.isFresh(entry.id) }
+            } ?: runCatching { yt.channelPlaylists(source) }
+                .onSuccess { fresh ->
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { cache.save(entry.id, fresh) }
+                }
+                .onFailure { failed = true }
+                .getOrNull()
+        }
+        AlertDialog(
+            onDismissRequest = { playlistEntry = null },
+            title = { Text("Playlists — ${displayName(entry)}") },
+            text = {
+                Column(
+                    Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())
+                ) {
+                    Text(
+                        "Ticked playlists become rows at the top of this channel's page " +
+                            "for the kids, in the order you tick them. Only the channel's " +
+                            "own playlists are listed; Shorts never make a row.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val list = refs
+                    when {
+                        list == null && !failed -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Asking YouTube for the playlists…")
+                        }
+                        failed -> Text("Couldn't list the playlists right now. Try again later.")
+                        list!!.isEmpty() -> Text("This channel has no playlists.")
+                        else -> list.forEach { ref ->
+                            val on = ref.id in picked
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .tvFocusHighlight()
+                                    .clickable { picked = if (on) picked - ref.id else picked + ref.id }
+                            ) {
+                                Checkbox(checked = on, onCheckedChange = null)
+                                Column(Modifier.padding(vertical = 4.dp)) {
+                                    Text(ref.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    if (ref.videoCount > 0) Text(
+                                        "${ref.videoCount} videos",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onChanged(entries.map {
+                        if (it.id == entry.id) it.copy(playlistIds = picked) else it
+                    })
+                    playlistEntry = null
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { playlistEntry = null }) { Text("Cancel") }
             }
         )
     }
@@ -217,6 +304,21 @@ internal fun ChannelsSection(
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
                 Spacer(Modifier.width(4.dp))
+            }
+            // The channel's playlists as rows on its page; dimmed until any
+            // are picked. Channels only — a playlist has no playlists.
+            if (entry.kind == SourceKind.CHANNEL) IconButton(
+                modifier = Modifier.tvFocusHighlight(),
+                onClick = { playlistEntry = entry }
+            ) {
+                Text(
+                    "🎬",
+                    modifier = Modifier
+                        .alpha(if (entry.playlistIds.isEmpty()) 0.35f else 1f)
+                        .semantics {
+                            contentDescription = "Playlist rows for ${displayName(entry)}"
+                        }
+                )
             }
             // Per-channel AI instructions; dimmed until one exists. Emoji over
             // a vector icon, matching the app's other glyph affordances.

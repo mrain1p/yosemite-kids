@@ -13,6 +13,11 @@ HTTP server (`data/Pairing.kt`). Sideloaded only — never shipped to a store.
 - **Check before you claim anything works:** `scripts/check.ps1` (or
   `/pickwick-check`) — compile + offline unit tests + worker tests. Never edit
   Kotlin while Gradle is running.
+- **Upstream first, every round:** `/pickwick-upstream` (or
+  `scripts/upstream.ps1`) at the start of any round of work, and whenever
+  extraction breaks. Cherry-pick what is clean, port what touches fork files,
+  log the decision in `docs/UPSTREAM-LOG.md`. The user wants anything
+  upstream ships that fits the fork adopted or adapted, not just noted.
 - **See it:** the emulator loop in `scripts/emu.ps1` (or `/pickwick-emulator`):
   boot → install → seed → launch → shot. Always `adb -s emulator-5554`; other
   Android devices may be plugged into this PC and must not be touched.

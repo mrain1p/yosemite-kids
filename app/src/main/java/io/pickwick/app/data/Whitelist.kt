@@ -35,7 +35,14 @@ data class WhitelistEntry(
      * source's videos — except already-blocked ones, which stay blocked: the
      * note exists to catch more junk, not to relitigate old blocks.
      */
-    val aiNote: String? = null
+    val aiNote: String? = null,
+    /**
+     * The channel's own playlists the parent picked to show as rows on its
+     * page (YouTube playlist ids, in the parent's order). Empty = no rows.
+     * Only the channel's playlists ever appear here — nothing is mixed in
+     * from elsewhere — so the row is "this channel's Seasons", not a feed.
+     */
+    val playlistIds: List<String> = emptyList()
 ) {
     fun visibleTo(profileId: String?): Boolean =
         profileIds.isEmpty() || profileId == null || profileId in profileIds
@@ -54,7 +61,7 @@ val CHANNEL_LAYOUTS = listOf(CHANNEL_LAYOUT_NEWEST, CHANNEL_LAYOUT_POPULAR, CHAN
 const val CHANNEL_ORDER_WATCHED = "watched"
 const val CHANNEL_ORDER_ALPHA = "alpha"
 const val CHANNEL_ORDER_RANDOM = "random"
-val CHANNEL_ORDERS = listOf(CHANNEL_ORDER_WATCHED, CHANNEL_ORDER_ALPHA, CHANNEL_ORDER_RANDOM)
+val CHANNEL_ORDERS = listOf(CHANNEL_ORDER_WATCHED, CHANNEL_ORDER_ALPHA, CHANNEL_ORDER_RANDOM, CHANNEL_ORDER_LATEST)
 
 /**
  * Listening chip cycle: Off first — null disables screen-off listening
