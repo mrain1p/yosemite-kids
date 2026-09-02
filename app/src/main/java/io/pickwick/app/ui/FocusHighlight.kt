@@ -21,6 +21,16 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun Modifier.tvFocusHighlight(onFocusChange: ((Boolean) -> Unit)? = null): Modifier {
     var focused by remember { mutableStateOf(false) }
+    // The ring grows in over a few frames rather than snapping: still a plain
+    // border draw, just eased — the cheapest motion a TV can afford.
+    val outer by androidx.compose.animation.core.animateDpAsState(
+        if (focused) 5.dp else 0.dp,
+        androidx.compose.animation.core.tween(120), label = "focusOuter"
+    )
+    val inner by androidx.compose.animation.core.animateDpAsState(
+        if (focused) 2.dp else 0.dp,
+        androidx.compose.animation.core.tween(120), label = "focusInner"
+    )
     return this
         .onFocusChanged {
             val now = it.isFocused || it.hasFocus
@@ -28,12 +38,12 @@ internal fun Modifier.tvFocusHighlight(onFocusChange: ((Boolean) -> Unit)? = nul
             onFocusChange?.invoke(now)
         }
         .border(
-            width = if (focused) 5.dp else 0.dp,
+            width = outer,
             color = if (focused) Color.White else Color.Transparent,
             shape = RectangleShape
         )
         .border(
-            width = if (focused) 2.dp else 0.dp,
+            width = inner,
             color = if (focused) PickwickDarkColors.primary else Color.Transparent,
             shape = RectangleShape
         )

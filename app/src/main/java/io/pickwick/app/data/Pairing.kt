@@ -137,19 +137,65 @@ class PairingStore(context: Context) {
         writeMap("pending", pendingRequests() - token)
     }
 
-    fun pendingRequests(): Map<String, String> = readMap("pending")
+    /**
+     * Requests still waiting on a parent, minus any that have sat longer than
+     * [PENDING_TTL_MS]. Five slots is all there are, and without expiry anyone
+     * on the LAN could fill them once and lock a real new phone out until an
+     * admin came along to deny each one by hand.
+     */
+    fun pendingRequests(): Map<String, String> {
+        val pending = readMap("pending")
+        if (pending.isEmpty()) return pending
+        val at = readMap("pending_at")
+        val live = prunePending(pending, at, System.currentTimeMillis())
+        if (live.size != pending.size) {
+            writeMap("pending", live)
+            writeMap("pending_at", at.filterKeys { it in live })
+        }
+        return live
+    }
 
     fun addPendingRequest(token: String, name: String) {
-        val pending = pendingRequests()
-        if (pending.size < 5 && token !in pending) {
-            // The name is attacker-supplied and lands in SharedPreferences —
-            // bound it so a request can't bloat the prefs file.
-            writeMap("pending", pending + (token to name.take(40)))
+        var pending = pendingRequests()
+        if (token in pending) return
+        val at = readMap("pending_at").toMutableMap()
+        if (pending.size >= MAX_PENDING) {
+            // Full: the oldest request gives way — it has had its chance, and
+            // the phone in the parent's hand right now is the one that matters.
+            val oldest = pending.keys.minByOrNull { at[it]?.toLongOrNull() ?: 0L } ?: return
+            pending = pending - oldest
+            at.remove(oldest)
         }
+        // The name is attacker-supplied and lands in SharedPreferences —
+        // bound it so a request can't bloat the prefs file.
+        writeMap("pending", pending + (token to name.take(40)))
+        at[token] = System.currentTimeMillis().toString()
+        writeMap("pending_at", at)
     }
 
     fun denyRequest(token: String) {
         writeMap("pending", pendingRequests() - token)
+        writeMap("pending_at", readMap("pending_at") - token)
+    }
+
+    companion object {
+        const val MAX_PENDING = 5
+        const val PENDING_TTL_MS = 10 * 60_000L
+
+        /**
+         * The expiry rule on its own: a request with no stamp (written by an
+         * older build) is kept — it predates the rule and there is no honest
+         * age for it; anything stamped older than the TTL is gone.
+         */
+        internal fun prunePending(
+            pending: Map<String, String>,
+            stampedAt: Map<String, String>,
+            now: Long,
+            ttlMs: Long = PENDING_TTL_MS
+        ): Map<String, String> = pending.filterKeys { token ->
+            val at = stampedAt[token]?.toLongOrNull() ?: return@filterKeys true
+            now - at < ttlMs
+        }
     }
 
     fun revokePhone(token: String) {
@@ -251,16 +297,19 @@ class LanServer(
     /** Applies a grant to the right kid's guard (null profile = legacy/active). */
     private val grantHandler: (minutes: Int, profileId: String?) -> Unit,
     private val pairingStore: PairingStore,
-    private val statsProvider: () -> String = { "{}" },
+    /** Stats for one kid (`?profile=`), or the device's current kid when null. */
+    private val statsProvider: (profileId: String?) -> String = { "{}" },
     private val watchStateProvider: () -> String = { "{}" },
-    private val watchStateMerger: (String) -> Unit = {},
+    /** Mergers answer whether the body was even the right shape — a peer that
+     *  posts garbage gets a 400 to log, not a "merged" it will trust. */
+    private val watchStateMerger: (String) -> Boolean = { false },
     /** AI verdict-sharing: serve ours, merge a peer's — see ScreeningStore. */
     private val verdictsProvider: () -> String = { "{}" },
-    private val verdictsMerger: (String) -> Unit = {},
+    private val verdictsMerger: (String) -> Boolean = { false },
     /** Search-index sync: per-source status, one source's payload, and a merger. */
     private val indexStatusProvider: () -> String = { "{}" },
     private val indexSourceProvider: (String) -> String? = { null },
-    private val indexMerger: (sourceId: String, body: String) -> Unit = { _, _ -> },
+    private val indexMerger: (sourceId: String, body: String) -> Boolean = { _, _ -> false },
     /**
      * An accepted config push, with what this device held a moment before it.
      * The diff is what decides whether the kid hears about it — see
@@ -289,6 +338,9 @@ class LanServer(
         // poll shouldn't have to wait behind a slow config push either.
         .apply { allowCoreThreadTimeOut(true) }
 
+    /** Last /pair-request per caller address — one every few seconds is plenty. */
+    private val pairRequestAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     fun start() {
         if (serverSocket != null) return
         for (candidate in PORT_RANGE) {
@@ -300,14 +352,32 @@ class LanServer(
         }
         val socket = serverSocket ?: return
         thread(isDaemon = true, name = "Pickwick-lan") {
-            while (true) {
-                val client = runCatching { socket.accept() }.getOrNull() ?: break
+            // A failed accept used to end the loop for the life of the
+            // process, with the QR still advertising the dead port. Only a
+            // closed socket ends it now; anything else (a transient EMFILE,
+            // a network reset) gets a breath and another try.
+            while (!socket.isClosed) {
+                val client = try {
+                    socket.accept()
+                } catch (e: Exception) {
+                    if (socket.isClosed) break
+                    android.util.Log.w("Pickwick", "lan accept failed, retrying", e)
+                    Thread.sleep(250)
+                    continue
+                }
                 val queued = runCatching {
                     workers.execute { runCatching { handle(client) } }
                 }.isSuccess
                 if (!queued) runCatching { client.close() }
             }
         }
+    }
+
+    /** Releases the port; a later [start] binds afresh. */
+    fun stop() {
+        runCatching { serverSocket?.close() }
+        serverSocket = null
+        port = 0
     }
 
     private fun handle(client: Socket) = client.use { sock ->
@@ -400,6 +470,20 @@ class LanServer(
 
         val path = target.substringBefore('?')
 
+        // Refusals read (a bounded slice of) the body they refuse before
+        // answering: closing a socket with unread bytes in it sends a RST,
+        // and the client then sees "connection reset" instead of our 403/413
+        // — which on the phone debugged as "the TV is offline".
+        fun discardBody() {
+            var left = minOf(contentLength, MAX_DISCARD_BYTES)
+            val buf = ByteArray(8 * 1024)
+            while (left > 0) {
+                val n = runCatching { input.read(buf, 0, minOf(buf.size, left)) }.getOrDefault(-1)
+                if (n < 0) break
+                left -= n
+            }
+        }
+
         // Declared length is attacker-controlled and allocated in one go, so
         // this check has to come before any body read. The index push carries a
         // whole channel's video list (a deep channel passes 1 MB easily) and is
@@ -407,6 +491,7 @@ class LanServer(
         // cap — the declared number alone allocates nothing.
         val bodyCap = if (path == "/index") MAX_INDEX_BODY_BYTES else MAX_BODY_BYTES
         if (contentLength > bodyCap) {
+            discardBody()
             respond(413, "too large")
             return
         }
@@ -420,8 +505,20 @@ class LanServer(
             // A browser cannot send application/json cross-site without a
             // preflight, and always tells us where it came from.
             if (hasOrigin || !contentType.startsWith("application/json")) {
+                discardBody()
                 respond(403, "forbidden"); return
             }
+            // One request per address every few seconds: the pending list is
+            // five slots deep, and a loop on the LAN shouldn't get to churn it.
+            val caller = sock.inetAddress?.hostAddress ?: "?"
+            val now = System.currentTimeMillis()
+            val last = pairRequestAt[caller] ?: 0L
+            if (now - last < PAIR_REQUEST_MIN_GAP_MS) {
+                discardBody()
+                respond(429, "slow down"); return
+            }
+            pairRequestAt[caller] = now
+            if (pairRequestAt.size > 256) pairRequestAt.clear()
             val json = runCatching { JSONObject(readBody()) }.getOrNull()
             val phoneToken = json?.optString("token").orEmpty()
             val phoneName = json?.optString("name").orEmpty().ifEmpty { "Phone" }
@@ -467,6 +564,7 @@ class LanServer(
 
         // Everything else requires an approved phone token.
         if (reqToken == null || !pairingStore.isApproved(reqToken)) {
+            discardBody()
             respond(403, "forbidden"); return
         }
         when {
@@ -492,33 +590,41 @@ class LanServer(
                     respond(200, "denied")
                 } else respond(400, "bad token")
             }
-            method == "GET" && path == "/stats" -> respond(200, statsProvider())
+            method == "GET" && path == "/stats" -> {
+                // A shared TV has one kid on screen but several in the family;
+                // the phone names which one's day it wants to see.
+                val profileId = Regex("profile=([0-9a-f]{8})").find(target)?.groupValues?.get(1)
+                respond(200, statsProvider(profileId))
+            }
             method == "GET" && path == "/watchstate" -> respond(200, watchStateProvider())
             method == "POST" && path == "/watchstate" -> {
-                watchStateMerger(readBody())
-                respond(200, "merged")
+                if (watchStateMerger(readBody())) respond(200, "merged")
+                else respond(400, "bad watch state")
             }
             method == "GET" && path == "/verdicts" -> respond(200, verdictsProvider())
             method == "POST" && path == "/verdicts" -> {
-                verdictsMerger(readBody())
-                respond(200, "merged")
+                if (verdictsMerger(readBody())) respond(200, "merged")
+                else respond(400, "bad verdicts")
             }
             method == "GET" && path == "/index-status" -> respond(200, indexStatusProvider())
             method == "GET" && path == "/index" -> {
-                val id = Regex("source=([A-Za-z0-9_-]+)").find(target)?.groupValues?.get(1)
+                val id = Regex("source=([A-Za-z0-9_-]{1,$MAX_SOURCE_ID_CHARS})").find(target)?.groupValues?.get(1)
                 val json = id?.let(indexSourceProvider)
                 if (json != null) respond(200, json) else respond(404, "unknown source")
             }
             method == "POST" && path == "/index" -> {
-                val id = Regex("source=([A-Za-z0-9_-]+)").find(target)?.groupValues?.get(1)
+                // Bounded id: it becomes a filename, and an admin token must
+                // not be able to mint arbitrarily long ones (or arbitrarily many).
+                val id = Regex("source=([A-Za-z0-9_-]{1,$MAX_SOURCE_ID_CHARS})").find(target)?.groupValues?.get(1)
                 if (id == null) {
+                    discardBody()
                     respond(400, "bad source")
                 } else {
                     // First line is the source state, rest is the video array —
                     // one body, no second round trip.
                     val body = readBody()
-                    indexMerger(id, body)
-                    respond(200, "merged")
+                    if (indexMerger(id, body)) respond(200, "merged")
+                    else respond(400, "bad index payload")
                 }
             }
             method == "GET" && path == "/admins" -> {
@@ -541,6 +647,16 @@ class LanServer(
                     }
                 }
             }
+            // The phone unpairing from this device: drop its own approval so
+            // it can't keep administering a TV it no longer lists. Refused
+            // while it is the only admin — that would strand the device.
+            method == "POST" && path == "/admin-leave" -> {
+                if (pairingStore.approvedPhones().size <= 1) respond(409, "last admin")
+                else {
+                    pairingStore.revokePhone(reqToken)
+                    respond(200, "left")
+                }
+            }
             method == "GET" && path == "/status" -> respond(
                 200,
                 JSONObject()
@@ -549,6 +665,11 @@ class LanServer(
                     // Our own identity token, so the admin phone can key this
                     // device in deviceProfiles (dedicated-to-a-kid assignment).
                     .put("token", pairingStore.deviceToken())
+                    // What build answered: "pushed, still out of sync" is a
+                    // version skew nine times in ten, and this is how the
+                    // phone gets to say so instead of guessing.
+                    .put("versionCode", io.pickwick.app.BuildConfig.VERSION_CODE)
+                    .put("versionName", io.pickwick.app.BuildConfig.VERSION_NAME)
                     .toString()
             )
             // Disaster recovery: a freshly reinstalled phone starts with an empty
@@ -574,6 +695,26 @@ class LanServer(
                     cmd == null -> respond(400, "bad command")
                     RemotePlayerControl.handler?.invoke(cmd) == true -> respond(200, "ok")
                     else -> respond(409, "nothing playing")
+                }
+            }
+            // "Play this on the TV": the parent picked a video on their phone.
+            // The device decides whether it may play (blocks, kid visibility)
+            // — the phone only asks. 409 = refused or nothing to show it on.
+            method == "POST" && path == "/play" -> {
+                val json = runCatching { JSONObject(readBody()) }.getOrNull()
+                val req = json?.let {
+                    RemotePlayerControl.PlayRequest(
+                        url = it.optString("url"),
+                        title = it.optString("title"),
+                        channel = it.optString("channel"),
+                        thumb = it.optString("thumb").ifEmpty { null },
+                        timePercent = it.optInt("timePercent", 100).coerceIn(0, 400)
+                    )
+                }
+                when {
+                    req == null || req.url.isBlank() -> respond(400, "bad request")
+                    RemotePlayerControl.playHandler?.invoke(req) == true -> respond(200, "playing")
+                    else -> respond(409, "refused")
                 }
             }
             method == "POST" && path == "/grant" -> {
@@ -612,6 +753,12 @@ class LanServer(
         private const val MAX_WORKERS = 8
         private const val MAX_QUEUED = 16
 
+        /** How much of a refused body is read before answering (see discardBody). */
+        private const val MAX_DISCARD_BYTES = 256 * 1024
+        private const val PAIR_REQUEST_MIN_GAP_MS = 3_000L
+        /** Source ids are YouTube ids or URL-path forms — nowhere near this. */
+        private const val MAX_SOURCE_ID_CHARS = 64
+
         private fun reason(code: Int): String = when (code) {
             200 -> "OK"
             400 -> "Bad Request"
@@ -619,6 +766,7 @@ class LanServer(
             404 -> "Not Found"
             409 -> "Conflict"
             413 -> "Payload Too Large"
+            429 -> "Too Many Requests"
             else -> "OK"
         }
 
@@ -659,10 +807,13 @@ object LanClient {
      */
     suspend fun rediscover(device: PairedDevice): PairedDevice? = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        val last = lastSweepAt.get()
-        if (now - last < SWEEP_COOLDOWN_MS || !lastSweepAt.compareAndSet(last, now)) {
-            return@withContext null
-        }
+        // Per device, not global: one cooldown for the whole list meant a
+        // powered-off TV's fruitless sweep locked the kid's tablet — sitting
+        // right there at a new address — out of re-discovery for five minutes.
+        val key = device.key
+        val last = lastSweepAt[key] ?: 0L
+        if (now - last < SWEEP_COOLDOWN_MS) return@withContext null
+        lastSweepAt[key] = now
         val prefixes = localV4Prefixes()
         if (prefixes.isEmpty()) return@withContext null
 
@@ -690,6 +841,9 @@ object LanClient {
         } ?: return@withContext null
 
         val (hostPort, identity) = match
+        // Found: the next failure may sweep straight away — a TV that moves
+        // twice in an evening (reboot, router restart) is not an attack.
+        lastSweepAt.remove(key)
         device.copy(host = hostPort.first, port = hostPort.second, id = identity ?: device.id)
     }
 
@@ -756,9 +910,24 @@ object LanClient {
         .retryOnConnectionFailure(false)
         .build()
 
-    private val lastSweepAt = java.util.concurrent.atomic.AtomicLong(0)
+    private val lastSweepAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private const val SWEEP_COOLDOWN_MS = 5 * 60_000L
     private const val CONNECT_PROBE_MS = 400
+
+    /**
+     * The LAN's own client. The shared [Http.client] is tuned for the
+     * internet — 5 s connect, a retry interceptor, connection-failure retries
+     * — which turns one call to a TV that is switched off into ~10 s of
+     * waiting, and a settings screen that checks three things per device into
+     * half a minute of "checking…". Across a living room a device answers in
+     * milliseconds or not at all; a large config push still gets its read time.
+     */
+    private val lanClient = okhttp3.OkHttpClient.Builder()
+        .connectTimeout(1_500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .retryOnConnectionFailure(false)
+        .build()
 
     /** Status including the device's own identity token (for profile assignment). */
     suspend fun fullStatus(device: PairedDevice): DeviceStatus? = withContext(Dispatchers.IO) {
@@ -855,13 +1024,44 @@ object LanClient {
             }.getOrDefault(emptyList())
         }
 
-    /** Raw stats JSON from a device, or null when unreachable. */
-    suspend fun stats(device: PairedDevice): String? = withContext(Dispatchers.IO) {
+    /** Raw stats JSON from a device (for one kid when [profileId] is set), or null when unreachable. */
+    suspend fun stats(device: PairedDevice, profileId: String? = null): String? =
+        withContext(Dispatchers.IO) {
+            val query = profileId?.let { "?profile=$it" } ?: ""
+            runCatching {
+                request(device, "GET", "/stats$query", null).use { resp ->
+                    if (resp.isSuccessful) resp.body?.string() else null
+                }
+            }.getOrNull()
+        }
+
+    /**
+     * Ask a device to play a video now. True = it started; false = refused
+     * (blocked there, nothing on screen to play it) or unreachable.
+     */
+    suspend fun play(device: PairedDevice, req: RemotePlayerControl.PlayRequest): Boolean =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject()
+                .put("url", req.url)
+                .put("title", req.title)
+                .put("channel", req.channel)
+                .put("thumb", req.thumb ?: "")
+                .put("timePercent", req.timePercent)
+                .toString()
+            runCatching {
+                request(device, "POST", "/play", body).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
+    /**
+     * Unpairing: drop our own approval on the device so a forgotten TV can't
+     * still be administered by a phone that no longer lists it. Best effort —
+     * the device may be off, and the local unpair proceeds regardless.
+     */
+    suspend fun leave(device: PairedDevice): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            request(device, "GET", "/stats", null).use { resp ->
-                if (resp.isSuccessful) resp.body?.string() else null
-            }
-        }.getOrNull()
+            request(device, "POST", "/admin-leave", "").use { it.isSuccessful }
+        }.getOrDefault(false)
     }
 
     suspend fun fetchWatchState(device: PairedDevice): String? = withContext(Dispatchers.IO) {
@@ -953,7 +1153,7 @@ object LanClient {
 
     private fun raw(
         host: String, port: Int, method: String, path: String, body: String?, token: String?
-    ) = Http.client.newCall(
+    ) = lanClient.newCall(
         Request.Builder()
             .url("http://$host:$port$path")
             .apply { token?.let { header("X-Token", it) } }

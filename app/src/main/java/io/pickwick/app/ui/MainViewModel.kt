@@ -16,11 +16,23 @@ import kotlinx.coroutines.withContext
  *  not the thousands a broad query can match against a full back catalog. */
 private const val SEARCH_SCREEN_BATCH = 50
 
+/** Home feed: this many newest per channel, interleaved, capped overall. */
+private const val FEED_PER_CHANNEL = 12
+private const val FEED_MAX = 80
+/** History shelf: the most recent this many watches. */
+private const val HISTORY_MAX = 120
+/** The TV home row is a glance, not the shelf. */
+private const val HISTORY_ROW_MAX = 12
+/** Playlists shown in a channel page row. */
+private const val PLAYLIST_ROW_MAX = 30
+
 class MainViewModel(
     private val whitelist: WhitelistRepository,
     private val history: WatchHistoryStore,
     private val sourceCache: SourceCache,
     private val videoCache: VideoCache,
+    /** Per-channel playlist listings for the "By playlist" layout; null in tests. */
+    private val playlistsCache: ChannelPlaylistsCache? = null,
     private val usage: UsageStore,
     private val sessionGuard: SessionGuard,
     private val watchlistStore: SavedListStore,
@@ -60,10 +72,16 @@ class MainViewModel(
     private val activeProfileId: String? = null,
     /** Search index; null in tests. The crawler runs only on the master device. */
     private val channelIndex: ChannelIndex? = null,
+    /** The kid's recent searches (phones); null on TV and in tests. */
+    private val searchHistory: SearchHistoryStore? = null,
     private val yt: YouTubeRepository = YouTubeRepository()
 ) : ViewModel() {
 
     private val crawler = channelIndex?.let { IndexCrawler(yt, it) }
+
+    init {
+        android.util.Log.i("Pickwick", "MainViewModel created for profile=$activeProfileId")
+    }
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
@@ -101,6 +119,7 @@ class MainViewModel(
                 Triple(watchlistStore.urls(), watchLaterStore.urls(), queueStore.urls()) to
                     (downloadStore?.pendingUrls().orEmpty() to visibleDownloadUrls())
             }
+            val recent = withContext(Dispatchers.IO) { searchHistory?.recent().orEmpty() }
             _state.value = _state.value.copy(
                 watchlisted = saved.first,
                 watchLater = saved.second,
@@ -108,7 +127,8 @@ class MainViewModel(
                 downloadPending = dl.first,
                 // Sideloaded local files count as "downloaded": one set drives
                 // the ✅ badges, the home tile and the offline auto-open alike.
-                downloaded = dl.second
+                downloaded = dl.second,
+                recentSearches = recent
             )
             // Car trip / flight: no network but saved videos — open the offline shelf.
             if (isOffline() && dl.second.isNotEmpty()) openDownloads()
@@ -337,8 +357,20 @@ class MainViewModel(
     }
 
     /** Most-opened first; ties keep whitelist order (sortedByDescending is stable). */
-    private fun sortByUsage(channels: List<Source>) =
-        channels.sortedByDescending { usage.opens(it.id) }
+    /** The parent's channel-row order: most opened, A to Z, or a fresh shuffle. */
+    private fun sortByUsage(channels: List<Source>) = when (channelOrder) {
+        CHANNEL_ORDER_ALPHA -> channels.sortedBy { it.name.lowercase() }
+        // One shuffle per app session: the rows are rebuilt on every verdict,
+        // resume and back press, and a row that reorders under the kid's
+        // thumb each time is a bug, not a surprise. A new order next launch.
+        CHANNEL_ORDER_RANDOM -> channels.shuffled(kotlin.random.Random(shuffleSeed))
+        else -> channels.sortedByDescending { usage.opens(it.id) }
+    }
+
+    private val shuffleSeed = kotlin.random.Random.nextLong()
+
+    /** From the family config; most-watched until the first refresh reads it. */
+    private var channelOrder: String = CHANNEL_ORDER_WATCHED
 
     /**
      * Whitelist-scoped search over the local index. Visibility gates match the
@@ -349,6 +381,10 @@ class MainViewModel(
         val index = channelIndex ?: return@launch
         val q = query.trim()
         if (q.isEmpty()) return@launch
+        searchHistory?.let { store ->
+            val recent = withContext(Dispatchers.IO) { store.add(q); store.recent() }
+            _state.value = _state.value.copy(recentSearches = recent)
+        }
         _state.value = _state.value.copy(
             screen = Screen.SearchResults(q), loading = true, videos = emptyList(),
             held = 0, searchScreening = null, error = null
@@ -474,6 +510,15 @@ class MainViewModel(
             .take(10)
             .map { it.first }
 
+    /**
+     * The TV home's "Watched lately" row: the last dozen videos this kid played,
+     * newest first, joined to the caches (the phone reaches the same list via
+     * the History chip). Cache reads — call off-main.
+     */
+    private fun historyRow(): List<VideoItem> =
+        historyItems(history.all(), sources.flatMap { videoCache.load(it.id) }, HISTORY_ROW_MAX)
+            .filter { it.video.videoId !in blockedVideoIds && screener?.isVisible(it.video) != false }
+
     /** A source gets a NEW badge when its newest cached video postdates the kid's last visit. */
     private fun computeNewBadges(): Set<String> =
         sources.mapNotNull { source ->
@@ -496,6 +541,13 @@ class MainViewModel(
             }
         }
 
+    /**
+     * The header's screen-time readout: minutes left at normal drain, and what
+     * (if anything) blocks a play press right now. Prefs reads — call off-main.
+     */
+    private fun screenTime(): Pair<Long?, String?> =
+        sessionGuard.remainingMs(100) to sessionGuard.blockReason(100)
+
     /** Update home-screen tiles without ever disturbing the screen the kid is on. */
     private suspend fun publishChannels(channels: List<Source>) {
         // distinctBy: two whitelist entries (URL form + UC id) can canonicalize
@@ -506,13 +558,128 @@ class MainViewModel(
         val (tiles, keepWatching, badges) = withContext(Dispatchers.IO) {
             Triple(sortByUsage(visibleSources(distinct)), keepWatchingRow(), computeNewBadges())
         }
+        val (left, reason) = withContext(Dispatchers.IO) { screenTime() }
+        val (feed, recent) = withContext(Dispatchers.IO) { buildFeed(tiles) to historyRow() }
         val onHome = _state.value.screen == Screen.Home
         _state.value = _state.value.copy(
             channels = tiles,
             keepWatching = keepWatching,
             newBadges = badges,
+            feed = feed,
+            recentHistory = recent,
+            channelAvatars = distinct.associate { it.name to it.avatarUrl },
+            allHeld = distinct.isNotEmpty() && tiles.isEmpty(),
+            remainingMs = left,
+            blockReason = reason,
             loading = if (onHome) false else _state.value.loading
         )
+    }
+
+    /**
+     * The home feed: each channel's newest cached videos, interleaved so the
+     * top of the page is one from every channel (most-watched first) rather
+     * than one channel's whole page. Finished videos drop out; half-watched
+     * ones keep their bar. Cache-only on purpose — the background warm keeps
+     * the caches fresh, and a feed that waits on the network is a spinner.
+     */
+    private fun buildFeed(channels: List<Source>): List<VideoItem> {
+        val perChannel = channels.map { source ->
+            videoCache.load(source.id)
+                .filter { it.videoId !in blockedVideoIds && screener?.isVisible(it) != false }
+                .take(FEED_PER_CHANNEL)
+        }
+        return interleave(perChannel, FEED_MAX) { it.url }.mapNotNull { video ->
+            val p = history.progress(video.url)
+            if (p?.isFinished == true) null else VideoItem(video, p?.fraction)
+        }
+    }
+
+    /** The grid of every channel — "Show all" behind the home row. */
+    fun openChannels() {
+        _state.value = _state.value.copy(
+            screen = Screen.Channels, videos = emptyList(), held = 0, loading = false, error = null
+        )
+    }
+
+    /** The search page (field, mic, recent searches) with no query yet. */
+    fun openSearch() {
+        _state.value = _state.value.copy(
+            screen = Screen.Search, videos = emptyList(), held = 0, loading = false,
+            error = null, searchScreening = null
+        )
+    }
+
+    fun clearRecentSearches() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { searchHistory?.clear() }
+            _state.value = _state.value.copy(recentSearches = emptyList())
+        }
+    }
+
+    /**
+     * The player's channel avatar was tapped: open that channel's grid. Matched
+     * by name — the player only ever knows the uploader's name.
+     */
+    fun openChannelByName(name: String) {
+        val source = sources.firstOrNull { it.name == name }
+            ?: _state.value.channels.firstOrNull { it.name == name }
+        android.util.Log.i(
+            "Pickwick",
+            "open channel by name \"$name\" -> ${source?.id ?: "no match among ${sources.map { it.name }}"}"
+        )
+        openChannel(source ?: return)
+    }
+
+    /**
+     * Devices a video can be sent to from this phone's hold menu: the paired
+     * list, on a parent device only. A kid's phone administers nothing, and
+     * a TV's list is empty anyway.
+     */
+    fun castTargets(): List<PairedDevice> =
+        if (pairingStore?.role() == PairingStore.Role.KID) emptyList()
+        else pairingStore?.paired().orEmpty()
+
+    /** "Play on <device>": ask it, and say what happened in the pill. */
+    fun castTo(item: VideoItem, device: PairedDevice) {
+        val percent = _state.value.channels
+            .firstOrNull { it.name == item.video.channelName }?.timeMultiplierPercent ?: 100
+        viewModelScope.launch {
+            val ok = LanClient.play(
+                device,
+                RemotePlayerControl.PlayRequest(
+                    url = item.video.url,
+                    title = item.video.title,
+                    channel = item.video.channelName,
+                    thumb = item.video.thumbnailUrl,
+                    timePercent = percent
+                )
+            )
+            showNotice(
+                if (ok) "Playing on ${device.name} 📺"
+                else "${device.name} didn't take it — is it on, and is this video allowed there?"
+            )
+        }
+    }
+
+    /**
+     * Re-run whatever the current screen loads — the friendly error card's
+     * "Try again". Each screen's opener already resets its own state.
+     */
+    fun retryCurrent() {
+        when (val s = _state.value.screen) {
+            Screen.Home -> refresh(userInitiated = true)
+            Screen.Channels -> openChannels()
+            Screen.Search -> openSearch()
+            Screen.History -> openHistory()
+            is Screen.ChannelVideos -> openChannel(s.source)
+            is Screen.WatchedVideos -> { goHome(); openChannel(s.source) }
+            Screen.Surprise -> surpriseMe()
+            Screen.Watchlist -> openWatchlist()
+            Screen.WatchLater -> openWatchLater()
+            Screen.Downloads -> openDownloads()
+            Screen.Queue -> openQueue()
+            is Screen.SearchResults -> search(s.query)
+        }
     }
 
     private var refreshInFlight = false
@@ -550,6 +717,8 @@ class MainViewModel(
                 screener?.profiles = list.profiles
                 screener?.activeProfileId = activeProfileId
                 screener?.allowedOverrides = list.allowedIdsFor(activeProfileId)
+                channelLayout = list.channelLayout
+                channelOrder = list.channelOrder
                 // Only the kid whose home this is owns these prefs. With nobody
                 // picked yet (who's-watching screen) `sessionGuard` is still the
                 // legacy unsuffixed store — which ProfileNamespace hands to the
@@ -716,7 +885,10 @@ class MainViewModel(
      * discovery mix, and clutter there would defeat its purpose.
      */
     private fun includeFinishedNow(): Boolean =
-        channelSource() != null || _state.value.screen == Screen.Queue
+        channelSource() != null || _state.value.screen == Screen.Queue ||
+            // History is finished videos by definition: a re-filter on resume
+            // (every return from the player) must not empty the shelf.
+            _state.value.screen == Screen.History
 
     /** Raw videos on the current screen hidden by the screener (no verdict yet or held for review). */
     private fun heldByScreening(): Int = rawVideos.count { v ->
@@ -747,29 +919,60 @@ class MainViewModel(
      * append below the tile so nothing already scrolled past moves.
      */
     private fun publishChannel(source: Source, pin: Boolean = false) {
-        val items = annotated(includeFinished = true)
-        if (!sinksWatched(source)) {
-            _state.value = _state.value.copy(
-                loading = false, videos = items, held = heldByScreening()
-            )
-            return
-        }
-        val (unwatched, watched) = splitWatched(items) { item ->
-            // annotated() already read this video's progress — reuse it rather
-            // than hitting the history store a second time per tile, on main,
-            // on every publish.
-            finishedOnArrival.getOrPut(item.video.url) { (item.progress ?: 0f) >= 0.98f }
+        // Every video stays in the grid where the channel put it (watched ones
+        // just dim); the parent's layout setting only reorders. The watched
+        // ones are *also* the History tile that leads the grid — a place to
+        // find "that one again", not a shelf they were exiled to.
+        val items = orderForLayout(annotated(includeFinished = true))
+        val watched = orderByWatched(items.filter { (it.progress ?: 0f) >= 0.98f }) { url ->
+            history.progress(url)?.lastWatchedAt ?: 0L
         }
         val onShelf = _state.value.screen is Screen.WatchedVideos
         _state.value = _state.value.copy(
             loading = false,
-            videos = if (onShelf) watched else unwatched,
+            videos = if (onShelf) watched else items,
             channelWatched = watched,
             // Held videos are unscreened, never watched — the count belongs to
             // the grid they're missing from, not to the shelf.
             held = if (onShelf) 0 else heldByScreening(),
-            watchedTileAt = _state.value.watchedTileAt ?: unwatched.size.takeIf { pin }
+            watchedTileAt = if (watched.isNotEmpty()) 0 else null
         )
+    }
+
+    /** The parent's channel-page layout, applied to a channel's videos. */
+    private fun orderForLayout(items: List<VideoItem>): List<VideoItem> = when (channelLayout) {
+        CHANNEL_LAYOUT_POPULAR -> orderByPopularity(items)
+        else -> items
+    }
+
+    /** From the family config; "newest" until the first refresh reads it. */
+    private var channelLayout: String = CHANNEL_LAYOUT_NEWEST
+
+    /**
+     * The History shelf: everything this kid has watched, newest first,
+     * joined to the caches (and the saved lists, which carry their own
+     * metadata) so a video from a channel that has since scrolled off its
+     * cached page can still be found.
+     */
+    fun openHistory() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                screen = Screen.History, loading = true, videos = emptyList(),
+                held = 0, error = null
+            )
+            feedHandle = null
+            uploadsNextPage = null
+            val items = withContext(Dispatchers.IO) {
+                val known = sources.flatMap { videoCache.load(it.id) } +
+                    watchlistStore.load() + watchLaterStore.load()
+                historyItems(history.all(), known, HISTORY_MAX)
+                    .filter { it.video.videoId !in blockedVideoIds && screener?.isVisible(it.video) != false }
+            }
+            // The kid may have moved on while the caches were read.
+            if (_state.value.screen != Screen.History) return@launch
+            rawVideos = items.map { it.video }
+            _state.value = _state.value.copy(loading = false, videos = items, held = 0)
+        }
     }
 
     /** The channel's finished videos, on their own screen. */
@@ -827,12 +1030,21 @@ class MainViewModel(
                 val (keepWatching, badges) = withContext(Dispatchers.IO) {
                     keepWatchingRow() to computeNewBadges()
                 }
+                // Back from the player is exactly when the chip has moved.
+                val (left, reason) = withContext(Dispatchers.IO) { screenTime() }
+                val (feed, recent) = withContext(Dispatchers.IO) {
+                    buildFeed(_state.value.channels) to historyRow()
+                }
                 _state.value = _state.value.copy(
                     keepWatching = keepWatching,
                     newBadges = badges,
+                    feed = feed,
+                    recentHistory = recent,
                     watchlisted = watchlisted,
                     watchLater = watchLater,
-                    queued = queued
+                    queued = queued,
+                    remainingMs = left,
+                    blockReason = reason
                 )
                 return@launch
             }
@@ -842,6 +1054,11 @@ class MainViewModel(
             if (_state.value.screen == Screen.Downloads) {
                 // Offline shelf: fresh red bars, but no screener/blocklist re-filtering.
                 _state.value = _state.value.copy(videos = downloadItems())
+                return@launch
+            }
+            if (_state.value.screen == Screen.History) {
+                // The video just watched belongs at the top now.
+                openHistory()
                 return@launch
             }
             if (_state.value.screen == Screen.Watchlist) {
@@ -885,15 +1102,24 @@ class MainViewModel(
         syncConfigState()
     }
 
-    fun openChannel(source: Source) = viewModelScope.launch {
+    /**
+     * [parent] is set only when a playlist page is opened from a channel's
+     * Playlists row: Back then returns to that channel. Every other open
+     * clears it, or a stale parent would hijack Back on a later page.
+     */
+    fun openChannel(source: Source, parent: Source? = null) = viewModelScope.launch {
+        playlistParent = parent
         usage.bump(source.id)
         _state.value = _state.value.copy(
             screen = Screen.ChannelVideos(source), loading = true, videos = emptyList(),
             held = 0, error = null, channelWatched = emptyList(), watchedTileAt = null,
-            scrollTo = 0
+            channelPlaylists = emptyList(), scrollTo = 0
         )
         feedHandle = null
         uploadsNextPage = null
+        if (channelLayout == CHANNEL_LAYOUT_PLAYLISTS && source.kind == SourceKind.CHANNEL) {
+            launch { loadPlaylistRow(source) }
+        }
         // A fresh visit is where the sort catches up with what was watched last
         // time — see [finishedOnArrival].
         finishedOnArrival.clear()
@@ -958,6 +1184,64 @@ class MainViewModel(
                     pumpUntilFilled()
                 }
             }
+    }
+
+    /**
+     * The "By playlist" layout's row: the channel's playlists, one listing
+     * per channel per day (see [ChannelPlaylistsCache]). Nothing else is
+     * fetched until a chip is pressed — the playlist then opens like any
+     * whitelisted playlist source — so a fifty-channel library pays one
+     * small request per channel actually opened. Any failure just leaves
+     * the plain grid; the row is a bonus.
+     */
+    private suspend fun loadPlaylistRow(source: Source) {
+        val cache = playlistsCache ?: return
+        fun stillHere() = (_state.value.screen as? Screen.ChannelVideos)?.source?.id == source.id
+        val refs = withContext(Dispatchers.IO) {
+            cache.load(source.id)?.takeIf { cache.isFresh(source.id) }
+        } ?: runCatching { yt.channelPlaylists(source) }
+            .onSuccess { withContext(Dispatchers.IO) { cache.save(source.id, it) } }
+            .onFailure { android.util.Log.w("Pickwick", "playlists of ${source.id} failed", it) }
+            .getOrNull()
+            ?: return
+        if (refs.isEmpty() || !stillHere()) return
+        android.util.Log.i("Pickwick", "playlist row for ${source.id}: ${refs.size} playlists")
+        // The row goes in above the grid's first item, and a lazy grid keeps
+        // its anchor on that item — without this snap the row would sit just
+        // above the fold, invisible until the kid happened to scroll up.
+        _state.value = _state.value.copy(channelPlaylists = refs.take(PLAYLIST_ROW_MAX), scrollTo = 0)
+    }
+
+    /** A channel's playlist as a source: it drains screen time at the channel's rate, not the default. */
+    private fun playlistSource(ref: PlaylistRef, parent: Source?) =
+        Source(
+            ref.id, ref.url, ref.name, ref.thumbnailUrl, SourceKind.PLAYLIST,
+            timeMultiplierPercent = parent?.timeMultiplierPercent ?: 100
+        )
+
+    /** Which channel a playlist page was opened from, so back returns there rather than home. */
+    private var playlistParent: Source? = null
+
+    /** A chip on the Playlists row: the playlist as its own page, with the channel behind it for back. */
+    fun openPlaylist(ref: PlaylistRef) {
+        val parent = (_state.value.screen as? Screen.ChannelVideos)?.source
+        openChannel(playlistSource(ref, parent), parent = parent)
+    }
+
+    /**
+     * Back, one level: the Watched shelf returns to its channel, a playlist
+     * page to the channel it was opened from, everything else to home.
+     */
+    fun goBack() {
+        val parent = playlistParent
+        when {
+            _state.value.screen is Screen.WatchedVideos -> backToChannel()
+            _state.value.screen is Screen.ChannelVideos && parent != null -> {
+                playlistParent = null
+                openChannel(parent)
+            }
+            else -> { playlistParent = null; goHome() }
+        }
     }
 
     /** Random unwatched mix across whitelisted channels (playlists are excluded —
@@ -1290,6 +1574,9 @@ class MainViewModel(
     private var noticeJob: kotlinx.coroutines.Job? = null
 
     /** Shows the kid one transient line, replacing any previous one. */
+    /** A screen's own transient line (voice search unavailable, and the like). */
+    fun showNoticeExternal(text: String) = showNotice(text)
+
     private fun showNotice(text: String) {
         noticeJob?.cancel()
         _state.value = _state.value.copy(notice = text)
@@ -1406,6 +1693,7 @@ class MainViewModel(
     }
 
     fun goHome() {
+        playlistParent = null
         rawVideos = emptyList()
         feedHandle = null
         uploadsNextPage = null

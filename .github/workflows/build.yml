@@ -39,17 +39,24 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
 
+      # Every test class except the live-YouTube canary, discovered from the
+      # tree so a new test file is in the gate without touching this list.
       - name: Unit tests (non-network)
-        run: >
-          ./gradlew :app:testDebugUnitTest
-          --tests "io.pickwick.app.AiScreenerTest"
-          --tests "io.pickwick.app.ConfigSecretsTest"
-          --tests "io.pickwick.app.ConfigStoreJsonTest"
-          --tests "io.pickwick.app.EndpointSafetyTest"
-          --tests "io.pickwick.app.RetryPolicyTest"
-          --tests "io.pickwick.app.WhitelistParserTest"
-          --tests "io.pickwick.app.DirectorySubmitterTest"
-          --tests "io.pickwick.app.WhitelistExporterTest"
+        run: |
+          args=()
+          for f in app/src/test/java/io/pickwick/app/*Test.kt; do
+            name=$(basename "$f" .kt)
+            [ "$name" = "ExtractorSmokeTest" ] && continue
+            args+=(--tests "io.pickwick.app.$name")
+          done
+          ./gradlew :app:testDebugUnitTest "${args[@]}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Worker tests
+        run: node --test worker/test/*.test.mjs
 
       - name: Upload test report
         if: failure()

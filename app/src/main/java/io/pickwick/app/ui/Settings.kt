@@ -32,6 +32,12 @@ import io.pickwick.app.data.PairingWindow
 import io.pickwick.app.data.SettingsStore
 import io.pickwick.app.data.SourceCache
 import io.pickwick.app.data.Whitelist
+import io.pickwick.app.data.CHANNEL_LAYOUT_NEWEST
+import io.pickwick.app.data.CHANNEL_LAYOUT_PLAYLISTS
+import io.pickwick.app.data.CHANNEL_LAYOUT_POPULAR
+import io.pickwick.app.data.CHANNEL_ORDER_ALPHA
+import io.pickwick.app.data.CHANNEL_ORDER_RANDOM
+import io.pickwick.app.data.CHANNEL_ORDER_WATCHED
 import io.pickwick.app.data.YouTubeRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -338,6 +344,9 @@ private fun AdminScreen(
     var deviceProfiles by remember(initial) { mutableStateOf(initial.deviceProfiles) }
     var masterToken by remember(initial) { mutableStateOf(initial.masterDeviceToken) }
     var sponsorSkip by remember(initial) { mutableStateOf(initial.sponsorSkip) }
+    var autoplayNext by remember(initial) { mutableStateOf(initial.autoplayNext) }
+    var channelLayout by remember(initial) { mutableStateOf(initial.channelLayout) }
+    var channelOrder by remember(initial) { mutableStateOf(initial.channelOrder) }
     var listenPercent by remember(initial) { mutableStateOf(initial.listenPercent) }
     /** Entries added by this session's URL import — shown with a NEW tag for review. */
     var newIds by remember { mutableStateOf(setOf<String>()) }
@@ -429,6 +438,9 @@ private fun AdminScreen(
             deviceProfiles.filterValues { it in validIds },
             masterDeviceToken = masterToken,
             sponsorSkip = sponsorSkip,
+            autoplayNext = autoplayNext,
+            channelLayout = channelLayout,
+            channelOrder = channelOrder,
             listenPercent = listenPercent
         )
     }
@@ -519,11 +531,20 @@ private fun AdminScreen(
             .padding(24.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                "Parent settings",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                modifier = Modifier.weight(1f)
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Parent settings",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+                )
+                // The build, where a parent looks first: sideloaded TVs and
+                // phones drift apart, and "which one is this?" needs no adb.
+                Text(
+                    "Pickwick ${io.pickwick.app.BuildConfig.VERSION_NAME} " +
+                        "(${io.pickwick.app.BuildConfig.VERSION_CODE})",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Button(modifier = Modifier.tvFocusHighlight(), onClick = ::saveAndSync) {
                 Text("Save & close")
             }
@@ -687,6 +708,70 @@ private fun AdminScreen(
                 onCheckedChange = { sponsorSkip = it }
             )
         }
+        Text(
+            "When a video the kid picked ends, the next unwatched one from the same " +
+                "channel lines up behind a short countdown (Play now / Not now). " +
+                "Screen-time rules still apply. Off: every video ends on the shelf.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Autoplay the next video", modifier = Modifier.weight(1f))
+            Switch(
+                modifier = Modifier.tvFocusHighlight(),
+                checked = autoplayNext,
+                onCheckedChange = { autoplayNext = it }
+            )
+        }
+        Text(
+            "How a channel's page is arranged for the kid. Newest first is the " +
+                "upload feed. Popular first orders the same videos by how often " +
+                "they've been watched on YouTube (no numbers are ever shown). By " +
+                "playlist shows the channel's own playlists as rows — seasons, " +
+                "songs, series — then everything else.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        Text("Channel page layout", modifier = Modifier.padding(top = 4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                CHANNEL_LAYOUT_NEWEST to "Newest first",
+                CHANNEL_LAYOUT_POPULAR to "Popular first",
+                CHANNEL_LAYOUT_PLAYLISTS to "By playlist"
+            ).forEach { (value, label) ->
+                FilterChip(
+                    selected = channelLayout == value,
+                    onClick = { channelLayout = value },
+                    label = { Text(label) },
+                    modifier = Modifier.tvFocusHighlight()
+                )
+            }
+        }
+        Text(
+            "How the home screen's row of channels is ordered. Most watched puts " +
+                "the kid's favourites first; A to Z is easiest to scan; Random " +
+                "reshuffles each time, for the kid who always picks the first one.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        Text("Channel row order", modifier = Modifier.padding(top = 4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                CHANNEL_ORDER_WATCHED to "Most watched",
+                CHANNEL_ORDER_ALPHA to "A to Z",
+                CHANNEL_ORDER_RANDOM to "Random"
+            ).forEach { (value, label) ->
+                FilterChip(
+                    selected = channelOrder == value,
+                    onClick = { channelOrder = value },
+                    label = { Text(label) },
+                    modifier = Modifier.tvFocusHighlight()
+                )
+            }
+        }
 
         SectionTitle("Offline downloads")
         DownloadsSection()
@@ -812,7 +897,8 @@ private fun AdminScreen(
                 entries = entries + fresh
                 newIds = newIds + fresh.map { it.id }
                 fresh.size
-            }
+            },
+            onConfigReplaced = { configEpoch++ }
         )
 
         SectionTitle("App")
@@ -827,7 +913,8 @@ private fun AdminScreen(
     // result would actually differ from what's saved.
     val dirty = remember(
         entries, limits, blocked, ai, aiAllowed, profiles, blockedFor,
-        allowedFor, deviceProfiles, masterToken, sponsorSkip, listenPercent
+        allowedFor, deviceProfiles, masterToken, sponsorSkip, autoplayNext, channelLayout,
+        channelOrder, listenPercent
     ) {
         ConfigStore.fingerprint(buildCurrentConfig()) != ConfigStore.fingerprint(initial)
     }

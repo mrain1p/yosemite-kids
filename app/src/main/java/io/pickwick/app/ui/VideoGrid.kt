@@ -108,10 +108,9 @@ internal fun QueueList(
                 // balloons to the whole row once a bar appears — crushing the
                 // title and the ▲▼✕ buttons to zero width.
                 Box(Modifier.width(120.dp).aspectRatio(16f / 9f)) {
-                    AsyncImage(
-                        model = item.video.thumbnailUrl,
+                    PosterImage(
+                        url = item.video.thumbnailUrl,
                         contentDescription = item.video.title,
-                        contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                     item.progress?.let { fraction -> WatchedProgressBar(fraction) }
@@ -164,6 +163,20 @@ internal fun VideoGrid(
     onToggleQueue: ((VideoItem) -> Unit)? = null,
     /** Hold-menu row that marks a video watched, or puts it back. */
     onToggleWatched: ((VideoItem) -> Unit)? = null,
+    /**
+     * Paired devices this (parent) phone can send a video to — one "Play on
+     * <name>" row each. Empty on kid devices and TVs.
+     */
+    castTargets: List<PairedDevice> = emptyList(),
+    onCast: (VideoItem, PairedDevice) -> Unit = { _, _ -> },
+    /**
+     * Phones and tablets draw YouTube-style [VideoCard]s in two columns
+     * (adaptive on wide screens); TV keeps the square focus-ring tiles the
+     * remote needs. [avatarFor] feeds the card's channel avatar.
+     */
+    cards: Boolean = false,
+    avatarFor: (String) -> String? = { null },
+    onOpenChannel: ((String) -> Unit)? = null,
     grabFocus: Boolean = false,
     onNearEnd: (() -> Unit)? = null,
     /**
@@ -177,15 +190,33 @@ internal fun VideoGrid(
     extraTile: (@Composable (androidx.compose.ui.focus.FocusRequester?) -> Unit)? = null,
     /** One-shot jump, see [UiState.scrollTo]. Report back via [onScrolled]. */
     scrollTo: Int? = null,
-    onScrolled: (() -> Unit)? = null
+    onScrolled: (() -> Unit)? = null,
+    /**
+     * Full-width rows above the grid — the channel's playlist shelves. Emitted
+     * into the same lazy grid so the page scrolls as one, not as a row of rows
+     * stuck above a grid.
+     */
+    header: (androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit)? = null
 ) {
     // A channel whose every video has been watched still needs its shelf: the
     // grid is empty, but the way to the watched ones must not vanish with it.
-    if (videos.isEmpty() && extraTile == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    if (videos.isEmpty() && extraTile == null && header == null) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize().padding(24.dp)
+        ) {
+            // A picture first: an empty shelf with only a line of small text
+            // looks like a loading screen that never finished.
+            Text(
+                if (emptyText.startsWith("Checking")) "🔎" else "🗂️",
+                fontSize = androidx.compose.ui.unit.TextUnit(56f, androidx.compose.ui.unit.TextUnitType.Sp)
+            )
+            Spacer(Modifier.height(12.dp))
             Text(
                 emptyText,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -205,87 +236,16 @@ internal fun VideoGrid(
     // accidental hold now shows choices instead of quietly unsaving a video.
     var menuFor by remember { mutableStateOf<VideoItem?>(null) }
     menuFor?.let { item ->
-        val firstAction = remember { androidx.compose.ui.focus.FocusRequester() }
-        LaunchedEffect(item) { runCatching { firstAction.requestFocus() } }
-        AlertDialog(
-            onDismissRequest = { menuFor = null },
-            // Square, like every tile and card in the app: the focus ring is a
-            // hard rectangle, and a rounded container leaves it cutting the
-            // corner of the top row.
-            shape = androidx.compose.ui.graphics.RectangleShape,
-            title = { MarqueeTitle(item.video.title, focused = false) },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    // The hold that opened this menu is still in flight; its
-                    // release belongs to nothing here.
-                    modifier = Modifier.ignoreSelectUntilRelease()
-                ) {
-                    TextButton(
-                        onClick = { onToggleQueue?.invoke(item); menuFor = null },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(firstAction)
-                            .tvFocusHighlight()
-                    ) {
-                        Text(
-                            if (item.video.url in queued) "➖  Remove from Up next"
-                            else "➕  Add to Up next"
-                        )
-                    }
-                    TextButton(
-                        onClick = { onToggleWatchlist?.invoke(item); menuFor = null },
-                        modifier = Modifier.fillMaxWidth().tvFocusHighlight()
-                    ) {
-                        Text(
-                            if (item.video.url in watchlisted) "💔  Remove from Favorites"
-                            else "❤️  Add to Favorites"
-                        )
-                    }
-                    TextButton(
-                        onClick = { onToggleWatchLater?.invoke(item); menuFor = null },
-                        modifier = Modifier.fillMaxWidth().tvFocusHighlight()
-                    ) {
-                        Text(
-                            if (item.video.url in watchLater) "➖  Remove from Watch later"
-                            else "🕒  Add to Watch later"
-                        )
-                    }
-                    if (onToggleWatched != null) {
-                        // Two jobs, one row: retire a video the kid is done
-                        // with (it leaves the grid for the Watched shelf), and
-                        // undo a stray mark or a video the app called finished
-                        // because it was left running.
-                        val seen = (item.progress ?: 0f) >= 0.98f
-                        TextButton(
-                            onClick = { onToggleWatched(item); menuFor = null },
-                            modifier = Modifier.fillMaxWidth().tvFocusHighlight()
-                        ) {
-                            Text(if (seen) "↩️  Move back to not watched" else "✔️  Mark as watched")
-                        }
-                    }
-                    if (onToggleDownload != null) {
-                        val url = item.video.url
-                        TextButton(
-                            onClick = { onToggleDownload(item); menuFor = null },
-                            // Deleting a finished download is the parent's job
-                            // in settings — the row goes inert, not hidden, so
-                            // the state is still readable here.
-                            enabled = url !in downloaded,
-                            modifier = Modifier.fillMaxWidth().tvFocusHighlight()
-                        ) {
-                            Text(
-                                when {
-                                    url in downloaded -> "✅  Downloaded"
-                                    url in downloadPending -> "⏳  Cancel download request"
-                                    else -> "⬇️  Ask to download"
-                                }
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {}
+        VideoActionMenu(
+            item = item,
+            watchlisted = watchlisted, onToggleWatchlist = onToggleWatchlist,
+            watchLater = watchLater, onToggleWatchLater = onToggleWatchLater,
+            queued = queued, onToggleQueue = onToggleQueue,
+            onToggleWatched = onToggleWatched,
+            downloadPending = downloadPending, downloaded = downloaded,
+            onToggleDownload = onToggleDownload,
+            castTargets = castTargets, onCast = onCast,
+            onDismiss = { menuFor = null }
         )
     }
     val gridState = rememberLazyGridState()
@@ -297,6 +257,13 @@ internal fun VideoGrid(
             runCatching { gridState.scrollToItem(scrollTo) }
             onScrolled?.invoke()
         }
+    }
+    // The header rows arrive after the grid is on screen, and a lazy grid
+    // keeps its anchor on the item that was first — so they would land just
+    // above the fold, invisible. Snap to the top the moment they appear.
+    val hasHeader = header != null
+    LaunchedEffect(hasHeader) {
+        if (hasHeader) runCatching { gridState.scrollToItem(0) }
     }
     if (onNearEnd != null) {
         // Fire on every scroll-position change, not on a boolean edge: if one page
@@ -310,11 +277,16 @@ internal fun VideoGrid(
                 }
         }
     }
+    val menuOpener: ((VideoItem) -> Unit)? =
+        if (onToggleWatchlist != null) ({ menuFor = it }) else null
+    // Phone: two columns portrait, more on a tablet; the card's own padding
+    // sets the gutters. TV: the 240 dp adaptive tiles as before.
+    val columns = if (cards) GridCells.Adaptive(minSize = 170.dp) else GridCells.Adaptive(minSize = 240.dp)
     LazyVerticalGrid(
         state = gridState,
-        columns = GridCells.Adaptive(minSize = 240.dp),
+        columns = columns,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(if (cards) 6.dp else 12.dp),
         // Room for the focus glow on edge tiles.
         contentPadding = PaddingValues(8.dp),
         // Held D-pad browsing (any direction) advances at a readable, steady
@@ -323,17 +295,27 @@ internal fun VideoGrid(
         // pivot is pre-composed, so unpaced steps stick mid-scroll).
         modifier = Modifier.dpadHeldScrollThrottle()
     ) {
+        header?.invoke(this)
         // Split around the injected tile rather than appending it: its index is
         // pinned to the first page, and pages loaded later join the tail below.
         val cut = extraTileAt?.coerceIn(0, videos.size)?.takeIf { extraTile != null }
         val head = if (cut == null) videos else videos.take(cut)
         val tail = if (cut == null) emptyList() else videos.drop(cut)
         items(head, key = { it.video.url }) { item ->
-            VideoTile(
+            if (cards) VideoCard(
+                item = item,
+                avatarUrl = avatarFor(item.video.channelName),
+                onPlay = onPlay,
+                onOpenMenu = menuOpener,
+                onOpenChannel = onOpenChannel,
+                statusBadge = if (onToggleDownload != null) {
+                    { DownloadStatusBadge(item, downloadPending, downloaded) }
+                } else null
+            ) else VideoTile(
                 item = item,
                 focusRequester = firstTileFocus.takeIf { grabFocus && item == videos.first() },
                 onPlay = onPlay,
-                onOpenMenu = if (onToggleWatchlist != null) ({ menuFor = it }) else null,
+                onOpenMenu = menuOpener,
                 downloadPending = downloadPending,
                 downloaded = downloaded,
                 showDownloadStatus = onToggleDownload != null
@@ -343,11 +325,20 @@ internal fun VideoGrid(
             extraTile!!(firstTileFocus.takeIf { grabFocus && head.isEmpty() })
         }
         items(tail, key = { it.video.url }) { item ->
-            VideoTile(
+            if (cards) VideoCard(
+                item = item,
+                avatarUrl = avatarFor(item.video.channelName),
+                onPlay = onPlay,
+                onOpenMenu = menuOpener,
+                onOpenChannel = onOpenChannel,
+                statusBadge = if (onToggleDownload != null) {
+                    { DownloadStatusBadge(item, downloadPending, downloaded) }
+                } else null
+            ) else VideoTile(
                 item = item,
                 focusRequester = null,
                 onPlay = onPlay,
-                onOpenMenu = if (onToggleWatchlist != null) ({ menuFor = it }) else null,
+                onOpenMenu = menuOpener,
                 downloadPending = downloadPending,
                 downloaded = downloaded,
                 showDownloadStatus = onToggleDownload != null
@@ -365,32 +356,44 @@ internal fun VideoGrid(
 }
 
 /**
- * The way into a channel's watched videos, sized and shaped like a poster so
- * it flows with the grid instead of breaking the row it sits in.
+ * The way into a channel's watched videos — the History tile that leads the
+ * grid whenever there is something to find there. Sized and shaped like a
+ * poster so it flows with the grid instead of breaking the row it sits in.
  */
 @Composable
 internal fun WatchedShelfTile(
     count: Int,
     /** Set only when the tile leads the grid — see [VideoGrid]'s TV focus. */
     focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    /** Phone cards are rounded; TV tiles keep the square focus-ring shape. */
+    rounded: Boolean = false,
     onOpen: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Card(
-        shape = androidx.compose.ui.graphics.RectangleShape,
+        shape = if (rounded) androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        else androidx.compose.ui.graphics.RectangleShape,
         modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+            .pressScale(interaction)
             .tvFocusHighlight { focused = it }
-            .clickable { onOpen() }
+            .clickable(
+                interactionSource = interaction,
+                indication = androidx.compose.foundation.LocalIndication.current
+            ) { onOpen() }
     ) {
         Column {
             Box(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
-                Text("✔", style = MaterialTheme.typography.headlineLarge)
+                Text(
+                    "🕘",
+                    fontSize = androidx.compose.ui.unit.TextUnit(44f, androidx.compose.ui.unit.TextUnitType.Sp)
+                )
                 // Same red as every watched bar in the app, so the tile reads
                 // as "the watched ones" without needing to be read.
                 Box(
@@ -402,9 +405,12 @@ internal fun WatchedShelfTile(
                 )
             }
             Column(Modifier.padding(8.dp)) {
-                MarqueeTitle("Watched ($count)", focused)
+                MarqueeTitle(
+                    "History ($count)", focused,
+                    style = MaterialTheme.typography.titleSmall
+                )
                 Text(
-                    "Ones you've finished",
+                    "What you've watched here",
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,
@@ -412,6 +418,48 @@ internal fun WatchedShelfTile(
                 )
             }
         }
+    }
+}
+
+/**
+ * Status light on a poster corner, never a control (all actions live in the
+ * hold menu). Downloads are the one async flow — ask, parent approves, fetch
+ * — and with no visible ⏳/✅ a kid who sees nothing happen just asks again
+ * and again. Shared by the TV tile and the phone card.
+ */
+@Composable
+internal fun BoxScope.DownloadStatusBadge(
+    item: VideoItem,
+    downloadPending: Set<String>,
+    downloaded: Set<String>
+) {
+    val active by DownloadEvents.progress.collectAsState()
+    val fraction = active?.takeIf { it.first == item.video.url }?.second
+    when {
+        item.video.url in downloaded -> PosterBadge(
+            label = "✅",
+            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+        )
+        fraction != null -> Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(Color(0x66000000))
+                .padding(6.dp)
+        ) {
+            CircularProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = Color.White,
+                trackColor = Color(0x40FFFFFF)
+            )
+        }
+        item.video.url in downloadPending -> PosterBadge(
+            label = "⏳",
+            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+        )
     }
 }
 
@@ -430,17 +478,35 @@ private fun VideoTile(
     // Tap/OK plays; hold (touch long-press or held OK on the remote)
     // opens the action menu.
     var focused by remember { mutableStateOf(false) }
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val focusMod = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
     val cardModifier = if (onOpenMenu != null) {
         focusMod
+            .pressScale(interaction)
             .tvFocusHighlight { focused = it }
             .dpadLongPress { onOpenMenu(item) }
             .combinedClickable(
+                interactionSource = interaction,
+                indication = androidx.compose.foundation.LocalIndication.current,
                 onClick = { onPlay(item) },
-                onLongClick = { onOpenMenu(item) }
+                onLongClick = {
+                    // The one buzz on the home side: the hold "took", the
+                    // menu is coming — without it a kid holds again, harder.
+                    haptics.performHapticFeedback(
+                        androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress
+                    )
+                    onOpenMenu(item)
+                }
             )
     } else {
-        focusMod.tvFocusHighlight { focused = it }.clickable { onPlay(item) }
+        focusMod
+            .pressScale(interaction)
+            .tvFocusHighlight { focused = it }
+            .clickable(
+                interactionSource = interaction,
+                indication = androidx.compose.foundation.LocalIndication.current
+            ) { onPlay(item) }
     }
     // Watched videos stay browsable (kids rewatch) but recede: dimmed
     // unless focused, plus their full red bar below.
@@ -453,47 +519,12 @@ private fun VideoTile(
     ) {
         Column {
             Box {
-                AsyncImage(
-                    model = item.video.thumbnailUrl,
+                PosterImage(
+                    url = item.video.thumbnailUrl,
                     contentDescription = item.video.title,
-                    contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                 )
-                if (showDownloadStatus) {
-                    // Status light, never a control (all actions live
-                    // in the hold menu). Downloads are the one async
-                    // flow — ask, parent approves, fetch — and with no
-                    // visible ⏳/✅ a kid who sees nothing happen just
-                    // asks again and again.
-                    val active by DownloadEvents.progress.collectAsState()
-                    val fraction = active?.takeIf { it.first == item.video.url }?.second
-                    when {
-                        item.video.url in downloaded -> PosterBadge(
-                            label = "✅",
-                            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
-                        )
-                        fraction != null -> Box(
-                            Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(4.dp)
-                                .clip(androidx.compose.foundation.shape.CircleShape)
-                                .background(Color(0x66000000))
-                                .padding(6.dp)
-                        ) {
-                            CircularProgressIndicator(
-                                progress = { fraction },
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = Color.White,
-                                trackColor = Color(0x40FFFFFF)
-                            )
-                        }
-                        item.video.url in downloadPending -> PosterBadge(
-                            label = "⏳",
-                            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
-                        )
-                    }
-                }
+                if (showDownloadStatus) DownloadStatusBadge(item, downloadPending, downloaded)
                 // YouTube-style watched-progress bar.
                 item.progress?.let { fraction -> WatchedProgressBar(fraction) }
             }
@@ -506,4 +537,122 @@ private fun VideoTile(
             }
         }
     }
+}
+
+/**
+ * The hold menu behind every poster — grid tiles, feed cards, keep-watching
+ * alike: one gesture on every form factor (touch long-press or held OK on
+ * the remote), every action a big labeled row. A menu is also more forgiving
+ * than a silent long-press toggle: an accidental hold shows choices instead
+ * of quietly unsaving a video.
+ */
+@Composable
+internal fun VideoActionMenu(
+    item: VideoItem,
+    watchlisted: Set<String>,
+    onToggleWatchlist: ((VideoItem) -> Unit)?,
+    watchLater: Set<String>,
+    onToggleWatchLater: ((VideoItem) -> Unit)?,
+    queued: Set<String>,
+    onToggleQueue: ((VideoItem) -> Unit)?,
+    onToggleWatched: ((VideoItem) -> Unit)?,
+    downloadPending: Set<String>,
+    downloaded: Set<String>,
+    onToggleDownload: ((VideoItem) -> Unit)?,
+    castTargets: List<PairedDevice>,
+    onCast: (VideoItem, PairedDevice) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val firstAction = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(item) { runCatching { firstAction.requestFocus() } }
+    AlertDialog(
+        onDismissRequest = { onDismiss() },
+        // Square, like every tile and card in the app: the focus ring is a
+        // hard rectangle, and a rounded container leaves it cutting the
+        // corner of the top row.
+        shape = androidx.compose.ui.graphics.RectangleShape,
+        title = { MarqueeTitle(item.video.title, focused = false) },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                // The hold that opened this menu is still in flight; its
+                // release belongs to nothing here.
+                modifier = Modifier.ignoreSelectUntilRelease()
+            ) {
+                TextButton(
+                    onClick = { onToggleQueue?.invoke(item); onDismiss() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(firstAction)
+                        .tvFocusHighlight()
+                ) {
+                    Text(
+                        if (item.video.url in queued) "➖  Remove from Up next"
+                        else "➕  Add to Up next"
+                    )
+                }
+                TextButton(
+                    onClick = { onToggleWatchlist?.invoke(item); onDismiss() },
+                    modifier = Modifier.fillMaxWidth().tvFocusHighlight()
+                ) {
+                    Text(
+                        if (item.video.url in watchlisted) "💔  Remove from Favorites"
+                        else "❤️  Add to Favorites"
+                    )
+                }
+                TextButton(
+                    onClick = { onToggleWatchLater?.invoke(item); onDismiss() },
+                    modifier = Modifier.fillMaxWidth().tvFocusHighlight()
+                ) {
+                    Text(
+                        if (item.video.url in watchLater) "➖  Remove from Watch later"
+                        else "🕒  Add to Watch later"
+                    )
+                }
+                if (onToggleWatched != null) {
+                    // Two jobs, one row: retire a video the kid is done
+                    // with (it leaves the grid for the Watched shelf), and
+                    // undo a stray mark or a video the app called finished
+                    // because it was left running.
+                    val seen = (item.progress ?: 0f) >= 0.98f
+                    TextButton(
+                        onClick = { onToggleWatched(item); onDismiss() },
+                        modifier = Modifier.fillMaxWidth().tvFocusHighlight()
+                    ) {
+                        Text(if (seen) "↩️  Move back to not watched" else "✔️  Mark as watched")
+                    }
+                }
+                // The parent browsing on their own phone: send it to the
+                // TV (or the kid's tablet) and it starts playing there.
+                castTargets.forEach { device ->
+                    TextButton(
+                        onClick = { onCast(item, device); onDismiss() },
+                        modifier = Modifier.fillMaxWidth().tvFocusHighlight()
+                    ) {
+                        Text("📺  Play on ${device.name}")
+                    }
+                }
+                if (onToggleDownload != null) {
+                    val url = item.video.url
+                    TextButton(
+                        onClick = { onToggleDownload(item); onDismiss() },
+                        // Deleting a finished download is the parent's job
+                        // in settings — the row goes inert, not hidden, so
+                        // the state is still readable here.
+                        enabled = url !in downloaded,
+                        modifier = Modifier.fillMaxWidth().tvFocusHighlight()
+                    ) {
+                        Text(
+                            when {
+                                url in downloaded -> "✅  Downloaded"
+                                url in downloadPending -> "⏳  Cancel download request"
+                                else -> "⬇️  Ask to download"
+                            }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {}
+    )
 }

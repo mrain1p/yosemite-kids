@@ -23,7 +23,7 @@
     <application
         android:name=".PickwickApp"
         android:label="@string/app_name"
-        android:banner="@drawable/ic_launcher"
+        android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.Pickwick"
         android:allowBackup="true"

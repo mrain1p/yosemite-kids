@@ -5,6 +5,25 @@ Compose, Media3/ExoPlayer for playback, NewPipeExtractor for extraction. No
 accounts, no cloud: a phone administers a TV over the LAN with a token-gated
 HTTP server (`data/Pairing.kt`). Sideloaded only — never shipped to a store.
 
+## This fork — start here
+
+- **Map first:** `docs/ARCHITECTURE.md` (what lives where, data flow, "where
+  to change what"), `docs/LAN-API.md` (every LAN route), `docs/FORK-NOTES.md`
+  (what this fork changed, why, and the backlog), `docs/DEV.md` (toolchain).
+- **Check before you claim anything works:** `scripts/check.ps1` (or
+  `/pickwick-check`) — compile + offline unit tests + worker tests. Never edit
+  Kotlin while Gradle is running.
+- **See it:** the emulator loop in `scripts/emu.ps1` (or `/pickwick-emulator`):
+  boot → install → seed → launch → shot. Always `adb -s emulator-5554`; other
+  Android devices may be plugged into this PC and must not be touched.
+- **Toolchain on this machine:** JDK 17 at `JAVA_HOME`; SDK at
+  `%LOCALAPPDATA%\Android\Sdk` (command-line tools only, no Android Studio);
+  `local.properties` carries `sdk.dir`. No release keystore exists here —
+  debug builds only. Python is not installed; use PowerShell/bash for scripts.
+- **Skills:** `.claude/skills/pickwick-{check,emulator,lan-api,release}`.
+- Pure logic goes in companions / `internal fun`s so JVM unit tests can reach
+  it without a `Context` (see `PairingStore.prunePending`, `Backup.parse`).
+
 ## Building and installing — read this before any install
 
 **Always build and install `assembleRelease` on real devices.** This is a

@@ -44,6 +44,18 @@ data class WhitelistEntry(
 /** Chip cycle order in settings: tap steps through these, long-press resets to 100. */
 val TIME_MULTIPLIERS = listOf(100, 125, 150, 75, 50, 25, 0)
 
+const val CHANNEL_LAYOUT_NEWEST = "newest"
+const val CHANNEL_LAYOUT_POPULAR = "popular"
+const val CHANNEL_LAYOUT_PLAYLISTS = "playlists"
+
+/** Settings order; unknown values from a newer build fall back to newest. */
+val CHANNEL_LAYOUTS = listOf(CHANNEL_LAYOUT_NEWEST, CHANNEL_LAYOUT_POPULAR, CHANNEL_LAYOUT_PLAYLISTS)
+
+const val CHANNEL_ORDER_WATCHED = "watched"
+const val CHANNEL_ORDER_ALPHA = "alpha"
+const val CHANNEL_ORDER_RANDOM = "random"
+val CHANNEL_ORDERS = listOf(CHANNEL_ORDER_WATCHED, CHANNEL_ORDER_ALPHA, CHANNEL_ORDER_RANDOM)
+
 /**
  * Listening chip cycle: Off first — null disables screen-off listening
  * entirely (locking the phone pauses playback, the pre-listen behavior).
@@ -191,6 +203,28 @@ data class Whitelist(
      * a parent switch in settings.
      */
     val sponsorSkip: Boolean = true,
+    /**
+     * When a video the kid picked ends, line up the next unwatched one from
+     * the same channel behind the Up next countdown — the "there is always
+     * something next" YouTube trains kids to expect, kept inside the
+     * whitelist. On by default with a parent switch; screen-time rules cap it
+     * exactly as they cap anything else.
+     */
+    val autoplayNext: Boolean = true,
+    /**
+     * How a channel's page is arranged for the kid — one of [CHANNEL_LAYOUTS]:
+     * "newest" (the upload feed), "popular" (the same videos ordered by
+     * YouTube's view count, never shown), "playlists" (the channel's own
+     * playlists as rows, then everything). Family-wide; a parent setting.
+     */
+    val channelLayout: String = CHANNEL_LAYOUT_NEWEST,
+    /**
+     * How the home screen's channel row (and the Channels tab) is ordered —
+     * one of [CHANNEL_ORDERS]: "watched" (most-opened first, the default),
+     * "alpha", or "random" (reshuffled on every refresh, for the kid who
+     * always picks the first tile).
+     */
+    val channelOrder: String = CHANNEL_ORDER_WATCHED,
     /**
      * Family-wide screen-off listening rate, percent (one of
      * [LISTEN_MULTIPLIERS]). Null = the feature is off: locking the phone

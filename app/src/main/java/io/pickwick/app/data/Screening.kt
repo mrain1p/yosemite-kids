@@ -168,8 +168,9 @@ class ScreeningStore(private val file: File) {
      * phone. Deep-over-shallow is one-way, so it can't ping-pong either.
      * Returns how many were new.
      */
+    /** Number of verdicts adopted; -1 when [json] isn't a verdict map at all. */
     fun importJson(json: String, rulesVersion: Int): Int {
-        val incoming = runCatching { JSONObject(json) }.getOrNull() ?: return 0
+        val incoming = runCatching { JSONObject(json) }.getOrNull() ?: return -1
         // The existing-check and the merge must sit under one lock acquisition:
         // the LAN server calls this from its own thread while the feed screener
         // is writing, and a gap between them re-creates the lost-update race.

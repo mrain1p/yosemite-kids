@@ -11,3 +11,6 @@ local.properties
 # Release signing material never belongs in the repo (see app/build.gradle.kts).
 *.jks
 *.keystore
+
+# Family data for the emulator seed (built by scripts/seed-from-whitelist.sh)
+scripts/seed-config.real.json

@@ -280,10 +280,11 @@ class ChannelIndex(private val dir: File) {
     }
 
     /** Receiver side of [exportSourceWithState]. */
-    fun importSourceWithState(sourceId: String, body: String) {
+    /** False when the body isn't the state-line + array shape (the server answers 400). */
+    fun importSourceWithState(sourceId: String, body: String): Boolean {
         val nl = body.indexOf('\n')
-        if (nl <= 0) return
-        val head = runCatching { JSONObject(body.substring(0, nl)) }.getOrNull() ?: return
+        if (nl <= 0) return false
+        val head = runCatching { JSONObject(body.substring(0, nl)) }.getOrNull() ?: return false
         importSource(
             sourceId,
             body.substring(nl + 1),
@@ -293,6 +294,7 @@ class ChannelIndex(private val dir: File) {
                 complete = head.optBoolean("complete", false)
             )
         )
+        return true
     }
 
     private fun parseSource(json: String, sourceId: String): List<IndexedVideo> =

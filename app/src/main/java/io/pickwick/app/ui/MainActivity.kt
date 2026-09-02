@@ -41,6 +41,16 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         pairFlow.value = PairFlow.Confirm(name, host, port)
     }
 
+    override fun onStart() {
+        super.onStart()
+        io.pickwick.app.data.AppVisibility.startedActivities++
+    }
+
+    override fun onStop() {
+        io.pickwick.app.data.AppVisibility.startedActivities--
+        super.onStop()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handlePairIntent(intent)
@@ -110,13 +120,17 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     if (target == here) KidNotices.post(KidNotices.grant(minutes))
                 },
                 pairingStore,
-                statsProvider = { io.pickwick.app.data.Stats.build(appContext) },
+                statsProvider = { profileId -> io.pickwick.app.data.Stats.build(appContext, profileId) },
                 watchStateProvider = { WatchSync.exportJson(appContext) },
                 watchStateMerger = { json ->
-                    if (WatchSync.mergeJson(appContext, json)) {
+                    // mergeJson is false for garbage AND for "nothing new";
+                    // a parse check tells the two apart for the 400.
+                    val wellFormed = runCatching { org.json.JSONObject(json) }.isSuccess
+                    if (wellFormed && WatchSync.mergeJson(appContext, json)) {
                         // Refresh keep-watching / hearts on the TV right away.
                         ConfigEvents.onConfigChanged?.invoke()
                     }
+                    wellFormed
                 },
                 verdictsProvider = {
                     io.pickwick.app.data.ScreeningStore(appContext)
@@ -127,6 +141,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         .importJson(json, ConfigStore(appContext).load().ai.rulesVersion)
                     // Imported ALLOWs reveal videos this device hadn't screened yet.
                     if (imported > 0) ConfigEvents.onConfigChanged?.invoke()
+                    imported >= 0
                 },
                 indexStatusProvider = {
                     io.pickwick.app.data.ChannelIndex(appContext).statusJson()
@@ -151,6 +166,38 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 }
             ).also { it.start() }
         }
+        // "Play this on the TV" from a parent's phone. The device applies its
+        // own rules: a video blocked for the kid on screen stays blocked no
+        // matter who asks, and the AI's holds are the parent's to lift on the
+        // phone — which is exactly what sending it from there means, so the
+        // deep check still runs in the player like any other press.
+        RemotePlayerControl.playHandler = handler@{ req ->
+            val videoId = io.pickwick.app.data.SponsorBlock.videoIdOf(req.url)
+                ?: return@handler false
+            val cfg = ConfigStore(appContext).load()
+            val kid = kidHere(cfg)
+            val blocked = videoId in cfg.blockedVideoIds ||
+                cfg.blockedFor.any { (id, kids) -> id == videoId && kid in kids }
+            if (blocked) return@handler false
+            // Android 10+ drops an activity start from a process with no visible
+            // window, silently. Refuse instead, so the phone says "open Pickwick
+            // on the TV first" rather than "playing".
+            if (android.os.Build.VERSION.SDK_INT >= 29 && !io.pickwick.app.data.AppVisibility.inForeground) {
+                return@handler false
+            }
+            runOnUiThread {
+                val intent = Intent(this, PlayerActivity::class.java)
+                intent.putExtra(PlayerActivity.EXTRA_VIDEO_URL, req.url)
+                intent.putExtra(PlayerActivity.EXTRA_CHANNEL, req.channel)
+                intent.putExtra(PlayerActivity.EXTRA_TIME_PERCENT, req.timePercent)
+                intent.putExtra(PlayerActivity.EXTRA_PROFILE_SUFFIX, profileNs.suffixFor(kid))
+                intent.putExtra(PlayerActivity.EXTRA_PROFILE_ID, kid)
+                // A player already up is replaced, not stacked under the new one.
+                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+            }
+            true
+        }
         handlePairIntent(intent)
         val prefetchThumbs: suspend (List<String>) -> Unit = { urls ->
             val loader = coil.Coil.imageLoader(appContext)
@@ -168,7 +215,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         // worker itself no-ops on any device that isn't the master.
         io.pickwick.app.data.IndexCrawlWorker.schedule(applicationContext)
         setContent {
-            MaterialTheme(colorScheme = PickwickDarkColors) {
                 // The family config drives who exists and whether this device is
                 // dedicated; reloaded whenever a push lands or settings close.
                 var family by remember { mutableStateOf(initialConfig) }
@@ -189,6 +235,13 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 }
 
                 var activeProfileId by remember { mutableStateOf(resolveActive(initialConfig)) }
+                // The kid's colour becomes the accent the moment they're picked;
+                // no kid (picker, pre-profile install) is plain Pickwick teal.
+                MaterialTheme(colorScheme = kidColorScheme(family.profile(activeProfileId))) {
+                // Bumped on every return to the foreground so the picker's
+                // "N min left" re-reads after a sitting — keyed on the family
+                // alone it showed pre-sitting minutes until the next push.
+                var pickerRefresh by remember { mutableIntStateOf(0) }
                 // A pushed config can rename, delete or reassign kids out from
                 // under the current pick — re-resolve rather than show a ghost.
                 LaunchedEffect(family) {
@@ -215,6 +268,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     val observer = LifecycleEventObserver { _, event ->
                         when (event) {
                             Lifecycle.Event.ON_START -> {
+                                pickerRefresh++
                                 // Fires on every return from the player too — only a
                                 // set break rule defines a gap that means "new
                                 // sitting". With the rule off, the who's-watching ask
@@ -243,6 +297,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         WatchHistoryStore(applicationContext, profileSuffix),
                         SourceCache(applicationContext),
                         VideoCache(applicationContext),
+                        io.pickwick.app.data.ChannelPlaylistsCache(applicationContext),
                         UsageStore(applicationContext, profileSuffix),
                         SessionGuard(applicationContext, profileSuffix),
                         SavedListStore(applicationContext, profileSuffix),
@@ -282,7 +337,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         prefetchThumbs = prefetchThumbs,
                         screener = screener,
                         activeProfileId = activeProfileId,
-                        channelIndex = io.pickwick.app.data.ChannelIndex(applicationContext)
+                        channelIndex = io.pickwick.app.data.ChannelIndex(applicationContext),
+                        searchHistory = if (deviceIsTv) null
+                            else SearchHistoryStore(applicationContext, profileSuffix)
                     )
                 }
                 // TV: a paired phone just pushed new config — apply it live.
@@ -460,7 +517,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     // Per-kid prefs stores + a possible day rollover rewrite —
                     // disk work, so it lands as state rather than running in
                     // the composable body on Main.
-                    val remaining by produceState(emptyMap<String, Int?>(), family) {
+                    val remaining by produceState(emptyMap<String, Int?>(), family, pickerRefresh) {
                         value = withContext(Dispatchers.IO) {
                             family.profiles.associate { p ->
                                 p.id to SessionGuard(appContext, profileNs.suffixFor(p.id))
@@ -504,6 +561,18 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                     PlayerActivity.EXTRA_QUEUE_CHANNELS,
                                     ArrayList(items.map { it.video.channelName })
                                 )
+                                intent.putStringArrayListExtra(
+                                    PlayerActivity.EXTRA_QUEUE_TITLES,
+                                    ArrayList(items.map { it.video.title })
+                                )
+                                intent.putStringArrayListExtra(
+                                    PlayerActivity.EXTRA_QUEUE_THUMBS,
+                                    ArrayList(items.map { it.video.thumbnailUrl.orEmpty() })
+                                )
+                                intent.putExtra(
+                                    PlayerActivity.EXTRA_QUEUE_DURATIONS,
+                                    items.map { it.video.durationSeconds }.toLongArray()
+                                )
                                 intent.putExtra(
                                     PlayerActivity.EXTRA_QUEUE_PERCENTS,
                                     queuePercents(
@@ -531,15 +600,44 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 PlayerActivity.EXTRA_QUEUE,
                                 ArrayList(s.videos.map { it.video.url })
                             )
+                            // Names and posters for the player's "Up next" card.
+                            intent.putStringArrayListExtra(
+                                PlayerActivity.EXTRA_QUEUE_TITLES,
+                                ArrayList(s.videos.map { it.video.title })
+                            )
+                            intent.putStringArrayListExtra(
+                                PlayerActivity.EXTRA_QUEUE_THUMBS,
+                                ArrayList(s.videos.map { it.video.thumbnailUrl.orEmpty() })
+                            )
+                            intent.putExtra(
+                                PlayerActivity.EXTRA_QUEUE_DURATIONS,
+                                s.videos.map { it.video.durationSeconds }.toLongArray()
+                            )
                             intent.putExtra(
                                 PlayerActivity.EXTRA_INDEX,
                                 s.videos.indexOfFirst { it.video.url == item.video.url }.coerceAtLeast(0)
                             )
                         } else {
                             intent.putExtra(PlayerActivity.EXTRA_VIDEO_URL, item.video.url)
+                            // The heart needs title/poster/length to save a Video;
+                            // a one-item lineup carries them the same way a queue does.
+                            intent.putStringArrayListExtra(
+                                PlayerActivity.EXTRA_QUEUE_TITLES, arrayListOf(item.video.title)
+                            )
+                            intent.putStringArrayListExtra(
+                                PlayerActivity.EXTRA_QUEUE_THUMBS,
+                                arrayListOf(item.video.thumbnailUrl.orEmpty())
+                            )
+                            intent.putExtra(
+                                PlayerActivity.EXTRA_QUEUE_DURATIONS, longArrayOf(item.video.durationSeconds)
+                            )
                         }
                         // Channel name travels with the intent for per-channel stats.
                         intent.putExtra(PlayerActivity.EXTRA_CHANNEL, item.video.channelName)
+                        intent.putExtra(
+                            PlayerActivity.EXTRA_CHANNEL_AVATAR,
+                            s.channelAvatars[item.video.channelName]
+                        )
                         // Whose stores the player must use (screen-time gate, resume
                         // points, channel minutes) — decided here, where the kid was
                         // resolved, so the player never re-derives it and can never

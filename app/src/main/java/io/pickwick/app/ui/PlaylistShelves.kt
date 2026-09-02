@@ -1,0 +1,215 @@
+package io.pickwick.app.ui
+
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import io.pickwick.app.data.PlaylistRef
+
+/**
+ * The "By playlist" channel layout: the channel's playlists as a row of
+ * chips at the top of its page — the same idea as the channel bar on the
+ * home screen, one level down — then "All videos" and the grid. A chip opens
+ * the playlist as its own page; Back returns to the channel. The row goes
+ * into the channel grid as full-span items so the page scrolls as one.
+ */
+internal fun LazyGridScope.playlistRow(
+    playlists: List<PlaylistRef>,
+    isTv: Boolean,
+    onOpenPlaylist: (PlaylistRef) -> Unit
+) {
+    if (playlists.isEmpty()) return
+    item(key = "pl:row", span = { GridItemSpan(maxLineSpan) }) {
+        PlaylistsRow(playlists, isTv, onOpenPlaylist)
+    }
+    item(key = "pl:all", span = { GridItemSpan(maxLineSpan) }) {
+        SectionRow("All videos")
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun PlaylistsRow(
+    playlists: List<PlaylistRef>,
+    isTv: Boolean,
+    onOpenPlaylist: (PlaylistRef) -> Unit
+) {
+    Column {
+        SectionRow("Playlists")
+        CompositionLocalProvider(
+            androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides TvRowPivot
+        ) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(if (isTv) 14.dp else 10.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
+            ) {
+                items(playlists.size, key = { playlists[it].id }) { i ->
+                    PlaylistChip(playlists[i], width = if (isTv) 200.dp else 132.dp) {
+                        onOpenPlaylist(playlists[i])
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One playlist in the row: its cover, rounded, with the video count in the
+ * corner and the name underneath — a channel chip's shape, but 16:9 because
+ * a playlist's cover is a video frame, not a face.
+ */
+@Composable
+private fun PlaylistChip(playlist: PlaylistRef, width: Dp, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(width)
+            .pressScale(interaction)
+            .tvFocusHighlight()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(interactionSource = interaction, indication = LocalIndication.current) { onClick() }
+            .padding(4.dp)
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            PosterImage(playlist.thumbnailUrl, playlist.name, Modifier.fillMaxSize())
+            if (playlist.videoCount > 0) {
+                Text(
+                    "${playlist.videoCount}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(5.dp)
+                        .background(Color(0xCC000000), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            playlist.name,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.height(34.dp)
+        )
+    }
+}
+
+/**
+ * One video in a horizontal shelf — the TV home rows. Rounded 16:9 poster
+ * with the duration and the red watched bar, then the channel's face beside
+ * the title and channel name. Finished videos dim the poster, as in the
+ * grids. OK plays; a held OK (or a touch hold) opens the same menu the
+ * grid's tiles do.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+internal fun ShelfVideoTile(
+    item: VideoItem,
+    avatarUrl: String?,
+    onPlay: (VideoItem) -> Unit,
+    onOpenMenu: ((VideoItem) -> Unit)?,
+    modifier: Modifier = Modifier,
+    width: Dp = 236.dp
+) {
+    var focused by remember { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
+    val finished = (item.progress ?: 0f) >= 0.98f
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+            .width(width)
+            .pressScale(interaction)
+            .tvFocusHighlight { focused = it }
+            .then(if (onOpenMenu != null) Modifier.dpadLongPress { onOpenMenu(item) } else Modifier)
+            .combinedClickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                onClick = { onPlay(item) },
+                onLongClick = { onOpenMenu?.invoke(item) }
+            )
+    ) {
+        Column {
+            Box {
+                PosterImage(
+                    url = item.video.thumbnailUrl,
+                    contentDescription = item.video.title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .alpha(if (finished) 0.6f else 1f)
+                )
+                if (item.video.durationSeconds > 0) {
+                    Text(
+                        formatClock(item.video.durationSeconds),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp)
+                            .background(Color(0xCC000000), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+                item.progress?.let { fraction -> WatchedProgressBar(fraction) }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+            ) {
+                Box(
+                    Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    if (avatarUrl != null) {
+                        PosterImage(avatarUrl, item.video.channelName, Modifier.fillMaxSize())
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    MarqueeTitle(item.video.title, focused, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        item.video.channelName,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}

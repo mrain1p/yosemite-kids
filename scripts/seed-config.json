@@ -1,0 +1,22 @@
+{
+  "updatedAt": 1756771200000,
+  "entries": [
+    { "id": "@TEDEd", "url": "https://www.youtube.com/@TEDEd", "label": "TED-Ed", "kind": "CHANNEL" },
+    { "id": "@SciShowKids", "url": "https://www.youtube.com/@SciShowKids", "label": "SciShow Kids", "kind": "CHANNEL", "time": 50 },
+    { "id": "@sesamestreet", "url": "https://www.youtube.com/@sesamestreet", "label": "Sesame Street", "kind": "CHANNEL" }
+  ],
+  "blocked": [],
+  "limits": {},
+  "ai": { "enabled": false, "baseUrl": "", "model": "", "rules": "", "rulesVersion": 1 },
+  "aiAllowed": [],
+  "profiles": [
+    {
+      "id": "a1b2c3d4",
+      "name": "Emma",
+      "color": 4293467747,
+      "avatar": "🦄",
+      "age": 6,
+      "limits": { "session": 15, "weekdaySessions": 4, "weekendSessions": 6, "breakMinutes": 5 }
+    }
+  ]
+}

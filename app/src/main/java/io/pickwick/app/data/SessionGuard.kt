@@ -27,7 +27,8 @@ import java.util.Locale
  */
 class SessionGuard(context: Context, private val profileSuffix: String = "") {
 
-    private val prefs = context.applicationContext
+    private val appContext = context.applicationContext
+    private val prefs = appContext
         .getSharedPreferences("limits$profileSuffix", Context.MODE_PRIVATE)
 
     companion object {
@@ -191,10 +192,20 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
      * the caller's current mode, so a window marked "Allow listening" arriving
      * mid-story doesn't stop it — the player switches to sound-only instead.
      */
-    fun tick(deltaMs: Long, listening: Boolean = false): String? {
+    /**
+     * [multiplierPercent] is the playing source's drain rate: a FREE (0%)
+     * source is exempt from the daily budget here exactly as it is in
+     * [checkStart], [blockReason] and [remainingMs] — the sitting cap and the
+     * windows still apply.
+     */
+    fun tick(deltaMs: Long, listening: Boolean = false, multiplierPercent: Int = 100): String? {
         rolloverIfNewDay()
         val l = limits()
         val now = System.currentTimeMillis()
+        // A pause longer than the break inside the player is a break too —
+        // the same rule checkStart and remainingMs apply, read against the
+        // *previous* watch time, so it must run before that is overwritten.
+        startFreshSittingAfterGap(l, now)
         prefs.edit().putLong("lastWatchAt", now).apply()
 
         // Mid-playback too: the pushed config lands, the next tick stops the video.
@@ -205,7 +216,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         val sitting = prefs.getLong("sittingWatchedMs", 0) + deltaMs
         prefs.edit().putLong("dailyWatchedMs", daily).putLong("sittingWatchedMs", sitting).apply()
 
-        dailyBudgetMs(l)?.let { budget ->
+        if (multiplierPercent > 0) dailyBudgetMs(l)?.let { budget ->
             if (daily >= budget) return "That's all the watching for today! 🌟"
         }
         // No break rule → nothing to arm; the sitting cap only exists to force
@@ -247,14 +258,46 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
                     .coerceAtLeast(0) * 100 / multiplierPercent
             }
             // The sitting cap only counts while it can actually lock (break
-            // set, and no unspent skip waiting to waive it).
+            // set, and no unspent skip waiting to waive it). A break-length
+            // gap since the last watch means the next press starts a fresh
+            // sitting (see startFreshSittingAfterGap) — read it that way here
+            // too, or the home chip says "less than a minute" right after a
+            // break the kid has fully served.
             if (l.breakMinutes != null && !breakPassActive(l)) l.sessionMinutes?.let { cap ->
-                candidates += (cap * 60_000L - prefs.getLong("sittingWatchedMs", 0))
-                    .coerceAtLeast(0) * 100 / multiplierPercent
+                val gapMs = l.breakMinutes * 60_000L
+                val lastWatch = prefs.getLong("lastWatchAt", 0)
+                val sitting =
+                    if (lastWatch > 0 && System.currentTimeMillis() - lastWatch >= gapMs) 0L
+                    else prefs.getLong("sittingWatchedMs", 0)
+                candidates += (cap * 60_000L - sitting).coerceAtLeast(0) * 100 / multiplierPercent
             }
         }
         msUntilWindow(l, listening)?.let { candidates += it }
         return candidates.minOrNull()?.coerceAtLeast(0)
+    }
+
+    /**
+     * What would stop a play press right now, phrased for the kid, or null when
+     * nothing would — the home screen's banner. A read-only twin of
+     * [checkStart]: that one is a *play attempt* and spends a break pass, lifts
+     * a lapsed lock and logs, none of which a screen that merely looks may do.
+     */
+    fun blockReason(multiplierPercent: Int = 100): String? {
+        rolloverIfNewDay()
+        val l = limits()
+        val now = System.currentTimeMillis()
+        if (isPaused(l)) return PAUSED_MESSAGE
+        activeWindow(l)?.let { return windowMessage(l, it) }
+        val lockUntil = prefs.getLong("lockUntil", 0)
+        if (l.breakMinutes != null && now < lockUntil && !breakPassActive(l)) {
+            return "Time for a break! You can watch again at ${timeOf(lockUntil)} ⏰"
+        }
+        if (multiplierPercent > 0) dailyBudgetMs(l)?.let { budget ->
+            if (prefs.getLong("dailyWatchedMs", 0) >= budget) {
+                return "That's all the watching for today! 🌟"
+            }
+        }
+        return null
     }
 
     /** Clock ms until the next window closes playback, or null when there are none. */
@@ -450,6 +493,13 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             "you can watch again at ${timeOf(System.currentTimeMillis() + mins * 60_000L)} $emoji"
     }
 
-    private fun timeOf(epochMs: Long): String =
-        SimpleDateFormat("h:mm a", Locale.US).format(Date(epochMs))
+    /**
+     * The household's own clock convention: a 24-hour home reads "19:30", not
+     * "7:30 PM" — the kid is learning to read the clock on the wall, and this
+     * should match it.
+     */
+    private fun timeOf(epochMs: Long): String {
+        val pattern = if (android.text.format.DateFormat.is24HourFormat(appContext)) "H:mm" else "h:mm a"
+        return SimpleDateFormat(pattern, Locale.getDefault()).format(Date(epochMs))
+    }
 }

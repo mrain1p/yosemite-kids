@@ -30,6 +30,25 @@ val PickwickDarkColors = darkColorScheme(
 )
 
 /**
+ * The kid's own accent: their profile colour, lightened for text and buttons
+ * and darkened for chips and banners, over the same dark surfaces. "Mine" is
+ * half of why a child picks one app over another; the other colours stay so
+ * the app is still recognisably Pickwick from across the room.
+ */
+fun kidColorScheme(profile: io.pickwick.app.data.Profile?): androidx.compose.material3.ColorScheme {
+    profile ?: return PickwickDarkColors
+    val tint = Color(profile.colorArgb)
+    val light = androidx.compose.ui.graphics.lerp(tint, Color.White, 0.30f)
+    val deep = androidx.compose.ui.graphics.lerp(tint, Color.Black, 0.50f)
+    return PickwickDarkColors.copy(
+        primary = light,
+        onPrimary = Color(0xFF1B1B1B),
+        primaryContainer = deep,
+        onPrimaryContainer = Color.White
+    )
+}
+
+/**
  * Watched/played progress. Deliberately not the brand teal: kids read this bar
  * by the same convention YouTube taught them, so it stays red everywhere it
  * appears (thumbnail bars and the player scrubber).
@@ -54,6 +73,19 @@ fun formatClock(totalSeconds: Long): String {
     val s = totalSeconds.coerceAtLeast(0)
     return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60)
     else "%d:%02d".format(s / 60, s % 60)
+}
+
+/**
+ * "12 min left" / "1 h 5 min left" / "less than a minute left" — the one
+ * spelling of screen time left, on the home header and in the player.
+ */
+fun remainingLabel(ms: Long): String {
+    val min = (ms / 60_000L).toInt()
+    return when {
+        ms < 60_000L -> "less than a minute left"
+        min >= 60 -> "${min / 60} h ${min % 60} min left"
+        else -> "$min min left"
+    }
 }
 
 /**

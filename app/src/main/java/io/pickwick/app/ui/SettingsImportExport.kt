@@ -22,12 +22,104 @@ import kotlinx.coroutines.withContext
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-internal fun ExportSection(current: () -> Whitelist, onImport: (Whitelist) -> Int) {
+internal fun ExportSection(
+    current: () -> Whitelist,
+    onImport: (Whitelist) -> Int,
+    /** A full-backup restore replaced config.json; the form must reload from disk. */
+    onConfigReplaced: () -> Unit = {}
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var message by remember { mutableStateOf<String?>(null) }
     var submitting by remember { mutableStateOf(false) }
     var askingLang by remember { mutableStateOf(false) }
+    /** A restore awaiting the parent's OK: the file's contents and its summary. */
+    var pendingRestore by remember {
+        mutableStateOf<Pair<String, io.pickwick.app.data.Backup.Summary>?>(null)
+    }
+
+    val backupLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            message = "Writing backup…"
+            message = runCatching {
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val text = io.pickwick.app.data.Backup.export(context)
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(text.toByteArray())
+                    } ?: error("couldn't open the file")
+                }
+                "Backup saved ✓ — keep it somewhere safe (it holds no API key)"
+            }.getOrElse { "Backup failed: ${it.message}" }
+        }
+    }
+
+    val restoreLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            message = "Reading…"
+            runCatching {
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val text = context.contentResolver.openInputStream(uri)?.use { input ->
+                        val bytes = ByteArray(MAX_BACKUP_BYTES + 1)
+                        var n = 0
+                        while (n < bytes.size) {
+                            val r = input.read(bytes, n, bytes.size - n)
+                            if (r <= 0) break
+                            n += r
+                        }
+                        check(n <= MAX_BACKUP_BYTES) { "that file is too big to be a backup" }
+                        String(bytes, 0, n)
+                    } ?: error("couldn't open the file")
+                    text to io.pickwick.app.data.Backup.inspect(text).getOrThrow()
+                }
+            }.onSuccess { (text, summary) ->
+                message = null
+                pendingRestore = text to summary
+            }.onFailure { message = "Restore failed: ${it.message}" }
+        }
+    }
+
+    pendingRestore?.let { (text, summary) ->
+        val when_ = if (summary.exportedAt > 0) {
+            java.text.SimpleDateFormat("d MMM yyyy, HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date(summary.exportedAt))
+        } else "an unknown date"
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            title = { Text("Restore this backup?") },
+            text = {
+                Text(
+                    "Made $when_: ${summary.channels} channel(s)/playlist(s), " +
+                        "${summary.kids} kid profile(s), ${summary.verdicts} AI verdict(s). " +
+                        "This phone's channels, kids, rules, blocks and safe-list will be " +
+                        "replaced by the backup; watch history and favourites are merged in. " +
+                        "Push to the kid devices afterwards."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    pendingRestore = null
+                    scope.launch {
+                        message = "Restoring…"
+                        val result = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            io.pickwick.app.data.Backup.restore(context, text)
+                        }
+                        message = result.fold(
+                            { "Restored ✓ — now Push to each kid device" },
+                            { "Restore failed: ${it.message}" }
+                        )
+                        if (result.isSuccess) onConfigReplaced()
+                    }
+                }) { Text("Restore") }
+            },
+            dismissButton = { TextButton(onClick = { pendingRestore = null }) { Text("Cancel") } }
+        )
+    }
 
     fun exportText(): String {
         val today = java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.US)
@@ -156,6 +248,29 @@ internal fun ExportSection(current: () -> Whitelist, onImport: (Whitelist) -> In
             onClick = { askingLang = true }
         ) { Text(if (submitting) "Submitting…" else "Submit list to directory…") }
     }
+    Spacer(Modifier.height(8.dp))
+    Text(
+        "Full backup: everything on this phone — channels, kids and their rules, " +
+            "blocked and allowed videos, AI screening settings (without the key), " +
+            "every kid's resume points and favourites, and the AI verdict cache. " +
+            "Restore it on a fresh install and push to the kid devices.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    androidx.compose.foundation.layout.FlowRow {
+        CompactButton(onClick = {
+            val stamp = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
+                .format(java.util.Date())
+            runCatching { backupLauncher.launch("pickwick-backup-$stamp.json") }
+                .onFailure { message = "No file picker on this device" }
+        }) { Text("Full backup…") }
+        Spacer(Modifier.width(8.dp))
+        CompactButton(onClick = {
+            runCatching {
+                restoreLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream"))
+            }.onFailure { message = "No file picker on this device" }
+        }) { Text("Restore backup…") }
+    }
     message?.let {
         Text(it, style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -164,6 +279,9 @@ internal fun ExportSection(current: () -> Whitelist, onImport: (Whitelist) -> In
 
 /** A whitelist.txt is a few kB; anything near this is not one. */
 private const val MAX_IMPORT_BYTES = 1024 * 1024
+
+/** Config + verdict cache + every kid's history: a busy family is well under this. */
+private const val MAX_BACKUP_BYTES = 16 * 1024 * 1024
 
 /**
  * Consent gate for the directory submission: the list stops being private the

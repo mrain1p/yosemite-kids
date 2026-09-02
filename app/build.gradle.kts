@@ -30,14 +30,23 @@ android {
         applicationId = "io.pickwick.app"
         minSdk = 26 // adaptive icons; every realistic target device is far above this
         targetSdk = 34
-        versionCode = 28
-        versionName = "0.7.8-beta"
+        versionCode = 31
+        versionName = "0.8.2-fork"
 
+        // Every outbound URL the app talks to, overridable per build so a fork
+        // never phones upstream by accident. Set in local.properties or the
+        // environment: PICKWICK_UPDATE_URL, PICKWICK_DIRECTORY_URL,
+        // PICKWICK_SUGGEST_URL.
+        //
         // Self-update manifest: JSON with versionCode/versionName/apkUrl.
+        // Blank = the update check is off (Updater.check returns null). The
+        // fork has no release repo yet; point this at your own fork's
+        // raw version.json when it does — never at upstream, whose builds are
+        // signed with a different key and would fail to install anyway.
         buildConfigField(
             "String",
             "UPDATE_MANIFEST_URL",
-            "\"https://raw.githubusercontent.com/itcon-pty-au/pickwick/main/version.json\""
+            "\"${signingProp("PICKWICK_UPDATE_URL") ?: ""}\""
         )
 
         // Community channel directory — same JSON the pickwick.tv browse page
@@ -46,18 +55,22 @@ android {
         // copy at pickwick.tv/directory only refreshes when an unrelated site
         // change happens to deploy — a merged suggestion could sit invisible
         // for weeks there. Raw updates within ~5 minutes of a merge.
+        // Read-only, fetched only when a parent opens "Suggested channels" —
+        // upstream's directory is still the useful one to browse.
         buildConfigField(
             "String",
             "DIRECTORY_URL",
-            "\"https://raw.githubusercontent.com/itcon-pty-au/pickwick/main/site/directory/\""
+            "\"${signingProp("PICKWICK_DIRECTORY_URL")
+                ?: "https://raw.githubusercontent.com/itcon-pty-au/pickwick/main/site/directory/"}\""
         )
 
         // Mail-slot worker the website's suggestion form posts to. The app uses
         // its bulk route to offer a whole curated list for review at once.
+        // Only ever called when a parent presses "Submit list to directory".
         buildConfigField(
             "String",
             "SUGGEST_WORKER_URL",
-            "\"https://pickwick-suggest.pickwick.workers.dev/\""
+            "\"${signingProp("PICKWICK_SUGGEST_URL") ?: "https://pickwick-suggest.pickwick.workers.dev/"}\""
         )
 
         // Crawl-cursor trust stamp: a persisted NewPipe Page is only readable
@@ -89,6 +102,12 @@ android {
         }
     }
     compileOptions {
+        // NewPipeExtractor calls Java 10+ library APIs (URLDecoder.decode(String,
+        // Charset) and friends) that Android only gained in 13 (API 33). Without
+        // desugaring every device on Android 9–12 — Fire TV Sticks, older
+        // phones — dies with NoSuchMethodError on its first fetch. The NewPipe
+        // app ships the same switch for the same reason.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -150,6 +169,7 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.androidx.media)
     implementation(libs.newpipeextractor)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.0.4")
     implementation(libs.okhttp)
     implementation(libs.okhttp.dnsoverhttps)
     implementation(libs.androidx.biometric)

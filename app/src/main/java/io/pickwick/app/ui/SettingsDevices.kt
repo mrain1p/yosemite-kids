@@ -419,6 +419,9 @@ internal fun PhoneDevicesSection(
                     }
                     CompactButton(onClick = { onOpenStats(device) }) { Text("Stats") }
                     CompactButton(onClick = {
+                        // Tell the device too (best effort): otherwise it keeps
+                        // this phone approved forever, list or no list.
+                        scope.launch { LanClient.leave(device) }
                         pairingStore.removePaired(device.key)
                         devices = pairingStore.paired()
                     }) { Text("Unpair") }

@@ -40,7 +40,13 @@ data class Video(
     val title: String,
     val channelName: String,
     val thumbnailUrl: String?,
-    val durationSeconds: Long
+    val durationSeconds: Long,
+    /**
+     * YouTube's lifetime view count, when the extractor had it. Only ever
+     * used to *order* a channel's videos ("Popular first"); no screen shows a
+     * number — popularity contests are the part of YouTube this app leaves out.
+     */
+    val viewCount: Long? = null
 ) {
     val videoId: String?
         // Sideloaded files carry a synthetic pickwick://local/<hash> URL; the
@@ -148,6 +154,36 @@ class YouTubeRepository {
     private suspend fun playlistInfo(id: String, url: String, limiter: Semaphore): PlaylistInfo =
         memoized("p:$id", playlistInfoCache, limiter, "playlist $id") {
             PlaylistInfo.getInfo(youtube, url)
+        }
+
+    /**
+     * The channel's own playlists — its Playlists tab, first page only, in
+     * YouTube's order — for the "By playlist" channel layout. Background lane:
+     * the channel's videos are what the kid is waiting on, the shelves can
+     * follow. Channels without the tab (Topic channels) come back empty.
+     */
+    suspend fun channelPlaylists(source: Source, max: Int = 30): List<PlaylistRef> =
+        withContext(Dispatchers.IO) {
+            val info = channelInfo(source.id, source.url, backgroundFetches)
+            val tab = info.tabs.firstOrNull { ChannelTabs.PLAYLISTS in it.contentFilters }
+                ?: return@withContext emptyList()
+            val page = memoized("pl:${source.id}", channelTabCache, backgroundFetches, "playlists of ${source.id}") {
+                ChannelTabInfo.getInfo(youtube, tab)
+            }
+            page.relatedItems
+                .filterIsInstance<org.schabi.newpipe.extractor.playlist.PlaylistInfoItem>()
+                .mapNotNull { item ->
+                    val id = ChannelPlaylistsCache.playlistIdFrom(item.url) ?: return@mapNotNull null
+                    PlaylistRef(
+                        id = id,
+                        url = item.url,
+                        name = item.name,
+                        thumbnailUrl = item.thumbnails.pick(QualityTargets.videoThumbMinWidth),
+                        videoCount = item.streamCount
+                    )
+                }
+                .distinctBy { it.id }
+                .take(max)
         }
 
 
@@ -477,6 +513,9 @@ class YouTubeRepository {
         title = name,
         channelName = uploaderName.orEmpty(),
         thumbnailUrl = thumbnails.pick(QualityTargets.videoThumbMinWidth),
-        durationSeconds = duration
+        durationSeconds = duration,
+        // -1 is the extractor's "unknown"; kept only for the popular-first
+        // sort, never shown to anyone.
+        viewCount = viewCount.takeIf { it >= 0 }
     )
 }

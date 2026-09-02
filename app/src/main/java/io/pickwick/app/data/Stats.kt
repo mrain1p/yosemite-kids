@@ -107,14 +107,16 @@ object Stats {
         val aiFlagged: List<AiFlagged> = emptyList()
     )
 
-    fun build(context: Context): String {
+    fun build(context: Context, profileId: String? = null): String {
         val app = context.applicationContext
         val config = ConfigStore(app).load()
-        // With profiles, report the kid this device is showing right now — the
-        // parent's dashboard says whose day it is looking at.
+        // With profiles, report the kid the phone asked about, else the one
+        // this device is showing right now — the parent's dashboard says
+        // whose day it is looking at either way.
         val activeProfile = config.profiles.takeIf { it.isNotEmpty() }?.let { profiles ->
             val assigned = config.deviceProfiles[PairingStore(app).deviceToken()]
-            profiles.firstOrNull { it.id == assigned }
+            profiles.firstOrNull { it.id == profileId }
+                ?: profiles.firstOrNull { it.id == assigned }
                 ?: profiles.firstOrNull { it.id == ActiveProfileStore(app).activeId() }
                 ?: profiles.first()
         }
@@ -131,13 +133,17 @@ object Stats {
         val videoCache = VideoCache(app)
         val sources = SourceCache(app).load()
 
-        // Recent videos: watch history joined with cached metadata for titles/art.
+        // Recent videos: the fifteen newest history rows, joined to cached
+        // metadata for titles/art. History first, then the join — the other
+        // way round was a prefs lookup per cached video, thousands of them,
+        // on every 5-second poll of the parent's stats screen.
         val known = sources.flatMap { videoCache.load(it.id) }.distinctBy { it.url }
-        val recent = known.mapNotNull { video ->
-            val p = watchHistory.progress(video.url) ?: return@mapNotNull null
-            if (p.lastWatchedAt <= 0) return@mapNotNull null
-            Triple(video, p.fraction, p.lastWatchedAt)
-        }.sortedByDescending { it.third }.take(15)
+        val knownByUrl = known.associateBy { it.url }
+        val recent = watchHistory.all().entries
+            .filter { it.value.lastWatchedAt > 0 && it.key in knownByUrl }
+            .sortedByDescending { it.value.lastWatchedAt }
+            .take(15)
+            .map { (url, p) -> Triple(knownByUrl.getValue(url), p.fraction, p.lastWatchedAt) }
 
         val root = JSONObject()
             .put("watchedTodayMin", snap.watchedTodayMin)

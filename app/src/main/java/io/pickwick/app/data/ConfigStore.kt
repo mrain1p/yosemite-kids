@@ -35,10 +35,36 @@ class ConfigStore(context: Context) {
     fun load(): Whitelist = registered(
         scrubLapsedPasses(
             runCatching {
-                if (file.exists()) withSecrets(fromJson(file.readText())) else null
+                val text = synchronized(FILE_LOCK) { if (file.exists()) file.readText() else null }
+                text?.let { withSecrets(fromJson(it)) }
             }.getOrNull() ?: Whitelist(emptyList(), emptySet())
         )
     )
+
+    /**
+     * Every write goes through here: to a sibling temp file, then an atomic
+     * rename over the real one. The LAN server's worker threads, the
+     * ViewModel and the push scope all read this file while the settings
+     * form saves it; a plain writeText truncates first and fills in after,
+     * and a read in that gap parses as an *empty* whitelist — which on a TV
+     * blanks the home screen, and on a phone is what the next reconcile
+     * would happily push to every device. [FILE_LOCK] serializes the
+     * process's own readers and writers; the rename covers everything else.
+     */
+    private fun writeAtomically(text: String) {
+        synchronized(FILE_LOCK) {
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            tmp.writeText(text)
+            if (!tmp.renameTo(file)) {
+                // Some filesystems refuse to rename over an existing file.
+                file.delete()
+                if (!tmp.renameTo(file)) {
+                    file.writeText(text)
+                    tmp.delete()
+                }
+            }
+        }
+    }
 
     /**
      * A lapsed pass is spent and must fall out of the config, not linger.
@@ -80,7 +106,7 @@ class ConfigStore(context: Context) {
             // rewrite the file without it, once — even when AI isn't set up,
             // because the key rides cloud backup for as long as it sits there.
             secrets.setAiApiKey(w.ai.apiKey)
-            runCatching { file.writeText(stripSecrets(file.readText())) }
+            runCatching { writeAtomically(stripSecrets(file.readText())) }
             return w
         }
         if (!aiInUse(w)) return w
@@ -100,18 +126,20 @@ class ConfigStore(context: Context) {
         runCatching {
             val w = registered(whitelist)
             rememberSecrets(w)
-            file.writeText(toJson(w, includeSecrets = false))
+            writeAtomically(toJson(w, includeSecrets = false))
         }
     }
 
     fun saveRaw(json: String): Boolean = runCatching {
         val w = registered(fromJson(json)) // validate before accepting
-        rememberSecrets(w)
+        // A pushed or restored payload without a key (backups strip it) must
+        // not wipe the one this device already holds.
+        if (w.ai.apiKey.isNotBlank()) secrets.setAiApiKey(w.ai.apiKey)
         // The pushed payload carries the key so this device can screen; the copy
         // that lands on disk must not. Stripped surgically rather than
         // re-serialized, so a field a newer phone knows about and this build
         // doesn't still survives the round trip.
-        file.writeText(stripSecrets(json))
+        writeAtomically(stripSecrets(json))
         // Symmetric with the reject log below: an accepted push names its hash
         // and the break rules it carried, so "the TV never got it" vs "it got
         // it but didn't enforce it" is answerable from logcat alone. Kids appear
@@ -134,10 +162,14 @@ class ConfigStore(context: Context) {
 
     /** When this device's config last changed (locally or via push). */
     fun updatedAt(): Long = runCatching {
-        if (!file.exists()) 0L else JSONObject(file.readText()).optLong("updatedAt", 0L)
+        val text = synchronized(FILE_LOCK) { if (file.exists()) file.readText() else null }
+        text?.let { JSONObject(it).optLong("updatedAt", 0L) } ?: 0L
     }.getOrDefault(0L)
 
     companion object {
+        /** One lock for every ConfigStore instance — they all wrap the same file. */
+        private val FILE_LOCK = Any()
+
         /**
          * Short content hash of what actually matters (channels, blocks, rules) —
          * two devices with equal fingerprints are provably in sync.
@@ -216,6 +248,9 @@ class ConfigStore(context: Context) {
                 // Appended only when switched off, so every existing config
                 // keeps its hash across the build that introduced the flag.
                 if (!w.sponsorSkip) append(";SB:off")
+                if (!w.autoplayNext) append(";AP:off")
+                if (w.channelLayout != CHANNEL_LAYOUT_NEWEST) { append(";CL:"); append(w.channelLayout) }
+                if (w.channelOrder != CHANNEL_ORDER_WATCHED) { append(";CO:"); append(w.channelOrder) }
                 // Append-only-when-set, same reasoning — and it must be in the
                 // hash so the offline reconcile re-pushes a rate change.
                 w.listenPercent?.let { append(";LN:"); append(it) }
@@ -304,6 +339,9 @@ class ConfigStore(context: Context) {
             // Written only when off — absent means on, including in configs
             // saved by builds that predate the flag.
             if (!w.sponsorSkip) root.put("sponsorSkip", false)
+            if (!w.autoplayNext) root.put("autoplay", false)
+            if (w.channelLayout != CHANNEL_LAYOUT_NEWEST) root.put("channelLayout", w.channelLayout)
+            if (w.channelOrder != CHANNEL_ORDER_WATCHED) root.put("channelOrder", w.channelOrder)
             // Written only when set — absent means listening off (see Whitelist).
             w.listenPercent?.let { root.put("listen", it) }
             return root.toString(2)
@@ -531,6 +569,11 @@ class ConfigStore(context: Context) {
                 deviceProfiles = deviceProfiles,
                 masterDeviceToken = root.optString("master").ifEmpty { null },
                 sponsorSkip = root.optBoolean("sponsorSkip", true),
+                autoplayNext = root.optBoolean("autoplay", true),
+                channelLayout = root.optString("channelLayout").takeIf { it in CHANNEL_LAYOUTS }
+                    ?: CHANNEL_LAYOUT_NEWEST,
+                channelOrder = root.optString("channelOrder").takeIf { it in CHANNEL_ORDERS }
+                    ?: CHANNEL_ORDER_WATCHED,
                 listenPercent = if (root.has("listen")) root.getInt("listen") else null
             )
         }

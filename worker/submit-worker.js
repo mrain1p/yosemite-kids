@@ -38,6 +38,37 @@
  */
 
 const KNOWN_AGES = ['2-4', '5-7', '8-10', '11+'];
+const MAX_BODY_BYTES = 32768;
+
+/**
+ * The request body as text, or null once it exceeds [max] bytes — the stream
+ * is cancelled at that point, so an oversized (or endless chunked) body never
+ * buffers past the cap.
+ */
+async function readBounded(request, max) {
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) { all.set(c, offset); offset += c.byteLength; }
+  return new TextDecoder().decode(all);
+}
+
+// Pure helpers, exported for the unit tests in worker/test/ — the deployed
+// bundle ignores named exports.
+export { parseSuggestionUrl, isDuplicate, normalizeLang, neutralizeMentions, contactTitle, readBounded };
 
 export default {
   async fetch(request, env) {
@@ -47,16 +78,17 @@ export default {
 
     // Same convention as the app's LAN server: bound every read from the
     // network before parsing it. The biggest legitimate body (50 URLs at 300
-    // chars) is under 16 KB.
-    if (Number(request.headers.get('Content-Length') || 0) > 32768) {
-      return json({ status: 'error' }, 413, cors);
-    }
+    // chars) is under 16 KB. Bounded on the bytes actually read, not the
+    // declared header — a chunked request carries no Content-Length at all.
+    const raw = await readBounded(request, MAX_BODY_BYTES);
+    if (raw === null) return json({ status: 'error' }, 413, cors);
     let body;
     try {
-      body = await request.json();
+      body = JSON.parse(raw);
     } catch {
       return json({ status: 'error' }, 400, cors);
     }
+    if (!body || typeof body !== 'object') return json({ status: 'error' }, 400, cors);
 
     // Only /contact is carved out; everything else stays the suggestion route
     // the deployed form has always POSTed to at "/".
