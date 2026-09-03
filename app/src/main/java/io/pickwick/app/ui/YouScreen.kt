@@ -1,7 +1,9 @@
 package io.pickwick.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.pickwick.app.data.Profile
@@ -89,8 +92,18 @@ internal fun YouScreen(
         item(key = "you-header", span = { GridItemSpan(maxLineSpan) }) {
             Column(Modifier.padding(horizontal = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    // This page's own big avatar *is* the door to the kid's
+                    // corner: a second copy of it in the top-right corner made
+                    // three faces on one screen, counting the tab.
                     if (profile != null) {
-                        ProfileAvatar(profile, size = if (isTv) 72 else 52)
+                        Box(
+                            Modifier
+                                .tvFocusHighlight()
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .then(if (onOpenHub != null) Modifier.clickable { onOpenHub() } else Modifier)
+                        ) {
+                            ProfileAvatar(profile, size = if (isTv) 72 else 52)
+                        }
                         Spacer(Modifier.width(12.dp))
                     }
                     Text(
@@ -105,9 +118,7 @@ internal fun YouScreen(
                         TimeChip(left)
                     }
                     Spacer(Modifier.weight(1f))
-                    // Their look, their profile, the locked settings — all
-                    // behind this one avatar, the same as every other page.
-                    HeaderActions(profile, onOpenHub, onOpenSearch)
+                    HeaderActions(profile = null, onOpenHub = null, onOpenSearch = onOpenSearch)
                     topChips?.invoke()
                 }
                 state.blockReason?.let { BlockedBanner(it) }

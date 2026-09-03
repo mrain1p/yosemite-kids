@@ -7,6 +7,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -250,19 +251,31 @@ private fun TvSettingsScreen(configStore: ConfigStore, pairingStore: PairingStor
  */
 @Composable
 internal fun PairingPanel(configStore: ConfigStore, tv: Boolean = false) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var hash by remember { mutableStateOf("") }
     var edited by remember { mutableStateOf(0L) }
+    var approved by remember { mutableStateOf(0) }
+    var pending by remember { mutableStateOf(0) }
     val server = LanServerHolder.server
     val ip = remember { LanServer.localIp() }
     // Live: a push from the phone changes the fingerprint on screen within 2s,
-    // so the parent can watch the two devices match.
+    // so the parent can watch the two devices match — and the same tick is
+    // what turns "waiting" into "paired" without anyone pressing anything.
     LaunchedEffect(Unit) {
+        val store = PairingStore(context)
         while (true) {
-            val (h, e) = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                ConfigStore.fingerprint(configStore.load()) to configStore.updatedAt()
+            val snapshot = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                listOf(
+                    ConfigStore.fingerprint(configStore.load()),
+                    configStore.updatedAt().toString(),
+                    store.approvedPhones().size.toString(),
+                    store.pendingRequests().size.toString()
+                )
             }
-            hash = h
-            edited = e
+            hash = snapshot[0]
+            edited = snapshot[1].toLongOrNull() ?: 0L
+            approved = snapshot[2].toInt()
+            pending = snapshot[3].toInt()
             // A QR on screen is the parent's consent to hand out the first
             // admin slot; this tick is what holds that window open, and it
             // lapses seconds after the screen goes away.
@@ -272,43 +285,134 @@ internal fun PairingPanel(configStore: ConfigStore, tv: Boolean = false) {
     }
     DisposableEffect(Unit) { onDispose { PairingWindow.close() } }
 
-    Text(
-        "Manage this ${if (tv) "TV" else "device"} from your phone",
-        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
-    )
-    Spacer(Modifier.height(8.dp))
-    Text(
-        "Scan with the parent's phone camera — Pickwick on the phone controls " +
-            "channels and screen time here.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Spacer(Modifier.height(20.dp))
-
-    if (server == null || ip == null) {
-        Text("Pairing needs Wi-Fi — check the network connection.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-    } else {
-        // No secret in the QR: it only says where to *ask*. New phones need
-        // approval on the already-paired phone before they can administer.
-        val deviceName = java.net.URLEncoder.encode(android.os.Build.MODEL ?: "TV", "UTF-8")
-        QrImage("pickwick://pair?name=$deviceName&host=$ip&port=${server.port}")
+    val step = when {
+        server == null || ip == null -> PairStep.NoNetwork
+        approved > 0 -> PairStep.Paired
+        pending > 0 -> PairStep.Asking
+        else -> PairStep.Waiting
     }
+    // One centred column with a real measure: a TV runs this text edge to
+    // edge otherwise, and the ends fall off the panel into overscan.
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = if (tv) 48.dp else 8.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = if (tv) 640.dp else 460.dp)
+        ) {
+            Text(
+                "Manage this ${if (tv) "TV" else "device"} from your phone",
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Scan with the parent's phone camera. Pickwick on the phone then " +
+                    "controls channels and screen time here.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(Modifier.height(16.dp))
 
-    Spacer(Modifier.height(20.dp))
-    val editedText = edited.takeIf { it > 0 }?.let {
-        "  ·  edited " + java.text.SimpleDateFormat("d MMM h:mm a", java.util.Locale.US)
-            .format(java.util.Date(it))
-    } ?: ""
+            // The QR on its own white card: a code printed straight onto a
+            // dark screen is hard for a phone camera to lock onto.
+            if (server != null && ip != null) {
+                Surface(
+                    color = androidx.compose.ui.graphics.Color.White,
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.padding(4.dp)
+                ) {
+                    Box(Modifier.padding(14.dp)) {
+                        // No secret in the QR: it only says where to *ask*. New
+                        // phones need approval on the already-paired phone
+                        // before they can administer.
+                        val deviceName = java.net.URLEncoder.encode(android.os.Build.MODEL ?: "TV", "UTF-8")
+                        QrImage("pickwick://pair?name=$deviceName&host=$ip&port=${server.port}")
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            PairStatus(step, approved)
+
+            Spacer(Modifier.height(14.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Spacer(Modifier.height(10.dp))
+            // The settings fingerprint is diagnostics, not the headline: it
+            // reads as a quiet footer under the thing the parent came for.
+            val editedText = edited.takeIf { it > 0 }?.let {
+                "  ·  edited " + java.text.SimpleDateFormat("d MMM h:mm a", java.util.Locale.US)
+                    .format(java.util.Date(it))
+            } ?: ""
+            Text(
+                "Settings #$hash$editedText",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Text(
+                "Updates live — after a push from the phone both devices show the same number.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+    }
+}
+
+/** Where pairing has got to, for the line under the QR. */
+private enum class PairStep { NoNetwork, Waiting, Asking, Paired }
+
+/**
+ * The one line that says what is happening and what to do next — a QR with
+ * nothing under it leaves a parent watching a static screen wondering whether
+ * anything is working, and never says when they can leave.
+ */
+@Composable
+private fun PairStatus(step: PairStep, approved: Int) {
+    val (tint, text, detail) = when (step) {
+        PairStep.NoNetwork -> Triple(
+            StatusFailRed,
+            "Pairing needs Wi-Fi",
+            "This device isn't on the network — connect it and come back."
+        )
+        PairStep.Waiting -> Triple(
+            MaterialTheme.colorScheme.onSurfaceVariant,
+            "Waiting for a phone to scan…",
+            "Open Pickwick on the parent's phone, or point its camera here."
+        )
+        PairStep.Asking -> Triple(
+            MaterialTheme.colorScheme.primary,
+            "A phone is asking to pair",
+            "Approve it on the phone that already manages this device."
+        )
+        PairStep.Paired -> Triple(
+            StatusOkGreen,
+            if (approved == 1) "Paired with 1 phone" else "Paired with $approved phones",
+            "All set — you can go back. Settings arrive from the phone by themselves."
+        )
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        when (step) {
+            PairStep.Waiting, PairStep.Asking -> CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                color = tint,
+                modifier = Modifier.size(18.dp)
+            )
+            PairStep.Paired -> Text("✓", color = tint, style = MaterialTheme.typography.titleMedium)
+            PairStep.NoNetwork -> Text("!", color = tint, style = MaterialTheme.typography.titleMedium)
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = MaterialTheme.typography.titleMedium, color = tint)
+    }
+    Spacer(Modifier.height(4.dp))
     Text(
-        "Settings #$hash$editedText",
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.primary
-    )
-    Text(
-        "This code updates live — after a push from the phone, the two devices show the same number.",
+        detail,
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center
     )
 }
 

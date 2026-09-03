@@ -54,11 +54,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Shows up in the Google TV launcher -->
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-            </intent-filter>
             <!-- Pairing deep link from the TV's QR code -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -67,6 +62,26 @@
                 <data android:scheme="pickwick" android:host="pair" />
             </intent-filter>
         </activity>
+
+        <!-- The TV's way in, as its own alias rather than a second filter on
+             MainActivity. One activity carrying both LAUNCHER and
+             LEANBACK_LAUNCHER reads to some TV launchers as a phone app, and
+             they draw the square icon stretched into the 16:9 card instead of
+             the banner. The alias is leanback-only, so a TV sees a TV app and
+             takes its banner; phones never show it (no LAUNCHER category), and
+             it starts the same activity. -->
+        <activity-alias
+            android:name=".ui.TvLauncherActivity"
+            android:targetActivity=".ui.MainActivity"
+            android:exported="true"
+            android:banner="@drawable/tv_banner"
+            android:icon="@drawable/tv_banner"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Rotation and the picture-in-picture resize are handled in place
              (smallestScreenSize is what a PiP window changes): recreating

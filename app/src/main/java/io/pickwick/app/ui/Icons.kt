@@ -74,6 +74,9 @@ object PickwickIcons {
     val Playlist: ImageVector by lazy {
         icon("Playlist", "M4 10h12v2H4zm0-4h12v2H4zm0 8h8v2H4zm10 0v6l5-3z")
     }
+    val PlayArrow: ImageVector by lazy {
+        icon("PlayArrow", "M8 5v14l11-7z")
+    }
     val Quality: ImageVector by lazy {
         icon("Quality", "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM10.5 15h-1.75l-1.5-2v2H6V9h1.25v2l1.5-2h1.75l-2 3 2 3zm2.5-1.5c0 .83-.67 1.5-1.5 1.5h-.75v-1.25H12v-3.5h-1.25V9h.75c.83 0 1.5.67 1.5 1.5v3zm5 .25c0 .69-.56 1.25-1.25 1.25h-1.5c-.69 0-1.25-.56-1.25-1.25v-3.5c0-.69.56-1.25 1.25-1.25h1.5c.69 0 1.25.56 1.25 1.25v3.5zm-2.5-.25h1v-3h-1v3z")
     }

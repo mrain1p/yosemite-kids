@@ -571,6 +571,44 @@ Version **0.9.2-fork (35)**, from the user's notes on round six.
   since round 3, but some launchers (Fire TV among them) read the banner off
   the leanback activity and fall back to the square icon when it is missing.
 
+### Round eight: home order, the playlists page, and the TV card
+
+Version **0.9.3-fork (36)**.
+
+- **A real layout bug on the channel/playlist header.** The Continue chip
+  sat in the header row after the art, the back arrow and two icons; on a
+  phone with display scaling the weighted title column collapsed to about
+  one character and the name ran down the screen in a vertical stripe.
+  Continue/Play moved to their own line, the title column has a 72 dp
+  floor, and the meta line is capped at one line.
+- **Home order** (both form factors): Channels, then Keep watching, then
+  the chip row, then For you. On TV the remote's initial focus moved to
+  the channel row, which is now the top one — it used to open the page
+  already scrolled past it.
+- **Surprise me left the channel row.** It is not a channel, so it is a
+  chip alongside Favorites, Most watched and Latest; the last two open
+  the Channels tab already in that order.
+- **A Playlists page**: the strip's "See all (N)" opens every playlist the
+  channel has, one row each with its cover and video count. New for you
+  now leads the channel page, then the playlists, then All videos.
+- **You**: the page's own big avatar is the door to the kid's corner, and
+  the duplicate top-right avatar is gone — three faces on one screen
+  (header, corner, tab) was two too many.
+- **Pairing screen**: centred and width-capped (it ran off both edges of a
+  TV), the QR on a white card so a phone camera can lock on, and a status
+  line that names the step — waiting for a scan, a phone is asking,
+  paired (with "you can go back"), or no Wi-Fi.
+- **TV launcher card**: the leanback entry is now its own
+  `activity-alias` carrying the banner, instead of a second intent-filter
+  on `MainActivity`. One activity with both LAUNCHER and
+  LEANBACK_LAUNCHER reads to some TV launchers as a phone app, and they
+  stretch the square icon into the 16:9 card — which is what a real Google
+  TV was doing. `cmd package resolve-activity -c LEANBACK_LAUNCHER` now
+  answers `.ui.TvLauncherActivity`. Verified at the manifest and resolver
+  level; the launcher's own card could not be re-rendered on the emulator
+  (its Apps row needs a signed-in Play account), and TV launchers cache
+  cards, so an installed device may need a reboot to redraw it.
+
 ### Two form factors, one codebase — how it is kept maintainable
 
 The phone and the TV are deliberately two *layouts*, not two apps. What is

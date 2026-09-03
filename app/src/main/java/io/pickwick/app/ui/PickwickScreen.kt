@@ -143,7 +143,8 @@ private enum class Tab(val label: String, val icon: androidx.compose.ui.graphics
 
 private fun tabFor(screen: Screen): Tab? = when (screen) {
     Screen.Home -> Tab.Home
-    Screen.Channels, Screen.Surprise, is Screen.ChannelVideos, is Screen.WatchedVideos -> Tab.Channels
+    Screen.Channels, Screen.Surprise, is Screen.ChannelVideos, is Screen.WatchedVideos,
+    is Screen.Playlists -> Tab.Channels
     Screen.You, Screen.Watchlist, Screen.WatchLater, Screen.Queue, Screen.Downloads, Screen.History -> Tab.You
     Screen.Search, is Screen.SearchResults -> null
 }
@@ -362,7 +363,20 @@ fun PickwickScreen(
                                 onOpenHub = openHub,
                                 homeFilter = s.homeFilter,
                                 onHomeFilter = vm::setHomeFilter,
-                                onOpenSearch = vm::openSearch
+                                onOpenSearch = vm::openSearch,
+                                onQuickAction = { action ->
+                                    when (action) {
+                                        HomeQuickAction.Favorites -> vm.openWatchlist()
+                                        // The Channels tab, already in the order
+                                        // the chip names — one press, not two.
+                                        HomeQuickAction.MostWatched -> {
+                                            vm.setChannelSort(CHANNEL_ORDER_WATCHED); vm.openChannels()
+                                        }
+                                        HomeQuickAction.Latest -> {
+                                            vm.setChannelSort(CHANNEL_ORDER_LATEST); vm.openChannels()
+                                        }
+                                    }
+                                }
                             )
                         }
                     }
@@ -455,6 +469,7 @@ fun PickwickScreen(
                 else -> Column(Modifier.fillMaxSize()) {
                     val title = when (val sc = s.screen) {
                         is Screen.You -> ""
+                        is Screen.Playlists -> "Playlists"
                         is Screen.ChannelVideos -> sc.source.name
                         is Screen.WatchedVideos -> "Watched · ${sc.source.name}"
                         is Screen.History -> "History"
@@ -467,6 +482,7 @@ fun PickwickScreen(
                         else -> ""
                     }
                     val titleIcon = when (s.screen) {
+                        is Screen.Playlists -> PickwickIcons.Playlist
                         is Screen.WatchedVideos, is Screen.History -> PickwickIcons.History
                         is Screen.Surprise -> PickwickIcons.Dice
                         is Screen.Watchlist -> Icons.Filled.Favorite
@@ -510,7 +526,10 @@ fun PickwickScreen(
                             Icon(titleIcon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
                             Spacer(Modifier.width(10.dp))
                         }
-                        Column(Modifier.weight(1f)) {
+                        // A floor under the title: display scaling inflates every
+                        // icon beside it, and a weighted column with no minimum
+                        // collapses to a single character rather than eliding.
+                        Column(Modifier.weight(1f).widthIn(min = 72.dp)) {
                             Text(
                                 title,
                                 style = if (isTv) MaterialTheme.typography.headlineSmall
@@ -527,7 +546,9 @@ fun PickwickScreen(
                                 if (parts.isNotEmpty()) Text(
                                     parts.joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -541,13 +562,21 @@ fun PickwickScreen(
                         // the three places a kid goes from anywhere. Up from the
                         // grid's first row lands on them.
                         if (isTv) TvTopChips(s.screen, vm)
-                        val screen = s.screen
-                        if (screen is Screen.ChannelVideos &&
-                            screen.source.kind == SourceKind.PLAYLIST &&
-                            s.videos.isNotEmpty()
-                        ) {
-                            FilterChip(
+                    }
+                    // Play / Continue goes on its own line, never in the header
+                    // row: with a display-scaled phone the chip, the art and two
+                    // icons together left the weighted title column about one
+                    // character wide, and the name ran down the screen.
+                    val screen = s.screen
+                    if (screen is Screen.ChannelVideos &&
+                        screen.source.kind == SourceKind.PLAYLIST &&
+                        s.videos.isNotEmpty()
+                    ) {
+                        Row(Modifier.padding(bottom = 4.dp)) {
+                            PwChip(
+                                "Continue",
                                 selected = false,
+                                icon = PickwickIcons.PlayArrow,
                                 onClick = {
                                     // Resume mid-video if one is in progress, else the next
                                     // unwatched — never a finished one (they're visible now).
@@ -557,17 +586,16 @@ fun PickwickScreen(
                                         ?: s.videos.firstOrNull { it.progress == null }
                                         ?: s.videos.first()
                                     onPlay(next)
-                                },
-                                label = { Text("▶ Continue") },
-                                modifier = Modifier.tvFocusHighlight()
+                                }
                             )
                         }
-                        if (screen is Screen.Queue && s.videos.isNotEmpty()) {
-                            FilterChip(
-                                selected = false,
-                                onClick = { onPlayQueue(0) },
-                                label = { Text("▶ Play") },
-                                modifier = Modifier.tvFocusHighlight()
+                    }
+                    if (screen is Screen.Queue && s.videos.isNotEmpty()) {
+                        Row(Modifier.padding(bottom = 4.dp)) {
+                            PwChip(
+                                "Play", selected = false,
+                                icon = PickwickIcons.PlayArrow,
+                                onClick = { onPlayQueue(0) }
                             )
                         }
                     }
@@ -598,7 +626,14 @@ fun PickwickScreen(
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
                     }
-                    if (s.screen is Screen.Queue) {
+                    if (s.screen is Screen.Playlists) {
+                        PlaylistsPage(
+                            playlists = s.channelPlaylists,
+                            channelName = (s.screen as Screen.Playlists).source.name,
+                            isTv = isTv,
+                            onOpenPlaylist = vm::openPlaylist
+                        )
+                    } else if (s.screen is Screen.Queue) {
                         QueueList(
                             s.videos,
                             onPlayFrom = onPlayQueue,
@@ -690,16 +725,23 @@ fun PickwickScreen(
                             val fresh = s.videos.filter { it.progress == null }.take(12)
                             val block: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit = {
                                 val channelName = s.screen.source.name
+                                // What's new first — that is what a kid came for.
+                                if (fresh.size >= 3) {
+                                    newForYouRow(fresh, isTv, { s.channelAvatars[it] }, onPlay) { feedMenuFor = it }
+                                }
+                                // Then how the channel organises itself: the strip
+                                // of playlists, "See all" for the full list with
+                                // counts, and the first few opened out as rows.
                                 if (s.channelPlaylists.isNotEmpty()) {
-                                    playlistRow(s.channelPlaylists, isTv, vm::openPlaylist, channelName)
+                                    playlistRow(
+                                        s.channelPlaylists, isTv, vm::openPlaylist, channelName,
+                                        onSeeAll = vm::openPlaylists
+                                    )
                                 }
                                 playlistShelves(
                                     s.playlistShelves, isTv, { s.channelAvatars[it] },
                                     onPlay, { feedMenuFor = it }, vm::openPlaylist, channelName
                                 )
-                                if (fresh.size >= 3) {
-                                    newForYouRow(fresh, isTv, { s.channelAvatars[it] }, onPlay) { feedMenuFor = it }
-                                }
                                 allVideosHeader(s.channelFilter, vm::setChannelFilter)
                             }
                             block

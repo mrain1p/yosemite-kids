@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -38,11 +39,94 @@ internal fun LazyGridScope.playlistRow(
     playlists: List<PlaylistRef>,
     isTv: Boolean,
     onOpenPlaylist: (PlaylistRef) -> Unit,
-    channelName: String = ""
+    channelName: String = "",
+    /** "See all" → every playlist with its video count. */
+    onSeeAll: (() -> Unit)? = null
 ) {
     if (playlists.isEmpty()) return
+    item(key = "pl:title", span = { GridItemSpan(maxLineSpan) }) {
+        SectionRow(
+            "Playlists",
+            action = if (onSeeAll != null) "See all (${playlists.size})" else null,
+            onAction = onSeeAll
+        )
+    }
     item(key = "pl:row", span = { GridItemSpan(maxLineSpan) }) {
         PlaylistsRow(playlists.map { it.copy(name = cleanPlaylistName(it.name, channelName)) }, isTv, onOpenPlaylist)
+    }
+}
+
+/**
+ * Every playlist a channel has, one row each with its cover and how many
+ * videos are in it — the strip's "See all". A row opens the playlist.
+ */
+@Composable
+internal fun PlaylistsPage(
+    playlists: List<PlaylistRef>,
+    channelName: String,
+    isTv: Boolean,
+    onOpenPlaylist: (PlaylistRef) -> Unit
+) {
+    if (playlists.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "No playlists on this channel.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+        return
+    }
+    androidx.compose.foundation.lazy.LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        contentPadding = PaddingValues(vertical = 4.dp, horizontal = 4.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        items(playlists.size, key = { playlists[it].id }) { i ->
+            val p = playlists[i]
+            val interaction = remember { MutableInteractionSource() }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pressScale(interaction)
+                    .tvFocusHighlight()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(interactionSource = interaction, indication = LocalIndication.current) {
+                        onOpenPlaylist(p)
+                    }
+                    .padding(6.dp)
+            ) {
+                Box(
+                    Modifier
+                        .width(if (isTv) 160.dp else 128.dp)
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    PosterImage(p.thumbnailUrl, p.name, Modifier.fillMaxSize())
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        cleanPlaylistName(p.name, channelName),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        if (p.videoCount > 0) "${p.videoCount} videos" else "playlist",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    PickwickIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 

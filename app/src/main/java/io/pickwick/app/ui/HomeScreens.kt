@@ -153,7 +153,9 @@ internal fun PhoneHome(
     /** The kid's feed order (VIDEO_FILTER_*) and the chip to change it. */
     homeFilter: String = VIDEO_FILTER_NEW,
     onHomeFilter: ((String) -> Unit)? = null,
-    onOpenSearch: (() -> Unit)? = null
+    onOpenSearch: (() -> Unit)? = null,
+    /** The chip row's destinations; null hides the row (TV draws its own). */
+    onQuickAction: ((HomeQuickAction) -> Unit)? = null
 ) {
     if (state.channels.isEmpty()) {
         EmptyHome(onOpenSettings, state.allHeld)
@@ -177,23 +179,9 @@ internal fun PhoneHome(
                 onOpenHub = onOpenHub, onOpenSearch = onOpenSearch
             )
         }
-        if (state.keepWatching.isNotEmpty()) {
-            item(key = "kw-title", span = { GridItemSpan(maxLineSpan) }) {
-                SectionRow("Keep watching")
-            }
-            item(key = "kw-row", span = { GridItemSpan(maxLineSpan) }) {
-                KeepWatchingRow(
-                    state.keepWatching, onPlay = onPlay, onDismiss = onDismissKeepWatching,
-                    rounded = true
-                )
-            }
-        }
-        // A rule between the sections: three rows of different shapes ran
-        // into one another, and a kid scanning for "the channels" had no edge
-        // to find them by.
-        if (state.keepWatching.isNotEmpty()) {
-            item(key = "kw-divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
-        }
+        // Channels lead: the kid's own shelf of places, and the thing they
+        // reach for first. Then what they were part-way through, then the
+        // ways in that aren't channels, then the feed.
         item(key = "channels-title", span = { GridItemSpan(maxLineSpan) }) {
             SectionRow("Channels", action = "Show all", onAction = onShowAllChannels)
         }
@@ -204,18 +192,53 @@ internal fun PhoneHome(
                 // the edge looked cut off.
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
-                item(key = "surprise") {
-                    ChannelChip(
-                        name = "Surprise me", avatarUrl = null, isNew = false,
-                        icon = PickwickIcons.Dice, tint = SurpriseTileCyan, onClick = onSurprise
-                    )
-                }
                 items(state.channels.size, key = { state.channels[it].id }) { i ->
                     val c = state.channels[i]
                     ChannelChip(
                         name = c.name, avatarUrl = c.avatarUrl,
                         isNew = c.id in state.newBadges,
                         onClick = { onOpen(c) }
+                    )
+                }
+            }
+        }
+        if (state.keepWatching.isNotEmpty()) {
+            // A rule between the sections: rows of different shapes ran into
+            // one another, and a kid scanning for one had no edge to find it by.
+            item(key = "kw-divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
+            item(key = "kw-title", span = { GridItemSpan(maxLineSpan) }) {
+                SectionRow("Keep watching")
+            }
+            item(key = "kw-row", span = { GridItemSpan(maxLineSpan) }) {
+                KeepWatchingRow(
+                    state.keepWatching, onPlay = onPlay, onDismiss = onDismissKeepWatching,
+                    rounded = true
+                )
+            }
+        }
+        // Ways in that aren't channels: a dice, the kid's own shelf, and the
+        // two orders they ask for by name. These sat in the channel row as a
+        // fake channel, which is not what a round tile in that row means.
+        if (onQuickAction != null) {
+            item(key = "quick-chips", span = { GridItemSpan(maxLineSpan) }) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .padding(top = 8.dp, bottom = 2.dp)
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    PwChip("Surprise me", selected = false, icon = PickwickIcons.Dice, onClick = onSurprise)
+                    PwChip(
+                        "Favorites", selected = false, icon = Icons.Filled.Favorite,
+                        onClick = { onQuickAction(HomeQuickAction.Favorites) }
+                    )
+                    PwChip(
+                        "Most watched", selected = false, icon = Icons.Filled.Star,
+                        onClick = { onQuickAction(HomeQuickAction.MostWatched) }
+                    )
+                    PwChip(
+                        "Latest", selected = false, icon = PickwickIcons.NewRelease,
+                        onClick = { onQuickAction(HomeQuickAction.Latest) }
                     )
                 }
             }
@@ -248,6 +271,13 @@ internal fun PhoneHome(
     }
     }
 }
+
+/**
+ * The home chip row's destinations. Surprise has its own screen; the other
+ * three open a shelf the kid names rather than a filter they have to build:
+ * their Favorites, and the channels in most-watched or latest-upload order.
+ */
+internal enum class HomeQuickAction { Favorites, MostWatched, Latest }
 
 /** A quiet rule between two home sections. */
 @Composable
@@ -740,8 +770,10 @@ internal fun TvHomeRows(
     // first arrives: the caches paint after the channel list, and a request
     // made before the tile exists lands nowhere.
     val firstTileFocus = remember { androidx.compose.ui.focus.FocusRequester() }
-    val focusKw = keepWatching.isNotEmpty()
-    val focusFeed = !focusKw && feed.isNotEmpty()
+    // Channels lead the page now, so the remote starts there: focus that
+    // jumped to Keep watching opened the home already scrolled past them.
+    val focusKw = false
+    val focusFeed = false
     // Once only: rows appear and disappear as the kid watches (Keep watching
     // fills after the first play), and a second request would yank focus
     // away from wherever the remote had put it.
@@ -772,12 +804,53 @@ internal fun TvHomeRows(
             )
         }
 
+
+        item(key = "channels") {
+            TvRow(
+                "Channels",
+                chip = onSort?.let { set ->
+                    {
+                        val (label, icon) = channelSortLabel(channelSort)
+                        CycleChip(
+                            label = label,
+                            icon = icon,
+                            onClick = {
+                                set(
+                                    when (channelSort) {
+                                        CHANNEL_ORDER_WATCHED -> CHANNEL_ORDER_ALPHA
+                                        CHANNEL_ORDER_ALPHA -> CHANNEL_ORDER_RANDOM
+                                        CHANNEL_ORDER_RANDOM -> CHANNEL_ORDER_LATEST
+                                        else -> CHANNEL_ORDER_WATCHED
+                                    }
+                                )
+                            }
+                        )
+                    }
+                }
+            ) {
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
+                ) {
+                    items(channels.size, key = { channels[it].id }) { i ->
+                        TvChannelChip(
+                            channels[i],
+                            isNew = channels[i].id in newBadges,
+                            onOpen = onOpen,
+                            modifier = if (i == 0) Modifier.focusRequester(firstTileFocus) else Modifier
+                        )
+                    }
+                }
+            }
+        }
+
         if (keepWatching.isNotEmpty()) {
             item(key = "kw") {
                 TvRow("Keep watching") {
                     KeepWatchingRow(
                         keepWatching, onPlay = onPlay, onDismiss = onDismissKeepWatching, rounded = true,
-                        firstFocus = firstTileFocus
+                        firstFocus = null
                     )
                 }
             }
@@ -825,48 +898,6 @@ internal fun TvHomeRows(
                 }
             }
         }
-
-        item(key = "channels") {
-            TvRow(
-                "Channels",
-                chip = onSort?.let { set ->
-                    {
-                        val (label, icon) = channelSortLabel(channelSort)
-                        CycleChip(
-                            label = label,
-                            icon = icon,
-                            onClick = {
-                                set(
-                                    when (channelSort) {
-                                        CHANNEL_ORDER_WATCHED -> CHANNEL_ORDER_ALPHA
-                                        CHANNEL_ORDER_ALPHA -> CHANNEL_ORDER_RANDOM
-                                        CHANNEL_ORDER_RANDOM -> CHANNEL_ORDER_LATEST
-                                        else -> CHANNEL_ORDER_WATCHED
-                                    }
-                                )
-                            }
-                        )
-                    }
-                }
-            ) {
-                androidx.compose.foundation.lazy.LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
-                ) {
-                    items(channels.size, key = { channels[it].id }) { i ->
-                        TvChannelChip(
-                            channels[i],
-                            isNew = channels[i].id in newBadges,
-                            onOpen = onOpen,
-                            modifier = if (i == 0 && !focusFeed && !focusKw) Modifier.focusRequester(firstTileFocus)
-                            else Modifier
-                        )
-                    }
-                }
-            }
-        }
-
         if (recentHistory.isNotEmpty()) {
             item(key = "history") {
                 TvRow("Watched lately") {

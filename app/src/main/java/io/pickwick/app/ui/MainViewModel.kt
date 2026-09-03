@@ -818,6 +818,7 @@ class MainViewModel(
             Screen.Home -> refresh(userInitiated = true)
             Screen.Channels -> openChannels()
             Screen.You -> openYou()
+            is Screen.Playlists -> openChannel(s.source)
             Screen.Search -> openSearch()
             Screen.History -> openHistory()
             is Screen.ChannelVideos -> openChannel(s.source)
@@ -1445,6 +1446,20 @@ class MainViewModel(
         }
     }
 
+    /**
+     * The Playlists strip's "See all": every playlist the channel has, with
+     * its video count. The listing is already in state (the strip loaded it),
+     * so this is a screen swap, not a fetch.
+     */
+    fun openPlaylists() {
+        val source = (_state.value.screen as? Screen.ChannelVideos)?.source ?: return
+        playlistParent = source
+        _state.value = _state.value.copy(
+            screen = Screen.Playlists(source), loading = false, error = null,
+            videos = emptyList(), held = 0, scrollTo = 0
+        )
+    }
+
     /** A chip on the Playlists row: the playlist as its own page, with the channel behind it for back. */
     fun openPlaylist(ref: PlaylistRef) {
         val parent = (_state.value.screen as? Screen.ChannelVideos)?.source
@@ -1459,6 +1474,8 @@ class MainViewModel(
         val parent = playlistParent
         val screen = _state.value.screen
         when {
+            // The all-playlists page belongs to its channel.
+            screen is Screen.Playlists -> { playlistParent = null; openChannel(screen.source) }
             screen is Screen.WatchedVideos -> backToChannel()
             screen is Screen.ChannelVideos && parent != null -> {
                 playlistParent = null

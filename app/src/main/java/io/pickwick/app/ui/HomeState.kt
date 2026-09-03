@@ -14,6 +14,8 @@ sealed interface Screen {
      * screen in the app — back returns to the channel, not home.
      */
     data class WatchedVideos(val source: Source) : Screen
+    /** Every playlist a channel has, with its video count — behind the strip's "See all". */
+    data class Playlists(val source: Source) : Screen
     /** Random mix across all whitelisted sources. */
     data object Surprise : Screen
     /** The kid's hearted videos ("Favorites" on screen). */
