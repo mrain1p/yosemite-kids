@@ -10,7 +10,14 @@ COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
 COPY core/build.gradle.kts ./core/
 COPY hub/build.gradle.kts ./hub/
-RUN chmod +x gradlew && ./gradlew --no-daemon :hub:dependencies --quiet || true
+# Strip CR before anything tries to run it. The source may well have arrived
+# from a Windows checkout — over a share, in a zip, out of a git clone with
+# autocrlf on — and a shell script with CRLF endings has a shebang of
+# "#!/bin/sh\r", which the kernel cannot resolve. The error it produces is
+# "./gradlew: not found" for a file that is visibly right there, which is a
+# genuinely misleading half hour if you have not seen it before.
+RUN sed -i 's/\r$//' gradlew && chmod +x gradlew
+RUN ./gradlew --no-daemon :hub:dependencies --quiet || true
 
 # Only the two modules the hub needs. :app is Android and would drag the whole
 # SDK into a build that has no use for it.

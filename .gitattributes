@@ -1,0 +1,27 @@
+# Line endings.
+#
+# Git on Windows converts to CRLF on checkout by default, which is fine for
+# Kotlin and XML and fatal for anything with a shebang: a shell script with
+# CRLF endings has an interpreter line of "#!/bin/sh\r", the kernel cannot
+# resolve it, and the error is "not found" for a file that is plainly there.
+#
+# That bit the hub's first container build — `gradlew` had been copied from a
+# Windows working tree, and the Docker build failed at step 7 with exit 127.
+# The Dockerfile now strips CR defensively as well; this stops the file from
+# acquiring them in the first place.
+
+*           text=auto
+gradlew     text eol=lf
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+
+# Windows-only, and cmd.exe genuinely wants CRLF.
+*.bat       text eol=crlf
+*.ps1       text eol=crlf
+
+# Never touched.
+*.png       binary
+*.jpg       binary
+*.apk       binary
+*.keystore  binary
+*.jar       binary
