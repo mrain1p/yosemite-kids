@@ -12,11 +12,12 @@ echo "== 1/3 compile (assembleDebug)"
 if [ "${1:-}" = "--quick" ]; then echo "compile OK (quick mode)"; exit 0; fi
 
 echo "== 2/3 unit tests (offline)"
-# Every test class except the live-YouTube canary.
+# Every test class except the live-YouTube canaries. Both reach real YouTube
+# unguarded, so a bot wall fails this gate for unrelated reasons.
 args=()
 for f in app/src/test/java/io/pickwick/app/*Test.kt; do
   name=$(basename "$f" .kt)
-  [ "$name" = "ExtractorSmokeTest" ] && continue
+  case "$name" in ExtractorSmokeTest|SingleChannelProbeTest) continue ;; esac
   args+=(--tests "io.pickwick.app.$name")
 done
 ./gradlew --no-daemon -q :app:testDebugUnitTest "${args[@]}"

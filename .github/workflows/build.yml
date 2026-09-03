@@ -46,7 +46,7 @@ jobs:
           args=()
           for f in app/src/test/java/io/pickwick/app/*Test.kt; do
             name=$(basename "$f" .kt)
-            [ "$name" = "ExtractorSmokeTest" ] && continue
+            case "$name" in ExtractorSmokeTest|SingleChannelProbeTest) continue ;; esac
             args+=(--tests "io.pickwick.app.$name")
           done
           ./gradlew :app:testDebugUnitTest "${args[@]}"

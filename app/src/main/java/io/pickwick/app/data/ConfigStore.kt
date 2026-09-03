@@ -10,15 +10,35 @@ import java.io.File
  * Serialized as JSON so it can also be pushed verbatim to paired devices.
  * Feeds the same Whitelist pipeline as the (advanced) URL-based lists.
  */
-class ConfigStore(context: Context) {
+class ConfigStore internal constructor(
+    private val file: File,
+    /**
+     * Null only in JVM unit tests. Everything reached through it is an Android
+     * service — the Keystore ([secrets]), the per-kid namespace and the kid's
+     * pending restyle — and each is guarded rather than faked, so a test
+     * exercises the real serialize/merge/write paths and nothing else.
+     */
+    private val appContext: Context?
+) {
 
-    private val appContext = context.applicationContext
-    private val file = File(context.filesDir, "config.json")
+    constructor(context: Context) : this(
+        File(context.applicationContext.filesDir, "config.json"),
+        context.applicationContext
+    )
+
+    /**
+     * A store on a plain file, for tests. `save`, `saveRaw`, `load` and
+     * `updatedAt` had no coverage at all before this existed: the only
+     * constructor took a `Context` and there is no Robolectric here (the test
+     * deps are junit and org.json). The merge work depends on being able to
+     * drive two stores against two temp files from one JVM test.
+     */
+    internal constructor(file: File) : this(file, null)
 
     // Lazy on purpose: opening this is a Keystore round trip and load() sits on
     // the cold-start path, so a family that never turns on AI screening never
     // pays for it. See [withSecrets].
-    private val secrets by lazy { SecretStore(appContext) }
+    private val secrets by lazy { appContext?.let { SecretStore(it) } }
 
     /**
      * Every config that touches disk registers its kids with the device-local
@@ -27,21 +47,52 @@ class ConfigStore(context: Context) {
      */
     private fun registered(w: Whitelist): Whitelist {
         if (w.profiles.isNotEmpty()) {
-            ProfileNamespace(appContext).register(w.profiles.map { it.id })
+            appContext?.let { ProfileNamespace(it).register(w.profiles.map { p -> p.id }) }
         }
         return w
     }
 
-    fun load(): Whitelist = looks.overlay(
-        registered(
-            scrubLapsedPasses(
-                runCatching {
-                    val text = synchronized(FILE_LOCK) { if (file.exists()) file.readText() else null }
-                    text?.let { withSecrets(fromJson(it)) }
-                }.getOrNull() ?: Whitelist(emptyList(), emptySet())
-            )
-        )
-    )
+    /**
+     * The last config that actually parsed. A file that exists but cannot be
+     * read must not surface as "no channels, no kids, no rules": the next
+     * [save] would write that emptiness over the real file, and the reconcile
+     * would then push it to every device in the house. See [degraded].
+     */
+    @Volatile
+    private var lastGood: Whitelist? = null
+
+    /**
+     * The file exists but did not parse, so [load] is serving the last good
+     * copy — or an empty one, on a cold start where there is nothing better.
+     * Callers that *invent* content (the kid migration, the master claim)
+     * must refuse while this is set, or they mint into a config that is
+     * missing everything and then persist it.
+     */
+    @Volatile
+    var degraded: Boolean = false
+        private set
+
+    fun load(): Whitelist {
+        val text = synchronized(FILE_LOCK) { if (file.exists()) file.readText() else null }
+        val parsed = text?.let {
+            runCatching { withSecrets(fromJson(it)) }.getOrElse { e ->
+                android.util.Log.e(
+                    "Pickwick",
+                    "config.json exists but does not parse — serving the last good copy",
+                    e
+                )
+                null
+            }
+        }
+        // Only a non-empty file that failed to parse is a degraded read. A
+        // missing file is a fresh install, which is a legitimate empty config.
+        degraded = parsed == null && !text.isNullOrBlank()
+        if (parsed != null) lastGood = parsed
+        val base = parsed ?: lastGood ?: Whitelist(emptyList(), emptySet())
+        val out = registered(scrubLapsedPasses(base))
+        return looks?.overlay(out) ?: out
+    }
+
 
     /**
      * A kid's own restyle, chosen on this device and not yet adopted by the
@@ -49,7 +100,7 @@ class ConfigStore(context: Context) {
      * at once, and the file itself (the phone's copy) is never rewritten by
      * a kid. See [ProfileLooks].
      */
-    private val looks by lazy { ProfileLooks(appContext) }
+    private val looks by lazy { appContext?.let { ProfileLooks(it) } }
 
     /**
      * Every write goes through here: to a sibling temp file, then an atomic
@@ -115,12 +166,12 @@ class ConfigStore(context: Context) {
             // Written by a build that still stored the key on disk. Move it and
             // rewrite the file without it, once — even when AI isn't set up,
             // because the key rides cloud backup for as long as it sits there.
-            secrets.setAiApiKey(w.ai.apiKey)
+            secrets?.setAiApiKey(w.ai.apiKey)
             runCatching { writeAtomically(stripSecrets(file.readText())) }
             return w
         }
         if (!aiInUse(w)) return w
-        return w.copy(ai = w.ai.copy(apiKey = secrets.aiApiKey()))
+        return w.copy(ai = w.ai.copy(apiKey = secrets?.aiApiKey().orEmpty()))
     }
 
     /**
@@ -129,7 +180,7 @@ class ConfigStore(context: Context) {
      * unconfigured) would quietly wipe a key the parent had set.
      */
     private fun rememberSecrets(w: Whitelist) {
-        if (w.ai.apiKey.isNotBlank() || aiInUse(w)) secrets.setAiApiKey(w.ai.apiKey)
+        if (w.ai.apiKey.isNotBlank() || aiInUse(w)) secrets?.setAiApiKey(w.ai.apiKey)
     }
 
     fun save(whitelist: Whitelist) {
@@ -144,7 +195,7 @@ class ConfigStore(context: Context) {
         val w = registered(fromJson(json)) // validate before accepting
         // A pushed or restored payload without a key (backups strip it) must
         // not wipe the one this device already holds.
-        if (w.ai.apiKey.isNotBlank()) secrets.setAiApiKey(w.ai.apiKey)
+        if (w.ai.apiKey.isNotBlank()) secrets?.setAiApiKey(w.ai.apiKey)
         // The pushed payload carries the key so this device can screen; the copy
         // that lands on disk must not. Stripped surgically rather than
         // re-serialized, so a field a newer phone knows about and this build

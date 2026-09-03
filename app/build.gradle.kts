@@ -118,6 +118,15 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        // android.jar on the unit-test classpath is stubs that throw
+        // "not mocked" on every call. Without this, any code reachable from a
+        // JVM test that so much as logs a warning fails the test rather than
+        // the assertion — which is why nothing that touches `android.util.Log`
+        // has ever been testable here. Defaults (null/0/false) are what these
+        // tests want from Android: they exercise our logic, not the platform.
+        unitTests.isReturnDefaultValues = true
+    }
     packaging {
         resources.excludes += "META-INF/{AL2.0,LGPL2.1}"
     }

@@ -18,10 +18,14 @@ if ($LASTEXITCODE -ne 0) { Write-Host "compile FAILED" -ForegroundColor Red; exi
 if ($Quick) { Write-Host "compile OK (quick mode)" -ForegroundColor Green; exit 0 }
 
 Write-Host "== 2/3 unit tests (offline)" -ForegroundColor Cyan
-# Every test class except the live-YouTube canary. Gradle's --tests takes
+# Every test class except the live-YouTube canaries. Gradle's --tests takes
 # patterns, not exclusions, so the list is built from the source tree.
+# SingleChannelProbeTest calls ChannelInfo.getInfo with no runCatching and no
+# Assume, so a bot wall fails this gate for reasons unrelated to the change
+# being checked — the same reason ExtractorSmokeTest has always been out.
+$live = @("ExtractorSmokeTest", "SingleChannelProbeTest")
 $tests = Get-ChildItem app\src\test\java\io\pickwick\app -Filter *Test.kt |
-    Where-Object { $_.BaseName -ne "ExtractorSmokeTest" } |
+    Where-Object { $live -notcontains $_.BaseName } |
     ForEach-Object { "--tests"; "io.pickwick.app.$($_.BaseName)" }
 & .\gradlew.bat --no-daemon -q :app:testDebugUnitTest @tests
 if ($LASTEXITCODE -ne 0) { Write-Host "unit tests FAILED — see app\build\reports\tests\testDebugUnitTest\index.html" -ForegroundColor Red; exit 1 }
