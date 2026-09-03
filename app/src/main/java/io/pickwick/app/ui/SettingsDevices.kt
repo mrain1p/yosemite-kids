@@ -134,6 +134,8 @@ internal fun PhoneDevicesSection(
      * that knows about a deletion this phone does not cannot read as in sync.
      */
     localSyncHash: String = "",
+    /** Force a config sweep now rather than waiting for the five-minute poll. */
+    onSyncNow: () -> Unit = {},
     /** Saves the form's current state to disk and returns its JSON — what Push sends. */
     saveCurrent: () -> String,
     /** Assign a device (by its own token) to a kid; null = shared (picker). */
@@ -161,6 +163,9 @@ internal fun PhoneDevicesSection(
     /** A device being renamed (modal with a text field). */
     var renaming by remember { mutableStateOf<PairedDevice?>(null) }
     var pullMessage by remember { mutableStateOf<String?>(null) }
+    /** When the parent last forced a sweep from here — answers "is this thing running?". */
+    var lastChecked by remember { mutableStateOf<Long?>(null) }
+    var checking by remember { mutableStateOf(false) }
     /** device.key → what the last Push did. Push is otherwise mute: it used to
      *  discard its own result, so a device that never got the config looked
      *  exactly like one that did. */
@@ -383,6 +388,36 @@ internal fun PhoneDevicesSection(
     }
 
     VersionLine(configStore, refreshKey = localHash)
+
+    // "Did my change reach the TV?" is a question a parent asks while standing
+    // in front of it, and the answer used to be "wait up to five minutes, or
+    // background the app". The sweep is the same one the poll runs — this just
+    // stops it being the only way to trigger it.
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            lastChecked?.let { "Last checked ${changeAge(it) ?: "just now"}" }
+                ?: "Checks every few minutes on its own.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        CompactButton(
+            enabled = !checking,
+            onClick = {
+                scope.launch {
+                    checking = true
+                    onSyncNow()
+                    // The sweep is fire-and-forget in the ViewModel, so give it
+                    // a beat before re-reading, or the rows report the state
+                    // from before it ran.
+                    delay(1_200)
+                    devices.forEach { refreshOne(it) }
+                    lastChecked = System.currentTimeMillis()
+                    checking = false
+                }
+            }
+        ) { Text(if (checking) "Checking…" else "Check now") }
+    }
     pullMessage?.let {
         Text(it, style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -544,7 +544,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         (pairingStore.role() == PairingStore.Role.KID ||
                             (pairingStore.paired().isEmpty() &&
                                 pairingStore.approvedPhones().isNotEmpty()))
-                    SettingsFlow(settings, configStore, pairingStore, deviceIsTv, isKidDevice) { changed ->
+                    SettingsFlow(
+                        settings, configStore, pairingStore, deviceIsTv, isKidDevice,
+                        onSyncNow = { vm.syncConfigState() }
+                    ) { changed ->
                         showSettings = false
                         // Kids may have been added/edited — re-resolve everything.
                         lifecycleScope.launch {

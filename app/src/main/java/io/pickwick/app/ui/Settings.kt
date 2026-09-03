@@ -65,6 +65,13 @@ fun SettingsFlow(
     pairingStore: PairingStore,
     isTv: Boolean,
     isKidDevice: Boolean = false,
+    /**
+     * Force a config sweep now, instead of waiting for the five-minute poll.
+     * Without it, 'did my change reach the TV?' is only answerable by waiting,
+     * which is the wrong shape for a question a parent asks while standing in
+     * front of the TV.
+     */
+    onSyncNow: () -> Unit = {},
     onDone: (changed: Boolean) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -195,7 +202,7 @@ fun SettingsFlow(
                 var kidDevice by remember { mutableStateOf(isKidDevice) }
                 if (isTv) TvSettingsScreen(configStore, pairingStore)
                 else if (kidDevice) KidDeviceScreen(configStore)
-                else AdminScreen(configStore, pairingStore, onDone,
+                else AdminScreen(configStore, pairingStore, onSyncNow, onDone,
                     onBecameKidDevice = { kidDevice = true })
             }
         }
@@ -420,6 +427,8 @@ private fun PairStatus(step: PairStep, approved: Int) {
 private fun AdminScreen(
     configStore: ConfigStore,
     pairingStore: PairingStore,
+    /** Force a config sweep now rather than waiting for the poll. */
+    onSyncNow: () -> Unit = {},
     onDone: (changed: Boolean) -> Unit,
     /** The parent confirmed "this device is a kid's" — swap to the QR screen. */
     onBecameKidDevice: () -> Unit = {}
@@ -884,6 +893,7 @@ private fun AdminScreen(
                             // rather than the live form: the form does not
                             // carry bookkeeping and never changes it.
                             localSyncHash = localSyncHash,
+                            onSyncNow = onSyncNow,
                             // Push must deliver what the parent is LOOKING AT.
                             saveCurrent = {
                                 val config = buildCurrentConfig()
