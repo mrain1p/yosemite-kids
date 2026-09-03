@@ -1,0 +1,133 @@
+# The hub
+
+An always-on peer for the family config. It runs in Docker on anything that
+stays powered — a NAS, a Pi, a spare box — holds the same `config.json` the
+phones and TVs hold, and merges with them over the existing LAN routes.
+
+It is entirely optional. A household without one loses nothing except the
+thing a hub is for: the TV keeps getting new videos and settings when no
+phone is home and awake.
+
+Nothing in the app's main source set knows the hub exists. It enrols as an
+ordinary `PairedDevice` named `Pickwick hub`, and every sync path that already
+worked with a TV works with it unchanged. See `docs/PLAN-hub.md` for why it is
+built that way.
+
+## Deploying
+
+The image is built from source on the target machine — there is no published
+image. Put the repo somewhere on the host, then:
+
+```
+cd /volume2/Docker/pickwick
+docker compose -f hub/docker-compose.yml up -d --build
+```
+
+**The first build takes 10 to 20 minutes and prints almost nothing.** Gradle
+downloads its own distribution and then the Kotlin compiler, quietly. It is
+not stuck; `docker stats` will show it burning CPU. Every build after that is
+cached and takes seconds.
+
+Then:
+
+```
+docker logs pickwick-hub --tail 20
+```
+
+A healthy start looks like this:
+
+```
+Data volume /data is writable as uid 10001.
+Pickwick hub listening on 8765, data in /data
+Devices enrolled: 0
+Admin token: <24 hex characters>
+Nothing paired yet. Approve a device code to pair the first one.
+```
+
+Confirm it from another machine on the LAN:
+
+```
+curl http://<host>:8765/health          -> ok
+curl -i http://<host>:8765/status       -> 401, which is correct
+```
+
+`/health` is deliberately the only unauthenticated route. A 401 from `/status`
+is the proof that the LAN cannot read a family's configuration without a
+token.
+
+## Connecting a phone
+
+On the phone: Settings, then Devices, then the hub section. Enter the address
+(`192.168.1.245:8765`) and the admin token from the log. The phone joins, is
+marked a parent device, and the hub appears under Kid devices like any other.
+
+To pin the token instead of reading it from the log each time, set
+`PICKWICK_ADMIN_TOKEN` in `docker-compose.yml`.
+
+## Permissions — read this if the container restarts in a loop
+
+**Symptom.** `docker ps` shows `Restarting`, and the log repeats a
+`FileNotFoundException` on `/data/devices.json.tmp` (or `config.json.tmp`)
+every few seconds, with no admin token anywhere in it.
+
+**Cause.** `/data` is a bind mount. The image creates and chowns that folder at
+build time, and the mount lands on top of all of it — so the folder's real
+ownership and mode are the host's.
+
+On a Synology shared folder this bites in a way that looks impossible. The
+folder shows as:
+
+```
+d---------+ 2 10001 10001 4096 /volume2/Docker/pickwick/data
+```
+
+Mode `000`, with a `+` marking an ACL. The owner is correct and the owner is
+still denied, because the POSIX bits grant nothing to anyone; root writes only
+because root bypasses the check. A `chown` therefore changes nothing at all,
+which is what makes the failure so confusing — the ownership already looks
+right.
+
+**Fix.** The container repairs this itself now: `hub/docker-entrypoint.sh`
+starts as root, tries each candidate identity by actually writing a file, and
+only hands over to the JVM once one of them worked. If you are on an older
+image, do it by hand:
+
+```
+sudo chmod 770 /volume2/Docker/pickwick/data
+sudo docker restart pickwick-hub
+```
+
+If the mode reverts to `d---------+`, the share's ACL is re-imposing it. Then
+either drop the ACL on that folder with `/usr/syno/bin/synoacltool -del`, or
+pin `user: "<your uid>:<your gid>"` in `docker-compose.yml` so the container
+runs as an account the ACL already permits — `id -u` gives you the number.
+Note that pinning a uid the ACL does not name will not help; running as the
+folder's owner is not enough when the mode is 000.
+
+As a last resort, `PICKWICK_ALLOW_ROOT=1` runs the hub as root. It works
+everywhere. It is not the fix, and the container says so in the log.
+
+## Why the container starts as root
+
+It drops to uid 10001 with `setpriv` before the JVM is exec'd, so nothing the
+hub itself does runs privileged. The brief root phase exists only to repair
+the volume, which is exactly the thing an unprivileged process cannot do.
+
+`setpriv` rather than `su` or `gosu`: it execs in place, so the JVM stays PID 1
+and receives `docker stop`'s SIGTERM directly. A forking `su` would leave the
+hub with no signal handling and a ten-second kill on every restart — and a
+write in flight then means a truncated `config.json`, which is the file every
+device would sync *from*.
+
+A `USER` instruction in the Dockerfile would start the container unprivileged
+and make the repair impossible. `scripts/check.ps1` and `scripts/check.sh`
+fail the build if one appears.
+
+## Line endings
+
+Every shell script here must have LF endings. A CRLF script has a shebang
+ending in a carriage return, which the kernel cannot resolve, and the error is
+`not found` for a file that is plainly present. This cost half an hour on
+`gradlew` during the first container build. `.gitattributes` pins it, the
+Dockerfile strips CR defensively, and the check scripts fail on any tracked
+`.sh` that acquires them.

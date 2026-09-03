@@ -92,6 +92,21 @@ if ! grep -q 'docker-entrypoint.sh' hub/Dockerfile; then
   guard_fail "hub/Dockerfile no longer installs docker-entrypoint.sh — nothing would fix /data ownership or drop root."
 fi
 
+# The entrypoint must prove the volume is writable, not infer it. Its first
+# version chowned and exec'd, assuming a successful chown meant a writable
+# directory — on a NAS share of mode 000 with an ACL, it does not, and the
+# hub died on its first write in a restart loop. can_write() actually
+# creates a file; nothing else is an answer.
+if ! grep -q 'can_write' hub/docker-entrypoint.sh; then
+  guard_fail "hub/docker-entrypoint.sh no longer tests writability. A chown that succeeds does not mean the volume is writable."
+fi
+
+# A doc path named in source is a promise. Renaming the doc leaves the
+# pointer behind, and the place it is read is a container log at 3am.
+for d in $(grep -rhoE 'docs/[A-Za-z0-9_.-]+[.]md' app/src core/src hub/src scripts 2>/dev/null | sort -u); do
+  [ -f "$d" ] || guard_fail "source points at $d, which does not exist."
+done
+
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')

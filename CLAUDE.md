@@ -8,7 +8,9 @@ HTTP server (`data/Pairing.kt`). Sideloaded only — never shipped to a store.
 ## This fork — start here
 
 - **Map first:** `docs/ARCHITECTURE.md` (what lives where, data flow, "where
-  to change what"), `docs/LAN-API.md` (every LAN route), `docs/FORK-NOTES.md`
+  to change what"), `docs/LAN-API.md` (every LAN route), `docs/HUB.md`
+  (deploying the Docker hub, and the volume-permission trap that will
+  otherwise cost you an evening), `docs/FORK-NOTES.md`
   (what this fork changed, why, and the backlog), `docs/DEV.md` (toolchain).
 - **Check before you claim anything works:** `scripts/check.ps1` (or
   `/pickwick-check`) — compile + offline unit tests + worker tests. Never edit

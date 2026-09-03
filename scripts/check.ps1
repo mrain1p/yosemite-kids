@@ -108,6 +108,24 @@ if (Select-String -Path hub/Dockerfile -Pattern '^USER ' -Quiet) {
 if (-not (Select-String -Path hub/Dockerfile -Pattern 'docker-entrypoint.sh' -SimpleMatch -Quiet)) {
     Fail-Guard "hub/Dockerfile no longer installs docker-entrypoint.sh — nothing will fix /data ownership or drop root."
 }
+# The entrypoint must prove the volume is writable, not infer it. Its first
+# version chowned and exec'd, assuming a successful chown meant a writable
+# directory — on a NAS share of mode 000 with an ACL, it does not, and the
+# hub died on its first write in a restart loop. can_write() actually
+# creates a file; nothing else is an answer.
+if (-not (Select-String -Path hub/docker-entrypoint.sh -Pattern 'can_write' -SimpleMatch -Quiet)) {
+    Fail-Guard "hub/docker-entrypoint.sh no longer tests writability. A chown that succeeds does not mean the volume is writable."
+}
+
+# A doc path named in source is a promise. Renaming the doc leaves the
+# pointer behind, and the place it is read is a container log at 3am.
+$docRefs = Get-ChildItem -Recurse -File app/src, core/src, hub/src, scripts |
+    Select-String -Pattern 'docs/[A-Za-z0-9_.-]+[.]md' -AllMatches |
+    ForEach-Object { $_.Matches.Value } | Sort-Object -Unique
+foreach ($d in $docRefs) {
+    if (-not (Test-Path $d)) { Fail-Guard "source points at $d, which does not exist." }
+}
+
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |

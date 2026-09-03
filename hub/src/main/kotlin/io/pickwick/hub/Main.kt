@@ -1,6 +1,7 @@
 package io.pickwick.hub
 
 import java.io.File
+import kotlin.system.exitProcess
 
 /**
  * The container's entry point.
@@ -17,6 +18,16 @@ import java.io.File
 fun main() {
     val dataDir = File(System.getenv("PICKWICK_DATA") ?: "/data")
     val port = System.getenv("PICKWICK_PORT")?.toIntOrNull() ?: 8765
+
+    // Before anything opens a file. An unwritable volume is the single most
+    // likely way this container fails on a new machine, and discovering it
+    // through the first write means the log says FileOutputStream.open0
+    // instead of what is wrong — repeated forever by the restart policy,
+    // never once printing the admin token underneath.
+    dataDirProblem(dataDir)?.let {
+        System.err.println(it)
+        exitProcess(1)
+    }
 
     val store = HubStore(dataDir)
     val tokens = HubTokens(dataDir)
