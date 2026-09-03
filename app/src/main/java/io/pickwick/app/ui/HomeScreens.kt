@@ -128,9 +128,24 @@ private fun KeepWatchingRow(
                         )
                         item.progress?.let { fraction -> WatchedProgressBar(fraction) }
                     }
-                    Box(Modifier.padding(8.dp)) {
+                    Column(Modifier.padding(8.dp)) {
                         MarqueeTitle(item.video.title, focused,
                             style = MaterialTheme.typography.bodySmall)
+                        // The same meta line the grid tiles carry. These rows
+                        // showed the title alone, so a parent who turned on
+                        // "show when a video came out" saw no dates anywhere
+                        // near the top of the home screen and reasonably
+                        // concluded the setting did nothing.
+                        videoMeta(item.video.channelName, item.video.publishedAt)
+                            .takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

@@ -57,8 +57,8 @@ internal fun AiDiscoverySection(
     if (!ready) {
         Text(
             "Describe what your kid loves and let AI suggest channels. To use this, " +
-                "set up the AI (model + API key) under \"AI content screening\" above — " +
-                "the screening toggle itself can stay off.",
+                "fill in \"AI connection\" above — endpoint, key and model. Content " +
+                "screening is a separate feature and can stay off.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

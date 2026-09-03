@@ -41,9 +41,8 @@ private val DEFAULT_AI_RULES = """
     ExperimentalMaterial3Api::class
 )
 @Composable
-internal fun AiScreeningSection(
+internal fun AiConnectionSection(
     ai: io.pickwick.app.data.AiConfig,
-    profiles: List<io.pickwick.app.data.Profile>,
     onChanged: (io.pickwick.app.data.AiConfig) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -52,13 +51,16 @@ internal fun AiScreeningSection(
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var modelsMessage by remember { mutableStateOf<String?>(null) }
 
-    // Fetch the provider's model list as soon as it's reachable (key entered, or a
-    // keyless local server). Keyed on url+key so edits re-fetch; the delay debounces typing.
-    LaunchedEffect(ai.enabled, ai.baseUrl, ai.apiKey) {
+    // Fetch the provider's model list as soon as it's reachable (key entered, or
+    // a keyless local server). Keyed on url+key so edits re-fetch; the delay
+    // debounces typing. Deliberately NOT gated on ai.enabled: the connection is
+    // its own thing, and a parent setting one up for channel discovery has no
+    // reason to turn content screening on first.
+    LaunchedEffect(ai.baseUrl, ai.apiKey) {
         models = emptyList()
         modelsMessage = null
         val keyless = ai.baseUrl.startsWith("http://") // local LAN server
-        if (!ai.enabled || (ai.apiKey.isBlank() && !keyless)) return@LaunchedEffect
+        if (ai.baseUrl.isBlank() || (ai.apiKey.isBlank() && !keyless)) return@LaunchedEffect
         kotlinx.coroutines.delay(800)
         modelsMessage = "Loading models…"
         runCatching { io.pickwick.app.data.AiScreener.listModels(ai) }
@@ -75,25 +77,13 @@ internal fun AiScreeningSection(
     }
 
     Text(
-        "New videos on allowed channels are checked against your rules by an AI " +
-            "before the kid can see them. Only video titles and channel names are " +
-            "sent — never watch history. Anything blocked appears under each " +
-            "device's Stats for your review.",
+        "Where Pickwick talks to an AI, and which model. Set this up once and the " +
+            "two features that use it — screening new videos, and finding channels — " +
+            "are each switched on separately below. You can bring your own provider; " +
+            "a model running on your own network works too.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Screen new videos with AI", modifier = Modifier.weight(1f))
-        Switch(
-            modifier = Modifier.tvFocusHighlight(),
-            checked = ai.enabled,
-            onCheckedChange = { on ->
-                onChanged(ai.copy(enabled = on, rules = ai.rules.ifBlank { DEFAULT_AI_RULES }))
-            }
-        )
-    }
-    if (!ai.enabled) return
-
     androidx.compose.foundation.layout.FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -185,35 +175,10 @@ internal fun AiScreeningSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Spacer(Modifier.height(8.dp))
-    OutlinedTextField(
-        value = ai.rules,
-        onValueChange = { onChanged(ai.copy(rules = it)) },
-        label = { Text("House rules the AI enforces") },
-        supportingText = { Text("Rough notes are fine — the AI understands shorthand.") },
-        minLines = 3,
-        modifier = Modifier.fillMaxWidth()
-    )
-    if (profiles.isEmpty()) {
-        StepperRow(
-            label = "Child age",
-            value = ai.childAge, step = 1, min = 2, max = 16,
-            format = { "$it" },
-            onChanged = { onChanged(ai.copy(childAge = it)) }
-        )
-    } else {
-        Text(
-            "Each video is checked once for the whole family — one AI call, a " +
-                "verdict per kid, using the ages set under Kids: " +
-                profiles.joinToString(", ") { p ->
-                    p.name + (p.age?.let { " ($it)" } ?: " (no age)")
-                } + ".",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            "Changing rules re-screens the whole catalog on every device.",
+            "Sends one short test question, so a wrong key or model says so here " +
+                "rather than failing quietly later.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f)
@@ -249,6 +214,85 @@ internal fun AiScreeningSection(
         Text(it, style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+/**
+ * Screening new videos against house rules — one of the two features that use
+ * the connection above, and independent of the other.
+ *
+ * It used to own the connection fields outright, so a parent who only wanted
+ * AI channel discovery had to switch content screening on to reach the key
+ * field at all. Two unrelated features, one switch.
+ */
+@Composable
+internal fun AiScreeningSection(
+    ai: io.pickwick.app.data.AiConfig,
+    profiles: List<io.pickwick.app.data.Profile>,
+    onChanged: (io.pickwick.app.data.AiConfig) -> Unit
+) {
+    Text(
+        "New videos on allowed channels are checked against your rules by an AI " +
+            "before the kid can see them. Only video titles and channel names are " +
+            "sent — never watch history. Anything blocked appears under each " +
+            "device's Stats for your review.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Screen new videos with AI", modifier = Modifier.weight(1f))
+        Switch(
+            modifier = Modifier.tvFocusHighlight(),
+            checked = ai.enabled,
+            // Enabled only once there is a connection to screen with. Without
+            // this the switch turns on and silently does nothing, which reads
+            // as a broken feature rather than as a missing step.
+            enabled = ai.model.isNotBlank(),
+            onCheckedChange = { on ->
+                onChanged(ai.copy(enabled = on, rules = ai.rules.ifBlank { DEFAULT_AI_RULES }))
+            }
+        )
+    }
+    if (ai.model.isBlank()) {
+        Text(
+            "Set up the AI connection above first — endpoint, key and model.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+    if (!ai.enabled) return
+
+    OutlinedTextField(
+        value = ai.rules,
+        onValueChange = { onChanged(ai.copy(rules = it)) },
+        label = { Text("House rules the AI enforces") },
+        supportingText = { Text("Rough notes are fine — the AI understands shorthand.") },
+        minLines = 3,
+        modifier = Modifier.fillMaxWidth()
+    )
+    if (profiles.isEmpty()) {
+        StepperRow(
+            label = "Child age",
+            value = ai.childAge, step = 1, min = 2, max = 16,
+            format = { "$it" },
+            onChanged = { onChanged(ai.copy(childAge = it)) }
+        )
+    } else {
+        Text(
+            "Each video is checked once for the whole family — one AI call, a " +
+                "verdict per kid, using the ages set under Kids: " +
+                profiles.joinToString(", ") { p ->
+                    p.name + (p.age?.let { " ($it)" } ?: " (no age)")
+                } + ".",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+    Text(
+        "Changing rules re-screens the whole catalog on every device.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 // --- AI review queue ---------------------------------------------------------

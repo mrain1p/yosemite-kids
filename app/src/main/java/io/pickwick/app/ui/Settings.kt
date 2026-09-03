@@ -741,8 +741,99 @@ private fun AdminScreen(
                             newIds = newIds + e.id
                         }
                     }
+                    SectionTitle("Kid's shelves")
+                    SettingsCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Show when a video came out", modifier = Modifier.weight(1f))
+                            Switch(
+                                modifier = Modifier.tvFocusHighlight(),
+                                checked = showVideoAge,
+                                onCheckedChange = { showVideoAge = it }
+                            )
+                        }
+                        Text(
+                            "Adds \"3 days ago\" beside the channel name under a video, the way " +
+                                "other video apps do. Videos whose date YouTube didn't give us " +
+                                "show the channel alone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        SettingsDivider()
+                        Text("Videos before \"Show more\"", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PAGE_SIZES.forEach { n ->
+                                FilterChip(
+                                    selected = pageSize == n,
+                                    onClick = { pageSize = n },
+                                    label = { Text(n?.toString() ?: "All") },
+                                    modifier = Modifier.tvFocusHighlight()
+                                )
+                            }
+                        }
+                        Text(
+                            "Grids stop after this many videos and offer a button for the " +
+                                "next batch, so a scroll has an end. All = keep loading as " +
+                                "the kid scrolls.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        SettingsDivider()
+                        Text("Channel page layout", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                CHANNEL_LAYOUT_NEWEST to "Newest first",
+                                CHANNEL_LAYOUT_POPULAR to "Popular first"
+                            ).forEach { (value, label) ->
+                                FilterChip(
+                                    selected = channelLayout == value,
+                                    onClick = { channelLayout = value },
+                                    label = { Text(label) },
+                                    modifier = Modifier.tvFocusHighlight()
+                                )
+                            }
+                        }
+                        Text(
+                            "The kid's default for a channel's page (they can switch with the chips " +
+                                "on the page). Newest first is the upload feed. Popular first orders " +
+                                "the same videos by how often they've been watched on YouTube (no " +
+                                "numbers are ever shown). A channel's own playlists — seasons, songs, " +
+                                "series — always show above the videos.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        SettingsDivider()
+                        Text("Channel row order", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                CHANNEL_ORDER_WATCHED to "Most watched",
+                                CHANNEL_ORDER_ALPHA to "A to Z",
+                                CHANNEL_ORDER_RANDOM to "Random",
+                                CHANNEL_ORDER_LATEST to "Latest video"
+                            ).forEach { (value, label) ->
+                                FilterChip(
+                                    selected = channelOrder == value,
+                                    onClick = { channelOrder = value },
+                                    label = { Text(label) },
+                                    modifier = Modifier.tvFocusHighlight()
+                                )
+                            }
+                        }
+                        Text(
+                            "The default order of the home screen's row of channels. Most watched " +
+                                "puts the kid's favourites first; A to Z is easiest to scan; Random " +
+                                "reshuffles on each visit, for the kid who always picks the first one; Latest video puts the channel that uploaded most recently first.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 HubPage.Screening -> {
+                    // The connection is its own section, above both features
+                    // that use it. It used to live inside the screening switch,
+                    // so a parent who only wanted AI channel discovery had to
+                    // turn content screening on to reach the key field.
+                    SectionTitle("AI connection")
+                    SettingsCard { AiConnectionSection(ai, onChanged = { ai = it }) }
                     SectionTitle("AI content screening")
                     SettingsCard { AiScreeningSection(ai, profiles, onChanged = { ai = it }) }
                     if (ai.enabled) {
@@ -953,91 +1044,6 @@ private fun AdminScreen(
                             }
                         }
                     }
-                    SectionTitle("Kid's shelves")
-                    SettingsCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Show when a video came out", modifier = Modifier.weight(1f))
-                            Switch(
-                                modifier = Modifier.tvFocusHighlight(),
-                                checked = showVideoAge,
-                                onCheckedChange = { showVideoAge = it }
-                            )
-                        }
-                        Text(
-                            "Adds \"3 days ago\" beside the channel name under a video, the way " +
-                                "other video apps do. Videos whose date YouTube didn't give us " +
-                                "show the channel alone.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        SettingsDivider()
-                        Text("Videos before \"Show more\"", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PAGE_SIZES.forEach { n ->
-                                FilterChip(
-                                    selected = pageSize == n,
-                                    onClick = { pageSize = n },
-                                    label = { Text(n?.toString() ?: "All") },
-                                    modifier = Modifier.tvFocusHighlight()
-                                )
-                            }
-                        }
-                        Text(
-                            "Grids stop after this many videos and offer a button for the " +
-                                "next batch, so a scroll has an end. All = keep loading as " +
-                                "the kid scrolls.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        SettingsDivider()
-                        Text("Channel page layout", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                CHANNEL_LAYOUT_NEWEST to "Newest first",
-                                CHANNEL_LAYOUT_POPULAR to "Popular first"
-                            ).forEach { (value, label) ->
-                                FilterChip(
-                                    selected = channelLayout == value,
-                                    onClick = { channelLayout = value },
-                                    label = { Text(label) },
-                                    modifier = Modifier.tvFocusHighlight()
-                                )
-                            }
-                        }
-                        Text(
-                            "The kid's default for a channel's page (they can switch with the chips " +
-                                "on the page). Newest first is the upload feed. Popular first orders " +
-                                "the same videos by how often they've been watched on YouTube (no " +
-                                "numbers are ever shown). A channel's own playlists — seasons, songs, " +
-                                "series — always show above the videos.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        SettingsDivider()
-                        Text("Channel row order", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                CHANNEL_ORDER_WATCHED to "Most watched",
-                                CHANNEL_ORDER_ALPHA to "A to Z",
-                                CHANNEL_ORDER_RANDOM to "Random",
-                                CHANNEL_ORDER_LATEST to "Latest video"
-                            ).forEach { (value, label) ->
-                                FilterChip(
-                                    selected = channelOrder == value,
-                                    onClick = { channelOrder = value },
-                                    label = { Text(label) },
-                                    modifier = Modifier.tvFocusHighlight()
-                                )
-                            }
-                        }
-                        Text(
-                            "The default order of the home screen's row of channels. Most watched " +
-                                "puts the kid's favourites first; A to Z is easiest to scan; Random " +
-                                "reshuffles on each visit, for the kid who always picks the first one; Latest video puts the channel that uploaded most recently first.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
                 HubPage.Backup -> {
                     SectionTitle("App")
@@ -1130,7 +1136,10 @@ private fun AdminScreen(
             SettingsDivider()
             HubRow(
                 PickwickIcons.Channels, "Channels & playlists",
-                "${entries.size} source${if (entries.size == 1) "" else "s"} · suggestions"
+                // Names the shelf settings, because a parent looking for "show
+                // release dates" or "how many videos per page" goes here first
+                // and used to find neither — they were filed under Playback.
+                "${entries.size} source${if (entries.size == 1) "" else "s"} · how videos are listed"
             ) { page = HubPage.Channels }
             SettingsDivider()
             HubRow(
@@ -1143,7 +1152,8 @@ private fun AdminScreen(
             ) { page = HubPage.Devices }
             SettingsDivider()
             HubRow(
-                PickwickIcons.PlayArrow, "Playback", "Sponsor skipping, listening"
+                PickwickIcons.PlayArrow, "Playback",
+                "Autoplay, quality, sponsor skipping, suggestions"
             ) { page = HubPage.Playback }
             SettingsDivider()
             HubRow(
