@@ -291,7 +291,7 @@ internal fun VideoCard(
                 )
                 // "Channel · 3 days ago": the quiet line every video app has.
                 Text(
-                    metaLine(item.video.channelName, relativeAge(item.video.publishedAt)),
+                    videoMeta(item.video.channelName, item.video.publishedAt),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,

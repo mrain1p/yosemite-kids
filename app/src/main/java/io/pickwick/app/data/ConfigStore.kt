@@ -281,6 +281,7 @@ class ConfigStore(context: Context) {
                 w.qualityTv?.let { append(";QT:"); append(it) }
                 w.qualityPhone?.let { append(";QP:"); append(it) }
                 w.pageSize?.let { append(";PS:"); append(it) }
+                if (w.showVideoAge) append(";VA:1")
                 // Append-only-when-set, same reasoning — and it must be in the
                 // hash so the offline reconcile re-pushes a rate change.
                 w.listenPercent?.let { append(";LN:"); append(it) }
@@ -377,6 +378,7 @@ class ConfigStore(context: Context) {
             w.qualityTv?.let { root.put("qualityTv", it) }
             w.qualityPhone?.let { root.put("qualityPhone", it) }
             w.pageSize?.let { root.put("pageSize", it) }
+            if (w.showVideoAge) root.put("showVideoAge", true)
             // Written only when set — absent means listening off (see Whitelist).
             w.listenPercent?.let { root.put("listen", it) }
             return root.toString(2)
@@ -621,7 +623,8 @@ class ConfigStore(context: Context) {
                 listenPercent = if (root.has("listen")) root.getInt("listen") else null,
                 qualityTv = root.optInt("qualityTv", 0).takeIf { it in PLAYBACK_QUALITIES },
                 qualityPhone = root.optInt("qualityPhone", 0).takeIf { it in PLAYBACK_QUALITIES },
-                pageSize = root.optInt("pageSize", 0).takeIf { it in PAGE_SIZES }
+                pageSize = root.optInt("pageSize", 0).takeIf { it in PAGE_SIZES },
+                showVideoAge = root.optBoolean("showVideoAge", false)
             )
         }
     }

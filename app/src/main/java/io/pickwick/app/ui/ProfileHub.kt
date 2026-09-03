@@ -54,7 +54,9 @@ internal fun ProfileHubDialog(
     onSwitch: (() -> Unit)?,
     onChangeLook: (() -> Unit)?,
     onOpenSettings: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    theme: String = THEME_DARK,
+    onTheme: ((String) -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -70,7 +72,7 @@ internal fun ProfileHubDialog(
                 )
             }
         },
-        text = { HubRows(onSwitch, onChangeLook, onOpenSettings) },
+        text = { HubRows(onSwitch, onChangeLook, onOpenSettings, theme, onTheme) },
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvFocusHighlight()) { Text("Close") } }
     )
@@ -87,7 +89,9 @@ internal fun ProfileHubSheet(
     onSwitch: (() -> Unit)?,
     onChangeLook: (() -> Unit)?,
     onOpenSettings: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    theme: String = THEME_DARK,
+    onTheme: ((String) -> Unit)? = null
 ) {
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
@@ -98,14 +102,38 @@ internal fun ProfileHubSheet(
                 }
                 Text(profile?.name ?: "Pickwick", style = MaterialTheme.typography.titleLarge)
             }
-            HubRows(onSwitch, onChangeLook, onOpenSettings)
+            HubRows(onSwitch, onChangeLook, onOpenSettings, theme, onTheme)
         }
     }
 }
 
 @Composable
-private fun HubRows(onSwitch: (() -> Unit)?, onChangeLook: (() -> Unit)?, onOpenSettings: () -> Unit) {
+private fun HubRows(
+    onSwitch: (() -> Unit)?,
+    onChangeLook: (() -> Unit)?,
+    onOpenSettings: () -> Unit,
+    theme: String = THEME_DARK,
+    onTheme: ((String) -> Unit)? = null
+) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // The look of the whole app, at the top of the kid's own corner
+        // rather than buried in the parent's settings — it is theirs.
+        if (onTheme != null) {
+            Text(
+                "Theme",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp, top = 4.dp)
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(start = 12.dp, bottom = 6.dp)
+            ) {
+                KID_THEMES.forEach { t ->
+                    PwChip(themeLabel(t), selected = theme == t, onClick = { onTheme(t) })
+                }
+            }
+        }
         if (onSwitch != null) HubRow(PickwickIcons.People, "Switch who's watching", onSwitch)
         if (onChangeLook != null) HubRow(PickwickIcons.Palette, "Change my look", onChangeLook)
         HubRow(Icons.Filled.Settings, "Parent settings", onOpenSettings, locked = true)

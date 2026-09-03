@@ -243,8 +243,9 @@ private fun PlaylistsRow(
     isTv: Boolean,
     onOpenPlaylist: (PlaylistRef) -> Unit
 ) {
+    // No heading here: playlistRow draws it, with the "See all" count. This
+    // row used to carry its own and the page showed "Playlists" twice.
     Column {
-        SectionRow("Playlists")
         CompositionLocalProvider(
             androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides TvRowPivot
         ) {
@@ -381,7 +382,7 @@ internal fun ShelfVideoTile(
                 Column {
                     MarqueeTitle(item.video.title, focused, style = MaterialTheme.typography.titleSmall)
                     Text(
-                        metaLine(item.video.channelName, relativeAge(item.video.publishedAt)),
+                        videoMeta(item.video.channelName, item.video.publishedAt),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall,

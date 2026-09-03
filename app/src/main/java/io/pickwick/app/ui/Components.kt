@@ -132,6 +132,19 @@ internal fun metaLine(channel: String, age: String?): String =
     if (age == null) channel else "$channel · $age"
 
 /**
+ * The parent's "show when a video came out" switch, read wherever a tile
+ * draws its meta line. A local rather than a parameter: every grid, row and
+ * card would otherwise have to thread one boolean through call sites that
+ * have nothing else to do with it.
+ */
+internal val LocalShowVideoAge = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+/** The meta line for a video tile, honouring the setting and an unknown date. */
+@Composable
+internal fun videoMeta(channel: String, publishedAt: Long?): String =
+    metaLine(channel, if (LocalShowVideoAge.current) relativeAge(publishedAt) else null)
+
+/**
  * The right end of every page header: search, then the kid's face. The
  * avatar is the door to their corner — switch, change my look, the locked
  * parent settings — and it is on every screen except the player, so a kid

@@ -609,6 +609,34 @@ Version **0.9.3-fork (36)**.
   (its Apps row needs a signed-in Play account), and TV launchers cache
   cards, so an installed device may need a reboot to redraw it.
 
+### Round nine: TV consistency, themes, the focus ring, video age
+
+Version **0.9.4-fork (37)**.
+
+- **The date a video came out** was threaded through the cache and the tiles
+  in round six but never actually read off the extractor, so the meta line
+  was always just the channel. Mapped now, and behind a parent switch that
+  is **off by default** ("Show when a video came out"). A video the
+  extractor gave no date for shows the channel alone rather than a guess.
+- **"Playlists" appeared twice** on a channel page: `playlistRow` drew the
+  heading with its "See all", and the row inside drew its own.
+- **TV consistency pass.** The Explore row of square tiles became the same
+  chip row the phone has; "All history" became the "Watched lately" row's
+  own action instead of a tile of a different shape inside it; the header
+  mark is rounded on both form factors (it was a hard square on TV); the
+  chip row sits before the feed, matching the phone's order.
+- **Room to breathe on the big screen**: 40 dp side margins and 20 dp
+  vertical on TV (was 16/10), and 20 dp grid gutters with a 12 dp inset.
+- **The focus ring is no longer a white box.** It follows the item's corner
+  radius, takes the kid's accent colour, and the focused item scales to
+  1.06 on a spring and lifts on a shadow. Motion carries the signal; the
+  ring confirms it.
+- **Three themes** — Dark, Light, My colour — chosen by the kid in their own
+  corner behind the avatar, stored per kid on the device (`KidPrefs`). "My
+  colour" tints only the accents, so a restyle never costs legibility. The
+  avatar keeps its own colour under every theme.
+- `docs/OPEN-QUESTIONS.md` records the parked hub / web app / Apple threads.
+
 ### Two form factors, one codebase — how it is kept maintainable
 
 The phone and the TV are deliberately two *layouts*, not two apps. What is

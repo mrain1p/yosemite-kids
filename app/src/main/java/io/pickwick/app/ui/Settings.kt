@@ -488,6 +488,7 @@ private fun AdminScreen(
     var qualityTv by remember(initial) { mutableStateOf(initial.qualityTv) }
     var qualityPhone by remember(initial) { mutableStateOf(initial.qualityPhone) }
     var pageSize by remember(initial) { mutableStateOf(initial.pageSize) }
+    var showVideoAge by remember(initial) { mutableStateOf(initial.showVideoAge) }
     var baseline by remember(initial) { mutableStateOf(initial) }
     /** Entries added by this session's URL import — shown with a NEW tag for review. */
     var newIds by remember { mutableStateOf(setOf<String>()) }
@@ -572,7 +573,8 @@ private fun AdminScreen(
             listenPercent = listenPercent,
             qualityTv = qualityTv,
             qualityPhone = qualityPhone,
-            pageSize = pageSize
+            pageSize = pageSize,
+            showVideoAge = showVideoAge
         )
     }
 
@@ -833,6 +835,22 @@ private fun AdminScreen(
                     }
                     SectionTitle("Kid's shelves")
                     SettingsCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Show when a video came out", modifier = Modifier.weight(1f))
+                            Switch(
+                                modifier = Modifier.tvFocusHighlight(),
+                                checked = showVideoAge,
+                                onCheckedChange = { showVideoAge = it }
+                            )
+                        }
+                        Text(
+                            "Adds \"3 days ago\" beside the channel name under a video, the way " +
+                                "other video apps do. Videos whose date YouTube didn't give us " +
+                                "show the channel alone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        SettingsDivider()
                         Text("Videos before \"Show more\"", style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             PAGE_SIZES.forEach { n ->

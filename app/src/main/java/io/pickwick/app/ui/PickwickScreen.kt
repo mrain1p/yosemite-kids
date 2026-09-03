@@ -174,6 +174,9 @@ fun PickwickScreen(
     onSwitchProfile: (() -> Unit)? = null,
     /** The kid restyled themselves (avatar, colour): persist it for this kid. Null = not editable here. */
     onChangeLook: ((avatar: String, colorArgb: Long) -> Unit)? = null,
+    /** The kid's theme pick and the setter behind the hub's chips. */
+    theme: String = THEME_DARK,
+    onTheme: ((String) -> Unit)? = null,
     /** Starts the Up next queue from this position in the visible lineup. */
     onPlayQueue: (Int) -> Unit = {},
     onPlay: (VideoItem) -> Unit
@@ -196,8 +199,8 @@ fun PickwickScreen(
         val onLook: (() -> Unit)? = if (lookEditable) { { hubOpen = false; lookOpen = true } } else null
         val onSettings = { hubOpen = false; onOpenSettings() }
         // A sheet under a thumb, a dialog under a remote.
-        if (isTv) ProfileHubDialog(activeProfile, onSwitch, onLook, onSettings, onDismiss = { hubOpen = false })
-        else ProfileHubSheet(activeProfile, onSwitch, onLook, onSettings, onDismiss = { hubOpen = false })
+        if (isTv) ProfileHubDialog(activeProfile, onSwitch, onLook, onSettings, { hubOpen = false }, theme, onTheme)
+        else ProfileHubSheet(activeProfile, onSwitch, onLook, onSettings, { hubOpen = false }, theme, onTheme)
     }
     if (lookOpen && activeProfile != null && onChangeLook != null) {
         LookDialog(
@@ -270,7 +273,10 @@ fun PickwickScreen(
             // at every list edge. Off.
             androidx.compose.foundation.LocalOverscrollConfiguration provides
                 if (isTv) null
-                else androidx.compose.foundation.LocalOverscrollConfiguration.current
+                else androidx.compose.foundation.LocalOverscrollConfiguration.current,
+            // The parent's "show when a video came out" switch, read by every
+            // tile that draws a meta line.
+            LocalShowVideoAge provides state.showVideoAge
         ) {
         Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -286,7 +292,9 @@ fun PickwickScreen(
                     .togetherWith(fadeOut(tween(140)))
             },
             label = "screen",
-            modifier = Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 16.dp, vertical = if (phone) 2.dp else 10.dp)
+            // A TV needs real margins: the panel edge is not the safe area, and
+            // tiles running wall to wall have nowhere to put a focus ring.
+            modifier = Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 40.dp, vertical = if (phone) 2.dp else 20.dp)
         ) { s ->
         Column(modifier = Modifier.fillMaxSize()) {
             when {

@@ -241,8 +241,18 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 var activeProfileId by remember { mutableStateOf(resolveActive(initialConfig)) }
                 // The kid's colour becomes the accent the moment they're picked;
                 // no kid (picker, pre-profile install) is plain Pickwick teal.
+                // The kid's own pick of dark, light or their colour, kept on
+                // this device beside their other chip choices. Read once per
+                // kid and updated in place when they change it in the hub.
+                var kidTheme by remember(activeProfileId) {
+                    mutableStateOf(
+                        io.pickwick.app.data.KidPrefs(
+                            appContext, profileNs.suffixFor(activeProfileId)
+                        ).theme()
+                    )
+                }
                 MaterialTheme(
-                    colorScheme = kidColorScheme(family.profile(activeProfileId)),
+                    colorScheme = kidColorScheme(family.profile(activeProfileId), kidTheme),
                     typography = PickwickTypography
                 ) {
                 // Bumped on every return to the foreground so the picker's
@@ -560,6 +570,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         onSwitchProfile = if (family.profiles.size >= 2 && assignedId(family) == null) {
                             { activeProfileId = null }
                         } else null,
+                        theme = kidTheme,
+                        onTheme = { t ->
+                            kidTheme = t
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                io.pickwick.app.data.KidPrefs(
+                                    appContext, profileNs.suffixFor(activeProfileId)
+                                ).setTheme(t)
+                            }
+                        },
                         onOpenSettings = { showSettings = true },
                         // "Change my look". A device the parent's phone
                         // administers can't write the config — its choice

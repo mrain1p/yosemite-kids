@@ -615,7 +615,7 @@ internal fun HomeHeader(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(30.dp)
-                    .background(Color(0xFF00695C), androidx.compose.foundation.shape.RoundedCornerShape(if (greet) 8.dp else 0.dp))
+                    .background(Color(0xFF00695C), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
             ) {
                 // Drawn, not the "▶" glyph: font side bearings and line-height
                 // padding left that mark visibly off-centre in the tile. These
@@ -855,6 +855,28 @@ internal fun TvHomeRows(
                 }
             }
         }
+        // The ways in that aren't channels, as the same chips the phone
+        // shows. They were square tiles in an "Explore" row, which put two
+        // different shapes and two different idioms on one page.
+        item(key = "quick-chips") {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp)
+            ) {
+                PwChip("Surprise me", selected = false, icon = PickwickIcons.Dice, onClick = onSurprise)
+                if (onOpenYou != null) {
+                    PwChip("You", selected = false, icon = Icons.Filled.Person, onClick = onOpenYou)
+                } else {
+                    PwChip("Favorites", selected = false, icon = Icons.Filled.Favorite, onClick = onOpenWatchlist)
+                    if (hasWatchLater) {
+                        PwChip("Watch later", selected = false, icon = PickwickIcons.WatchLater, onClick = onOpenWatchLater)
+                    }
+                }
+                if (hasQueue) {
+                    PwChip("Up next", selected = false, icon = PickwickIcons.UpNext, onClick = onOpenQueue)
+                }
+            }
+        }
 
         if (feed.isNotEmpty()) {
             item(key = "feed") {
@@ -898,21 +920,22 @@ internal fun TvHomeRows(
                 }
             }
         }
+
         if (recentHistory.isNotEmpty()) {
             item(key = "history") {
-                TvRow("Watched lately") {
+                // "All history" is the row's own action, beside its title —
+                // it used to be a tile of a different shape inside the row.
+                TvRow(
+                    "Watched lately",
+                    chip = {
+                        PwChip("All history", selected = false, icon = PickwickIcons.History, onClick = onOpenHistory)
+                    }
+                ) {
                     androidx.compose.foundation.lazy.LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
                     ) {
-                        item(key = "all-history") {
-                            SpecialTile(
-                                "", "All history", MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.width(150.dp), icon = PickwickIcons.History,
-                                onClick = onOpenHistory
-                            )
-                        }
                         items(recentHistory.size, key = { recentHistory[it].video.url }) { i ->
                             val item = recentHistory[i]
                             ShelfVideoTile(
@@ -927,44 +950,6 @@ internal fun TvHomeRows(
             }
         }
 
-        item(key = "explore") {
-            TvRow("Explore") {
-                androidx.compose.foundation.lazy.LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    // Lined-up videos lead the row while any exist.
-                    if (hasQueue) {
-                        item(key = "queue") {
-                            QueueTile(Modifier.width(150.dp), onOpenQueue)
-                        }
-                    }
-                    item(key = "surprise") {
-                        SurpriseTile(Modifier.width(150.dp), onSurprise)
-                    }
-                    // The kid's own page (their shelves as rows) when it exists;
-                    // the bare Favorites / Watch later tiles otherwise.
-                    if (onOpenYou != null) {
-                        item(key = "you") {
-                            SpecialTile(
-                                "", "You", MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.width(150.dp), icon = Icons.Filled.Person,
-                                onClick = onOpenYou
-                            )
-                        }
-                    } else {
-                        item(key = "watchlist") {
-                            WatchlistTile(Modifier.width(150.dp), onOpenWatchlist)
-                        }
-                        if (hasWatchLater) {
-                            item(key = "watch-later") {
-                                WatchLaterTile(Modifier.width(150.dp), onOpenWatchLater)
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

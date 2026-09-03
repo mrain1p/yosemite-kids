@@ -90,6 +90,8 @@ data class UiState(
     val channelFilter: String = VIDEO_FILTER_NEW,
     /** The parent's page size: videos a grid shows before "Show more"; null = all. */
     val pageSize: Int? = null,
+    /** The parent's "show when a video came out" switch. */
+    val showVideoAge: Boolean = false,
     /** The kid's last few searches, newest first — chips on the search page. */
     val recentSearches: List<String> = emptyList(),
     /** Source ids with uploads the kid hasn't seen yet. */

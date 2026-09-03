@@ -217,6 +217,8 @@ class PlayerActivity : ComponentActivity() {
     /** The quality ceiling in force, for the player's own picker; null = Auto. */
     private val qualityCeiling = mutableStateOf<Int?>(null)
     private val qualityPickerOpen = mutableStateOf(false)
+    /** The parent's "show when a video came out" switch, for the list under the video. */
+    private val showVideoAge = mutableStateOf(false)
 
     /**
      * The kid picked a quality in the player: re-resolve this video at the new
@@ -468,6 +470,7 @@ class PlayerActivity : ComponentActivity() {
             io.pickwick.app.data.QualityTargets.userMaxHeight =
                 if (isTv) cfg.qualityTv else cfg.qualityPhone
             qualityCeiling.value = io.pickwick.app.data.QualityTargets.userMaxHeight
+            showVideoAge.value = cfg.showVideoAge
         }
 
         // Read further ahead than the 50s default: with the chunked data source
@@ -1071,7 +1074,7 @@ class PlayerActivity : ComponentActivity() {
                             title = v.title,
                             thumb = v.thumbnailUrl,
                             subtitle = listOfNotNull(
-                                relativeAge(v.publishedAt),
+                                if (showVideoAge.value) relativeAge(v.publishedAt) else null,
                                 v.durationSeconds.takeIf { it > 0 }?.let { formatClock(it) }
                             ).joinToString(" · ").ifBlank { null },
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)

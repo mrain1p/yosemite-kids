@@ -1,6 +1,9 @@
 package io.pickwick.app.ui
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
@@ -14,39 +17,59 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 
 /**
- * Focused tiles get a sharp high-contrast ring. [onFocusChange] lets tiles
- * react (e.g. marquee). No scaling or elevation shadow: both make neighboring
- * rows visibly move on TV, while this ring is a cheap fixed-geometry draw pass.
+ * Where the remote is: the focused item grows a little, lifts on a shadow,
+ * and takes a thin ring in the kid's accent colour, following its own corner
+ * radius. Motion carries the signal and the ring confirms it — a thick white
+ * box did all the work before, and read as a wireframe laid over the art
+ * whatever it sat on. [onFocusChange] lets tiles react (e.g. marquee).
+ *
+ * The scale is a render-layer transform, so layout never moves and
+ * neighbouring rows stay put.
  */
 @Composable
-internal fun Modifier.tvFocusHighlight(onFocusChange: ((Boolean) -> Unit)? = null): Modifier {
+internal fun Modifier.tvFocusHighlight(
+    /**
+     * The item's own corner radius, so the ring follows its shape. First in
+     * the list on purpose: callers pass [onFocusChange] as a trailing lambda.
+     */
+    cornerRadius: androidx.compose.ui.unit.Dp = 14.dp,
+    onFocusChange: ((Boolean) -> Unit)? = null
+): Modifier {
     var focused by remember { mutableStateOf(false) }
-    // The ring grows in over a few frames rather than snapping: still a plain
-    // border draw, just eased — the cheapest motion a TV can afford.
-    val outer by androidx.compose.animation.core.animateDpAsState(
-        if (focused) 5.dp else 0.dp,
-        androidx.compose.animation.core.tween(120), label = "focusOuter"
+    // Motion first, ring second. A TV tells you where you are the way a
+    // streaming app does: the thing you're on grows and lifts, and the ring
+    // is a thin accent that confirms it — not a thick white box doing all
+    // the work regardless of what it sits on.
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        if (focused) 1.06f else 1f,
+        androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+        ),
+        label = "focusScale"
     )
-    val inner by androidx.compose.animation.core.animateDpAsState(
-        if (focused) 2.dp else 0.dp,
-        androidx.compose.animation.core.tween(120), label = "focusInner"
+    val ring by androidx.compose.animation.core.animateDpAsState(
+        if (focused) 3.dp else 0.dp,
+        androidx.compose.animation.core.tween(120), label = "focusRing"
     )
+    val accent = MaterialTheme.colorScheme.primary
+    val shape = RoundedCornerShape(cornerRadius)
     return this
         .onFocusChanged {
             val now = it.isFocused || it.hasFocus
             focused = now
             onFocusChange?.invoke(now)
         }
-        .border(
-            width = outer,
-            color = if (focused) Color.White else Color.Transparent,
-            shape = RectangleShape
-        )
-        .border(
-            width = inner,
-            color = if (focused) PickwickDarkColors.primary else Color.Transparent,
-            shape = RectangleShape
-        )
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+            // Lifts the focused item over its neighbours so the ring and the
+            // shadow are never clipped by the tile drawn after it.
+            shadowElevation = if (focused) 16f else 0f
+            this.shape = shape
+            clip = false
+        }
+        .border(width = ring, color = if (focused) accent else Color.Transparent, shape = shape)
 }
 
 /**

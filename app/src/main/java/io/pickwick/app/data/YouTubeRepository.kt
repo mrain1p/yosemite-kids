@@ -522,6 +522,12 @@ class YouTubeRepository {
         durationSeconds = duration,
         // -1 is the extractor's "unknown"; kept only for the popular-first
         // sort, never shown to anyone.
-        viewCount = viewCount.takeIf { it >= 0 }
+        viewCount = viewCount.takeIf { it >= 0 },
+        // When the video came out. A channel tab carries it; search hits and
+        // related items often don't, and an absent date is simply unknown —
+        // never guessed, since "today" on a five-year-old video is worse
+        // than saying nothing.
+        publishedAt = runCatching { uploadDate?.offsetDateTime()?.toInstant()?.toEpochMilli() }
+            .getOrNull()
     )
 }

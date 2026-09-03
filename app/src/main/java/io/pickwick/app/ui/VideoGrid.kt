@@ -299,10 +299,11 @@ internal fun VideoGrid(
     LazyVerticalGrid(
         state = gridState,
         columns = columns,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(if (cards) 6.dp else 12.dp),
-        // Room for the focus glow on edge tiles.
-        contentPadding = PaddingValues(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (cards) 12.dp else 20.dp),
+        verticalArrangement = Arrangement.spacedBy(if (cards) 6.dp else 20.dp),
+        // Room for the focus glow on edge tiles — more of it on a TV, where
+        // the ring is thicker and the tiles sit closer to the panel edge.
+        contentPadding = PaddingValues(if (cards) 8.dp else 12.dp),
         // Held D-pad browsing (any direction) advances at a readable, steady
         // pace instead of one step per ~50ms key repeat, which outruns both the
         // reader and tile composition (worst going up/left — nothing behind the

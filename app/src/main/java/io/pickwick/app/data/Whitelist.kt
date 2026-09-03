@@ -281,7 +281,15 @@ data class Whitelist(
      * Videos a grid shows before a "Show more" button; null = all of them.
      * See [PAGE_SIZES].
      */
-    val pageSize: Int? = null
+    val pageSize: Int? = null,
+    /**
+     * Show how long ago a video came out ("3 days ago") under its title, the
+     * way every video app does. Off by default: it is one more thing on a
+     * tile a small child has to read past, and a family that doesn't care
+     * about recency shouldn't have it. A video whose date the extractor
+     * didn't carry shows nothing rather than a guess.
+     */
+    val showVideoAge: Boolean = false
 ) {
     fun profile(id: String?): Profile? = profiles.firstOrNull { it.id == id }
 

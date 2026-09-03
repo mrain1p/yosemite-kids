@@ -881,7 +881,8 @@ class MainViewModel(
                     channelSort = effectiveChannelSort(),
                     homeFilter = effectiveHomeFilter(),
                     channelFilter = effectiveChannelFilter(),
-                    pageSize = list.pageSize
+                    pageSize = list.pageSize,
+                    showVideoAge = list.showVideoAge
                 )
                 // Only the kid whose home this is owns these prefs. With nobody
                 // picked yet (who's-watching screen) `sessionGuard` is still the

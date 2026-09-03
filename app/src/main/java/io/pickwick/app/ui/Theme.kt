@@ -29,18 +29,56 @@ val PickwickDarkColors = darkColorScheme(
     tertiary = Color(0xFFA5C8E4)
 )
 
+/** The three looks a kid can pick, in the order the hub shows them. */
+const val THEME_DARK = "dark"
+const val THEME_LIGHT = "light"
+const val THEME_COLOR = "color"
+val KID_THEMES = listOf(THEME_DARK, THEME_LIGHT, THEME_COLOR)
+
+fun themeLabel(theme: String): String = when (theme) {
+    THEME_LIGHT -> "Light"
+    THEME_COLOR -> "My colour"
+    else -> "Dark"
+}
+
+/** The daylight version of the same brand: paper surfaces, the teal kept for accents. */
+val PickwickLightColors = androidx.compose.material3.lightColorScheme(
+    primary = Color(0xFF00695C),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFB2DFDB),
+    onPrimaryContainer = Color(0xFF00201C),
+    secondary = Color(0xFF4A635F),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFCCE8E3),
+    onSecondaryContainer = Color(0xFF06201C),
+    background = Color(0xFFFAFAFA),
+    onBackground = Color(0xFF191C1B),
+    surface = Color(0xFFFAFAFA),
+    onSurface = Color(0xFF191C1B),
+    surfaceVariant = Color(0xFFDAE5E1),
+    onSurfaceVariant = Color(0xFF3F4947),
+    outlineVariant = Color(0xFFBEC9C6)
+)
+
 /**
- * The kid's own accent: their profile colour, lightened for text and buttons
- * and darkened for chips and banners, over the same dark surfaces. "Mine" is
- * half of why a child picks one app over another; the other colours stay so
- * the app is still recognisably Pickwick from across the room.
+ * The scheme a kid is actually looking at: their pick, tinted with their own
+ * colour when they chose "My colour". The tint only ever moves the accents —
+ * primary, its container and the focus ring — so a restyle never costs
+ * legibility, and the app still reads as Pickwick from across the room.
  */
-fun kidColorScheme(profile: io.pickwick.app.data.Profile?): androidx.compose.material3.ColorScheme {
-    profile ?: return PickwickDarkColors
+fun kidColorScheme(
+    profile: io.pickwick.app.data.Profile?,
+    theme: String = THEME_DARK
+): androidx.compose.material3.ColorScheme {
+    val base = if (theme == THEME_LIGHT) PickwickLightColors else PickwickDarkColors
+    // Dark and Light are the brand's own colours; only "My colour" borrows
+    // the kid's. Their avatar keeps its colour either way — that is theirs.
+    if (theme != THEME_COLOR) return base
+    profile ?: return base
     val tint = Color(profile.colorArgb)
     val light = androidx.compose.ui.graphics.lerp(tint, Color.White, 0.30f)
     val deep = androidx.compose.ui.graphics.lerp(tint, Color.Black, 0.50f)
-    return PickwickDarkColors.copy(
+    return base.copy(
         primary = light,
         onPrimary = Color(0xFF1B1B1B),
         primaryContainer = deep,
