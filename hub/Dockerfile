@@ -34,9 +34,12 @@ ENV PICKWICK_PORT=8765
 VOLUME ["/data"]
 EXPOSE 8765
 
-# The unauthenticated route, so an orchestrator can tell "starting" from
-# "wedged" without holding a device token.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
-    CMD ["/bin/sh", "-c", "wget -qO- http://127.0.0.1:${PICKWICK_PORT}/health || exit 1"]
+# Bash's own /dev/tcp rather than curl or wget: neither is guaranteed present
+# in a JRE base image, and a healthcheck that always fails is worse than none —
+# it marks a working container unhealthy and, with the wrong restart policy,
+# restarts it forever. This needs no package and checks the thing that matters,
+# that the port is actually accepting.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \
+    CMD ["/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/${PICKWICK_PORT} && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q 200"]
 
 ENTRYPOINT ["./bin/hub"]
