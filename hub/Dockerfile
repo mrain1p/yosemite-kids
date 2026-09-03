@@ -17,13 +17,17 @@ COPY hub/build.gradle.kts ./hub/
 # "./gradlew: not found" for a file that is visibly right there, which is a
 # genuinely misleading half hour if you have not seen it before.
 RUN sed -i 's/\r$//' gradlew && chmod +x gradlew
-RUN ./gradlew --no-daemon :hub:dependencies --quiet || true
+# No --quiet. This step downloads the Kotlin compiler and stdlib, which on a
+# home connection is many minutes of silence — and silence during the slowest
+# step of a first build is indistinguishable from a hang. Progress lines are
+# worth the log noise.
+RUN ./gradlew --no-daemon :hub:dependencies || true
 
 # Only the two modules the hub needs. :app is Android and would drag the whole
 # SDK into a build that has no use for it.
 COPY core/src ./core/src
 COPY hub/src ./hub/src
-RUN ./gradlew --no-daemon :hub:installDist --quiet
+RUN ./gradlew --no-daemon :hub:installDist
 
 FROM eclipse-temurin:17-jre
 WORKDIR /app
