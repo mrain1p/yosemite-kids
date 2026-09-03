@@ -55,9 +55,17 @@ object Backup {
     fun restore(context: Context, json: String): Result<Summary> = runCatching {
         val app = context.applicationContext
         val root = parse(json)
-        val configJson = root.getJSONObject("config").toString()
         val summary = inspect(json).getOrThrow()
-        check(ConfigStore(app).saveRaw(configJson)) { "the settings in that file couldn't be read" }
+        val store = ConfigStore(app)
+        // A restore genuinely means replace, so this stays a whole-file write
+        // rather than a merge. But it must not un-delete: a backup is evidence
+        // about *content*, never evidence that a deletion was reversed.
+        // Without carrying the device's tombstones across, restoring a
+        // six-month-old bundle silently brings back every channel removed
+        // since — on a parental-controls app, the worst possible outcome of
+        // pressing a button called Restore.
+        val configJson = withTombstonesOf(store.load(), root.getJSONObject("config")).toString()
+        check(store.saveRaw(configJson)) { "the settings in that file couldn't be read" }
         root.optJSONObject("watchState")?.let { WatchSync.mergeJson(app, it.toString()) }
         root.optJSONObject("verdicts")?.let { verdicts ->
             val version = ConfigStore(app).load().ai.rulesVersion
@@ -77,4 +85,31 @@ object Backup {
         require(root.has("config")) { "that backup has no settings in it" }
         return root
     }
+}
+
+/**
+ * The restored config, carrying forward the deletions this device already
+ * knew about.
+ *
+ * Per key, the later of the two tombstones wins, and the namespace floors are
+ * carried too. Stamps are left alone: the bundle's content is what a restore
+ * is *for*, and only the delete evidence has to survive it.
+ */
+internal fun withTombstonesOf(current: Whitelist, restored: org.json.JSONObject): org.json.JSONObject {
+    val mine = current.sync
+    if (mine.gone.isEmpty() && mine.floor.isEmpty()) return restored
+    val theirs = ConfigMerge.syncFromJson(restored)
+    val gone = LinkedHashMap(theirs.gone)
+    mine.gone.forEach { (k, v) -> gone[k] = maxOf(gone[k] ?: 0L, v) }
+    val floor = LinkedHashMap(theirs.floor)
+    mine.floor.forEach { (k, v) -> floor[k] = maxOf(floor[k] ?: 0L, v) }
+    val merged = ConfigStamp.prune(
+        theirs.copy(
+            v = SyncMeta.VERSION,
+            docAt = maxOf(theirs.docAt, mine.docAt),
+            gone = gone,
+            floor = floor
+        )
+    )
+    return org.json.JSONObject(restored.toString()).put("sync", ConfigMerge.syncToJson(merged))
 }

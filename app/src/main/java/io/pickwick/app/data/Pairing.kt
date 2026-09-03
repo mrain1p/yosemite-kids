@@ -714,14 +714,33 @@ class LanServer(
             method == "GET" && path == "/config" -> respond(200, configStore.rawJson())
             method == "POST" && path == "/config" -> {
                 val body = readBody()
-                // Snapshot first: the reconcile sweep re-pushes a config a
-                // device already has, so only a real difference may reach the
-                // kid. Both loads are a file read and a parse — a push is rare.
-                val before = configStore.load()
-                if (configStore.saveRaw(body)) {
-                    ConfigEvents.onConfigChanged?.invoke()
-                    onConfigApplied(before, configStore.load())
-                    respond(200, "saved")
+                // Merged, not replaced. This used to overwrite the file, so
+                // two parents pushing to the same TV meant one of them lost
+                // everything they had changed. The before/after pair comes
+                // from inside the lock, so the notice this raises cannot
+                // describe a transition another worker caused.
+                //
+                // Attribution is free: the pushing phone already authenticated
+                // with a token we can name, so no wire change is needed.
+                val who = reqToken?.let { pairingStore.approvedPhones()[it] }
+                val outcome = configStore.mergeIncoming(body, who)
+                if (outcome != null) {
+                    if (outcome.changed) {
+                        ConfigEvents.onConfigChanged?.invoke()
+                        onConfigApplied(outcome.before, outcome.after)
+                    }
+                    // The body tells the pusher whether we learned anything and
+                    // whether they are now behind us, so a phone can stop
+                    // guessing from a bare 200.
+                    respond(
+                        200,
+                        JSONObject()
+                            .put("changed", outcome.changed)
+                            .put("peerBehind", outcome.peerBehind)
+                            .put("hash", ConfigStore.fingerprint(outcome.after))
+                            .put("syncHash", ConfigMerge.syncHash(outcome.after.sync))
+                            .toString()
+                    )
                 } else respond(400, "bad config")
             }
             method == "POST" && path == "/player" -> {

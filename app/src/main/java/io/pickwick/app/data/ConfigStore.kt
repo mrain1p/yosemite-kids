@@ -298,6 +298,82 @@ class ConfigStore internal constructor(
             }
         }.getOrNull()
 
+    /** What one incoming push did. Captured inside the lock, so it cannot describe someone else's write. */
+    data class MergeOutcome(
+        val before: Whitelist,
+        val after: Whitelist,
+        /** Something we hold is missing from the peer — worth pushing back. */
+        val peerBehind: Boolean,
+        val collisions: List<ConfigMerge.Collision>,
+        val learned: List<ConfigMerge.Change>,
+        /** False when the peer told us nothing new; nothing was written. */
+        val changed: Boolean
+    )
+
+    /**
+     * Take a pushed config by *merging* it, not by replacing what is here.
+     *
+     * This is the whole point of the sync work. `saveRaw` overwrote the file,
+     * so two parents pushing to the same TV meant one of them lost everything
+     * they had changed — silently, with nothing to look at afterwards.
+     *
+     * Read, merge and write happen under one lock. Two pushes arrive on two
+     * different LAN worker threads (a pool of up to eight), and an unlocked
+     * read-modify-write would interleave and lose one side, reintroducing
+     * exactly the bug being fixed. The raw bytes are read rather than [load]:
+     * `load` scrubs lapsed passes and lays a kid's un-adopted restyle over the
+     * profiles, so merging from it would read a clock tick and a kid's private
+     * choice as parent edits.
+     */
+    fun mergeIncoming(json: String, from: String? = null): MergeOutcome? {
+        var carriedKey = ""
+        val outcome = runCatching {
+            synchronized(FILE_LOCK) {
+                val localRaw = if (file.exists()) file.readText() else null
+                val result = ConfigMerge.merge(localRaw, json)
+                carriedKey = result.apiKey
+                // A payload we cannot read at all: the route answers 400 and
+                // nothing here is touched, exactly as before.
+                if (result.merged == null && !result.peerBehind && result.collisions.isEmpty()) {
+                    if (runCatching { fromJson(json) }.isFailure) return@synchronized null
+                }
+                val before = runCatching { localRaw?.let { fromJson(it) } }.getOrNull()
+                    ?: Whitelist(emptyList(), emptySet())
+                val merged = result.merged
+                val after = if (merged == null) before else {
+                    val w = registered(fromJson(merged))
+                    // commit strips the key on the way to disk; the merge
+                    // output never carried one to begin with.
+                    commit(merged)
+                    w
+                }
+                MergeOutcome(
+                    before = before,
+                    after = after,
+                    peerBehind = result.peerBehind,
+                    collisions = result.collisions,
+                    learned = result.learned,
+                    changed = merged != null
+                )
+            }
+        }.getOrElse { e ->
+            android.util.Log.w("Pickwick", "incoming config rejected", e)
+            null
+        } ?: return null
+
+        // Outside the lock: the Keystore is a slow round trip and a LAN worker
+        // holding the config lock across it would stall every other reader.
+        if (carriedKey.isNotBlank()) secrets?.setAiApiKey(carriedKey)
+
+        android.util.Log.i(
+            "Pickwick",
+            "config merged from ${from ?: "a peer"} → #${fingerprint(outcome.after)} " +
+                "changed=${outcome.changed} peerBehind=${outcome.peerBehind} " +
+                "collisions=${outcome.collisions.size}"
+        )
+        return outcome
+    }
+
     fun saveRaw(json: String): Boolean = runCatching {
         val w = registered(fromJson(json)) // validate before accepting
         commit(json)

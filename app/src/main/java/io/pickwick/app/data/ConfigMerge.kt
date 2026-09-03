@@ -1,5 +1,8 @@
 package io.pickwick.app.data
 
+import org.json.JSONArray
+import org.json.JSONObject
+
 /**
  * Describing, and later merging, one config against another.
  *
@@ -355,6 +358,838 @@ object ConfigMerge {
         2 -> "${items[0]} and ${items[1]}"
         else -> items.dropLast(1).joinToString(", ") + " and " + items.last()
     }
+
+    // --- The merge ------------------------------------------------------
+    //
+    // Two configs in, one out. Unit by unit, so two parents who changed two
+    // different things both keep their change — which whole-file
+    // last-writer-wins cannot do, and which is the entire reason any of this
+    // exists. See `docs/PLAN-sync.md` for the rules and why each is shaped
+    // the way it is.
+    //
+    // Deliberately at the JSON level and never through `Whitelist`. `saveRaw`
+    // guarantees that a field a newer phone knows about survives a round trip
+    // through an older one, and that guarantee holds only while nothing
+    // re-serializes from the model. A model-level merge would be the first
+    // thing to break it, and would additionally lose unknown fields *nested
+    // inside* known objects, which no top-level passthrough can rescue.
+
+    /** What a merge produced. [merged] is null when the local copy already had it all. */
+    data class Result(
+        /** The bytes to write, or null when nothing about the local copy changed. */
+        val merged: String?,
+        /** The peer is missing something we hold, so it is worth pushing back to. */
+        val peerBehind: Boolean,
+        /** Units where both sides had edited and the local side lost. */
+        val collisions: List<Collision>,
+        /** Log lines the local side had not seen — a co-parent's activity. */
+        val learned: List<Change>,
+        /**
+         * The API key, out of band. [merged] can never contain one: it is
+         * stripped from both inputs before anything is compared, so no merge
+         * result and no collision record can carry a credential.
+         */
+        val apiKey: String
+    )
+
+    /** Both sides had edited one unit, and the local value lost. */
+    data class Collision(
+        val unit: String,
+        val code: String,
+        /** What this device held, as compact JSON — enough to offer "put it back". */
+        val mine: String,
+        val mineAt: Long,
+        val theirs: String,
+        val theirsAt: Long
+    )
+
+    /** How a namespace behaves when the evidence is ambiguous. */
+    private enum class Safe { ABSENT, PRESENT, SCALAR }
+
+    /**
+     * Which way a unit falls when nobody can prove the later act.
+     *
+     * Not uniform, and the asymmetry is the point. For a block, the safe
+     * answer is that it *stays*: presence wins ties and never needs proof,
+     * while lifting a block does. So a parent unblocking ten minutes after a
+     * co-parent blocked still works — their copy carries the block, which is
+     * the proof — but a re-block from a phone that never saw the unblock is
+     * honoured rather than silently discarded. For a channel or a kid the
+     * polarity inverts: absence is the safe answer, so asserting *presence*
+     * against a tombstone is what needs proof, and a channel a parent removed
+     * cannot come back because a stale phone still lists it.
+     */
+    private fun safeState(ns: String): Safe = when (ns) {
+        "blk", "for" -> Safe.PRESENT
+        "src", "kid", "kid.pin", "allow", "afor", "dev" -> Safe.ABSENT
+        else -> Safe.SCALAR
+    }
+
+    private data class Side(val root: JSONObject, val sync: SyncMeta, val legacy: Boolean)
+
+    /**
+     * Merge [incoming] into [local].
+     *
+     * Takes **no clock**, and the signature is the enforcement: idempotence
+     * and associativity are then structural rather than properties that hold
+     * only while a test freezes time, and a device whose RTC came back wrong
+     * cannot drop a parent's live pause into the shared document just by
+     * taking part in a sync.
+     */
+    fun merge(local: String?, incoming: String): Result {
+        // Refuse anything that is not a config, exactly as the route did
+        // before: the caller answers 400 and the contract is unchanged.
+        val inRoot = runCatching { JSONObject(incoming) }.getOrNull()
+            ?: return Result(null, false, emptyList(), emptyList(), "")
+        if (runCatching { ConfigStore.fromJson(incoming) }.isFailure) {
+            return Result(null, false, emptyList(), emptyList(), "")
+        }
+        val incomingKey = inRoot.optJSONObject("ai")?.optString("apiKey").orEmpty()
+
+        // Fresh install, or a file we cannot read. Adopting a valid peer
+        // document beats propagating our own unreadable emptiness — `load()`
+        // turns that into an empty Whitelist, which the next save writes over
+        // the real file and the next sweep pushes to the whole house.
+        val locRoot = local?.takeIf { it.isNotBlank() }?.let {
+            runCatching { JSONObject(it) }.getOrNull()
+        }
+        if (locRoot == null || runCatching { ConfigStore.fromJson(local!!) }.isFailure) {
+            return Result(
+                merged = inRoot.toString(2),
+                peerBehind = false,
+                collisions = emptyList(),
+                learned = ConfigMerge.syncFromJson(inRoot).log,
+                apiKey = incomingKey
+            )
+        }
+        val localKey = locRoot.optJSONObject("ai")?.optString("apiKey").orEmpty()
+
+        // The key never reaches the merge, so it can never reach the output.
+        stripKey(locRoot)
+        stripKey(inRoot)
+
+        val L = normalise(locRoot)
+        val R = normalise(inRoot)
+
+        val out = JSONObject(locRoot.toString())   // rebuild from local: unknown roots survive
+        val at = LinkedHashMap<String, Long>()
+        val gone = LinkedHashMap<String, Long>()
+        val floor = LinkedHashMap<String, Long>()
+        (L.sync.floor.keys + R.sync.floor.keys).forEach { ns ->
+            floor[ns] = maxOf(L.sync.floor[ns] ?: 0L, R.sync.floor[ns] ?: 0L)
+        }
+        val collisions = ArrayList<Collision>()
+
+        /**
+         * Resolve one unit: is it present, and whose value wins?
+         *
+         * Every quantity is a `max` over both sides or an existential over
+         * them, so the rule is symmetric and therefore commutative by
+         * construction rather than by testing.
+         */
+        fun decide(key: String): Decision {
+            val la = L.sync.at[key] ?: 0L
+            val ra = R.sync.at[key] ?: 0L
+            val lg = L.sync.gone[key] ?: 0L
+            val rg = R.sync.gone[key] ?: 0L
+            val a = maxOf(la, ra)
+            val g = maxOf(lg, rg)
+            val ns = ConfigStamp.namespace(key)
+
+            // An evicted tombstone still refuses its subject — but only
+            // against a stamp that is real evidence. A synthesised rank
+            // (see [normalise]) means "no evidence either way", which a floor
+            // is not entitled to read as a delete: without the exemption a
+            // restored backup, or a never-edited upgraded device, would lose
+            // its whole content on first contact with any peer that has ever
+            // dropped a tombstone.
+            val below = a > SYNTHETIC_AT_MAX && a < (floor[ns] ?: 0L) && (la == 0L || ra == 0L)
+
+            val present = when {
+                below -> false
+                g == 0L -> a > 0
+                a == 0L -> false
+                else -> {
+                    // Did the side asserting the later act actually *see* the
+                    // earlier one? That is what makes it a deliberate reversal
+                    // rather than a stale copy talking.
+                    val sawTombstone = (la == a && lg in 1 until a) || (ra == a && rg in 1 until a)
+                    val sawAdd = (lg == g && la in 1 until g) || (rg == g && ra in 1 until g)
+                    when (safeState(ns)) {
+                        Safe.ABSENT -> a > g && sawTombstone
+                        Safe.PRESENT -> !(g > a && sawAdd)
+                        Safe.SCALAR -> true
+                    }
+                }
+            }
+            val fromLocal = when {
+                la > ra -> true
+                ra > la -> false
+                else -> null   // a tie: the caller breaks it on the value
+            }
+            return Decision(present, a, g, fromLocal, la, ra)
+        }
+
+        /**
+         * Record the local side losing a unit both sides had edited — the
+         * banner's raw material. Filtered on *both* sides having a real stamp,
+         * so adopting something the local side never touched is not a
+         * collision, it is just news.
+         */
+        fun collide(key: String, code: String, d: Decision, mine: String?, theirs: String?) {
+            if (d.localAt <= 0 || d.remoteAt <= 0) return
+            if (d.localAt >= d.remoteAt) return
+            if (mine == theirs) return
+            collisions += Collision(key, code, mine.orEmpty(), d.localAt, theirs.orEmpty(), d.remoteAt)
+        }
+
+        // --- entries -----------------------------------------------------
+        run {
+            val lm = byId(L.root, "entries")
+            val rm = byId(R.root, "entries")
+            val kept = ArrayList<Pair<Long, JSONObject>>()
+            (lm.keys + rm.keys).forEach { id ->
+                val key = ConfigStamp.src(id)
+                val d = decide(key)
+                if (!d.present) { if (d.gone > 0) gone[key] = d.gone; return@forEach }
+                val mine = lm[id]
+                val theirs = rm[id]
+                val pick = pickValue(d, mine, theirs) ?: return@forEach
+                collide(key, "src", d, mine?.toString(), theirs?.toString())
+                at[key] = d.at
+                if (d.gone > 0) gone[key] = d.gone
+                kept += d.at to pick
+            }
+            // Canonical order, identical on every device. Entry order feeds
+            // fingerprint's canonical string, so a device-dependent order
+            // ("local first, then theirs") would have two phones hash the same
+            // content differently and read "differs" forever after one
+            // concurrent add.
+            putLike(
+                out, locRoot, "entries",
+                JSONArray().also { arr ->
+                    kept.sortedWith(compareBy({ it.first }, { it.second.optString("id") }))
+                        .forEach { arr.put(it.second) }
+                }
+            )
+        }
+
+        // --- profiles ----------------------------------------------------
+        run {
+            val lm = byId(L.root, "profiles")
+            val rm = byId(R.root, "profiles")
+            val kept = ArrayList<Pair<Long, JSONObject>>()
+            (lm.keys + rm.keys).forEach { id ->
+                val key = ConfigStamp.kid(id)
+                val d = decide(key)
+                if (!d.present) {
+                    listOf(
+                        key, ConfigStamp.kidPin(id), ConfigStamp.kidRules(id),
+                        ConfigStamp.kidWindows(id), ConfigStamp.kidPause(id), ConfigStamp.kidBrk(id)
+                    ).forEach { k ->
+                        val dk = decide(k)
+                        if (dk.gone > 0) gone[k] = dk.gone
+                    }
+                    return@forEach
+                }
+                val mine = lm[id]
+                val theirs = rm[id]
+                val base = pickValue(d, mine, theirs) ?: return@forEach
+                collide(key, "kid", d, mine?.toString(), theirs?.toString())
+                at[key] = d.at
+                if (d.gone > 0) gone[key] = d.gone
+
+                // Assembled, not adopted whole. The PIN is its own unit
+                // because it is a credential riding inside an object: without
+                // that, a co-parent fixing the spelling of a kid's name on a
+                // stale copy silently removes the code set an hour earlier,
+                // and the picker then lets a sibling into that kid's profile.
+                val kid = JSONObject(base.toString())
+                fieldUnit(ConfigStamp.kidPin(id), ::decide, at, gone, mine, theirs, kid, "pin")
+                mergeKidLimits(id, ::decide, at, gone, mine, theirs, kid)
+                kept += d.at to kid
+            }
+            putLike(
+                out, locRoot, "profiles",
+                JSONArray().also { arr ->
+                    kept.sortedWith(compareBy({ it.first }, { it.second.optString("id") }))
+                        .forEach { arr.put(it.second) }
+                }
+            )
+        }
+
+        // --- sets --------------------------------------------------------
+        mergeSet(L.root, R.root, out, locRoot, "blocked", ConfigStamp::blk, ::decide, at, gone)
+        mergeSet(L.root, R.root, out, locRoot, "aiAllowed", ConfigStamp::allow, ::decide, at, gone)
+
+        // --- per-kid overlays --------------------------------------------
+        mergeOverlay(L.root, R.root, out, locRoot, "blockedFor", "for", ::decide, at, gone)
+        mergeOverlay(L.root, R.root, out, locRoot, "allowedFor", "afor", ::decide, at, gone)
+
+        // --- device assignments ------------------------------------------
+        run {
+            val lm = strMap(L.root, "deviceProfiles")
+            val rm = strMap(R.root, "deviceProfiles")
+            val o = JSONObject()
+            (lm.keys + rm.keys).sorted().forEach { token ->
+                val key = ConfigStamp.dev(token)
+                val d = decide(key)
+                if (!d.present) { if (d.gone > 0) gone[key] = d.gone; return@forEach }
+                val v = when (d.fromLocal) {
+                    true -> lm[token]
+                    false -> rm[token]
+                    null -> listOfNotNull(lm[token], rm[token]).minOrNull()
+                } ?: return@forEach
+                at[key] = d.at
+                if (d.gone > 0) gone[key] = d.gone
+                o.put(token, v)
+            }
+            putLike(out, locRoot, "deviceProfiles", o)
+        }
+
+        // --- limits ------------------------------------------------------
+        mergeLimits(L.root, R.root, out, ::decide, at, gone, collisions)
+
+        // --- ai ----------------------------------------------------------
+        run {
+            val d = decide(ConfigStamp.AI)
+            val mine = L.root.optJSONObject("ai")
+            val theirs = R.root.optJSONObject("ai")
+            val pick = pickValue(d, mine, theirs)
+            if (pick != null) {
+                val ai = JSONObject(pick.toString())
+                // A rules change invalidates every cached verdict, so the
+                // version must move whenever the *judging inputs* differ —
+                // picking one side and keeping its number would hand devices
+                // rules they have never screened under a version they already
+                // have verdicts for, and those verdicts decide what a child
+                // sees.
+                val lv = mine?.optInt("rulesVersion", 0) ?: 0
+                val rv = theirs?.optInt("rulesVersion", 0) ?: 0
+                val judgingDiffers = mine != null && theirs != null &&
+                    judgingInputs(mine) != judgingInputs(theirs)
+                ai.put("rulesVersion", maxOf(lv, rv) + if (judgingDiffers) 1 else 0)
+                out.put("ai", ai)
+                if (d.at > 0) at[ConfigStamp.AI] = d.at
+                collide(ConfigStamp.AI, "ai", d, mine?.toString(), theirs?.toString())
+            }
+        }
+
+        // --- master ------------------------------------------------------
+        run {
+            val d = decide(ConfigStamp.MASTER)
+            val mine = L.root.optString("master").ifEmpty { null }
+            val theirs = R.root.optString("master").ifEmpty { null }
+            // On a tie the lexicographically smaller token wins. "Keep the
+            // local one" is not commutative, so two co-parents who both
+            // claimed would never converge and would both keep running the
+            // rate-limit-expensive crawl.
+            val pick = when (d.fromLocal) {
+                true -> mine
+                false -> theirs
+                null -> listOfNotNull(mine, theirs).minOrNull()
+            }
+            if (pick != null) {
+                out.put("master", pick)
+                if (d.at > 0) at[ConfigStamp.MASTER] = d.at
+            } else out.remove("master")
+        }
+
+        // --- the loose settings group ------------------------------------
+        run {
+            val d = decide(ConfigStamp.SETTINGS)
+            val from = when (d.fromLocal) {
+                false -> R.root
+                true -> L.root
+                null -> if (settingsOf(L.root).toString() <= settingsOf(R.root).toString()) L.root else R.root
+            }
+            SETTINGS_KEYS.forEach { k ->
+                if (from.has(k)) out.put(k, from.get(k)) else out.remove(k)
+            }
+            if (d.at > 0) at[ConfigStamp.SETTINGS] = d.at
+            collide(
+                ConfigStamp.SETTINGS, "settings", d,
+                settingsOf(L.root).toString(), settingsOf(R.root).toString()
+            )
+        }
+
+        // Cross-section coherence, then the bookkeeping.
+        scrubReferences(out)
+        val learned = mergeLogs(L.sync.log, R.sync.log)
+            .filterNot { c -> L.sync.log.any { it.id == c.id } }
+        val sync = ConfigStamp.prune(
+            SyncMeta(
+                v = SyncMeta.VERSION,
+                docAt = maxOf(L.sync.docAt, R.sync.docAt),
+                at = at,
+                gone = gone,
+                floor = floor,
+                log = mergeLogs(L.sync.log, R.sync.log)
+            )
+        )
+        if (!sync.isEmpty) out.put("sync", syncToJson(sync)) else out.remove("sync")
+        // Never let a merged document claim a moment the peer invented.
+        out.put("updatedAt", maxOf(locRoot.optLong("updatedAt", 0L), inRoot.optLong("updatedAt", 0L)))
+
+        val changedLocally = !sameDoc(out, locRoot)
+        val peerBehind = !sameDoc(out, inRoot)
+        return Result(
+            merged = if (changedLocally) out.toString(2) else null,
+            peerBehind = peerBehind,
+            collisions = collisions,
+            learned = learned,
+            apiKey = incomingKey.ifBlank { localKey }
+        )
+    }
+
+    private data class Decision(
+        val present: Boolean,
+        val at: Long,
+        val gone: Long,
+        /** true = local wins, false = remote wins, null = tie, break on value. */
+        val fromLocal: Boolean?,
+        val localAt: Long,
+        val remoteAt: Long
+    )
+
+    /** On a tie, the lexicographically smaller compact form — symmetric, so both sides agree. */
+    private fun pickValue(d: Decision, mine: JSONObject?, theirs: JSONObject?): JSONObject? =
+        when (d.fromLocal) {
+            true -> mine ?: theirs
+            false -> theirs ?: mine
+            null -> when {
+                mine == null -> theirs
+                theirs == null -> mine
+                mine.toString() <= theirs.toString() -> mine
+                else -> theirs
+            }
+        }
+
+    /**
+     * A legacy document — no `sync` block — gets synthesised stamps and **no
+     * tombstones whatsoever**.
+     *
+     * `toJson` mints `updatedAt` at *serialization* time, so every document an
+     * older build serves claims to be brand new. Deriving a deletion from what
+     * such a document happens to be missing would let a phone that spent a
+     * fortnight in a drawer, or a fresh install whose config is empty,
+     * permanently delete a family's entire setup. So absence carries no
+     * information here, ever.
+     *
+     * Members get *positional* rank — 0, 1, 2 — which is about twelve orders
+     * of magnitude below any real millisecond stamp, so the canonical ordering
+     * reproduces the file's existing order exactly for a never-merged config
+     * without reading a clock.
+     */
+    private fun normalise(root: JSONObject): Side {
+        val existing = syncFromJson(root)
+        if (!existing.isEmpty) return Side(root, existing, legacy = false)
+        val at = LinkedHashMap<String, Long>()
+        // One-based. Zero means "no stamp at all", which is what makes a unit
+        // absent — so a legacy document's first channel would vanish if rank
+        // started at 0.
+        idsOf(root, "entries").forEachIndexed { i, id -> at[ConfigStamp.src(id)] = i + 1L }
+        idsOf(root, "profiles").forEachIndexed { i, id -> at[ConfigStamp.kid(id)] = i + 1L }
+        strsOf(root, "blocked").forEach { at[ConfigStamp.blk(it)] = 1L }
+        strsOf(root, "aiAllowed").forEach { at[ConfigStamp.allow(it)] = 1L }
+        overlayKeys(root, "blockedFor").forEach { at["for|$it"] = 1L }
+        overlayKeys(root, "allowedFor").forEach { at["afor|$it"] = 1L }
+        strMap(root, "deviceProfiles").keys.forEach { at[ConfigStamp.dev(it)] = 1L }
+        return Side(root, SyncMeta(at = at), legacy = true)
+    }
+
+    // --- merge helpers --------------------------------------------------
+
+    /**
+     * Stamps at or below this are synthesised positional ranks from a legacy
+     * document, not real times. A real stamp is epoch milliseconds — about
+     * 1.7e12 — so the two bands cannot be confused, and the distinction is
+     * what lets the floor refuse a genuinely stale row while never refusing
+     * one that simply predates the format.
+     */
+    private const val SYNTHETIC_AT_MAX = 1_000_000L
+
+    /** The loose family-wide scalars that share one stamp. */
+    private val SETTINGS_KEYS = listOf(
+        "sponsorSkip", "autoplay", "suggest", "channelLayout", "channelOrder",
+        "listen", "qualityTv", "qualityPhone", "pageSize", "showVideoAge"
+    )
+
+    /**
+     * A kid whose id no longer exists cannot be referenced. The sentinel is
+     * never a valid 8-hex id, so `visibleTo` answers false for every kid —
+     * the entry is hidden rather than shown to everyone.
+     */
+    internal const val PROFILE_NONE = "-"
+
+    private fun stripKey(root: JSONObject) {
+        root.optJSONObject("ai")?.remove("apiKey")
+    }
+
+    /**
+     * Write a container, preserving whether the local document had the key at
+     * all when the result is empty.
+     *
+     * `toJson` is not uniform about this — `blocked` is always written, even
+     * empty, while `profiles` is omitted when empty — so a merge that picked
+     * its own convention would report a change on a document identical to
+     * itself. That is not cosmetic: the reconcile would then push on every
+     * sweep, forever, against every device in the house.
+     */
+    private fun putLike(out: JSONObject, local: JSONObject, field: String, value: Any) {
+        val empty = when (value) {
+            is JSONArray -> value.length() == 0
+            is JSONObject -> value.length() == 0
+            else -> false
+        }
+        when {
+            !empty -> out.put(field, value)
+            local.has(field) -> out.put(field, value)
+            else -> out.remove(field)
+        }
+    }
+
+    private fun jsonObjects(root: JSONObject, field: String): List<JSONObject> {
+        val arr = root.optJSONArray(field) ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+    }
+
+    private fun byId(root: JSONObject, field: String): Map<String, JSONObject> {
+        // First wins, matching every `distinctBy { it.id }` in the app — a
+        // duplicate id is a pre-existing data problem, and the merge must not
+        // be the place that starts resolving it differently.
+        val out = LinkedHashMap<String, JSONObject>()
+        jsonObjects(root, field).forEach { o ->
+            o.optString("id").takeIf { it.isNotBlank() }?.let { out.putIfAbsent(it, o) }
+        }
+        return out
+    }
+
+    private fun idsOf(root: JSONObject, field: String): List<String> =
+        byId(root, field).keys.toList()
+
+    private fun strsOf(root: JSONObject, field: String): List<String> {
+        val arr = root.optJSONArray(field) ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
+    }
+
+    private fun strMap(root: JSONObject, field: String): Map<String, String> {
+        val o = root.optJSONObject(field) ?: return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        o.keys().forEach { k -> o.optString(k).takeIf { it.isNotBlank() }?.let { out[k] = it } }
+        return out
+    }
+
+    /** `videoId|kidId` pairs, which is how an overlay is keyed as units. */
+    private fun overlayKeys(root: JSONObject, field: String): List<String> {
+        val o = root.optJSONObject(field) ?: return emptyList()
+        val out = ArrayList<String>()
+        o.keys().forEach { videoId ->
+            strsOf(o, videoId).forEach { kidId -> out += "$videoId|$kidId" }
+        }
+        return out
+    }
+
+    private fun settingsOf(root: JSONObject): JSONObject =
+        JSONObject().also { o -> SETTINGS_KEYS.forEach { k -> if (root.has(k)) o.put(k, root.get(k)) } }
+
+    /** What the AI actually judges on. A change to any of it invalidates every cached verdict. */
+    private fun judgingInputs(ai: JSONObject): String = listOf(
+        ai.optString("rules"), ai.optString("model"),
+        ai.optString("baseUrl"), ai.optString("childAge")
+    ).joinToString(" ")
+
+    /** Compares two documents ignoring key order, which `toString` does not. */
+    private fun sameDoc(a: JSONObject, b: JSONObject): Boolean = canonical(a) == canonical(b)
+
+    private fun canonical(v: Any?): String = when (v) {
+        is JSONObject -> v.keys().asSequence().sorted()
+            .joinToString(",", "{", "}") { "$it:${canonical(v.get(it))}" }
+        is JSONArray -> (0 until v.length()).joinToString(",", "[", "]") { canonical(v.get(it)) }
+        else -> v?.toString() ?: "null"
+    }
+
+    /** One field inside an object that is its own unit — currently just a kid's PIN. */
+    private fun fieldUnit(
+        key: String,
+        decide: (String) -> Decision,
+        at: MutableMap<String, Long>,
+        gone: MutableMap<String, Long>,
+        mine: JSONObject?,
+        theirs: JSONObject?,
+        into: JSONObject,
+        field: String
+    ) {
+        val d = decide(key)
+        if (d.gone > 0) gone[key] = d.gone
+        if (!d.present) { into.remove(field); return }
+        val from = when (d.fromLocal) {
+            true -> mine
+            false -> theirs
+            null -> mine ?: theirs
+        }
+        if (from != null && from.has(field)) into.put(field, from.get(field)) else into.remove(field)
+        if (d.at > 0) at[key] = d.at
+    }
+
+    private fun mergeKidLimits(
+        id: String,
+        decide: (String) -> Decision,
+        at: MutableMap<String, Long>,
+        gone: MutableMap<String, Long>,
+        mine: JSONObject?,
+        theirs: JSONObject?,
+        into: JSONObject
+    ) {
+        val ml = mine?.optJSONObject("limits")
+        val tl = theirs?.optJSONObject("limits")
+        if (ml == null && tl == null) return
+        val merged = limitsUnion(
+            id = id, decide = decide, at = at, gone = gone, mine = ml, theirs = tl
+        )
+        if (merged.length() > 0) into.put("limits", merged) else into.remove("limits")
+    }
+
+    /**
+     * A limits object assembled from four separately-stamped units, then its
+     * legacy bedtime pair recomputed.
+     *
+     * The recompute is not cosmetic. Taking windows from one side and pass
+     * state from the other otherwise leaves an old TV enforcing a bedtime the
+     * phone deleted, or skipping one it set — and the flat pair is all such a
+     * TV enforces.
+     */
+    private fun limitsUnion(
+        id: String?,
+        decide: (String) -> Decision,
+        at: MutableMap<String, Long>,
+        gone: MutableMap<String, Long>,
+        mine: JSONObject?,
+        theirs: JSONObject?
+    ): JSONObject {
+        fun keyFor(part: String) = if (id == null) {
+            when (part) {
+                "rules" -> ConfigStamp.LIM_RULES
+                "windows" -> ConfigStamp.LIM_WINDOWS
+                "pause" -> ConfigStamp.LIM_PAUSE
+                else -> ConfigStamp.LIM_BRK
+            }
+        } else when (part) {
+            "rules" -> ConfigStamp.kidRules(id)
+            "windows" -> ConfigStamp.kidWindows(id)
+            "pause" -> ConfigStamp.kidPause(id)
+            else -> ConfigStamp.kidBrk(id)
+        }
+
+        fun sideFor(part: String): JSONObject? {
+            val k = keyFor(part)
+            val d = decide(k)
+            if (d.at > 0) at[k] = d.at
+            if (d.gone > 0) gone[k] = d.gone
+            return when (d.fromLocal) {
+                true -> mine
+                false -> theirs
+                null -> mine ?: theirs
+            }
+        }
+
+        val out = JSONObject()
+        // Anything this build does not model survives from whichever side is
+        // carrying the rules, rather than being dropped on the floor.
+        sideFor("rules")?.let { src ->
+            src.keys().forEach { k ->
+                if (k !in LIMITS_OWNED) out.put(k, src.get(k))
+            }
+            LIMITS_RULES_KEYS.forEach { k -> if (src.has(k)) out.put(k, src.get(k)) }
+        }
+        sideFor("windows")?.let { src -> if (src.has("windows")) out.put("windows", src.get("windows")) }
+        sideFor("pause")?.let { src -> if (src.has("pausedUntil")) out.put("pausedUntil", src.get("pausedUntil")) }
+        sideFor("brk")?.let { src -> if (src.has("breakPassUntil")) out.put("breakPassUntil", src.get("breakPassUntil")) }
+        refreshLegacyBedtime(out)
+        return out
+    }
+
+    private val LIMITS_RULES_KEYS = listOf(
+        "session", "weekdaySessions", "weekendSessions", "breakMinutes", "minVideoMinutes"
+    )
+
+    /** Every key `limitsUnion` decides for itself; anything else is passed through. */
+    private val LIMITS_OWNED = (
+        LIMITS_RULES_KEYS + listOf("windows", "pausedUntil", "breakPassUntil", "bedtimeStart", "bedtimeEnd")
+        ).toSet()
+
+    /**
+     * Rewrite the flat `bedtimeStart`/`bedtimeEnd` pair from the merged
+     * windows, by the same rule `limitsToJson` uses: a single every-day window
+     * with no active pass is exactly what pre-windows builds called bedtime.
+     * Anything richer has no legacy equivalent and is left out rather than
+     * flattened into a wrong one.
+     */
+    internal fun refreshLegacyBedtime(limits: JSONObject) {
+        limits.remove("bedtimeStart")
+        limits.remove("bedtimeEnd")
+        val arr = limits.optJSONArray("windows") ?: return
+        if (arr.length() != 1) return
+        val w = arr.optJSONObject(0) ?: return
+        if (w.has("days") || w.has("passUntil")) return
+        limits.put("bedtimeStart", w.optInt("start"))
+        limits.put("bedtimeEnd", w.optInt("end"))
+    }
+
+    private fun mergeLimits(
+        local: JSONObject,
+        remote: JSONObject,
+        out: JSONObject,
+        decide: (String) -> Decision,
+        at: MutableMap<String, Long>,
+        gone: MutableMap<String, Long>,
+        collisions: MutableList<Collision>
+    ) {
+        val mine = local.optJSONObject("limits")
+        val theirs = remote.optJSONObject("limits")
+        if (mine == null && theirs == null) return
+        // Always written when either side had the key. Removing an *empty*
+        // limits object that the local file carried would make the merge
+        // report a change on a document that is otherwise identical, and the
+        // sweep would then push on every pass forever.
+        out.put("limits", limitsUnion(null, decide, at, gone, mine, theirs))
+        val d = decide(ConfigStamp.LIM_RULES)
+        if (d.localAt > 0 && d.remoteAt > d.localAt && mine?.toString() != theirs?.toString()) {
+            collisions += Collision(
+                ConfigStamp.LIM_RULES, "lim",
+                mine?.toString().orEmpty(), d.localAt,
+                theirs?.toString().orEmpty(), d.remoteAt
+            )
+        }
+    }
+
+    private fun mergeSet(
+        local: JSONObject,
+        remote: JSONObject,
+        out: JSONObject,
+        locRoot: JSONObject,
+        field: String,
+        key: (String) -> String,
+        decide: (String) -> Decision,
+        at: MutableMap<String, Long>,
+        gone: MutableMap<String, Long>
+    ) {
+        val members = (strsOf(local, field) + strsOf(remote, field)).distinct()
+        val kept = ArrayList<String>()
+        members.forEach { m ->
+            val k = key(m)
+            val d = decide(k)
+            if (d.gone > 0) gone[k] = d.gone
+            if (!d.present) return@forEach
+            if (d.at > 0) at[k] = d.at
+            kept += m
+        }
+        // Sorted, so two devices holding the same set write the same bytes.
+        putLike(out, locRoot, field, JSONArray().also { a -> kept.sorted().forEach { a.put(it) } })
+    }
+
+    private fun mergeOverlay(
+        local: JSONObject,
+        remote: JSONObject,
+        out: JSONObject,
+        locRoot: JSONObject,
+        field: String,
+        ns: String,
+        decide: (String) -> Decision,
+        at: MutableMap<String, Long>,
+        gone: MutableMap<String, Long>
+    ) {
+        val pairs = (overlayKeys(local, field) + overlayKeys(remote, field)).distinct()
+        val kept = LinkedHashMap<String, MutableSet<String>>()
+        pairs.forEach { pair ->
+            val k = "$ns|$pair"
+            val d = decide(k)
+            if (d.gone > 0) gone[k] = d.gone
+            if (!d.present) return@forEach
+            if (d.at > 0) at[k] = d.at
+            val videoId = pair.substringBefore('|')
+            val kidId = pair.substringAfter('|')
+            kept.getOrPut(videoId) { linkedSetOf() } += kidId
+        }
+        putLike(
+            out, locRoot, field,
+            JSONObject().also { o ->
+                kept.keys.sorted().forEach { v ->
+                    o.put(v, JSONArray().also { a -> kept.getValue(v).sorted().forEach { a.put(it) } })
+                }
+            }
+        )
+    }
+
+    /**
+     * Drop references to kids the config no longer has, across entries,
+     * per-kid overlays and device assignments — and resolve the one incoherent
+     * state a merge can produce, the same video blocked *and* allowed for one
+     * kid.
+     *
+     * The critical part is what happens to an entry whose kid list becomes
+     * empty *by scrubbing*: it must NOT fall back to the "visible to everyone"
+     * meaning an empty list normally carries. That fails open, so a channel
+     * restricted to a removed fourteen-year-old would become visible to the
+     * six-year-old. It gets the [PROFILE_NONE] sentinel instead and is hidden
+     * until a parent assigns someone.
+     */
+    internal fun scrubReferences(root: JSONObject) {
+        val valid = idsOf(root, "profiles").toSet()
+
+        jsonObjects(root, "entries").forEach { e ->
+            val listed = strsOf(e, "profiles")
+            if (listed.isEmpty()) return@forEach
+            val kept = listed.filter { it in valid }
+            when {
+                kept == listed -> {}
+                kept.isEmpty() -> e.put("profiles", JSONArray().put(PROFILE_NONE))
+                else -> e.put("profiles", JSONArray().also { a -> kept.sorted().forEach { a.put(it) } })
+            }
+        }
+
+        listOf("blockedFor", "allowedFor").forEach { field ->
+            val o = root.optJSONObject(field) ?: return@forEach
+            val cleaned = JSONObject()
+            o.keys().forEach { videoId ->
+                val kept = strsOf(o, videoId).filter { it in valid }
+                if (kept.isNotEmpty()) {
+                    cleaned.put(videoId, JSONArray().also { a -> kept.sorted().forEach { a.put(it) } })
+                }
+            }
+            if (cleaned.length() > 0) root.put(field, cleaned) else root.remove(field)
+        }
+
+        root.optJSONObject("deviceProfiles")?.let { o ->
+            val cleaned = JSONObject()
+            o.keys().forEach { token ->
+                o.optString(token).takeIf { it in valid }?.let { cleaned.put(token, it) }
+            }
+            if (cleaned.length() > 0) root.put("deviceProfiles", cleaned) else root.remove("deviceProfiles")
+        }
+
+        // Blocked and allowed for the same kid is a child-safety question, so
+        // it is never decided by a generic tie-break: the block holds.
+        val blockedFor = root.optJSONObject("blockedFor")
+        val allowedFor = root.optJSONObject("allowedFor")
+        if (blockedFor != null && allowedFor != null) {
+            val cleaned = JSONObject()
+            allowedFor.keys().forEach { videoId ->
+                val blocked = strsOf(blockedFor, videoId).toSet()
+                val kept = strsOf(allowedFor, videoId).filterNot { it in blocked }
+                if (kept.isNotEmpty()) {
+                    cleaned.put(videoId, JSONArray().also { a -> kept.sorted().forEach { a.put(it) } })
+                }
+            }
+            if (cleaned.length() > 0) root.put("allowedFor", cleaned) else root.remove("allowedFor")
+        }
+    }
+
+    /** Union by id, oldest first, capped. A log line is data, not state. */
+    private fun mergeLogs(a: List<Change>, b: List<Change>): List<Change> =
+        (a + b).associateBy { it.id }.values
+            .sortedWith(compareBy({ it.at }, { it.id }))
+            .takeLast(SyncMeta.MAX_LOG)
 }
 
 /**
