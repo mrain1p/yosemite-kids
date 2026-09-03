@@ -236,7 +236,12 @@ class MainViewModel(
                 // next worker run sees it isn't master and stops crawling.
                 val isParent = pairingStore?.role() != PairingStore.Role.KID
                 val loaded = store.load()
-                if (loaded.masterDeviceToken == null && isParent) {
+                // Not while the store is degraded: `save` here re-serializes
+                // the whole config, so claiming master on a config that only
+                // looks master-less because the file failed to parse would
+                // write the empty read over the real file, and the sweep below
+                // would then push that emptiness to every paired device.
+                if (loaded.masterDeviceToken == null && isParent && !store.degraded) {
                     val me = pairingStore?.deviceToken() ?: return@launch
                     store.save(loaded.copy(masterDeviceToken = me))
                     android.util.Log.i("Pickwick", "claimed master role (indexing)")

@@ -101,18 +101,20 @@ class ProfileNamespace(context: Context) {
      * first-listed profile while the map is empty — profiles[0] is the one the
      * parent grew out of the original single-kid setup.
      */
-    @Synchronized
     fun register(profileIds: List<String>) {
         if (profileIds.isEmpty()) return
-        val map = load()
-        if (map.isEmpty()) map[profileIds.first()] = ""
-        profileIds.forEach { id -> map.getOrPut(id) { "_$id" } }
-        prefs.edit().putString("map", JSONObject(map as Map<String, String>).toString()).apply()
+        synchronized(LOCK) {
+            val map = load()
+            if (map.isEmpty()) map[profileIds.first()] = ""
+            profileIds.forEach { id -> map.getOrPut(id) { "_$id" } }
+            // commit, not apply: this decides who inherits the legacy stores,
+            // and the caller goes on to open them on the strength of it.
+            prefs.edit().putString("map", JSONObject(map as Map<String, String>).toString()).commit()
+        }
     }
 
     /** Suffix for a profile ("" = legacy stores). Null falls back to legacy. */
-    @Synchronized
-    fun suffixFor(profileId: String?): String {
+    fun suffixFor(profileId: String?): String = synchronized(LOCK) {
         profileId ?: return ""
         val map = load()
         map[profileId]?.let { return it }
@@ -129,6 +131,20 @@ class ProfileNamespace(context: Context) {
         val o = JSONObject(prefs.getString("map", "{}") ?: "{}")
         o.keys().asSequence().associateWith { o.getString(it) }.toMutableMap()
     }.getOrDefault(mutableMapOf())
+
+    companion object {
+        /**
+         * Class-level, and deliberately not `@Synchronized`. Callers build a
+         * fresh `ProfileNamespace` per use — `ConfigStore.registered` does it
+         * on every load, from the ViewModel and from LAN worker threads — so
+         * an instance lock guards a throwaway object and provides no mutual
+         * exclusion whatsoever. The read-modify-write below decides which kid
+         * inherits the legacy unsuffixed stores; losing that race hands one
+         * kid another kid's watch history, resume points and screen-time
+         * budget, which is silent and unrecoverable.
+         */
+        private val LOCK = Any()
+    }
 }
 
 /**

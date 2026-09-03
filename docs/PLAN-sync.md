@@ -569,3 +569,51 @@ Every scenario below must have a test. 66 in total.
 5. Should `ScreeningStore` eventually key cached verdicts on a content hash of the judging inputs rather than on `ai.rulesVersion`? That would make the one non-associative rule in the merge disappear and remove the (bounded, rare) risk of paying for two family-wide re-screens instead of one. It touches Screening.kt rather than the sync path, so it is deliberately out of scope here.
 6. `COLLISION_FRESH_MS = 36h` is sized against 'I set it last night, you changed it this evening'. If the household's rendezvous device is off for days at a time, real collisions will land outside the window and go unsurfaced. Is 36h right, or should it be tied to 'since this phone last successfully reconciled with any peer'?
 7. The Combine dialog is hidden for a peer with no `syncV`, leaving only Replace. That is correct and safe, but it removes an affordance a parent may have been using during the upgrade window. Confirm that 'Replace, with today's wording' is an acceptable sole option against a legacy device.
+## Decisions taken (2026-09-03)
+
+Both open questions the plan flagged for the user were agreed:
+
+1. **`version.json` should point at the fork before this ships.** Recorded, not
+   yet actioned: both git remotes still point at upstream and there is no fork
+   repo to point at. `UPDATE_MANIFEST_URL` stays empty until one exists, so a
+   half-upgraded household remains the steady state and the FORK-NOTES caveats
+   stand. Action this the moment the fork has a home.
+2. **Restrictive-wins for blocks is accepted, residual case included.** A
+   re-block from a phone that never saw an unblock wins silently. It is the one
+   place the merge can quietly undo a deliberate later action, and it is the
+   right bias for a parental-controls app.
+
+The other five were taken at the plan's own defaults: ship the `settings`
+group coarse, leave entry-id canonicalisation as separate work, leave
+`ScreeningStore` verdict keying out of scope, keep `COLLISION_FRESH_MS` at 36h,
+and offer Replace alone against a legacy peer.
+
+### M1 progress
+
+Done and green (260 unit tests, gate passing):
+
+- `ConfigStore` takes a `File`, with the `Context` constructor delegating.
+  Everything behind the `Context` is null-guarded, so a JVM test drives the
+  real serialize and write paths. 9 tests in `ConfigStoreFileTest`.
+- `load()` serves the last good copy and sets `degraded` instead of laundering
+  a parse failure into an empty config. The kid migration and the master claim
+  are both gated on it — each would otherwise mint into the empty read, persist
+  it over the real file, and push it to every device.
+- The kid migration's id is `ConfigStore.fingerprint(c)`, not `Profile.newId()`.
+  Two phones migrating the same kid-less config now mint the same kid; a random
+  id gives two, which whole-file last-writer-wins hides by discarding one and a
+  merge would not.
+- `ProfileNamespace`'s lock moved to a companion-level object. `@Synchronized`
+  guarded a throwaway instance, because `ConfigStore.registered()` builds a
+  fresh namespace on every load — so the read-modify-write that decides which
+  kid inherits the legacy stores had no mutual exclusion at all.
+- `ConfigMerge.describe` — the pure structural diff, 15 tests in
+  `ConfigDiffTest`, including that it never renders the API key, the endpoint
+  or a kid's PIN.
+- The Pull dialog fetches before the parent decides and lists what will change,
+  capped at 8 lines with an honest "…and N more". Copy then writes the exact
+  bytes the diff described rather than re-fetching.
+- `SingleChannelProbeTest` excluded from the offline gate; Android stubs return
+  default values in unit tests, without which nothing that logs was testable.
+
+Still open in M1: surfacing the peer's build on the devices row (M1e).

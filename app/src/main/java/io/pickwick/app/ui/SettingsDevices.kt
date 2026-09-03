@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
@@ -220,33 +221,107 @@ internal fun PhoneDevicesSection(
     }
 
     pendingPull?.let { device ->
+        // Fetched before the parent decides rather than after. A Pull replaces
+        // everything on this phone, and until now it did so blind — the parent
+        // had no way to see which of their own edits they were discarding.
+        // Fetching here also means Copy writes the exact bytes the diff
+        // described, instead of re-fetching a config that may have moved in
+        // the seconds since.
+        var fetched by remember(device.key) { mutableStateOf<String?>(null) }
+        var unreachable by remember(device.key) { mutableStateOf(false) }
+        var diff by remember(device.key) {
+            mutableStateOf<List<io.pickwick.app.data.ConfigMerge.Change>?>(null)
+        }
+        LaunchedEffect(device.key) {
+            val remote = withContext(kotlinx.coroutines.Dispatchers.IO) { LanClient.fetchConfig(device) }
+            if (remote == null) {
+                unreachable = true
+                return@LaunchedEffect
+            }
+            diff = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    io.pickwick.app.data.ConfigMerge.describe(
+                        configStore.load(), ConfigStore.fromJson(remote)
+                    )
+                }.getOrNull()
+            }
+            fetched = remote
+        }
         AlertDialog(
             onDismissRequest = { pendingPull = null },
             title = { Text("Copy settings from ${device.name}?") },
             text = {
-                Text(
-                    "This phone's channels, blocked videos, safe-list and screen-time " +
-                        "rules will be replaced by what's on ${device.name}. Any unsaved " +
-                        "edits on this screen are discarded."
-                )
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    when {
+                        unreachable -> Text(
+                            "Couldn't reach ${device.name}. Is it switched on and on home Wi-Fi?"
+                        )
+                        fetched == null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Text("Checking what's on ${device.name}…")
+                        }
+                        diff.isNullOrEmpty() -> Text(
+                            if (diff == null)
+                                "${device.name} sent settings this phone couldn't read. " +
+                                    "Copying is still possible, but check the result afterwards."
+                            else "${device.name} already has the same settings as this phone. " +
+                                "Copying changes nothing."
+                        )
+                        else -> {
+                            Text("Copying from ${device.name} will:")
+                            // Capped, and honest about the cap: an unbounded
+                            // list in a dialog is scrolled past, not read.
+                            diff.orEmpty().take(PULL_DIFF_MAX).forEach {
+                                Text("•  ${it.text}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            val extra = diff.orEmpty().size - PULL_DIFF_MAX
+                            if (extra > 0) {
+                                Text(
+                                    "…and $extra more change${if (extra == 1) "" else "s"}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    if (!unreachable) {
+                        Text(
+                            "Everything on this phone is replaced by what's on ${device.name}. " +
+                                "Any unsaved edits on this screen are discarded.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             },
             confirmButton = {
-                Button(onClick = {
-                    pendingPull = null
-                    scope.launch {
-                        val remote = LanClient.fetchConfig(device)
-                        pullMessage = if (remote != null && configStore.saveRaw(remote)) {
-                            // onConfigReplaced reloads the whole form from disk,
-                            // which re-derives localHash on its own.
-                            onConfigReplaced()
-                            checkAll()
-                            "Copied ${device.name}'s settings to this phone ✓"
-                        } else "Couldn't copy from ${device.name} — is it on home Wi-Fi?"
-                    }
-                }) { Text("Copy") }
+                if (!unreachable) {
+                    Button(
+                        enabled = fetched != null,
+                        onClick = {
+                            val remote = fetched ?: return@Button
+                            pendingPull = null
+                            scope.launch {
+                                pullMessage = if (configStore.saveRaw(remote)) {
+                                    // onConfigReplaced reloads the whole form from
+                                    // disk, which re-derives localHash on its own.
+                                    onConfigReplaced()
+                                    checkAll()
+                                    "Copied ${device.name}'s settings to this phone ✓"
+                                } else "Couldn't copy from ${device.name} — it sent something unreadable"
+                            }
+                        }
+                    ) { Text("Copy") }
+                }
             },
             dismissButton = {
-                TextButton(onClick = { pendingPull = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingPull = null }) {
+                    Text(if (unreachable) "Close" else "Cancel")
+                }
             }
         )
     }
@@ -619,3 +694,10 @@ internal fun UpdateSection(tv: Boolean = false, onUpdateFound: () -> Unit = {}) 
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+/**
+ * Lines the Pull dialog shows before it says "…and N more". A parent skims a
+ * confirmation; a forty-line diff in one is scrolled past rather than read,
+ * which would put us back where we started.
+ */
+private const val PULL_DIFF_MAX = 8

@@ -435,7 +435,12 @@ private fun AdminScreen(
     val loadedConfig by produceState<Whitelist?>(initialValue = null, configEpoch) {
         value = withContext(kotlinx.coroutines.Dispatchers.IO) {
             val c = configStore.load()
-            if (c.profiles.isNotEmpty()) c
+            // A degraded read means config.json exists but did not parse, so
+            // "no profiles" is an artefact of the failure, not a fact about
+            // the family. Minting a kid here would save that invention over
+            // the unreadable file and push it to every device — turning a
+            // recoverable read error into permanent data loss.
+            if (c.profiles.isNotEmpty() || configStore.degraded) c
             else {
                 // Every family has a kid: rules, grants and pauses all live on
                 // the kid's page now, so a kid-less config would have nowhere
@@ -445,7 +450,15 @@ private fun AdminScreen(
                 // and reaches every device by the usual push; a TV inventing
                 // its own would never agree with the phone's fingerprint.
                 val kid = io.pickwick.app.data.Profile(
-                    id = io.pickwick.app.data.Profile.newId(),
+                    // Derived from the config being migrated, not random: two
+                    // parent phones that each open Settings on the same
+                    // kid-less config must mint the *same* kid. A random id
+                    // gives two, and today's whole-file last-writer-wins hides
+                    // that by discarding one — a merge would keep both, and
+                    // the family would find two copies of their child. Same
+                    // 8-hex shape as Profile.newId; the config has no profiles
+                    // yet, so it cannot collide with one.
+                    id = ConfigStore.fingerprint(c),
                     name = "Kid",
                     age = c.ai.childAge,
                     limits = c.limits.copy(pausedUntilMillis = null)
