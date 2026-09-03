@@ -151,6 +151,25 @@ class HubTokens(dataDir: File) {
         return Result.success(token)
     }
 
+    /**
+     * The admin secret, which is what lets a human approve a device code.
+     *
+     * Taken from `PICKWICK_ADMIN_TOKEN` when set. When it is not, one is
+     * generated on first run and written here — and printed to the container
+     * log, which on a NAS is the one place a parent can always reach without
+     * already being authenticated. Generating beats defaulting: a hub with a
+     * known default token is a hub anyone on the network administers.
+     */
+    fun adminToken(fromEnv: String?): String = synchronized(lock) {
+        fromEnv?.takeIf { it.isNotBlank() }?.let { return it }
+        val root = read()
+        root.optString("admin").takeIf { it.isNotBlank() }?.let { return it }
+        val minted = (1..24).map { "0123456789abcdef"[rng.nextInt(16)] }.joinToString("")
+        root.put("admin", minted)
+        write(root)
+        minted
+    }
+
     fun revoke(token: String) = synchronized(lock) {
         val root = read()
         val arr = root.optJSONArray("devices") ?: return

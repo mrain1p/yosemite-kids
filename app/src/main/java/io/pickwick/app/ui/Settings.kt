@@ -878,6 +878,8 @@ private fun AdminScreen(
                     }
                 }
                 HubPage.Devices -> {
+                    SectionTitle("Hub (optional)")
+                    SettingsCard { HubSection(pairingStore) { configEpoch++ } }
                     SectionTitle("Kid devices")
                     SettingsCard {
                         PhoneDevicesSection(

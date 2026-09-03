@@ -30,8 +30,8 @@ android {
         applicationId = "io.pickwick.app"
         minSdk = 26 // adaptive icons; every realistic target device is far above this
         targetSdk = 34
-        versionCode = 43
-        versionName = "0.10.0-fork"
+        versionCode = 44
+        versionName = "0.11.0-fork"
 
         // Every outbound URL the app talks to, overridable per build so a fork
         // never phones upstream by accident. Set in local.properties or the
@@ -201,4 +201,10 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // Real org.json for JVM unit tests — the android.jar stubs throw "not mocked".
     testImplementation("org.json:json:20240303")
+    // TEST ONLY, and only in this direction. It lets the app's real hub client
+    // run against the real hub server in one JVM test, which is the only way
+    // to prove the two agree without a NAS and a network. Nothing in main
+    // may depend on :hub — the hub is optional and the app must not know it
+    // exists; the guard in check.ps1 enforces the reverse direction.
+    testImplementation(project(":hub"))
 }

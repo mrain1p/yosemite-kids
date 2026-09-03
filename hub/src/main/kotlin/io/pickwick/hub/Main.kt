@@ -20,13 +20,18 @@ fun main() {
 
     val store = HubStore(dataDir)
     val tokens = HubTokens(dataDir)
-    val server = HubServer(store, tokens, port)
+    val admin = tokens.adminToken(System.getenv("PICKWICK_ADMIN_TOKEN"))
+    val server = HubServer(store, tokens, port, admin)
 
     val bound = server.start()
     println("Pickwick hub listening on $bound, data in ${dataDir.absolutePath}")
     println("Devices enrolled: ${tokens.devices().size}")
+    // Printed because the container log is the one place a parent can reach
+    // without already holding a credential. Set PICKWICK_ADMIN_TOKEN in the
+    // compose file to pin it instead of reading it from here each time.
+    println("Admin token: $admin")
     if (tokens.devices().isEmpty()) {
-        println("Nothing paired yet — open the hub and approve a device's code to start.")
+        println("Nothing paired yet. Approve a device code to pair the first one.")
     }
 
     // Compose sends SIGTERM on `down`. Without this the container is killed

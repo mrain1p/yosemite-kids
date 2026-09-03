@@ -33,6 +33,7 @@ class HubServerTest {
     val tmp = TemporaryFolder()
 
     private val T = 1_780_000_000_000L
+    private val ADMIN = "test-admin-token"
 
     private lateinit var store: HubStore
     private lateinit var tokens: HubTokens
@@ -44,7 +45,7 @@ class HubServerTest {
         val dir = tmp.newFolder("data")
         store = HubStore(dir)
         tokens = HubTokens(dir)
-        server = HubServer(store, tokens, 0) { T }
+        server = HubServer(store, tokens, 0, ADMIN) { T }
         port = server.start()
     }
 
@@ -88,12 +89,26 @@ class HubServerTest {
         return code to text
     }
 
+    private fun callAdmin(path: String, body: String): Pair<Int, String> {
+        val c = URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection
+        c.requestMethod = "POST"
+        c.setRequestProperty("X-Admin-Token", ADMIN)
+        c.doOutput = true
+        c.outputStream.use { it.write(body.toByteArray()) }
+        val code = c.responseCode
+        val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
+        c.disconnect()
+        return code to text
+    }
+
     /** Enrol a device the way a real one would, and return its token. */
     private fun enrolled(name: String = "Living Room TV"): String {
         val (code, body) = call("/enrol", "POST", body = JSONObject().put("name", name).toString())
         assertEquals(200, code)
         val c = JSONObject(body).getString("code")
-        return tokens.approve(c, T).getOrThrow()
+        val (ac, ab) = callAdmin("/approve", JSONObject().put("code", c).toString())
+        assertEquals(200, ac)
+        return JSONObject(ab).getString("token")
     }
 
     // --- the gate -------------------------------------------------------
@@ -275,5 +290,60 @@ class HubServerTest {
         val a = JSONObject(call("/enrol", "POST", body = "{}").second).getString("code")
         val b = JSONObject(call("/enrol", "POST", body = "{}").second).getString("code")
         assertNotEquals(a, b)
+    }
+
+    // --- the admin gate -------------------------------------------------
+
+    @Test
+    fun approvingNeedsTheAdminSecret() {
+        // The device code proves someone is standing at the device. The admin
+        // token proves they are entitled to add one. Neither alone is enough,
+        // and this is the half an attacker on the network would not have.
+        val body = JSONObject(call("/enrol", "POST", body = "{}").second)
+        val code = body.getString("code")
+
+        val c = URL("http://127.0.0.1:$port/approve").openConnection() as HttpURLConnection
+        c.requestMethod = "POST"
+        c.setRequestProperty("X-Admin-Token", "not-the-admin-token")
+        c.doOutput = true
+        c.outputStream.use { it.write(JSONObject().put("code", code).toString().toByteArray()) }
+        assertEquals(401, c.responseCode)
+        c.disconnect()
+
+        assertTrue("a refused approval must enrol nothing", tokens.devices().isEmpty())
+    }
+
+    @Test
+    fun approvingWithNoAdminHeaderAtAllIsRefused() {
+        val code = JSONObject(call("/enrol", "POST", body = "{}").second).getString("code")
+        assertEquals(401, call("/approve", "POST", body = JSONObject().put("code", code).toString()).first)
+    }
+
+    @Test
+    fun thePendingListIsAdminOnly() {
+        // It names the devices asking to join and their live codes — handing
+        // that to an unauthenticated caller would hand them enrolment itself.
+        call("/enrol", "POST", body = JSONObject().put("name", "Kitchen tablet").toString())
+        assertEquals(401, call("/pending").first)
+    }
+
+    @Test
+    fun anAdminSeesWhatIsWaiting() {
+        call("/enrol", "POST", body = JSONObject().put("name", "Kitchen tablet").toString())
+        val c = URL("http://127.0.0.1:$port/pending").openConnection() as HttpURLConnection
+        c.setRequestProperty("X-Admin-Token", ADMIN)
+        val text = c.inputStream.bufferedReader().readText()
+        c.disconnect()
+        val arr = JSONObject(text).getJSONArray("pending")
+        assertEquals(1, arr.length())
+        assertEquals("Kitchen tablet", arr.getJSONObject(0).getString("name"))
+    }
+
+    @Test
+    fun aWrongCodeFromAnAdminSaysWhy() {
+        call("/enrol", "POST", body = "{}")
+        val (code, body) = callAdmin("/approve", JSONObject().put("code", "WRONGCOD").toString())
+        assertEquals(409, code)
+        assertEquals("UNKNOWN_CODE", JSONObject(body).getString("refused"))
     }
 }

@@ -23,6 +23,8 @@ class HubServer(
     private val store: HubStore,
     private val tokens: HubTokens,
     private val port: Int,
+    /** The secret that may approve a device code. See HubTokens.adminToken. */
+    private val adminToken: String,
     /** Passed in so tests need no clock and the merge stays clock-free. */
     private val now: () -> Long = { System.currentTimeMillis() }
 ) {
@@ -41,6 +43,8 @@ class HubServer(
         s.createContext("/status") { ex -> guarded(ex) { status(ex) } }
         s.createContext("/config") { ex -> guarded(ex) { config(ex) } }
         s.createContext("/enrol") { ex -> guarded(ex) { enrol(ex) } }
+        s.createContext("/approve") { ex -> guarded(ex) { approve(ex) } }
+        s.createContext("/pending") { ex -> guarded(ex) { pending(ex) } }
         s.createContext("/health") { ex -> respond(ex, 200, "ok") }
 
         s.start()
@@ -120,7 +124,56 @@ class HubServer(
         respond(ex, 200, JSONObject().put("code", code).toString())
     }
 
+    /**
+     * A human, holding the admin secret, approving a code a device is showing.
+     *
+     * This is the step that makes enrolment safe: the code proves someone is
+     * standing at the device, and the admin token proves they are entitled to
+     * add one. Neither alone is enough.
+     */
+    private fun approve(ex: HttpExchange) {
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        if (!admin(ex)) return
+        val body = readBody(ex) ?: return respond(ex, 413, "too large")
+        val code = runCatching { JSONObject(body).optString("code") }.getOrNull()
+            ?: return respond(ex, 400, "no code")
+
+        tokens.approve(code, now()).fold(
+            onSuccess = { respond(ex, 200, JSONObject().put("token", it).toString()) },
+            onFailure = {
+                val reason = (it as? EnrolmentRefused)?.reason
+                // Named, because "that code is wrong" and "that code expired"
+                // send a parent to different places.
+                respond(ex, 409, JSONObject().put("refused", reason?.name ?: "UNKNOWN_CODE").toString())
+            }
+        )
+    }
+
+    /** What is waiting to be approved — the list a console would render. */
+    private fun pending(ex: HttpExchange) {
+        if (!admin(ex)) return
+        val arr = org.json.JSONArray()
+        tokens.pending(now()).forEach {
+            arr.put(JSONObject().put("code", it.code).put("name", it.name).put("createdAt", it.createdAt))
+        }
+        respond(ex, 200, JSONObject().put("pending", arr).toString())
+    }
+
     // --- plumbing -------------------------------------------------------
+
+    /**
+     * The admin gate. Compared in constant time: a token checked with ordinary
+     * string equality leaks its prefix to anyone willing to time the answer,
+     * and this is the secret that can add devices.
+     */
+    private fun admin(ex: HttpExchange): Boolean {
+        val given = ex.requestHeaders.getFirst("X-Admin-Token").orEmpty()
+        val expected = adminToken
+        val ok = given.length == expected.length &&
+            given.indices.fold(0) { acc, i -> acc or (given[i].code xor expected[i].code) } == 0
+        if (!ok) respond(ex, 401, "not admin")
+        return ok
+    }
 
     /**
      * Every route runs inside this. An exception escaping a handler leaves the
