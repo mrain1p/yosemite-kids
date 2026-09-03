@@ -47,21 +47,49 @@ if ($settingsSrc -match "return Whitelist\(") {
     Fail-Guard "Settings.kt constructs a Whitelist. Use baseline.copy(...) so new fields are inherited."
 }
 
+# :core is the code the Android app and the Docker hub both run. The moment it
+# imports Android the hub cannot build it — and that failure would surface in
+# the hub's build, a long way from the edit that caused it.
+$androidInCore = Select-String -Path "core\src\main\kotlin\io\pickwick\app\data\*.kt" `
+    -Pattern '^import (android|androidx)\.' -List | ForEach-Object { $_.Path }
+if ($androidInCore) {
+    Fail-Guard ":core imports Android ($androidInCore). It must stay plain JVM so the hub can use it."
+}
+
+# The same rule one level up: an Android plugin here would let the above in
+# without tripping the import check.
+if (Select-String -Path "core\build.gradle.kts" -Pattern 'com\.android|kotlin-android' -Quiet) {
+    Fail-Guard ":core applies an Android plugin. It must stay a plain JVM module."
+}
+
+# The merge's tests belong in :core. In :app they still pass, but they prove
+# the merge works *on Android* — and the hub, the other consumer of the exact
+# same code, would be running it with nothing covering it.
+foreach ($t in @("ConfigMergeTest", "ConfigStampTest", "ConfigSyncFormatTest", "SyncDecisionTest")) {
+    if (-not (Test-Path "core\src\test\kotlin\io\pickwick\app\$t.kt")) {
+        Fail-Guard "$t.kt must live in core\src\test — there it covers the hub too, in :app it does not."
+    }
+}
+
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
-$misnamed = Get-ChildItem app\src\test\java\io\pickwick\app -File |
+$misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |
     Where-Object { $_.Name -notlike "*Test.kt" }
 if ($misnamed) {
     Fail-Guard "these test files will never run: $($misnamed.Name -join ', ') — rename to *Test.kt"
 }
 
-Write-Host "== 1/3 compile (assembleDebug)" -ForegroundColor Cyan
+Write-Host "== 1/4 compile (assembleDebug)" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q assembleDebug
 if ($LASTEXITCODE -ne 0) { Write-Host "compile FAILED" -ForegroundColor Red; exit 1 }
 
 if ($Quick) { Write-Host "compile OK (quick mode)" -ForegroundColor Green; exit 0 }
 
-Write-Host "== 2/3 unit tests (offline)" -ForegroundColor Cyan
+Write-Host "== 2/4 core tests (no Android — the hub runs this exact code)" -ForegroundColor Cyan
+& .\gradlew.bat --no-daemon -q :core:test
+if ($LASTEXITCODE -ne 0) { Write-Host "core tests FAILED" -ForegroundColor Red; exit 1 }
+
+Write-Host "== 3/4 app unit tests (offline)" -ForegroundColor Cyan
 # Every test class except the live-YouTube canaries. Gradle's --tests takes
 # patterns, not exclusions, so the list is built from the source tree.
 # SingleChannelProbeTest calls ChannelInfo.getInfo with no runCatching and no
@@ -74,7 +102,7 @@ $tests = Get-ChildItem app\src\test\java\io\pickwick\app -Filter *Test.kt |
 & .\gradlew.bat --no-daemon -q :app:testDebugUnitTest @tests
 if ($LASTEXITCODE -ne 0) { Write-Host "unit tests FAILED — see app\build\reports\tests\testDebugUnitTest\index.html" -ForegroundColor Red; exit 1 }
 
-Write-Host "== 3/3 worker tests" -ForegroundColor Cyan
+Write-Host "== 4/4 worker tests" -ForegroundColor Cyan
 if (Get-Command node -ErrorAction SilentlyContinue) {
     & node --test (Get-ChildItem "worker\test\*.test.mjs" | ForEach-Object { $_.FullName })
     if ($LASTEXITCODE -ne 0) { Write-Host "worker tests FAILED" -ForegroundColor Red; exit 1 }

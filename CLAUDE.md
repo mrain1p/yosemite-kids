@@ -139,6 +139,35 @@ which lapses ~15 s after that screen goes away; off-window requests get
 `Origin` header or a non-JSON content type, so a page in a browser on the LAN
 can't take the slot with a no-preflight cross-site POST.
 
+## A change that creates a rule ships the thing that enforces it
+
+Before calling structural work done, ask: **what is now true that was not true
+before, and what would catch it becoming false?** Then build that, in the same
+commit.
+
+This is the one rule most easily skipped, because a refactor that passes its
+tests feels finished — but the tests were written for the *old* shape. The new
+shape's rules are precisely the ones with no coverage, and they break later,
+far from the edit, in someone else's build. Extracting `:core` created "must
+stay Android-free" and shipped nothing to check it; the gap was found by being
+asked, not by the gate.
+
+In order of preference:
+
+1. **A test**, when the property is about values. Put it where the property
+   has to hold — a merge test in `:app` proves the merge works on Android and
+   proves nothing about the hub running the same code.
+2. **A source guard** in step 0 of `scripts/check.ps1` *and* `scripts/check.sh`
+   (both, they are mirrored), when the property is about code *shape* and no
+   assertion can state it. Fail with a message saying what to do instead.
+3. **A skill**, when the property is a judgement a future session has to make
+   rather than a check a script can run. See `.claude/skills/pickwick-sync`.
+
+The same applies to a mistake made twice: that is the signal to build a check,
+not to try harder. Two changes in one session looked correct in review and did
+nothing on the device — which is why anything kid-facing gets verified through
+the emulator loop before it is called done.
+
 ## Conventions
 
 - Comments explain constraints and *why*, not what the line does. Match the

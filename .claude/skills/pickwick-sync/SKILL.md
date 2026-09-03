@@ -9,6 +9,27 @@ Read this before touching `ConfigStore`, `ConfigMerge`, `ConfigStamp`,
 `Whitelist`, or the `/config` and `/status` routes. The design and the
 reasoning behind each rule are in `docs/PLAN-sync.md`.
 
+## 0. Where this code lives, and why that matters
+
+The merge, the stamper, the sync decision and the config serializers are in
+**`:core`** — a plain-JVM Gradle module with no Android on its classpath. The
+Android app depends on it, and so will the Docker hub, so there is one
+implementation of these rules rather than two that drift apart.
+
+Three things follow, each enforced by a guard in step 0 of `scripts/check.ps1`
+and `scripts/check.sh`:
+
+- **`:core` must not import Android**, and must not apply an Android plugin.
+  Break either and the hub cannot build the code it depends on — a failure
+  that would surface in the hub's build, far from the edit that caused it.
+- **The merge's tests live in `core/src/test`.** In `:app` they still pass,
+  but they only prove the merge works *on Android*; the hub would be running
+  the same logic with nothing covering it. `:core:test` is its own gate step
+  for that reason.
+- **Anything reachable from another module cannot be `internal`**, and Kotlin
+  will not smart-cast a public property across a module boundary. Both bite at
+  the boundary, not before it.
+
 ## 1. The two clocks, and why one of them is a lie
 
 `toJson` stamps `updatedAt = System.currentTimeMillis()` at **serialization**

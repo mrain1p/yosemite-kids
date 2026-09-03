@@ -33,9 +33,31 @@ if grep -q "return Whitelist(" app/src/main/java/io/pickwick/app/ui/Settings.kt;
   guard_fail "Settings.kt constructs a Whitelist. Use baseline.copy(...) so new fields are inherited."
 fi
 
+# :core is the code the Android app and the Docker hub both run. The moment it
+# imports Android, the hub stops building — and the failure would surface in
+# the hub's build, a long way from the edit that caused it.
+androidInCore=$(grep -rlE "^import (android|androidx)\." core/src/main/kotlin || true)
+if [ -n "$androidInCore" ]; then
+  guard_fail ":core imports Android ($androidInCore). It must stay plain JVM so the hub can use it."
+fi
+
+# The same rule, one level up: the Android plugin in :core would let the above
+# slip in without tripping the import check.
+if grep -qE "com\.android|kotlin-android|libs\.plugins\.android" core/build.gradle.kts; then
+  guard_fail ":core applies an Android plugin. It must stay a plain JVM module."
+fi
+
+# The merge's tests must live in :core, not :app. In :app they still pass, but
+# they prove the merge works *on Android* — and the hub, which is the other
+# consumer, would be running that logic with nothing covering it.
+for t in ConfigMergeTest ConfigStampTest ConfigSyncFormatTest SyncDecisionTest; do
+  [ -f "core/src/test/kotlin/io/pickwick/app/$t.kt" ] || \
+    guard_fail "$t.kt must live in core/src/test — there it covers the hub too, in :app it does not."
+done
+
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
-misnamed=$(find app/src/test/java/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
+misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
 if [ -n "$misnamed" ]; then
   guard_fail "these test files will never run: $misnamed — rename to *Test.kt"
 fi
@@ -45,7 +67,10 @@ echo "== 1/3 compile (assembleDebug)"
 
 if [ "${1:-}" = "--quick" ]; then echo "compile OK (quick mode)"; exit 0; fi
 
-echo "== 2/3 unit tests (offline)"
+echo "== 2/4 core tests (no Android — the hub runs this exact code)"
+./gradlew --no-daemon -q :core:test
+
+echo "== 3/4 app unit tests (offline)"
 # Every test class except the live-YouTube canaries. Both reach real YouTube
 # unguarded, so a bot wall fails this gate for unrelated reasons.
 args=()
@@ -56,7 +81,7 @@ for f in app/src/test/java/io/pickwick/app/*Test.kt; do
 done
 ./gradlew --no-daemon -q :app:testDebugUnitTest "${args[@]}"
 
-echo "== 3/3 worker tests"
+echo "== 4/4 worker tests"
 if command -v node >/dev/null 2>&1; then
   node --test worker/test/*.test.mjs
 else

@@ -1,7 +1,6 @@
 package io.pickwick.app
 
 import io.pickwick.app.data.ConfigJson
-import io.pickwick.app.data.ConfigStore
 import io.pickwick.app.data.SourceKind
 import io.pickwick.app.data.Whitelist
 import io.pickwick.app.data.WhitelistEntry
