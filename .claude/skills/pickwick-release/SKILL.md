@@ -11,6 +11,11 @@ change that URL and `DIRECTORY_URL` / `SUGGEST_WORKER_URL` to your own repo
 before the first release, or installs will update themselves back onto
 upstream's builds.
 
+0. **Check upstream first.** Run `scripts/upstream.ps1` (or the
+   `pickwick-upstream` skill) and act on anything new before cutting the
+   release. An extractor bump shipped a week late is a week of families whose
+   playback is broken. If there is nothing new, the script says so and this
+   step costs seconds.
 1. Bump both `versionCode` (strictly higher) and `versionName` in
    `app/build.gradle.kts`. Forgetting `versionCode` silently ships nothing.
 2. Signing: `PICKWICK_KEYSTORE`, `PICKWICK_KEYSTORE_PASSWORD`,

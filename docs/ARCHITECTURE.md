@@ -225,6 +225,7 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Change how many videos a grid shows before "Show more" | `Whitelist.pageSize` → `UiState.pageSize` → `VideoGrid(pageSize = …)` |
 | Change the kid's sort/filter chips or their defaults | `HomeState.orderChannels` / `filterVideos` (pure), `KidPrefs` (per-kid persistence), `MainViewModel.setChannelSort` / `setHomeFilter` / `setChannelFilter`; chips in `HomeScreens.kt` (`ChannelSortChips`, `VideoFilterChips`, TV `CycleChip`) |
 | Change the You tab | `YouScreen.kt`, `MainViewModel.youShelves` / `openYou` |
+| Change what "More like what you watch" suggests | `HomeState.suggestionsFor` / `titleKeywords` (pure — `SuggestionsTest` covers it), fed by `MainViewModel.suggestionsRow`, switched by `Whitelist.suggestSimilar` |
 | Change the profile hub or the look editor | `ProfileHub.kt`; the sync-back is `data/ProfileLooks.kt` + `GET /looks` + `MainViewModel.syncConfigState` (`mergeLooks`) + `MainActivity.onChangeLook` |
 | Change what rows sit above a channel's grid | `PlaylistShelves.kt` (`playlistShelves`, `newForYouRow`, `playlistRow`), assembled in `PickwickScreen` (`header`); the data is `MainViewModel.loadPlaylistShelves` / `loadPlaylistRow` |
 | Let the parent pick a channel's playlists | `SettingsChannels.kt` (`playlistEntry` dialog) → `WhitelistEntry.playlistIds` |

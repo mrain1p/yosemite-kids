@@ -321,6 +321,7 @@ fun PickwickScreen(
                             channels = s.channels,
                             newBadges = s.newBadges,
                             keepWatching = s.keepWatching,
+                            suggested = s.suggested,
                             feed = s.feed,
                             recentHistory = s.recentHistory,
                             channelAvatars = s.channelAvatars,

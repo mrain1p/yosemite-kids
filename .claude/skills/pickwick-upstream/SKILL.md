@@ -46,3 +46,22 @@ on it); security/LAN fixes second; everything else when convenient.
   kid-facing.
 - If upstream changed `version.json`'s `versionCode` past the fork's, bump
   the fork's `versionCode` above it so self-update ordering stays sane.
+
+## The routine
+
+The skill above is what to *do*; these make sure it actually gets done.
+
+- **Weekly.** A scheduled task, `pickwick-upstream-check`, runs the script
+  every Monday morning, triages anything new into `docs/UPSTREAM-LOG.md`, and
+  says whether an APK rebuild is warranted. It commits locally, never pushes,
+  and never touches an attached device. Its prompt lives in
+  `~/.claude/scheduled-tasks/pickwick-upstream-check/SKILL.md`; it only fires
+  while the app is open, so a missed Monday runs at the next launch.
+- **Before every release.** Step 0 of `pickwick-release` is this check. An
+  extractor bump shipped a week late is a week of families whose playback is
+  broken, and the fork's own APK is the only way any of them get the fix.
+
+Both paths end in the same table in `docs/UPSTREAM-LOG.md`, so the log is the
+single record of what upstream shipped and what the fork did about it —
+including the deliberate skips, which are the ones a later reader will
+otherwise re-investigate.

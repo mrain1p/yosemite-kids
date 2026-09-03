@@ -274,6 +274,7 @@ class ConfigStore(context: Context) {
                 // keeps its hash across the build that introduced the flag.
                 if (!w.sponsorSkip) append(";SB:off")
                 if (!w.autoplayNext) append(";AP:off")
+                if (!w.suggestSimilar) append(";SG:off")
                 if (w.channelLayout != CHANNEL_LAYOUT_NEWEST) { append(";CL:"); append(w.channelLayout) }
                 if (w.channelOrder != CHANNEL_ORDER_WATCHED) { append(";CO:"); append(w.channelOrder) }
                 // Append-only-when-set, like every field added since: a
@@ -373,6 +374,7 @@ class ConfigStore(context: Context) {
             // saved by builds that predate the flag.
             if (!w.sponsorSkip) root.put("sponsorSkip", false)
             if (!w.autoplayNext) root.put("autoplay", false)
+            if (!w.suggestSimilar) root.put("suggest", false)
             if (w.channelLayout != CHANNEL_LAYOUT_NEWEST) root.put("channelLayout", w.channelLayout)
             if (w.channelOrder != CHANNEL_ORDER_WATCHED) root.put("channelOrder", w.channelOrder)
             w.qualityTv?.let { root.put("qualityTv", it) }
@@ -616,6 +618,7 @@ class ConfigStore(context: Context) {
                 masterDeviceToken = root.optString("master").ifEmpty { null },
                 sponsorSkip = root.optBoolean("sponsorSkip", true),
                 autoplayNext = root.optBoolean("autoplay", true),
+                suggestSimilar = root.optBoolean("suggest", true),
                 channelLayout = root.optString("channelLayout").takeIf { it in CHANNEL_LAYOUTS }
                     ?: CHANNEL_LAYOUT_NEWEST,
                 channelOrder = root.optString("channelOrder").takeIf { it in CHANNEL_ORDERS }

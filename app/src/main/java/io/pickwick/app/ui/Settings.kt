@@ -482,6 +482,7 @@ private fun AdminScreen(
     var masterToken by remember(initial) { mutableStateOf(initial.masterDeviceToken) }
     var sponsorSkip by remember(initial) { mutableStateOf(initial.sponsorSkip) }
     var autoplayNext by remember(initial) { mutableStateOf(initial.autoplayNext) }
+    var suggestSimilar by remember(initial) { mutableStateOf(initial.suggestSimilar) }
     var channelLayout by remember(initial) { mutableStateOf(initial.channelLayout) }
     var channelOrder by remember(initial) { mutableStateOf(initial.channelOrder) }
     var listenPercent by remember(initial) { mutableStateOf(initial.listenPercent) }
@@ -568,6 +569,7 @@ private fun AdminScreen(
             masterDeviceToken = masterToken,
             sponsorSkip = sponsorSkip,
             autoplayNext = autoplayNext,
+            suggestSimilar = suggestSimilar,
             channelLayout = channelLayout,
             channelOrder = channelOrder,
             listenPercent = listenPercent,
@@ -796,6 +798,26 @@ private fun AdminScreen(
                             "When a video the kid picked ends, the next unwatched one from the same " +
                                 "channel lines up behind a short countdown (Play now / Not now). " +
                                 "Screen-time rules still apply. Off: every video ends on the shelf.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    SectionTitle("Suggestions")
+                    SettingsCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("More like what you watch", modifier = Modifier.weight(1f))
+                            Switch(
+                                modifier = Modifier.tvFocusHighlight(),
+                                checked = suggestSimilar,
+                                onCheckedChange = { suggestSimilar = it }
+                            )
+                        }
+                        Text(
+                            "A home row of older videos from your own channels, matched to what " +
+                                "this kid has already watched. It is worked out on the device from " +
+                                "their own history — nothing is sent anywhere, no view counts are " +
+                                "used, and it can never reach a channel you haven't added. " +
+                                "Off: the home screen stays newest-first.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

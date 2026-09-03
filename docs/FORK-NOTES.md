@@ -657,6 +657,78 @@ Backlog: the two homes could become one `HomeRows` driven by a row list
 plus a density token (tile width, focus on/off), which would remove the
 last duplicated arrangement.
 
+
+### Suggestions: "More like what you watch" (0.9.5-fork)
+
+A home row of *older* videos off the family's own channels, ranked against
+what this kid has already watched. It exists because the feed above it is
+newest-first: a channel's back catalogue is otherwise unreachable without
+opening the channel and scrolling, which no kid does.
+
+The whole ranking is `suggestionsFor` in `ui/HomeState.kt`, and it is
+deliberately dull:
+
+- Titles are split into words (`titleKeywords`) — Unicode letters and digits,
+  three characters or more, lowercased, with a small hand-picked stoplist. The
+  stoplist is not a real one on purpose: kids' YouTube titles are wall-to-wall
+  "for kids", "full episode", "compilation", and a general stoplist keeps all
+  of those, at which point every video matches every other video.
+- Each candidate scores the size of its overlap with each watched title,
+  weighted `1 / (1 + i * 0.2)` by how recently that title was watched. The
+  last thing they watched says more about what they want next than the
+  fortieth thing back, but old watches still count.
+- Channel affinity adds at most 0.5 — enough to break a tie between two equal
+  matches, never enough to promote an unrelated video over a real one. There
+  is a unit test that pins exactly this.
+- A per-channel cap of 2 stops one prolific channel from owning the row. The
+  point is to widen what the kid sees, not to rebuild the channel page.
+- Score 0 means not suggested. An empty row is correct and common.
+
+What it deliberately is *not*: no model, no network call, no view counts, no
+reach outside the parent's whitelist. Everything it knows is this kid's own
+history on this device, which is also why the scoring is pure — the awkward
+cases (nothing watched, one channel, all-stopword titles) are eleven unit
+tests in `SuggestionsTest` rather than a guess.
+
+Wiring: `UiState.suggested`, built by `MainViewModel.suggestionsRow()` on both
+refresh paths — including the one that runs on return from the player, since
+that is exactly when a new watch has just landed and the row is stale by
+definition. `VideoCache.load` memoizes on (mtime, length), so re-reading every
+source's cache to build it costs a stat per channel, not a parse.
+
+Both layouts render it with `KeepWatchingRow`, whose `onDismiss` became
+nullable for it: the suggestions row is a *view over* the channels, not a list
+the kid owns, so a hold has nothing to take the video off, and the hold-menu
+and its confirm dialog are suppressed rather than made into a no-op.
+
+Off is one switch, `suggestSimilar` under Settings → Suggestions, on by
+default. It persists append-only-when-false (`;SG:off`, `"suggest"`) so every
+existing family's config keeps its fingerprint across the upgrade.
+
+Not done, and worth knowing why: channel *categories*. The obvious way to
+suggest across channels is a topic per channel, and the community directory
+already carries `topics` — but a channel linked from YouTube by URL or in-app
+search has none, and YouTube has no reliable category to read back. That
+leaves a parent hand-tagging every channel they add, which was tried and cut
+in this round. Watch history needs no tagging and no upkeep, so it is what
+this ships on.
+
+### Upstream tracking became a routine
+
+`scripts/upstream.ps1` and the `pickwick-upstream` skill already existed. What
+was missing was anything that made them *run*: a fork only finds out that
+upstream fixed extraction when a family's playback has already been broken for
+a week. Two triggers now:
+
+- A weekly scheduled task (`pickwick-upstream-check`, Mondays) runs the script,
+  triages anything new into `docs/UPSTREAM-LOG.md`, and says whether an APK
+  rebuild is warranted. Local commits only — it never pushes and never touches
+  an attached device.
+- Step 0 of `pickwick-release` is the same check, so no release is cut blind.
+
+Both end in the one table in `docs/UPSTREAM-LOG.md`, deliberate skips
+included — those are what a later reader would otherwise re-investigate.
+
 ## Review findings not acted on (backlog, roughly in order)
 
 Kid side:

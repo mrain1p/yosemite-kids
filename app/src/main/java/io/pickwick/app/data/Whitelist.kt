@@ -246,6 +246,13 @@ data class Whitelist(
      */
     val autoplayNext: Boolean = true,
     /**
+     * Whether the home screen offers "More like what you watch" — older videos
+     * from the family's own channels, ranked against what this kid has already
+     * watched. Nothing leaves the device to build it and no view counts are
+     * involved; see `suggestionsFor`.
+     */
+    val suggestSimilar: Boolean = true,
+    /**
      * How a channel's page is arranged for the kid — one of [CHANNEL_LAYOUTS]:
      * "newest" (the upload feed), "popular" (the same videos ordered by
      * YouTube's view count, never shown), "playlists" (the channel's own

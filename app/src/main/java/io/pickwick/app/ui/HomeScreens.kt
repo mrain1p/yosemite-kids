@@ -40,7 +40,12 @@ import io.pickwick.app.data.*
 private fun KeepWatchingRow(
     items: List<VideoItem>,
     onPlay: (VideoItem) -> Unit,
-    onDismiss: (VideoItem) -> Unit,
+    /**
+     * Hold-to-remove. Null for rows nothing can be dismissed *from* — the
+     * suggestions row is a view over the channels, not a list the kid owns,
+     * so a hold there has nothing to take the video off.
+     */
+    onDismiss: ((VideoItem) -> Unit)?,
     rounded: Boolean = false,
     /** TV: the home's initial focus lands on this row's first tile when it is the topmost row. */
     firstFocus: androidx.compose.ui.focus.FocusRequester? = null
@@ -65,7 +70,7 @@ private fun KeepWatchingRow(
                     MarqueeTitle(item.video.title, focused = false)
                     Spacer(Modifier.height(8.dp))
                     TextButton(
-                        onClick = { onDismiss(item); confirm = null },
+                        onClick = { onDismiss?.invoke(item); confirm = null },
                         modifier = Modifier.fillMaxWidth().focusRequester(firstAction).tvFocusHighlight()
                     ) { Text("✔️  Yes, take it off Keep watching") }
                     TextButton(
@@ -97,14 +102,19 @@ private fun KeepWatchingRow(
                     .pressScale(interaction)
                     .tvFocusHighlight { focused = it }
                     // Touch long-press and remote hold-OK both ask first.
-                    .dpadLongPress { confirm = item }
+                    .then(
+                        if (onDismiss != null) Modifier.dpadLongPress { confirm = item }
+                        else Modifier
+                    )
                     .combinedClickable(
                         interactionSource = interaction,
                         indication = LocalIndication.current,
                         onClick = { onPlay(item) },
-                        onLongClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            confirm = item
+                        onLongClick = if (onDismiss == null) null else {
+                            {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                confirm = item
+                            }
                         }
                     )
                     .width(if (rounded) 176.dp else 150.dp)
@@ -213,6 +223,20 @@ internal fun PhoneHome(
                 KeepWatchingRow(
                     state.keepWatching, onPlay = onPlay, onDismiss = onDismissKeepWatching,
                     rounded = true
+                )
+            }
+        }
+        // Taste, not recency: older videos off the family's own channels that
+        // look like what this kid already watched. Sits with Keep watching
+        // because it's the same shape; the chips below belong to the grid.
+        if (state.suggested.isNotEmpty()) {
+            item(key = "sg-divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
+            item(key = "sg-title", span = { GridItemSpan(maxLineSpan) }) {
+                SectionRow("More like what you watch")
+            }
+            item(key = "sg-row", span = { GridItemSpan(maxLineSpan) }) {
+                KeepWatchingRow(
+                    state.suggested, onPlay = onPlay, onDismiss = null, rounded = true
                 )
             }
         }
@@ -732,6 +756,8 @@ internal fun TvHomeRows(
     channels: List<Source>,
     newBadges: Set<String>,
     keepWatching: List<VideoItem>,
+    /** "More like what you watch"; empty when off or when nothing is watched yet. */
+    suggested: List<VideoItem> = emptyList(),
     feed: List<VideoItem> = emptyList(),
     recentHistory: List<VideoItem> = emptyList(),
     channelAvatars: Map<String, String?> = emptyMap(),
@@ -850,6 +876,18 @@ internal fun TvHomeRows(
                 TvRow("Keep watching") {
                     KeepWatchingRow(
                         keepWatching, onPlay = onPlay, onDismiss = onDismissKeepWatching, rounded = true,
+                        firstFocus = null
+                    )
+                }
+            }
+        }
+        // Taste, not recency: older videos off the family's own channels that
+        // match what this kid already watched.
+        if (suggested.isNotEmpty()) {
+            item(key = "suggested") {
+                TvRow("More like what you watch") {
+                    KeepWatchingRow(
+                        suggested, onPlay = onPlay, onDismiss = null, rounded = true,
                         firstFocus = null
                     )
                 }

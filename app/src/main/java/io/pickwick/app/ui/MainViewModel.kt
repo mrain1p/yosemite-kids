@@ -23,6 +23,8 @@ private const val FEED_MAX = 80
 private const val HISTORY_MAX = 120
 /** The TV home row is a glance, not the shelf. */
 private const val HISTORY_ROW_MAX = 12
+/** "More like what you watch" is one row, not a second feed. */
+private const val SUGGEST_ROW_MAX = 12
 /** Playlists shown in a channel page row. */
 private const val PLAYLIST_ROW_MAX = 30
 /** Videos per row on the You tab and per parent-picked playlist row. */
@@ -656,6 +658,7 @@ class MainViewModel(
         }
         val (left, reason) = withContext(Dispatchers.IO) { screenTime() }
         val (feed, recent) = withContext(Dispatchers.IO) { buildFeed(tiles) to historyRow() }
+        val suggested = withContext(Dispatchers.IO) { suggestionsRow(tiles) }
         val onHome = _state.value.screen == Screen.Home
         _state.value = _state.value.copy(
             channels = tiles,
@@ -663,6 +666,7 @@ class MainViewModel(
             newBadges = badges,
             feed = feed,
             recentHistory = recent,
+            suggested = suggested,
             channelAvatars = distinct.associate { it.name to it.avatarUrl },
             allHeld = distinct.isNotEmpty() && tiles.isEmpty(),
             remainingMs = left,
@@ -875,6 +879,7 @@ class MainViewModel(
                 screener?.allowedOverrides = list.allowedIdsFor(activeProfileId)
                 channelLayout = list.channelLayout
                 channelOrder = list.channelOrder
+                suggestSimilar = list.suggestSimilar
                 playlistPicks = list.sources.filter { it.playlistIds.isNotEmpty() }
                     .associate { it.url to it.playlistIds }
                 _state.value = _state.value.copy(
@@ -1111,6 +1116,46 @@ class MainViewModel(
     /** From the family config; "newest" until the first refresh reads it. */
     private var channelLayout: String = CHANNEL_LAYOUT_NEWEST
 
+    /** The parent's "More like what you watch" switch, read with the config. */
+    private var suggestSimilar: Boolean = true
+
+    /**
+     * "More like what you watch": cached videos the kid has never opened,
+     * ranked against the titles they actually watched. Older videos surface
+     * here — the feed above is newest-first, so a channel's back catalogue is
+     * otherwise unreachable without scrolling the channel page.
+     *
+     * Reads every source's cache file, so call it off the main thread.
+     */
+    private fun suggestionsRow(channels: List<Source>): List<VideoItem> {
+        if (!suggestSimilar) return emptyList()
+        val watched = history.all().filterValues { it.lastWatchedAt > 0 }
+        if (watched.isEmpty()) return emptyList()
+
+        val known = channels.flatMap { videoCache.load(it.id) }
+        val byUrl = HashMap<String, io.pickwick.app.data.Video>(known.size)
+        for (v in known) byUrl.putIfAbsent(v.url, v)
+
+        // Newest watch first — suggestionsFor weights by position, so the order
+        // here is the whole point.
+        val recent = watched.entries.sortedByDescending { it.value.lastWatchedAt }
+        val titles = recent.mapNotNull { byUrl[it.key]?.title }.take(SUGGEST_HISTORY_DEPTH)
+        val affinity = recent.mapNotNull { byUrl[it.key]?.channelName }
+            .groupingBy { it }.eachCount()
+
+        val candidates = known.asSequence()
+            .filter { it.url !in watched }
+            .filter {
+                it.videoId !in blockedVideoIds && !tooShort(it) &&
+                    screener?.isVisible(it) != false
+            }
+            .distinctBy { it.url }
+            .map { VideoItem(it, null) }
+            .toList()
+
+        return suggestionsFor(titles, candidates, affinity, SUGGEST_ROW_MAX)
+    }
+
     /**
      * The History shelf: everything this kid has watched, newest first,
      * joined to the caches (and the saved lists, which carry their own
@@ -1199,11 +1244,17 @@ class MainViewModel(
                 val (feed, recent) = withContext(Dispatchers.IO) {
                     buildFeed(_state.value.channels) to historyRow()
                 }
+                // Back from the player is also when a watch just landed, so the
+                // suggestions are stale by definition until they're rebuilt.
+                val suggested = withContext(Dispatchers.IO) {
+                    suggestionsRow(_state.value.channels)
+                }
                 _state.value = _state.value.copy(
                     keepWatching = keepWatching,
                     newBadges = badges,
                     feed = feed,
                     recentHistory = recent,
+                    suggested = suggested,
                     watchlisted = watchlisted,
                     watchLater = watchLater,
                     queued = queued,
