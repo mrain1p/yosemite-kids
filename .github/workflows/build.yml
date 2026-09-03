@@ -45,11 +45,11 @@ jobs:
       - name: Core tests (no Android)
         run: ./gradlew :core:test
 
-      # Every test class except the live-YouTube canary, discovered from the
-      # tree so a new test file is in the gate without touching this list.
       - name: Hub tests (the container's routes and enrolment)
         run: ./gradlew :hub:test
 
+      # Every test class except the live-YouTube canary, discovered from the
+      # tree so a new test file is in the gate without touching this list.
       - name: Unit tests (non-network)
         run: |
           args=()
