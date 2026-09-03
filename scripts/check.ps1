@@ -85,6 +85,29 @@ if (-not (Test-Path "hub\src\test\kotlin\io\pickwick\hub\HubServerTest.kt")) {
     Fail-Guard "HubServerTest.kt is missing — it pins the /status wire contract with :app."
 }
 
+# Shell scripts must have LF endings. A CRLF script in a container has a
+# shebang of "#!/bin/sh<CR>", which the kernel cannot resolve, and the error
+# is "not found" for a file that is visibly present. This cost half an hour
+# on gradlew during the hub's first container build — and this check runs on
+# Windows, which is where such a file is created in the first place.
+$crlf = @(git ls-files '*.sh' gradlew) | Where-Object { Test-Path $_ } | Where-Object {
+    [System.IO.File]::ReadAllBytes($_) -contains 13
+}
+if ($crlf) {
+    Fail-Guard "CRLF line endings in: $($crlf -join ', ') — a container cannot run these. See .gitattributes."
+}
+
+# The hub's container must be able to take ownership of its bind-mounted
+# /data. A USER instruction would start it unprivileged, the chown would be
+# impossible, and the container would crash-loop on its first write with a
+# permission error and no admin token in the log. Privilege is dropped in
+# docker-entrypoint.sh instead, after the volume is repaired.
+if (Select-String -Path hub/Dockerfile -Pattern '^USER ' -Quiet) {
+    Fail-Guard "hub/Dockerfile has a USER line. It must drop privileges in docker-entrypoint.sh, after chowning /data."
+}
+if (-not (Select-String -Path hub/Dockerfile -Pattern 'docker-entrypoint.sh' -SimpleMatch -Quiet)) {
+    Fail-Guard "hub/Dockerfile no longer installs docker-entrypoint.sh — nothing will fix /data ownership or drop root."
+}
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |

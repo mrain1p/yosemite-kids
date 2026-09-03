@@ -9,6 +9,11 @@
 #   cd /volume2/Docker/pickwick
 #   docker compose -f hub/docker-compose.yml up -d --build
 #
+# The first build takes 10-20 minutes and prints almost nothing for most of
+# it: Gradle downloads its own distribution and then the Kotlin compiler,
+# quietly. It is not stuck. `docker stats` will show it burning CPU. Every
+# build after that is cached and takes seconds.
+#
 # Then open http://<nas-ip>:8765/health to confirm it is alive, and approve a
 # device's enrolment code to pair the first one.
 

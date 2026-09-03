@@ -69,6 +69,29 @@ if [ ! -f hub/src/test/kotlin/io/pickwick/hub/HubServerTest.kt ]; then
   guard_fail "HubServerTest.kt is missing — it pins the /status wire contract with :app."
 fi
 
+# Shell scripts must reach a container with LF endings. A CRLF script has a
+# shebang ending in a carriage return, which the kernel cannot resolve, and
+# the error it produces is "not found" for a file that is plainly present.
+# That cost half an hour on gradlew during the hub's first container build.
+# git reports the working-tree ending directly, so this needs no escapes of
+# its own to look for.
+crlf=$(git ls-files --eol -- '*.sh' gradlew | grep -E 'w/(crlf|mixed)' | awk '{printf "%s ", $NF}')
+if [ -n "$crlf" ]; then
+  guard_fail "CRLF line endings in: $crlf — a container cannot run these. See .gitattributes."
+fi
+
+# The hub's container must be able to take ownership of its bind-mounted
+# /data. A USER instruction would start it unprivileged, that chown would be
+# impossible, and the container would crash-loop on its first write with a
+# permission error and no admin token anywhere in the log. Privilege is
+# dropped in docker-entrypoint.sh instead, once the volume has been repaired.
+if grep -qE '^USER ' hub/Dockerfile; then
+  guard_fail "hub/Dockerfile has a USER line. Drop privileges in docker-entrypoint.sh, after chowning /data."
+fi
+if ! grep -q 'docker-entrypoint.sh' hub/Dockerfile; then
+  guard_fail "hub/Dockerfile no longer installs docker-entrypoint.sh — nothing would fix /data ownership or drop root."
+fi
+
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
