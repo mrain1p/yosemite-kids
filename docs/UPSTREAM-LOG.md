@@ -40,3 +40,21 @@ From this round on the check is also a **routine**, not just a skill:
 - A weekly scheduled task (`pickwick-upstream-check`, Mondays) runs the script,
   triages anything new into this log, and reports whether an APK rebuild is
   warranted. It never pushes and never touches a device.
+
+## Port cost of the sync work (2026-09-03)
+
+The sectioned merge lands in files the fork has already rewritten —
+`ConfigStore.kt`, `Pairing.kt`, `MainViewModel.kt`, `Settings.kt` — plus four
+new ones (`ConfigMerge.kt`, `ConfigStamp.kt`, `SyncDecision.kt`,
+`SyncNotices.kt`) that upstream has no counterpart for.
+
+Consequence for future upstream tracking: any upstream commit touching
+`ConfigStore.toJson`/`fromJson`/`fingerprint`, or `POST /config`, is now a
+**port by hand**, never a cherry-pick. The parts most likely to collide are the
+serializer's append-only-when-set discipline and the `/status` body.
+
+Deliberately kept compatible so the port stays cheap: `fingerprint` is
+untouched, the `sync` key is additive and ignorable, and `POST /config` still
+answers 400 on an unreadable body. An upstream device and a fork device remain
+interoperable in both directions, with the one documented gap that deletes do
+not cross a legacy hop.

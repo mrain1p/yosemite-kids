@@ -244,3 +244,39 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
   is capped.
 - `PlayerActivity` hoists queue/countdown state out of composition so listen
   mode (screen off, no frames) keeps advancing.
+
+## Config sync
+
+Two parents used to lose each other's edits: a device receiving a push replaced
+its whole config, so whoever pushed second discarded everything the other had
+changed, silently and unattributably. The fix is a **sectioned merge**, peer to
+peer, needing no server. `docs/PLAN-sync.md` has the design;
+`.claude/skills/pickwick-sync` has the invariants to obey before touching any
+of it.
+
+The shape:
+
+- **`ConfigStamp`** mints the bookkeeping when a config is saved — a per-unit
+  edit stamp, a tombstone on removal, and a change-log line. A genuine
+  three-way diff (`previous` on disk, `base` the editor opened with, `next` the
+  form), because a co-parent's push can land while a parent has Settings open
+  and that must not read as a deletion.
+- **`ConfigMerge`** merges two config *documents*, unit by unit, at the JSON
+  level. Pure, and takes no clock — which is what makes idempotence and
+  associativity structural rather than test artifacts.
+- **`SyncMeta`** is the `sync` block inside `config.json`: `at`, `gone`,
+  `floor`, and a capped `log`. Invisible to `ConfigStore.fingerprint`, and
+  advertised separately as `syncHash` on `/status`.
+- **`syncAction`** decides what the sweep does about one peer: nothing, merge,
+  push whole, or leave it to the parent.
+- **`SyncNotices`** records "your change lost" per phone, outside the config,
+  never on a kid device.
+
+| I want to… | Start in |
+| --- | --- |
+| Change how two configs are reconciled | `ConfigMerge.merge` (pure; `ConfigMergeTest` is the matrix) |
+| Change what a save records | `ConfigStamp.stamped` (`ConfigStampTest`) |
+| Add a field that two parents could edit independently | The checklist in `.claude/skills/pickwick-sync`, section 4 |
+| Change what the sweep does about a peer | `data/SyncDecision.kt` (`SyncDecisionTest`) |
+| Change what a parent is told after a collision | `data/SyncNotices.kt` and the banner at the top of `AdminScreen` |
+| Change the activity feed | `ui/SyncActivityScreen.kt` (`ChangeFeedTest`) |

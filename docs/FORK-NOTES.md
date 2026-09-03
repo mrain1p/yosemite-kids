@@ -838,3 +838,56 @@ Left alone deliberately: `CompactButton`'s 10 dp content padding means a
 standalone text button's label sits 10 dp right of the body text above it. It
 reads as button padding rather than as misalignment, and changing it would
 move every inline use too.
+
+### Round 13: two parents stop losing each other's edits (0.9.7-fork)
+
+The complaint that started it: with two parent phones, one of them silently
+loses their changes. The cause was that a device receiving a push *replaced*
+its whole config, so whoever pushed second discarded everything the other had
+done — with nothing to look at afterwards and no way to tell it had happened.
+
+The fix is a sectioned merge, peer to peer, with no server involved. Design and
+reasoning in `docs/PLAN-sync.md`, invariants in `.claude/skills/pickwick-sync`,
+routes in `docs/LAN-API.md`. What is worth knowing here is what the work
+turned up.
+
+**Three decisions shape everything else.** The fingerprint is not touched:
+hashing the sync blob would have an upgraded phone compute a value an
+un-upgraded TV can never produce, so after the first channel deletion the pair
+mismatches forever and the reconcile stops pushing to it. The merge reads no
+clock, which makes idempotence and associativity structural rather than
+properties that hold while a test freezes time. And absence never deletes,
+because `toJson` restamps `updatedAt` at serialization time — a phone out of a
+drawer claims to be brand new, and deriving tombstones from what it lacks would
+let it wipe a family's whole setup.
+
+**Bugs found on the way, all of which predate this work or would have shipped
+inside it:**
+
+- `ProfileNamespace`'s `@Synchronized` guarded a throwaway instance, because
+  `ConfigStore.registered()` builds a fresh one on every load. The
+  read-modify-write deciding which kid inherits the legacy unsuffixed stores
+  had no mutual exclusion at all; losing that race hands one kid another kid's
+  watch history and screen-time budget.
+- The kid migration minted a random id, so two phones opening Settings on the
+  same kid-less config produced two different kids. Whole-file
+  last-writer-wins hid it by discarding one.
+- `load()` laundered a parse failure into an empty config, which the next save
+  wrote over the real file and the sweep pushed to the house.
+- `pushAll` re-serialized, which would have shipped configs without the stamps
+  the save had just minted.
+- Legacy positional rank started at 0, and zero means absent, so merging two
+  pre-format configs dropped whichever channel was listed first.
+- The floor refused legacy rows, so a restored backup lost everything on first
+  contact with a peer that had ever evicted a tombstone.
+
+**Two honest caveats.** Deletes do not cross a legacy hop: an old TV's
+`GET /config` re-serializes through its own model and launders the blob out, so
+a deletion that passes through one stops there. And parent phones never pair
+with each other — only a TV or a dedicated kid device shows a QR — so two
+parents' edits meet on a kid device that is switched on. A household whose TV
+is unplugged for a fortnight gets no reconciliation at all. That seam is
+exactly what a later Docker hub fills, and everything here was kept additive so
+it can.
+
+Closes the multi-parent item in the backlog above.

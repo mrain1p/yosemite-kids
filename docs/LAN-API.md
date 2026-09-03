@@ -68,3 +68,52 @@ debug build read it with `adb shell run-as io.pickwick.app cat shared_prefs/pair
 2. Add the matching `LanClient` function (use the LAN client: 1.5 s connect,
    no retries).
 3. Document it here and, if the phone UI uses it, in `docs/ARCHITECTURE.md`.
+
+## Config sync (0.9.7-fork and later)
+
+### `GET /status` — two additive keys
+
+```json
+{ "hash": "a1b2c3d4", "updatedAt": 1780000000000, "token": "...",
+  "syncV": 1, "syncHash": "9f3a1c02" }
+```
+
+`syncV` is the sync-format version and `syncHash` fingerprints the
+bookkeeping — stamps, tombstones and namespace floors, never the change log.
+
+Two peers count as in sync only when **both** `hash` and `syncHash` match. A
+peer holding a tombstone the other has never seen matches on content and
+differs on history; if that read as in sync, the deletion would never travel,
+because the reconcile never fetches a body when it believes the two agree.
+
+**The absence of `syncV` is the signal.** A peer that does not send it predates
+the merge and is a **push-only destination, never a merge source**: its
+document restamps `updatedAt` at serialization time and so always claims to be
+brand new. Merging from one would let a phone that spent a fortnight in a
+drawer speak with authority about a config it has not seen.
+
+### `POST /config` — merged, not replaced
+
+The body is a full config as before. It is now **merged** into what the device
+holds rather than overwriting it, so two parents pushing to the same TV both
+survive. Read, merge and write happen under one lock; two pushes on two LAN
+worker threads cannot interleave.
+
+The response is JSON rather than `saved`:
+
+```json
+{ "changed": true, "peerBehind": false, "hash": "a1b2c3d4", "syncHash": "9f3a1c02" }
+```
+
+- `changed` — the device learned something and wrote.
+- `peerBehind` — the device holds something the pusher does not, so the pusher
+  should fetch and merge in turn.
+- `hash` / `syncHash` — where the device ended up, so a caller need not
+  re-`GET /status` to find out.
+
+A body that cannot be parsed as a config still answers `400 bad config`, and
+nothing is written. Old clients that only check the status code are unaffected.
+
+Attribution costs nothing on the wire: the pushing phone already authenticated
+with a token the device can name, so the change log records who without any
+new field.
