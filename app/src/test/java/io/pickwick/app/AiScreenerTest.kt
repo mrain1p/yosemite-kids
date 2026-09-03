@@ -1,5 +1,6 @@
 package io.pickwick.app
 
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.AiConfig
 import io.pickwick.app.data.AiScreener
 import io.pickwick.app.data.ConfigStore
@@ -136,7 +137,7 @@ class AiScreenerTest {
             ),
             aiAllowedVideoIds = setOf("aaaaaaaaaaa", "bbbbbbbbbbb")
         )
-        val reparsed = ConfigStore.fromJson(ConfigStore.toJson(original))
+        val reparsed = ConfigJson.fromJson(ConfigJson.toJson(original))
 
         assertEquals(original.ai, reparsed.ai)
         assertEquals(original.aiAllowedVideoIds, reparsed.aiAllowedVideoIds)

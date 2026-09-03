@@ -1,8 +1,5 @@
 package io.pickwick.app.data
 
-import android.content.Context
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
 
 enum class SourceKind { CHANNEL, PLAYLIST }
@@ -303,7 +300,7 @@ data class Whitelist(
      * by a screen — it exists so two parents' edits can be merged instead of
      * one silently overwriting the other, and so "why did the TV change?" is
      * answerable. Deliberately last, and deliberately excluded from
-     * [ConfigStore.fingerprint]; see `docs/PLAN-sync.md`.
+     * [ConfigJson.fingerprint]; see `docs/PLAN-sync.md`.
      */
     val sync: SyncMeta = SyncMeta.EMPTY
 ) {
@@ -514,9 +511,4 @@ object WhitelistExporter {
         WEEKEND_DAYS -> "weekends"
         else -> days.sorted().joinToString(", ") { DAY_LABELS[it - 1] }
     }
-}
-
-/** The form-managed local config is the single source of truth. */
-class WhitelistRepository(private val configStore: ConfigStore) {
-    suspend fun load(): Whitelist = withContext(Dispatchers.IO) { configStore.load() }
 }

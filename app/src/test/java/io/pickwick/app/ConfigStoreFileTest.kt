@@ -1,5 +1,6 @@
 package io.pickwick.app
 
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.ConfigStore
 import io.pickwick.app.data.SourceKind
 import io.pickwick.app.data.Whitelist
@@ -127,7 +128,7 @@ class ConfigStoreFileTest {
         s.save(Whitelist(listOf(entry("UCaaa")), emptySet()))
         val first = s.updatedAt()
 
-        assertTrue(s.saveRaw(ConfigStore.toJson(Whitelist(listOf(entry("UCbbb")), emptySet()))))
+        assertTrue(s.saveRaw(ConfigJson.toJson(Whitelist(listOf(entry("UCbbb")), emptySet()))))
         assertEquals(listOf("UCbbb"), s.load().sources.map { it.id })
         assertTrue("a raw save must move updatedAt", s.updatedAt() >= first)
     }

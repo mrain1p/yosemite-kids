@@ -23,6 +23,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.ConfigStore
 import io.pickwick.app.data.LanClient
 import io.pickwick.app.data.LanServer
@@ -273,7 +274,7 @@ internal fun PairingPanel(configStore: ConfigStore, tv: Boolean = false) {
         while (true) {
             val snapshot = withContext(kotlinx.coroutines.Dispatchers.IO) {
                 listOf(
-                    ConfigStore.fingerprint(configStore.load()),
+                    ConfigJson.fingerprint(configStore.load()),
                     configStore.updatedAt().toString(),
                     store.approvedPhones().size.toString(),
                     store.pendingRequests().size.toString()
@@ -471,7 +472,7 @@ private fun AdminScreen(
                     // the family would find two copies of their child. Same
                     // 8-hex shape as Profile.newId; the config has no profiles
                     // yet, so it cannot collide with one.
-                    id = ConfigStore.fingerprint(c),
+                    id = ConfigJson.fingerprint(c),
                     name = "Kid",
                     age = c.ai.childAge,
                     limits = c.limits.copy(pausedUntilMillis = null)
@@ -667,8 +668,8 @@ private fun AdminScreen(
         })?.cancel()
     }
     val current = buildCurrentConfig()
-    val currentHash = ConfigStore.fingerprint(current)
-    val baselineHash = ConfigStore.fingerprint(baseline)
+    val currentHash = ConfigJson.fingerprint(current)
+    val baselineHash = ConfigJson.fingerprint(baseline)
     // The bookkeeping's fingerprint, from disk. It moves when a save stamps or
     // a peer's push merges, never when the form changes, so it follows the
     // adopted baseline rather than the live edit.
@@ -902,7 +903,7 @@ private fun AdminScreen(
                                     who = pairingStore.myName(), by = pairingStore.by()
                                 )
                                 baseline = saved?.config ?: config
-                                saved?.json ?: ConfigStore.toJson(config)
+                                saved?.json ?: ConfigJson.toJson(config)
                             },
                             onAssign = { token, profileId ->
                                 deviceProfiles =
@@ -1144,7 +1145,7 @@ private fun AdminScreen(
                             // stamp — and writing under the open form would
                             // just be overwritten by the next autosave.
                             runCatching {
-                                ConfigStore.fromJson(
+                                ConfigJson.fromJson(
                                     org.json.JSONObject()
                                         .put("entries", org.json.JSONArray())
                                         .put("blocked", org.json.JSONArray())

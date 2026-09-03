@@ -689,7 +689,7 @@ class LanServer(
             method == "GET" && path == "/status" -> respond(
                 200,
                 JSONObject()
-                    .put("hash", ConfigStore.fingerprint(configStore.load()))
+                    .put("hash", ConfigJson.fingerprint(configStore.load()))
                     .put("updatedAt", configStore.updatedAt())
                     // Additive, and the absence of syncV is the signal: a peer
                     // that does not send it cannot merge, so it is a push-only
@@ -737,7 +737,7 @@ class LanServer(
                         JSONObject()
                             .put("changed", outcome.changed)
                             .put("peerBehind", outcome.peerBehind)
-                            .put("hash", ConfigStore.fingerprint(outcome.after))
+                            .put("hash", ConfigJson.fingerprint(outcome.after))
                             .put("syncHash", ConfigMerge.syncHash(outcome.after.sync))
                             .toString()
                     )

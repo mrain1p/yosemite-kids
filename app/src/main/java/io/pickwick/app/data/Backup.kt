@@ -29,7 +29,7 @@ object Backup {
             .put("app", io.pickwick.app.BuildConfig.VERSION_NAME)
             // Key deliberately absent: a backup file travels (email, cloud
             // drive) and the API key is the one thing that must not.
-            .put("config", JSONObject(ConfigStore.toJson(config, includeSecrets = false)))
+            .put("config", JSONObject(ConfigJson.toJson(config, includeSecrets = false)))
             .put("watchState", JSONObject(WatchSync.exportJson(app)))
             .put("verdicts", JSONObject(ScreeningStore(app).exportJson(config.ai.rulesVersion)))
             .toString(2)
@@ -38,7 +38,7 @@ object Backup {
     /** What a file holds, before committing to it — for the confirm dialog. */
     fun inspect(json: String): Result<Summary> = runCatching {
         val root = parse(json)
-        val config = ConfigStore.fromJson(root.getJSONObject("config").toString())
+        val config = ConfigJson.fromJson(root.getJSONObject("config").toString())
         Summary(
             channels = config.sources.size,
             kids = config.profiles.size,

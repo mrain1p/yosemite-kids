@@ -25,7 +25,7 @@ function Fail-Guard($message) {
 # associativity structural rather than artifacts that hold only while a test
 # freezes the clock, and it is why a TV with a bad RTC cannot drop a parent's
 # active pause into the shared document.
-$mergeSrc = Get-Content "app\src\main\java\io\pickwick\app\data\ConfigMerge.kt" -Raw
+$mergeSrc = Get-Content "core\src\main\kotlin\io\pickwick\app\data\ConfigMerge.kt" -Raw
 if ($mergeSrc -match "currentTimeMillis|Instant\.now|System\.nanoTime") {
     Fail-Guard "ConfigMerge.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."
 }

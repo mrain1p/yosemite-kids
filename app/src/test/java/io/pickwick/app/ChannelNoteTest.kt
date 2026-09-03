@@ -1,5 +1,6 @@
 package io.pickwick.app
 
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.AiScreener
 import io.pickwick.app.data.ConfigStore
 import io.pickwick.app.data.Screener
@@ -138,11 +139,11 @@ class ChannelNoteTest {
             ),
             blockedVideoIds = emptySet()
         )
-        val parsed = ConfigStore.fromJson(ConfigStore.toJson(w))
+        val parsed = ConfigJson.fromJson(ConfigJson.toJson(w))
         assertEquals("toy guns are fine here", parsed.sources[0].aiNote)
         assertEquals(null, parsed.sources[1].aiNote)
         // The fingerprint must move on a note edit, or the push button never appears.
         val edited = w.copy(sources = listOf(w.sources[0].copy(aiNote = "changed"), w.sources[1]))
-        assertTrue(ConfigStore.fingerprint(w) != ConfigStore.fingerprint(edited))
+        assertTrue(ConfigJson.fingerprint(w) != ConfigJson.fingerprint(edited))
     }
 }

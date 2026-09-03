@@ -54,7 +54,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             .putInt("l_wd", l.weekdaySessions ?: -1)
             .putInt("l_we", l.weekendSessions ?: -1)
             .putInt("l_break", l.breakMinutes ?: -1)
-            .putString("l_windows", ConfigStore.windowsToJson(l.windows))
+            .putString("l_windows", ConfigJson.windowsToJson(l.windows))
             .putLong("l_paused", l.pausedUntilMillis ?: -1L)
             .putLong("l_breakPass", l.breakPassUntilMillis ?: -1L)
             .apply()
@@ -67,7 +67,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             weekdaySessions = get("l_wd"),
             weekendSessions = get("l_we"),
             breakMinutes = get("l_break"),
-            windows = ConfigStore.windowsFromJson(prefs.getString("l_windows", null)),
+            windows = ConfigJson.windowsFromJson(prefs.getString("l_windows", null)),
             pausedUntilMillis = prefs.getLong("l_paused", -1L).takeIf { it > 0 },
             breakPassUntilMillis = prefs.getLong("l_breakPass", -1L).takeIf { it > 0 }
         )
@@ -263,8 +263,11 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             // sitting (see startFreshSittingAfterGap) — read it that way here
             // too, or the home chip says "less than a minute" right after a
             // break the kid has fully served.
-            if (l.breakMinutes != null && !breakPassActive(l)) l.sessionMinutes?.let { cap ->
-                val gapMs = l.breakMinutes * 60_000L
+            // Bound locally: `breakMinutes` is now a public property of another
+            // module, which Kotlin will not smart-cast across.
+            val breakMins = l.breakMinutes
+            if (breakMins != null && !breakPassActive(l)) l.sessionMinutes?.let { cap ->
+                val gapMs = breakMins * 60_000L
                 val lastWatch = prefs.getLong("lastWatchAt", 0)
                 val sitting =
                     if (lastWatch > 0 && System.currentTimeMillis() - lastWatch >= gapMs) 0L

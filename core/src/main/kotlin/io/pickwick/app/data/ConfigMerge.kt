@@ -441,7 +441,7 @@ object ConfigMerge {
         // before: the caller answers 400 and the contract is unchanged.
         val inRoot = runCatching { JSONObject(incoming) }.getOrNull()
             ?: return Result(null, false, emptyList(), emptyList(), "")
-        if (runCatching { ConfigStore.fromJson(incoming) }.isFailure) {
+        if (runCatching { ConfigJson.fromJson(incoming) }.isFailure) {
             return Result(null, false, emptyList(), emptyList(), "")
         }
         val incomingKey = inRoot.optJSONObject("ai")?.optString("apiKey").orEmpty()
@@ -453,7 +453,7 @@ object ConfigMerge {
         val locRoot = local?.takeIf { it.isNotBlank() }?.let {
             runCatching { JSONObject(it) }.getOrNull()
         }
-        if (locRoot == null || runCatching { ConfigStore.fromJson(local!!) }.isFailure) {
+        if (locRoot == null || runCatching { ConfigJson.fromJson(local!!) }.isFailure) {
             return Result(
                 merged = inRoot.toString(2),
                 peerBehind = false,
@@ -820,7 +820,7 @@ object ConfigMerge {
      * never a valid 8-hex id, so `visibleTo` answers false for every kid —
      * the entry is hidden rather than shown to everyone.
      */
-    internal const val PROFILE_NONE = "-"
+    const val PROFILE_NONE = "-"
 
     private fun stripKey(root: JSONObject) {
         root.optJSONObject("ai")?.remove("apiKey")

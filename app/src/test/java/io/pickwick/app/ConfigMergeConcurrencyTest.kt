@@ -1,5 +1,6 @@
 package io.pickwick.app
 
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.ConfigMerge
 import io.pickwick.app.data.ConfigStamp
 import io.pickwick.app.data.ConfigStore
@@ -46,7 +47,7 @@ class ConfigMergeConcurrencyTest {
         sources: List<WhitelistEntry>,
         at: Map<String, Long>,
         gone: Map<String, Long> = emptyMap()
-    ): String = ConfigStore.toJson(
+    ): String = ConfigJson.toJson(
         Whitelist(
             sources = sources,
             blockedVideoIds = emptySet(),
@@ -171,7 +172,7 @@ class ConfigMergeConcurrencyTest {
     @Test
     fun noConfigOnDiskEverContainsAnApiKey() {
         val store = ConfigStore(File(tmp.newFolder("k"), "config.json"))
-        val withKey = ConfigStore.toJson(
+        val withKey = ConfigJson.toJson(
             Whitelist(
                 sources = listOf(entry("UCaaa")),
                 blockedVideoIds = emptySet(),

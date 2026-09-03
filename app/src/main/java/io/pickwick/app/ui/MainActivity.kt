@@ -458,7 +458,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 val restored = blank &&
                                     LanClient.fetchConfig(device)?.let { remote ->
                                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                            val parsed = runCatching { ConfigStore.fromJson(remote) }.getOrNull()
+                                            val parsed = runCatching { ConfigJson.fromJson(remote) }.getOrNull()
                                             parsed != null && parsed.sources.isNotEmpty() &&
                                                 configStore.saveRaw(remote)
                                         }

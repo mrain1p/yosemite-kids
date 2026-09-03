@@ -6,5 +6,5 @@ package io.pickwick.app.data
  * row boundaries) — any of them silently corrupts the row on the next parse.
  * Lossy on purpose: these are display strings, and a space reads fine.
  */
-internal fun String.tsvCell(): String =
+fun String.tsvCell(): String =
     replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')

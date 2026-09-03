@@ -1,5 +1,6 @@
 package io.pickwick.app
 
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.AiConfig
 import io.pickwick.app.data.ConfigMerge
 import io.pickwick.app.data.ConfigStamp
@@ -49,7 +50,7 @@ class ConfigMergeTest {
         gone: Map<String, Long> = emptyMap(),
         floor: Map<String, Long> = emptyMap(),
         log: List<ConfigMerge.Change> = emptyList()
-    ): String = ConfigStore.toJson(
+    ): String = ConfigJson.toJson(
         Whitelist(
             sources = sources,
             blockedVideoIds = blocked,
@@ -67,14 +68,14 @@ class ConfigMergeTest {
     private fun legacyDoc(
         sources: List<WhitelistEntry> = emptyList(),
         blocked: Set<String> = emptySet()
-    ): String = ConfigStore.toJson(Whitelist(sources = sources, blockedVideoIds = blocked))
+    ): String = ConfigJson.toJson(Whitelist(sources = sources, blockedVideoIds = blocked))
 
     private fun mergedOf(local: String, incoming: String): Whitelist? =
-        ConfigMerge.merge(local, incoming).merged?.let { ConfigStore.fromJson(it) }
+        ConfigMerge.merge(local, incoming).merged?.let { ConfigJson.fromJson(it) }
 
     /** The merge result as a config, falling back to the local side when nothing changed. */
     private fun settle(local: String, incoming: String): Whitelist =
-        mergedOf(local, incoming) ?: ConfigStore.fromJson(local)
+        mergedOf(local, incoming) ?: ConfigJson.fromJson(local)
 
     private fun ids(w: Whitelist) = w.sources.map { it.id }.toSet()
 
@@ -124,7 +125,7 @@ class ConfigMergeTest {
 
         val ab = settle(a, b)
         val ba = settle(b, a)
-        assertEquals(ConfigStore.fingerprint(ab), ConfigStore.fingerprint(ba))
+        assertEquals(ConfigJson.fingerprint(ab), ConfigJson.fingerprint(ba))
         assertEquals(ConfigMerge.syncHash(ab.sync), ConfigMerge.syncHash(ba.sync))
     }
 
@@ -139,10 +140,10 @@ class ConfigMergeTest {
 
         val left = ConfigMerge.merge(ConfigMerge.merge(a, b).merged ?: a, c).merged!!
         val right = ConfigMerge.merge(a, ConfigMerge.merge(b, c).merged ?: b).merged!!
-        val l = ConfigStore.fromJson(left)
-        val r = ConfigStore.fromJson(right)
+        val l = ConfigJson.fromJson(left)
+        val r = ConfigJson.fromJson(right)
 
-        assertEquals(ConfigStore.fingerprint(l), ConfigStore.fingerprint(r))
+        assertEquals(ConfigJson.fingerprint(l), ConfigJson.fingerprint(r))
         assertEquals(ConfigMerge.syncHash(l.sync), ConfigMerge.syncHash(r.sync))
         assertEquals(setOf("UCaaa", "UCbbb", "UCccc"), ids(l))
     }
@@ -232,7 +233,7 @@ class ConfigMergeTest {
         var cur = readded
         repeat(4) {
             cur = ConfigMerge.merge(cur, holder).merged ?: cur
-            assertEquals("it must not flicker", setOf("UCaaa"), ids(ConfigStore.fromJson(cur)))
+            assertEquals("it must not flicker", setOf("UCaaa"), ids(ConfigJson.fromJson(cur)))
         }
     }
 
@@ -251,8 +252,8 @@ class ConfigMergeTest {
         // to the accumulated document rather than asserting a write happened.
         val viaHolder = settleJson(settleJson(readded, holder), bystander)
         val viaBystander = settleJson(settleJson(readded, bystander), holder)
-        assertEquals(setOf("UCaaa", "UCzzz"), ids(ConfigStore.fromJson(viaHolder)))
-        assertEquals(setOf("UCaaa", "UCzzz"), ids(ConfigStore.fromJson(viaBystander)))
+        assertEquals(setOf("UCaaa", "UCzzz"), ids(ConfigJson.fromJson(viaHolder)))
+        assertEquals(setOf("UCaaa", "UCzzz"), ids(ConfigJson.fromJson(viaBystander)))
     }
 
     @Test
@@ -384,9 +385,10 @@ class ConfigMergeTest {
         )
 
         val result = ConfigMerge.merge(a, b)
-        assertNotNull(result.merged)
-        assertFalse(result.merged!!.contains("sk-local-secret"))
-        assertFalse(result.merged.contains("sk-remote-secret"))
+        val merged = result.merged
+        assertNotNull(merged)
+        assertFalse(merged!!.contains("sk-local-secret"))
+        assertFalse(merged.contains("sk-remote-secret"))
         assertEquals("the key travels out of band", "sk-remote-secret", result.apiKey)
     }
 
@@ -429,10 +431,10 @@ class ConfigMergeTest {
         // "Keep the local one" is not commutative, so two co-parents who both
         // claimed would never converge — and would both keep running the
         // rate-limit-expensive crawl.
-        val a = ConfigStore.toJson(
+        val a = ConfigJson.toJson(
             Whitelist(emptyList(), emptySet(), masterDeviceToken = "bbbb", sync = SyncMeta(at = mapOf(ConfigStamp.MASTER to T)))
         )
-        val b = ConfigStore.toJson(
+        val b = ConfigJson.toJson(
             Whitelist(emptyList(), emptySet(), masterDeviceToken = "aaaa", sync = SyncMeta(at = mapOf(ConfigStamp.MASTER to T)))
         )
         assertEquals("aaaa", settle(a, b).masterDeviceToken)
@@ -496,7 +498,7 @@ class ConfigMergeTest {
             sources = listOf(entry("UCaaa")),
             at = mapOf(ConfigStamp.src("UCaaa") to T)
         )
-        assertEquals(setOf("UCaaa"), ids(ConfigStore.fromJson(ConfigMerge.merge(null, theirs).merged!!)))
+        assertEquals(setOf("UCaaa"), ids(ConfigJson.fromJson(ConfigMerge.merge(null, theirs).merged!!)))
     }
 
     @Test
@@ -504,7 +506,7 @@ class ConfigMergeTest {
         val theirs = doc(sources = listOf(entry("UCaaa")), at = mapOf(ConfigStamp.src("UCaaa") to T))
         assertEquals(
             setOf("UCaaa"),
-            ids(ConfigStore.fromJson(ConfigMerge.merge("{ truncated", theirs).merged!!))
+            ids(ConfigJson.fromJson(ConfigMerge.merge("{ truncated", theirs).merged!!))
         )
     }
 
@@ -521,7 +523,7 @@ class ConfigMergeTest {
         assertEquals(listOf("added B"), r.learned.map { it.text })
         assertEquals(
             listOf("added A", "added B"),
-            ConfigStore.fromJson(r.merged!!).sync.log.map { it.text }
+            ConfigJson.fromJson(r.merged!!).sync.log.map { it.text }
         )
     }
 
@@ -533,7 +535,7 @@ class ConfigMergeTest {
             sources = listOf(entry("UCaaa")),
             at = mapOf(ConfigStamp.src("UCaaa") to T + 1), log = listOf(shared)
         )
-        assertEquals(1, ConfigStore.fromJson(settleJson(mine, theirs)).sync.log.size)
+        assertEquals(1, ConfigJson.fromJson(settleJson(mine, theirs)).sync.log.size)
     }
 
     private fun settleJson(local: String, incoming: String): String =

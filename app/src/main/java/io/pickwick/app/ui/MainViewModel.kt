@@ -307,7 +307,7 @@ class MainViewModel(
                     // and comparing the second against the pre-merge hash
                     // would take the do-nothing arm and leave it stale, while
                     // the devices list cheerfully reported it in sync.
-                    val localHash = ConfigStore.fingerprint(store.load())
+                    val localHash = ConfigJson.fingerprint(store.load())
                     val localSyncHash = store.syncHash()
                     val localAt = store.updatedAt()
                     val remoteHash = status.hash

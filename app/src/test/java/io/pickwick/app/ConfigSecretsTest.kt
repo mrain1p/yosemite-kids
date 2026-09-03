@@ -1,5 +1,6 @@
 package io.pickwick.app
 
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.AiConfig
 import io.pickwick.app.data.ConfigStore
 import io.pickwick.app.data.SourceKind
@@ -27,18 +28,18 @@ class ConfigSecretsTest {
 
     @Test
     fun `a push carries the key so the device can screen`() {
-        val json = ConfigStore.toJson(config("sk-secret"))
+        val json = ConfigJson.toJson(config("sk-secret"))
         assertTrue(json.contains("sk-secret"))
-        assertEquals("sk-secret", ConfigStore.fromJson(json).ai.apiKey)
+        assertEquals("sk-secret", ConfigJson.fromJson(json).ai.apiKey)
     }
 
     @Test
     fun `the on-disk copy leaves the key out`() {
-        val json = ConfigStore.toJson(config("sk-secret"), includeSecrets = false)
+        val json = ConfigJson.toJson(config("sk-secret"), includeSecrets = false)
         assertFalse(json.contains("sk-secret"))
         assertFalse(json.contains("apiKey"))
         // Everything else still round-trips.
-        val parsed = ConfigStore.fromJson(json)
+        val parsed = ConfigJson.fromJson(json)
         assertEquals("some/model", parsed.ai.model)
         assertEquals("be kind", parsed.ai.rules)
         assertEquals(1, parsed.sources.size)
@@ -46,11 +47,11 @@ class ConfigSecretsTest {
 
     @Test
     fun `stripping a pushed payload keeps fields this build does not know`() {
-        val pushed = JSONObject(ConfigStore.toJson(config("sk-secret")))
+        val pushed = JSONObject(ConfigJson.toJson(config("sk-secret")))
             .put("somethingNewerPhonesSend", "keep me")
             .toString()
 
-        val stored = ConfigStore.stripSecrets(pushed)
+        val stored = ConfigJson.stripSecrets(pushed)
 
         assertFalse(stored.contains("sk-secret"))
         val root = JSONObject(stored)
@@ -66,9 +67,9 @@ class ConfigSecretsTest {
 
     @Test
     fun `stripping is a no-op on payloads without a key`() {
-        val json = ConfigStore.toJson(config("sk-secret"), includeSecrets = false)
-        assertEquals(json, ConfigStore.stripSecrets(json))
-        assertEquals("not json", ConfigStore.stripSecrets("not json"))
+        val json = ConfigJson.toJson(config("sk-secret"), includeSecrets = false)
+        assertEquals(json, ConfigJson.stripSecrets(json))
+        assertEquals("not json", ConfigJson.stripSecrets("not json"))
     }
 
     @Test
@@ -77,7 +78,7 @@ class ConfigSecretsTest {
         // does — so hashing the key here is safe, and necessary: sync re-pushes
         // only on a fingerprint mismatch.
         assertFalse(
-            ConfigStore.fingerprint(config("sk-one")) == ConfigStore.fingerprint(config("sk-two"))
+            ConfigJson.fingerprint(config("sk-one")) == ConfigJson.fingerprint(config("sk-two"))
         )
     }
 }

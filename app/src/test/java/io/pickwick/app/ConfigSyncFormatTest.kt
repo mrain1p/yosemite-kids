@@ -1,5 +1,6 @@
 package io.pickwick.app
 
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.AiConfig
 import io.pickwick.app.data.ConfigMerge
 import io.pickwick.app.data.ConfigStore
@@ -59,8 +60,8 @@ class ConfigSyncFormatTest {
         // so after the first channel deletion the two mismatch forever and the
         // reconcile stops pushing to it.
         assertEquals(
-            ConfigStore.fingerprint(config()),
-            ConfigStore.fingerprint(config(populated))
+            ConfigJson.fingerprint(config()),
+            ConfigJson.fingerprint(config(populated))
         )
     }
 
@@ -68,14 +69,14 @@ class ConfigSyncFormatTest {
     fun aConfigWithNoSyncWritesNoSyncKey() {
         // A family that upgrades and never edits must write a byte-identical
         // file, so nothing re-pushes across the whole fleet at upgrade.
-        val json = ConfigStore.toJson(config())
+        val json = ConfigJson.toJson(config())
         assertFalse(json.contains("\"sync\""))
         assertTrue(JSONObject(json).isNull("sync"))
     }
 
     @Test
     fun syncSurvivesTheJsonRoundTrip() {
-        val back = ConfigStore.fromJson(ConfigStore.toJson(config(populated)))
+        val back = ConfigJson.fromJson(ConfigJson.toJson(config(populated)))
         assertEquals(populated.at, back.sync.at)
         assertEquals(populated.gone, back.sync.gone)
         assertEquals(populated.floor, back.sync.floor)
@@ -89,21 +90,21 @@ class ConfigSyncFormatTest {
     @Test
     fun stripSecretsLeavesTheSyncBlobAlone() {
         val withKey = config(populated).copy(ai = AiConfig(model = "m", apiKey = "sk-secret"))
-        val stripped = ConfigStore.stripSecrets(ConfigStore.toJson(withKey))
+        val stripped = ConfigJson.stripSecrets(ConfigJson.toJson(withKey))
 
         assertFalse("the key must go", stripped.contains("sk-secret"))
-        val back = ConfigStore.fromJson(stripped)
+        val back = ConfigJson.fromJson(stripped)
         assertEquals("the bookkeeping must stay", populated.at, back.sync.at)
         assertEquals(populated.gone, back.sync.gone)
     }
 
     @Test
     fun aMalformedSyncBlobStillLoadsEveryChannel() {
-        val root = JSONObject(ConfigStore.toJson(config(populated)))
+        val root = JSONObject(ConfigJson.toJson(config(populated)))
         // A newer build's shape this parser cannot swallow.
         root.put("sync", JSONObject().put("v", SyncMeta.VERSION).put("at", "not an object"))
 
-        val back = ConfigStore.fromJson(root.toString())
+        val back = ConfigJson.fromJson(root.toString())
         assertEquals(
             "channels must survive a blob we cannot read",
             listOf("UCaaa"), back.sources.map { it.id }
@@ -114,10 +115,10 @@ class ConfigSyncFormatTest {
 
     @Test
     fun anUnknownSyncVersionReadsAsNoSyncBlock() {
-        val root = JSONObject(ConfigStore.toJson(config(populated)))
+        val root = JSONObject(ConfigJson.toJson(config(populated)))
         root.getJSONObject("sync").put("v", SyncMeta.VERSION + 7)
 
-        val back = ConfigStore.fromJson(root.toString())
+        val back = ConfigJson.fromJson(root.toString())
         assertEquals(listOf("UCaaa"), back.sources.map { it.id })
         assertTrue(
             "a version we do not understand must read as absent, not as an error",
@@ -127,11 +128,11 @@ class ConfigSyncFormatTest {
 
     @Test
     fun aGarbageLogEntryDoesNotCostTheRestOfTheLog() {
-        val root = JSONObject(ConfigStore.toJson(config(populated)))
+        val root = JSONObject(ConfigJson.toJson(config(populated)))
         val log = root.getJSONObject("sync").getJSONArray("log")
         log.put("this is not an object")
 
-        val back = ConfigStore.fromJson(root.toString())
+        val back = ConfigJson.fromJson(root.toString())
         assertEquals(1, back.sync.log.size)
         assertEquals("added SciShow Kids", back.sync.log.first().text)
     }

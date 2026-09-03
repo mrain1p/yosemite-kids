@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.pickwick.app.BuildConfig
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.ConfigStore
 import io.pickwick.app.data.LanClient
 import io.pickwick.app.data.PairedDevice
@@ -39,7 +40,7 @@ private fun VersionLine(configStore: ConfigStore, refreshKey: Any? = null) {
     val text by produceState("", refreshKey) {
         value = withContext(kotlinx.coroutines.Dispatchers.IO) {
             val config = configStore.load()
-            val hash = ConfigStore.fingerprint(config)
+            val hash = ConfigJson.fingerprint(config)
             val edited = configStore.updatedAt().takeIf { it > 0 }?.let {
                 java.text.SimpleDateFormat("d MMM h:mm a", java.util.Locale.US).format(java.util.Date(it))
             }
@@ -272,7 +273,7 @@ internal fun PhoneDevicesSection(
             diff = withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching {
                     io.pickwick.app.data.ConfigMerge.describe(
-                        configStore.load(), ConfigStore.fromJson(remote)
+                        configStore.load(), ConfigJson.fromJson(remote)
                     )
                 }.getOrNull()
             }

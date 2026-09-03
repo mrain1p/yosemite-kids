@@ -1,5 +1,6 @@
 package io.pickwick.app
 
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.AiConfig
 import io.pickwick.app.data.ConfigStore
 import io.pickwick.app.data.Limits
@@ -49,7 +50,7 @@ class ProfileConfigTest {
             allowedFor = mapOf("bbbbbbbbbbb" to setOf(katy.id)),
             deviceProfiles = mapOf("0123456789abcdef0123456789abcdef" to dave.id)
         )
-        val parsed = ConfigStore.fromJson(ConfigStore.toJson(config))
+        val parsed = ConfigJson.fromJson(ConfigJson.toJson(config))
 
         assertEquals(config.profiles, parsed.profiles)
         assertEquals(config.blockedFor, parsed.blockedFor)
@@ -62,14 +63,14 @@ class ProfileConfigTest {
     @Test
     fun `profile-free configs keep their pre-profile JSON and fingerprint shape`() {
         val plain = Whitelist(listOf(entry("UCa")), emptySet())
-        val json = ConfigStore.toJson(plain)
+        val json = ConfigJson.toJson(plain)
         assertFalse(json.contains("\"profiles\""))
         assertFalse(json.contains("\"blockedFor\""))
         assertFalse(json.contains("\"deviceProfiles\""))
         // A config that never uses profiles must hash like an old build's.
         assertEquals(
-            ConfigStore.fingerprint(plain),
-            ConfigStore.fingerprint(plain.copy(profiles = emptyList()))
+            ConfigJson.fingerprint(plain),
+            ConfigJson.fingerprint(plain.copy(profiles = emptyList()))
         )
     }
 
@@ -77,14 +78,14 @@ class ProfileConfigTest {
     fun `adding profiles or per-kid visibility changes the fingerprint`() {
         val plain = Whitelist(listOf(entry("UCa")), emptySet())
         val withKids = plain.copy(profiles = listOf(dave, katy))
-        assertNotEquals(ConfigStore.fingerprint(plain), ConfigStore.fingerprint(withKids))
+        assertNotEquals(ConfigJson.fingerprint(plain), ConfigJson.fingerprint(withKids))
 
         val restricted = withKids.copy(sources = listOf(entry("UCa", setOf(dave.id))))
-        assertNotEquals(ConfigStore.fingerprint(withKids), ConfigStore.fingerprint(restricted))
+        assertNotEquals(ConfigJson.fingerprint(withKids), ConfigJson.fingerprint(restricted))
 
         // A changed PIN must sync too — it gates the picker on the TV.
         val newPin = withKids.copy(profiles = listOf(dave, katy.copy(pin = "LLRR")))
-        assertNotEquals(ConfigStore.fingerprint(withKids), ConfigStore.fingerprint(newPin))
+        assertNotEquals(ConfigJson.fingerprint(withKids), ConfigJson.fingerprint(newPin))
     }
 
     @Test
@@ -143,8 +144,8 @@ class ProfileConfigTest {
         )
         // …and a kid's pause moves the fingerprint, so it reaches the TV.
         assertNotEquals(
-            ConfigStore.fingerprint(config),
-            ConfigStore.fingerprint(config.copy(profiles = listOf(own)))
+            ConfigJson.fingerprint(config),
+            ConfigJson.fingerprint(config.copy(profiles = listOf(own)))
         )
 
         // Unknown/absent profile falls back to the family-wide limits.
@@ -163,10 +164,10 @@ class ProfileConfigTest {
         assertFalse(isValidDirectionPin("UDLRX"))
         assertFalse(isValidDirectionPin("1234"))
 
-        val hacked = ConfigStore.toJson(
+        val hacked = ConfigJson.toJson(
             Whitelist(emptyList(), emptySet(), profiles = listOf(katy.copy(pin = "UDLR")))
         ).replace("\"pin\": \"UDLR\"", "\"pin\": \"whatever\"")
-        assertNull(ConfigStore.fromJson(hacked).profiles.first().pin)
+        assertNull(ConfigJson.fromJson(hacked).profiles.first().pin)
     }
 
     @Test
@@ -205,7 +206,7 @@ class ProfileConfigTest {
             ai = AiConfig(enabled = true, model = "m", childAge = 6, rulesVersion = 2),
             profiles = listOf(dave, katy)
         )
-        val parsed = ConfigStore.fromJson(ConfigStore.toJson(config))
+        val parsed = ConfigJson.fromJson(ConfigJson.toJson(config))
         assertEquals(config.ai, parsed.ai)
         assertEquals(2, parsed.profiles.size)
     }

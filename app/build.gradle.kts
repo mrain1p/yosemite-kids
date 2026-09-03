@@ -173,6 +173,9 @@ gradle.taskGraph.whenReady {
 }
 
 dependencies {
+    // The merge, the stamper and the sync decision — shared verbatim with the
+    // Docker hub so there is one implementation of the rules, not two.
+    implementation(project(":core"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

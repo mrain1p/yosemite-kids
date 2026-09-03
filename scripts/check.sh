@@ -15,7 +15,7 @@ guard_fail() { echo "guard FAILED: $1" >&2; exit 1; }
 # The merge must read no clock: that is what makes idempotence and
 # associativity structural rather than test artifacts.
 if grep -qE "currentTimeMillis|Instant\.now|System\.nanoTime" \
-    app/src/main/java/io/pickwick/app/data/ConfigMerge.kt; then
+    core/src/main/kotlin/io/pickwick/app/data/ConfigMerge.kt; then
   guard_fail "ConfigMerge.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."
 fi
 

@@ -1,5 +1,6 @@
 package io.pickwick.app
 
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.ConfigStore
 import io.pickwick.app.data.Profile
 import io.pickwick.app.data.ProfileLooks
@@ -35,7 +36,7 @@ class ProfileLooksTest {
         assertEquals(7L, d.colorArgb)
         assertEquals(200L, d.lookAt)
         assertEquals(emma, merged.profile(emma.id))
-        assertNotEquals(ConfigStore.fingerprint(config), ConfigStore.fingerprint(merged))
+        assertNotEquals(ConfigJson.fingerprint(config), ConfigJson.fingerprint(merged))
     }
 
     @Test
@@ -54,8 +55,8 @@ class ProfileLooksTest {
 
     @Test
     fun lookAtRoundTripsThroughJsonAndIsOmittedWhenUnset() {
-        val json = ConfigStore.toJson(config)
-        val back = ConfigStore.fromJson(json)
+        val json = ConfigJson.toJson(config)
+        val back = ConfigJson.fromJson(json)
         assertEquals(100L, back.profile(dave.id)!!.lookAt)
         assertEquals(0L, back.profile(emma.id)!!.lookAt)
         // Emma's profile object carries no lookAt key at all.
@@ -74,9 +75,9 @@ class ProfileLooksTest {
     fun pickedPlaylistsRoundTripAndMoveTheFingerprint() {
         val entry = config.sources.first()
         val picked = config.copy(sources = listOf(entry.copy(playlistIds = listOf("PLx", "PLy"))))
-        val back = ConfigStore.fromJson(ConfigStore.toJson(picked))
+        val back = ConfigJson.fromJson(ConfigJson.toJson(picked))
         assertEquals(listOf("PLx", "PLy"), back.sources.first().playlistIds)
-        assertFalse(ConfigStore.toJson(config).contains("playlists"))
-        assertNotEquals(ConfigStore.fingerprint(config), ConfigStore.fingerprint(picked))
+        assertFalse(ConfigJson.toJson(config).contains("playlists"))
+        assertNotEquals(ConfigJson.fingerprint(config), ConfigJson.fingerprint(picked))
     }
 }

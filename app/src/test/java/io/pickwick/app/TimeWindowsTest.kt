@@ -1,5 +1,6 @@
 package io.pickwick.app
 
+import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.ALL_DAYS
 import io.pickwick.app.data.ConfigStore
 import io.pickwick.app.data.Limits
@@ -112,7 +113,7 @@ class TimeWindowsTest {
     @Test
     fun `windows survive a JSON round-trip`() {
         val limits = Limits(sessionMinutes = 30, windows = listOf(bedtime, school))
-        val parsed = ConfigStore.fromJson(ConfigStore.toJson(config(limits)))
+        val parsed = ConfigJson.fromJson(ConfigJson.toJson(config(limits)))
         assertEquals(limits.windows, parsed.limits.windows)
     }
 
@@ -122,7 +123,7 @@ class TimeWindowsTest {
             {"entries":[],"blocked":[],
              "limits":{"session":30,"bedtimeStart":1170,"bedtimeEnd":420}}
         """.trimIndent()
-        val parsed = ConfigStore.fromJson(legacy)
+        val parsed = ConfigJson.fromJson(legacy)
         assertEquals(1, parsed.limits.windows.size)
         assertEquals(1170, parsed.limits.windows[0].startMin)
         assertEquals(ALL_DAYS, parsed.limits.windows[0].days)
@@ -133,10 +134,10 @@ class TimeWindowsTest {
         // The one shape older builds could express must hash the same after the
         // upgrade, or every family re-pushes their config for no reason.
         val migrated = config(Limits(sessionMinutes = 30, windows = listOf(bedtime)))
-        val json = ConfigStore.toJson(migrated)
+        val json = ConfigJson.toJson(migrated)
         assertTrue(json.contains("\"bedtimeStart\": 1170"))
         // The same family as an old build would have written it.
-        val legacy = ConfigStore.fromJson(
+        val legacy = ConfigJson.fromJson(
             """
             {"entries":[{"id":"UCa","url":"https://www.youtube.com/channel/UCa","kind":"CHANNEL"}],
              "blocked":[],
@@ -144,12 +145,12 @@ class TimeWindowsTest {
             """.trimIndent()
         )
         assertEquals(
-            ConfigStore.fingerprint(legacy),
-            ConfigStore.fingerprint(migrated)
+            ConfigJson.fingerprint(legacy),
+            ConfigJson.fingerprint(migrated)
         )
         // A richer schedule can't be expressed the old way, so it must differ.
         val richer = config(Limits(sessionMinutes = 30, windows = listOf(bedtime, school)))
-        assertTrue(ConfigStore.fingerprint(richer) != ConfigStore.fingerprint(migrated))
+        assertTrue(ConfigJson.fingerprint(richer) != ConfigJson.fingerprint(migrated))
     }
 
     @Test
@@ -161,8 +162,8 @@ class TimeWindowsTest {
         // Same reason as the window pass: the reconcile only re-pushes on a
         // mismatch, so a skip that didn't move the hash would never reach a
         // sleeping TV.
-        assertTrue(ConfigStore.fingerprint(plain) != ConfigStore.fingerprint(skipped))
-        val parsed = ConfigStore.fromJson(ConfigStore.toJson(skipped))
+        assertTrue(ConfigJson.fingerprint(plain) != ConfigJson.fingerprint(skipped))
+        val parsed = ConfigJson.fromJson(ConfigJson.toJson(skipped))
         assertEquals(
             1_800_000_000_000L,
             parsed.limits.breakPassUntilMillis
@@ -176,8 +177,8 @@ class TimeWindowsTest {
         // that bedtime got its exception.
         val plain = config(Limits(windows = listOf(bedtime)))
         val listening = config(Limits(windows = listOf(bedtime.copy(allowListening = true))))
-        assertTrue(ConfigStore.fingerprint(plain) != ConfigStore.fingerprint(listening))
-        val parsed = ConfigStore.fromJson(ConfigStore.toJson(listening))
+        assertTrue(ConfigJson.fingerprint(plain) != ConfigJson.fingerprint(listening))
+        val parsed = ConfigJson.fromJson(ConfigJson.toJson(listening))
         assertTrue(parsed.limits.windows.single().allowListening)
     }
 
@@ -185,7 +186,7 @@ class TimeWindowsTest {
     fun `a window without the box keeps blocking everything after an upgrade`() {
         // The field is new, so every config already out there lacks it: absent
         // must read as the plain block, never as a loosened bedtime.
-        val old = ConfigStore.fromJson(
+        val old = ConfigJson.fromJson(
             """
             {"entries":[],"blocked":[],
              "limits":{"windows":[{"id":"w1","label":"Bedtime","start":1170,"end":420}]}}
@@ -198,6 +199,6 @@ class TimeWindowsTest {
     fun `a pass changes the fingerprint so a sleeping device still hears about it`() {
         val plain = config(Limits(windows = listOf(school)))
         val passed = config(Limits(windows = listOf(school.copy(passUntilMillis = 1_800_000_000_000L))))
-        assertTrue(ConfigStore.fingerprint(plain) != ConfigStore.fingerprint(passed))
+        assertTrue(ConfigJson.fingerprint(plain) != ConfigJson.fingerprint(passed))
     }
 }
