@@ -62,14 +62,20 @@ internal fun DownloadsSection() {
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Download quality", modifier = Modifier.weight(1f))
+    // Label above rather than beside: three chips plus a two-word label do not
+    // fit one line on a phone at display scale, and the label wrapped to two
+    // lines against the chips.
+    Text("Download quality", style = MaterialTheme.typography.labelLarge)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         listOf(480, 720, 1080).forEach { h ->
             FilterChip(
                 selected = quality == h,
                 onClick = { quality = h; store.maxHeight = h },
                 label = { Text("${h}p") },
-                modifier = Modifier.padding(start = 6.dp).tvFocusHighlight()
+                modifier = Modifier.tvFocusHighlight()
             )
         }
     }

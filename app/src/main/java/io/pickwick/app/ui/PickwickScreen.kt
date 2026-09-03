@@ -26,6 +26,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -263,7 +264,13 @@ fun PickwickScreen(
         )
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    // Transparent Surface over the backdrop: the wash *is* the background on
+    // "My colour", and a Surface painting its own would cover it.
+    Surface(
+        modifier = Modifier.fillMaxSize().kidBackdrop(),
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface
+    ) {
         @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
         CompositionLocalProvider(
             androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides

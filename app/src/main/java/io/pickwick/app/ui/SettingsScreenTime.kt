@@ -793,12 +793,17 @@ internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChange
         )
     }
 
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+    // Sentence over the button, not beside it. Beside it, the sentence wrapped
+    // to two lines and the button was squeezed against the card edge — worse
+    // on a phone at display scale, where it lost most of its label.
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(vertical = 2.dp)
+    ) {
         if (active) {
             Text(
-                if (kidName == null) "⏸ Everyone's screen time is paused until tomorrow"
-                else "⏸ $kidName's screen time is paused until tomorrow",
-                modifier = Modifier.weight(1f),
+                if (kidName == null) "Everyone's screen time is paused until tomorrow"
+                else "$kidName's screen time is paused until tomorrow",
                 color = MaterialTheme.colorScheme.primary
             )
             Button(
@@ -806,7 +811,7 @@ internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChange
                 onClick = { onChanged(null) }
             ) { Text("Resume") }
         } else {
-            Text("Turn off $whose watching until midnight", modifier = Modifier.weight(1f))
+            Text("Turn off $whose watching until midnight")
             CompactButton(
                 onClick = { confirming = true }
             ) { Text("Pause for today") }

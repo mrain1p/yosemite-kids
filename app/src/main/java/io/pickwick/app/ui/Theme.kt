@@ -1,6 +1,9 @@
 package io.pickwick.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 
 /**
@@ -26,7 +30,11 @@ val PickwickDarkColors = darkColorScheme(
     onSecondary = Color(0xFF1C3531),
     secondaryContainer = Color(0xFF334B47),
     onSecondaryContainer = Color(0xFFCCE8E3),
-    tertiary = Color(0xFFA5C8E4)
+    tertiary = Color(0xFFA5C8E4),
+    // Not Material's "elevation tint" here: this app uses surfaceTint purely
+    // as the carrier for the kid's own colour, and transparent means "no
+    // wash". See [kidColorScheme] and [Modifier.kidBackdrop].
+    surfaceTint = Color.Transparent
 )
 
 /** The three looks a kid can pick, in the order the hub shows them. */
@@ -57,7 +65,8 @@ val PickwickLightColors = androidx.compose.material3.lightColorScheme(
     onSurface = Color(0xFF191C1B),
     surfaceVariant = Color(0xFFDAE5E1),
     onSurfaceVariant = Color(0xFF3F4947),
-    outlineVariant = Color(0xFFBEC9C6)
+    outlineVariant = Color(0xFFBEC9C6),
+    surfaceTint = Color.Transparent
 )
 
 /**
@@ -78,12 +87,78 @@ fun kidColorScheme(
     val tint = Color(profile.colorArgb)
     val light = androidx.compose.ui.graphics.lerp(tint, Color.White, 0.30f)
     val deep = androidx.compose.ui.graphics.lerp(tint, Color.Black, 0.50f)
+    // The ground moves toward their colour, but only just — a few percent.
+    // A kid who picks hot pink wants a room that feels pink, not a hot-pink
+    // wall behind white text: past about 10% the thumbnails start fighting
+    // the background and every card needs its own outline to stay readable.
+    // The rest of the effect is the wash in [kidBackdrop], which is a
+    // gradient and therefore reads as light rather than as paint.
+    fun ground(c: Color) = androidx.compose.ui.graphics.lerp(c, tint, 0.07f)
+    val secondary = androidx.compose.ui.graphics.lerp(base.secondaryContainer, tint, 0.55f)
     return base.copy(
         primary = light,
         onPrimary = Color(0xFF1B1B1B),
         primaryContainer = deep,
-        onPrimaryContainer = Color.White
+        onPrimaryContainer = Color.White,
+        background = ground(base.background),
+        surface = ground(base.surface),
+        // Cards sit on the tinted ground; left neutral they read as grey
+        // patches on a coloured page.
+        surfaceVariant = androidx.compose.ui.graphics.lerp(base.surfaceVariant, tint, 0.10f),
+        // The bottom tab's selected pill and the settings chips are drawn from
+        // this. Left on the brand teal they were the one green thing on an
+        // otherwise pink page. Its label picks black or white by the blend's
+        // own luminance, because a kid may pick pale yellow as readily as navy.
+        secondaryContainer = secondary,
+        onSecondaryContainer = if (secondary.luminance() > 0.5f) Color(0xFF1B1B1B) else Color.White,
+        // Carries the kid's colour to [kidBackdrop]. Transparent on the two
+        // brand themes, which is how the wash knows to stay off.
+        surfaceTint = tint
     )
+}
+
+/**
+ * The "My colour" wash: the kid's colour poured in from the top corners and
+ * gone by halfway down, over the (barely) tinted ground from [kidColorScheme].
+ *
+ * A gradient rather than a fill on purpose. Filling the background with a
+ * kid's chosen colour makes every thumbnail fight it and every card need an
+ * outline; a wash that fades reads as *light in the room* instead, which is
+ * the thing they actually asked for. Inert on Dark and Light, where
+ * `surfaceTint` is transparent, so this can sit on the root unconditionally.
+ */
+@Composable
+fun Modifier.kidBackdrop(): Modifier {
+    val scheme = androidx.compose.material3.MaterialTheme.colorScheme
+    val tint = scheme.surfaceTint
+    val base = this.background(scheme.background)
+    if (tint.alpha == 0f) return base
+    return base.drawWithCache {
+        // Two soft corners rather than one flat band: a single vertical
+        // gradient banded visibly on a dark ground, and the corners give
+        // the page a light source instead of a horizon.
+        val left = Brush.radialGradient(
+            colors = listOf(tint.copy(alpha = 0.22f), Color.Transparent),
+            center = Offset(0f, 0f),
+            radius = size.minDimension * 1.4f
+        )
+        val right = Brush.radialGradient(
+            colors = listOf(tint.copy(alpha = 0.14f), Color.Transparent),
+            center = Offset(size.width, size.height * 0.12f),
+            radius = size.minDimension * 1.2f
+        )
+        // A last breath at the bottom so the page doesn't just go flat.
+        val floor = Brush.verticalGradient(
+            0f to Color.Transparent,
+            0.75f to Color.Transparent,
+            1f to tint.copy(alpha = 0.10f)
+        )
+        onDrawBehind {
+            drawRect(left)
+            drawRect(right)
+            drawRect(floor)
+        }
+    }
 }
 
 /**

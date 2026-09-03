@@ -750,7 +750,7 @@ private fun AdminScreen(
                         )
                         // Per-device Stats answers "what's happening today"; this
                         // answers "how did the week go" across every device.
-                        CompactButton(onClick = { digestOpen = true }) { Text("📅 Weekly digest") }
+                        CompactButton(onClick = { digestOpen = true }) { Text("Weekly digest") }
                     }
                     // Search index: who's the master, and how far each channel's
                     // crawl has got. Read-only — the master does the work.
@@ -813,14 +813,17 @@ private fun AdminScreen(
                             )
                         }
                         Text(
-                            "A home row of older videos from your own channels, matched to what " +
-                                "this kid has already watched. It is worked out on the device from " +
-                                "their own history — nothing is sent anywhere, no view counts are " +
-                                "used, and it can never reach a channel you haven't added. " +
-                                "Off: the home screen stays newest-first.",
+                            "A home row of older videos from the channels you have already added, " +
+                                "matched to what this kid actually watched. Off: the home screen " +
+                                "stays newest-first.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        // Folded away by default. A parent deciding whether to
+                        // leave this on deserves the whole mechanism, but it is
+                        // three screens of text on a phone and every other
+                        // setting would be below it.
+                        SuggestionExplainer()
                     }
                     SectionTitle("Picture quality")
                     SettingsCard {
@@ -1028,23 +1031,29 @@ private fun AdminScreen(
         Spacer(Modifier.height(20.dp))
         SettingsCard(padded = false) {
             val kidsLine = profiles.joinToString(", ") { it.name }.ifEmpty { "No kids yet" }
-            HubRow("🧒", "Kids", kidsLine) { page = HubPage.Kids }
+            HubRow(PickwickIcons.People, "Kids", kidsLine) { page = HubPage.Kids }
             SettingsDivider()
             HubRow(
-                "📺", "Channels & playlists",
+                PickwickIcons.Channels, "Channels & playlists",
                 "${entries.size} source${if (entries.size == 1) "" else "s"} · suggestions"
             ) { page = HubPage.Channels }
             SettingsDivider()
             HubRow(
-                "🛡️", "Content screening",
+                PickwickIcons.Shield, "Content screening",
                 if (ai.enabled) "AI screening on · review queue, discover" else "AI screening off"
             ) { page = HubPage.Screening }
             SettingsDivider()
-            HubRow("📱", "Devices", "Kid devices, downloads, search index") { page = HubPage.Devices }
+            HubRow(
+                PickwickIcons.Devices, "Devices", "Kid devices, downloads, search index"
+            ) { page = HubPage.Devices }
             SettingsDivider()
-            HubRow("▶️", "Playback", "Sponsor skipping, listening") { page = HubPage.Playback }
+            HubRow(
+                PickwickIcons.PlayArrow, "Playback", "Sponsor skipping, listening"
+            ) { page = HubPage.Playback }
             SettingsDivider()
-            HubRow("💾", "Backup & app", "Import, export, updates") { page = HubPage.Backup }
+            HubRow(
+                PickwickIcons.Save, "Backup & app", "Import, export, updates"
+            ) { page = HubPage.Backup }
         }
 
         SectionTitle("Pause everyone")
@@ -1096,9 +1105,21 @@ internal fun SubPage(title: String, onBack: () -> Unit, content: @Composable Col
     }
 }
 
-/** A root row: icon, title, one-line summary, chevron. */
+/**
+ * A root row: icon, title, one-line summary, chevron.
+ *
+ * Drawn icons, not emoji. Six emoji in a column rendered at six different
+ * optical weights and colours — the one part of the app a parent lands on
+ * first looked like a sticker sheet. Emoji stay where they are content: the
+ * kid's avatar.
+ */
 @Composable
-private fun HubRow(icon: String, title: String, summary: String, onClick: () -> Unit) {
+private fun HubRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    summary: String,
+    onClick: () -> Unit
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -1107,7 +1128,12 @@ private fun HubRow(icon: String, title: String, summary: String, onClick: () -> 
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
-        Text(icon, style = MaterialTheme.typography.titleLarge)
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp)
+        )
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
@@ -1119,8 +1145,12 @@ private fun HubRow(icon: String, title: String, summary: String, onClick: () -> 
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
-        Text("›", style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(
+            PickwickIcons.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 
@@ -1141,6 +1171,67 @@ internal fun SettingsCard(padded: Boolean = true, content: @Composable ColumnSco
             content = content
         )
     }
+}
+
+/**
+ * What "More like what you watch" actually does, in the parent's words.
+ *
+ * Worth the space: a suggestion row is the one part of this app that decides
+ * something on its own, and a parent who curated every channel by hand is owed
+ * a plain answer to "what is it doing, and where does it get the videos". The
+ * claims here are the code — see `HomeState.suggestionsFor`; if that changes,
+ * this changes with it.
+ */
+@Composable
+private fun SuggestionExplainer() {
+    var open by remember { mutableStateOf(false) }
+    if (!open) {
+        CompactButton(onClick = { open = true }) { Text("How this works") }
+        return
+    }
+    val points = listOf(
+        "What it reads" to
+            "The titles of videos this kid has opened on this device. Nothing else — " +
+            "not their age, not the time of day, not what other kids watch.",
+        "How it matches" to
+            "It looks for words shared between those titles and videos the kid has " +
+            "never opened. The more words in common, the higher a video ranks. What " +
+            "they watched most recently counts for more than what they watched weeks " +
+            "ago, so the row follows them as their interests move.",
+        "Where the videos come from" to
+            "Only the channels on your list. Turning this on cannot introduce a " +
+            "channel you have not added, and blocked videos and screening still " +
+            "apply exactly as they do everywhere else.",
+        "What it ignores" to
+            "View counts, likes, trending, and anything YouTube itself recommends. " +
+            "Popularity is not part of the ranking.",
+        "Keeping it varied" to
+            "At most two videos per channel, so one busy channel cannot fill the row. " +
+            "It reaches back through a channel's older videos, which is the point — " +
+            "the rest of the home screen is newest-first.",
+        "When it is empty" to
+            "A kid who has not watched anything yet gets no row at all, and neither " +
+            "does one whose titles have nothing in common with anything unwatched. " +
+            "It fills in on its own as they watch.",
+        "Where it runs" to
+            "On the device, from that device's own history. Nothing about what your " +
+            "kid watches is sent anywhere to build it, and each device works out its " +
+            "own row rather than sharing one."
+    )
+    // The card spaces its children evenly, which left a heading as far from
+    // its own paragraph as from the previous one — seven headings and seven
+    // bodies with no visible grouping. Each pair is one child instead.
+    points.forEach { (heading, body) ->
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(heading, style = MaterialTheme.typography.labelLarge)
+            Text(
+                body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+    CompactButton(onClick = { open = false }) { Text("Show less") }
 }
 
 @Composable
@@ -1215,9 +1306,12 @@ private fun SearchIndexSection(
     val totalVideos = whitelistedStates.sumOf { it.count }
     val complete = whitelistedStates.count { it.complete }
     Spacer(Modifier.height(6.dp))
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+    // Top-aligned: the sentence wraps to two lines on a phone, and a
+    // centre-aligned button then floated against the middle of the paragraph.
+    Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+        val channels = if (entries.size == 1) "1 channel" else "${entries.size} channels"
         Text(
-            "$totalVideos videos indexed across ${entries.size} channel(s) — $complete fully indexed.",
+            "$totalVideos videos indexed across $channels — $complete fully indexed.",
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f)
         )

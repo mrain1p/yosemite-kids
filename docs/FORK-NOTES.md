@@ -785,3 +785,56 @@ nothing; the change would only have complicated master election.
 - Both sides of a family must run the fork: the phone's Unpair, per-kid
   stats and Play-on-TV expect the new routes (an upstream device answers 404,
   which the phone treats as "didn't take it").
+
+### Round 12: settings polish, the colour wash, one You header (0.9.6-fork)
+
+**"My colour" now actually changes the room.** It only ever moved the accent
+colours before, so a kid who picked pink got a pink Play button on the same
+black page as everyone else. Two parts now:
+
+- `kidColorScheme` nudges `background` and `surface` 7% toward the kid's
+  colour, and `secondaryContainer` 55% so the selected tab pill and the
+  settings chips stop being the one brand-teal object on a pink page. Its
+  label picks black or white from the blend's own luminance — a kid picks pale
+  yellow as readily as navy.
+- `Modifier.kidBackdrop` paints the rest: two soft radial gradients from the
+  top corners plus a breath at the bottom. A gradient, not a fill, because a
+  saturated fill makes every thumbnail fight the page and every card need an
+  outline. A wash that fades reads as *light in the room*, which is what was
+  actually asked for.
+
+The carrier is `surfaceTint`, unused elsewhere in this app: transparent on
+Dark and Light, the kid's colour on "My colour". That means `kidBackdrop` can
+sit unconditionally on the root `Surface` (which is `Color.Transparent`, so it
+does not paint over the wash) with no extra plumbing through the composable
+tree.
+
+**The You header stopped being the odd one out.** It had a big avatar and the
+kid's name at top left and no top-right actions; every other page has the
+title left and search plus avatar at top right. So the same face appeared
+twice on the page (three times counting the tab) and this was the one screen
+with a different header shape. Now: the kid's name is the title, and
+`HeaderActions` sits top right exactly as elsewhere.
+
+**Settings, from a real phone rather than from the source.** Booted the
+emulator and walked every page; what the screenshots showed:
+
+- The hub's six rows were six emoji at six different optical weights and
+  colours — the first thing a parent sees, looking like a sticker sheet.
+  `HubRow` now takes an `ImageVector`, tinted `primary`, and three new
+  Material Symbols paths (`Shield`, `Devices`, `Save`) joined the set. The
+  chevron became a real icon too.
+- "Turn off all watching until midnight" wrapped to two lines *and* squeezed
+  "Pause for today" against the card edge. Sentence over button now.
+- "Download quality" did the same against three quality chips. Label above.
+- The search-index refresh button was centre-aligned against a two-line
+  paragraph, so it floated in the middle of the text. Top-aligned. And
+  "50 channel(s)" is now "50 channels".
+- The suggestion explainer's headings sat as far from their own paragraph as
+  from the previous one, because the card spaces every child equally. Each
+  heading and body is one child now.
+
+Left alone deliberately: `CompactButton`'s 10 dp content padding means a
+standalone text button's label sits 10 dp right of the body text above it. It
+reads as button padding rather than as misalignment, and changing it would
+move every inline use too.

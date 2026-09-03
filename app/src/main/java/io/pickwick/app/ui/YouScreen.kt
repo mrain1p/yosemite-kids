@@ -92,25 +92,17 @@ internal fun YouScreen(
         item(key = "you-header", span = { GridItemSpan(maxLineSpan) }) {
             Column(Modifier.padding(horizontal = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    // This page's own big avatar *is* the door to the kid's
-                    // corner: a second copy of it in the top-right corner made
-                    // three faces on one screen, counting the tab.
-                    if (profile != null) {
-                        Box(
-                            Modifier
-                                .tvFocusHighlight()
-                                .clip(androidx.compose.foundation.shape.CircleShape)
-                                .then(if (onOpenHub != null) Modifier.clickable { onOpenHub() } else Modifier)
-                        ) {
-                            ProfileAvatar(profile, size = if (isTv) 72 else 52)
-                        }
-                        Spacer(Modifier.width(12.dp))
-                    }
+                    // The kid's name is the page title, and the avatar lives in
+                    // the top right exactly where it does on every other page.
+                    // A big second copy of it here made this the one screen
+                    // with a different header shape, and put the same face on
+                    // screen three times counting the tab.
                     Text(
                         profile?.name ?: "You",
                         style = MaterialTheme.typography.titleLarge,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     val left = state.remainingMs
                     if (left != null && state.blockReason == null) {
@@ -118,7 +110,9 @@ internal fun YouScreen(
                         TimeChip(left)
                     }
                     Spacer(Modifier.weight(1f))
-                    HeaderActions(profile = null, onOpenHub = null, onOpenSearch = onOpenSearch)
+                    HeaderActions(
+                        profile = profile, onOpenHub = onOpenHub, onOpenSearch = onOpenSearch
+                    )
                     topChips?.invoke()
                 }
                 state.blockReason?.let { BlockedBanner(it) }
