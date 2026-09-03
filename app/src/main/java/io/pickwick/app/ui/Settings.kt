@@ -1196,12 +1196,17 @@ private fun AdminScreen(
             ) { page = HubPage.Screening }
             SettingsDivider()
             HubRow(
-                PickwickIcons.Devices, "Devices", "Kid devices, downloads, search index"
+                // "Pairing" first, because that is what a parent setting up
+                // for the first time is hunting for, and nothing else on this
+                // screen hints at where it lives.
+                PickwickIcons.Devices, "Devices", "Pairing, downloads, search index"
             ) { page = HubPage.Devices }
             SettingsDivider()
             HubRow(
-                PickwickIcons.PlayArrow, "Playback",
-                "Autoplay, quality, sponsor skipping, suggestions"
+                // Kept short enough to fit: the row is one line with an
+                // ellipsis, so a longer list reads as a truncated sentence and
+                // names fewer things than a shorter one does.
+                PickwickIcons.PlayArrow, "Playback", "Autoplay, quality, listening"
             ) { page = HubPage.Playback }
             SettingsDivider()
             HubRow(

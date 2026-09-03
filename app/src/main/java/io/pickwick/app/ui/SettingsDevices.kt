@@ -392,8 +392,17 @@ internal fun PhoneDevicesSection(
     assignmentRow("This phone:", myToken)
     if (devices.isEmpty()) {
         Text(
-            "No kid devices paired. On the TV: Settings → Pair with a parent phone, " +
-                "then scan the QR code with this phone's camera.",
+            // Numbered, because it is a procedure across two devices and the
+            // old single sentence read as one instruction when it is three.
+            // The scan itself uses the phone's ordinary camera app — the QR is
+            // a pickwick:// link — so there is nothing to tap here, and saying
+            // that plainly beats a parent hunting for a scan button.
+            "No kid devices paired yet.\n\n" +
+                "1.  On the TV or tablet, open Pickwick → Settings.\n" +
+                "2.  Choose \"Pair with a parent phone\". A QR code appears.\n" +
+                "3.  Point this phone's normal camera at it and tap the link.\n\n" +
+                "The TV's screen says when it is waiting, when this phone has " +
+                "asked, and when you are done.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -403,7 +412,9 @@ internal fun PhoneDevicesSection(
         // only while this device administers nobody; a phone with kid devices
         // is unambiguously the parent's.
         var confirmDedicate by remember { mutableStateOf(false) }
-        Spacer(Modifier.height(6.dp))
+        // No extra spacer: the card already spaces its children, and a text
+        // button carries a 40 dp touch target of its own, so adding to that
+        // left the two actions floating a long way from the text they follow.
         CompactButton(onClick = { confirmDedicate = true }) {
             Text("This device is my kid's…")
         }

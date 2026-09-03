@@ -110,7 +110,7 @@ because a switch that turns on and silently does nothing reads as a broken
 feature rather than a missing step. Discovery's own not-ready message points at
 "AI connection" instead of at the screening section.
 
-### 5. Review the settings and connections pages as a whole
+### 5. Review the settings and connections pages as a whole — DONE 2026-09-03
 
 Raised 2026-09-03, after the shelf settings turned out to be filed under
 Playback where nobody would look for them. That was one symptom; the ask is to
@@ -135,3 +135,37 @@ Specifically worth checking:
 Do this after the sync milestones, and do it on a device rather than from the
 source — the last two settings problems were both invisible in the code and
 obvious in a screenshot.
+
+## The settings and connections review (2026-09-03)
+
+Walked every settings page and the pairing flow on a device. What it found:
+
+- **Two hub summaries were still wrong.** "Playback — Autoplay, quality,
+  sponsor skipping, suggestions" truncated to "…suggestio…", so a longer list
+  named *fewer* things than a short one; it now reads "Autoplay, quality,
+  listening". And "Devices — Kid devices, downloads, search index" never said
+  **pairing**, which is the one thing a parent setting up for the first time is
+  hunting for and which nothing else on the screen hinted at.
+- **The pairing empty state was one sentence describing a three-step procedure
+  across two devices.** It is now numbered, and it says what the TV will show
+  at each stage, so a parent knows the phone is not the thing to watch.
+- **There is deliberately no in-app QR scanner, and that is right.** The QR is a
+  `pickwick://pair` deep link, so the phone's ordinary camera opens it and the
+  app needs no camera permission at all. The old copy left a parent hunting for
+  a scan button that should not exist; the new copy says to use the normal
+  camera.
+
+Checked and found already correct, so left alone:
+
+- **The connection screen's step feedback**, asked for earlier and never
+  verified since: `PairStatus` covers no-network, waiting for a scan, a phone
+  is asking, and paired — each with a line saying what to do, and the paired
+  state explicitly says you can go back.
+- **AI connection** is reachable without turning screening on, verified on
+  screen.
+
+Left as known cosmetics: a standalone `CompactButton`'s label sits 10 dp right
+of the body text above it, which reads as button padding rather than
+misalignment, and "This phone" defaults to the raw model name
+(`sdk_gphone64_x86_64` on an emulator, "Pixel 7 Pro" on a real device) until a
+parent renames it.

@@ -30,8 +30,8 @@ android {
         applicationId = "io.pickwick.app"
         minSdk = 26 // adaptive icons; every realistic target device is far above this
         targetSdk = 34
-        versionCode = 40
-        versionName = "0.9.7-fork"
+        versionCode = 41
+        versionName = "0.9.8-fork"
 
         // Every outbound URL the app talks to, overridable per build so a fork
         // never phones upstream by accident. Set in local.properties or the
