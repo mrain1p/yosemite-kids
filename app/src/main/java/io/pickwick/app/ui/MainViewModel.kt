@@ -879,7 +879,8 @@ class MainViewModel(
                 _state.value = _state.value.copy(
                     channelSort = effectiveChannelSort(),
                     homeFilter = effectiveHomeFilter(),
-                    channelFilter = effectiveChannelFilter()
+                    channelFilter = effectiveChannelFilter(),
+                    pageSize = list.pageSize
                 )
                 // Only the kid whose home this is owns these prefs. With nobody
                 // picked yet (who's-watching screen) `sessionGuard` is still the

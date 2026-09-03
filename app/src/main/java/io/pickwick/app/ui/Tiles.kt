@@ -396,18 +396,37 @@ internal fun SkeletonCard(modifier: Modifier = Modifier) {
 
 /** Big, rounded section heading with an optional trailing action ("Show all"). */
 @Composable
-internal fun SectionRow(title: String, action: String? = null, onAction: (() -> Unit)? = null) {
+internal fun SectionRow(
+    title: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+    /**
+     * Chips that belong to this section (the sort, the filter), on the title's
+     * own line. A chip row under every heading cost a band of empty screen per
+     * section and pushed the videos below the fold.
+     */
+    trailing: (@Composable () -> Unit)? = null
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp)
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp)
     ) {
         Text(
             title,
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            modifier = Modifier.weight(1f)
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = if (trailing == null) Modifier.weight(1f) else Modifier.padding(end = 10.dp)
         )
+        if (trailing != null) {
+            Box(Modifier.weight(1f)) { trailing() }
+        }
         if (action != null && onAction != null) {
-            TextButton(onClick = onAction, modifier = Modifier.tvFocusHighlight()) {
+            TextButton(
+                onClick = onAction,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.tvFocusHighlight()
+            ) {
                 Text(action, style = MaterialTheme.typography.labelLarge)
             }
         }

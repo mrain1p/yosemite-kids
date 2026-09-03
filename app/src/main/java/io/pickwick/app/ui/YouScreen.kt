@@ -64,8 +64,8 @@ internal fun YouScreen(
     isTv: Boolean,
     onPlay: (VideoItem) -> Unit,
     onOpenMenu: ((VideoItem) -> Unit)?,
-    onChangeLook: (() -> Unit)?,
-    onSwitchProfile: (() -> Unit)?,
+    /** The avatar in the header: the kid's corner (switch, look, settings). */
+    onOpenHub: (() -> Unit)?,
     onOpenSearch: (() -> Unit)? = null,
     /** TV: the top menu chips, drawn in the header row. */
     topChips: (@Composable () -> Unit)? = null
@@ -87,31 +87,28 @@ internal fun YouScreen(
         modifier = Modifier.fillMaxSize()
     ) {
         item(key = "you-header", span = { GridItemSpan(maxLineSpan) }) {
-            Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     if (profile != null) {
-                        ProfileAvatar(profile, size = if (isTv) 88 else 64)
-                        Spacer(Modifier.width(16.dp))
+                        ProfileAvatar(profile, size = if (isTv) 72 else 52)
+                        Spacer(Modifier.width(12.dp))
                     }
-                    Column(Modifier.weight(1f)) {
-                        Text(profile?.name ?: "You", style = MaterialTheme.typography.titleLarge)
-                        val left = state.remainingMs
-                        if (left != null && state.blockReason == null) {
-                            Spacer(Modifier.height(6.dp))
-                            TimeChip(left)
-                        }
+                    Text(
+                        profile?.name ?: "You",
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    val left = state.remainingMs
+                    if (left != null && state.blockReason == null) {
+                        Spacer(Modifier.width(10.dp))
+                        TimeChip(left)
                     }
-                    if (onOpenSearch != null) HeaderIconButton(Icons.Filled.Search, "Search", onOpenSearch)
+                    Spacer(Modifier.weight(1f))
+                    // Their look, their profile, the locked settings — all
+                    // behind this one avatar, the same as every other page.
+                    HeaderActions(profile, onOpenHub, onOpenSearch)
                     topChips?.invoke()
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (onChangeLook != null) {
-                        PwChip("Change my look", selected = false, icon = PickwickIcons.Palette, onClick = onChangeLook)
-                    }
-                    if (onSwitchProfile != null) {
-                        PwChip("Switch", selected = false, icon = PickwickIcons.People, onClick = onSwitchProfile)
-                    }
                 }
                 state.blockReason?.let { BlockedBanner(it) }
             }

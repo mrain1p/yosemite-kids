@@ -541,6 +541,36 @@ Not verified: the phone adopting a TV's pending look (two paired
 emulators needed; the merge is unit-tested), *Latest video* against real
 dates (the seed's caches predate the column), and real devices.
 
+### Round seven: density, the avatar everywhere, quality and paging
+
+Version **0.9.2-fork (35)**, from the user's notes on round six.
+
+- **Padding halved across the app.** `SectionRow` 14/4 → 6/2, `SectionDivider`
+  10/2 → 6/0, row content padding 8 → 4, the home grid's item spacing 10 → 6
+  and its top inset 8 → 2, the screen's own padding 16/8 → 12/2. Nothing
+  moved; there is just less air between the parts.
+- **Chips ride their titles.** `SectionRow` takes a `trailing` slot: the
+  New / Random / Popular chips sit on the "For you" and "All videos" lines,
+  and the time-left chip sits on the greeting line. Three bands of screen
+  went back to the videos.
+- **The avatar is on every page** (`HeaderActions`), not just home:
+  Channels, You, channel pages, the grids. It opens the kid's corner, which
+  is where *Change my look* now lives — the chip left the You page, and the
+  player has no header of its own, so it is the one screen without it.
+- **Picture quality** (`PLAYBACK_QUALITIES`): Auto (the connection-and-device
+  pick, the default) or a ceiling of 1080/720/480/360, set separately for
+  TVs and for phones in the parent settings, and changeable for the video in
+  hand from a chip in the player. A ceiling only ever caps Auto's choice, so
+  a weak connection still steps below it; picking one re-resolves the stream
+  and carries on from the same second.
+- **Pagination** (`PAGE_SIZES`): All (as before) or 10 / 20 / 30, after which
+  a grid stops and offers "Show more (N)". A scroll now has an end.
+- **Player list**: rules between the video's details, *Up next* and *More
+  from <channel>*.
+- **TV banner on the launcher activity too.** The 16:9 card has been right
+  since round 3, but some launchers (Fire TV among them) read the banner off
+  the leanback activity and fall back to the square icon when it is missing.
+
 ### Two form factors, one codebase — how it is kept maintainable
 
 The phone and the TV are deliberately two *layouts*, not two apps. What is

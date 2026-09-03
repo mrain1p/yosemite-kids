@@ -36,6 +36,25 @@ object QualityTargets {
     /** Max video height for playback; null → muxed fallback (~360p). */
     @Volatile var playbackMaxHeight: Int? = 720
 
+    /**
+     * The parent's ceiling for this form factor (config), or the kid's pick
+     * for the video they are watching. Null = Auto, the connection-and-device
+     * choice [configure] makes. A ceiling only ever caps [autoMaxHeight]: a
+     * weak connection still steps below it, and asking for 1080p on a
+     * connection that can't carry it would just stall.
+     */
+    @Volatile var userMaxHeight: Int? = null
+
+    /** What Auto picked, kept so a ceiling can be applied over it. */
+    @Volatile private var autoMaxHeight: Int? = 720
+
+    /** The height to resolve at: the lower of Auto's pick and any ceiling. */
+    fun effectiveMaxHeight(): Int? {
+        val auto = autoMaxHeight
+        val cap = userMaxHeight ?: return auto
+        return if (auto == null) cap else minOf(auto, cap)
+    }
+
     fun configure(context: Context) {
         val tier = NetworkQuality.tier(context)
         val tv = NetworkQuality.isTv(context)
@@ -53,5 +72,6 @@ object QualityTargets {
             NetworkQuality.Tier.MEDIUM -> if (tv) 720 else 480
             NetworkQuality.Tier.LOW -> null // muxed fallback
         }
+        autoMaxHeight = playbackMaxHeight
     }
 }

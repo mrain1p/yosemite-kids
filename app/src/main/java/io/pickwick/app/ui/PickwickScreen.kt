@@ -285,7 +285,7 @@ fun PickwickScreen(
                     .togetherWith(fadeOut(tween(140)))
             },
             label = "screen",
-            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = if (phone) 8.dp else 16.dp)
+            modifier = Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 16.dp, vertical = if (phone) 2.dp else 10.dp)
         ) { s ->
         Column(modifier = Modifier.fillMaxSize()) {
             when {
@@ -380,7 +380,7 @@ fun PickwickScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        HeaderIconButton(Icons.Filled.Search, "Search", vm::openSearch)
+                        HeaderActions(activeProfile, openHub, if (phone) vm::openSearch else null)
                     }
                     ChannelsScreen(
                         state = s,
@@ -408,8 +408,9 @@ fun PickwickScreen(
                         isTv = isTv,
                         onPlay = onPlay,
                         onOpenMenu = { feedMenuFor = it },
-                        onChangeLook = if (lookEditable) { { lookOpen = true } } else null,
-                        onSwitchProfile = onSwitchProfile,
+                        // "Change my look" lives behind the avatar now, on
+                        // every screen — the You page carries the shelves.
+                        onOpenHub = openHub,
                         onOpenSearch = if (phone) vm::openSearch else null
                     )
                 }
@@ -530,9 +531,10 @@ fun PickwickScreen(
                                 )
                             }
                         }
-                        if (phone && s.screen !is Screen.SearchResults) {
-                            HeaderIconButton(Icons.Filled.Search, "Search", vm::openSearch)
-                        }
+                        HeaderActions(
+                            activeProfile, openHub,
+                            if (phone && s.screen !is Screen.SearchResults) vm::openSearch else null
+                        )
                         // TV has no tabs and no back arrow, so a page below home
                         // used to be a title and a grid with nothing above it.
                         // These chips are the ten-foot menu: where you are, and
@@ -674,6 +676,7 @@ fun PickwickScreen(
                         } else null,
                         scrollTo = s.scrollTo,
                         onScrolled = vm::scrollHandled,
+                        pageSize = s.pageSize,
                         // Above a channel's grid: the parent-picked playlist
                         // rows, "New for you" (the newest unstarted videos),
                         // and the "By playlist" chip row when the parent chose

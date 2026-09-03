@@ -39,6 +39,9 @@ import io.pickwick.app.data.CHANNEL_ORDER_ALPHA
 import io.pickwick.app.data.CHANNEL_ORDER_RANDOM
 import io.pickwick.app.data.CHANNEL_ORDER_WATCHED
 import io.pickwick.app.data.CHANNEL_ORDER_LATEST
+import io.pickwick.app.data.PLAYBACK_QUALITIES
+import io.pickwick.app.data.PAGE_SIZES
+import io.pickwick.app.data.qualityLabel
 import io.pickwick.app.data.YouTubeRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -378,6 +381,9 @@ private fun AdminScreen(
     var channelLayout by remember(initial) { mutableStateOf(initial.channelLayout) }
     var channelOrder by remember(initial) { mutableStateOf(initial.channelOrder) }
     var listenPercent by remember(initial) { mutableStateOf(initial.listenPercent) }
+    var qualityTv by remember(initial) { mutableStateOf(initial.qualityTv) }
+    var qualityPhone by remember(initial) { mutableStateOf(initial.qualityPhone) }
+    var pageSize by remember(initial) { mutableStateOf(initial.pageSize) }
     var baseline by remember(initial) { mutableStateOf(initial) }
     /** Entries added by this session's URL import — shown with a NEW tag for review. */
     var newIds by remember { mutableStateOf(setOf<String>()) }
@@ -459,7 +465,10 @@ private fun AdminScreen(
             autoplayNext = autoplayNext,
             channelLayout = channelLayout,
             channelOrder = channelOrder,
-            listenPercent = listenPercent
+            listenPercent = listenPercent,
+            qualityTv = qualityTv,
+            qualityPhone = qualityPhone,
+            pageSize = pageSize
         )
     }
 
@@ -685,8 +694,60 @@ private fun AdminScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    SectionTitle("Picture quality")
+                    SettingsCard {
+                        Text(
+                            "A ceiling, not a target: Auto follows the connection and the " +
+                                "device, and a number caps it. Kids can change it for the " +
+                                "video they're watching from the player.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text("On TVs", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PLAYBACK_QUALITIES.forEach { h ->
+                                FilterChip(
+                                    selected = qualityTv == h,
+                                    onClick = { qualityTv = h },
+                                    label = { Text(qualityLabel(h)) },
+                                    modifier = Modifier.tvFocusHighlight()
+                                )
+                            }
+                        }
+                        SettingsDivider()
+                        Text("On phones & tablets", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PLAYBACK_QUALITIES.forEach { h ->
+                                FilterChip(
+                                    selected = qualityPhone == h,
+                                    onClick = { qualityPhone = h },
+                                    label = { Text(qualityLabel(h)) },
+                                    modifier = Modifier.tvFocusHighlight()
+                                )
+                            }
+                        }
+                    }
                     SectionTitle("Kid's shelves")
                     SettingsCard {
+                        Text("Videos before \"Show more\"", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PAGE_SIZES.forEach { n ->
+                                FilterChip(
+                                    selected = pageSize == n,
+                                    onClick = { pageSize = n },
+                                    label = { Text(n?.toString() ?: "All") },
+                                    modifier = Modifier.tvFocusHighlight()
+                                )
+                            }
+                        }
+                        Text(
+                            "Grids stop after this many videos and offer a button for the " +
+                                "next batch, so a scroll has an end. All = keep loading as " +
+                                "the kid scrolls.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        SettingsDivider()
                         Text("Channel page layout", style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(

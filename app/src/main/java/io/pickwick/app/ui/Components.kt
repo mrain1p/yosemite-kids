@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -127,3 +130,37 @@ internal fun NewPill(modifier: Modifier = Modifier) {
 /** "Channel · 3 days ago" — the quiet line under a title. Null age = the channel alone. */
 internal fun metaLine(channel: String, age: String?): String =
     if (age == null) channel else "$channel · $age"
+
+/**
+ * The right end of every page header: search, then the kid's face. The
+ * avatar is the door to their corner — switch, change my look, the locked
+ * parent settings — and it is on every screen except the player, so a kid
+ * never has to find their way home to restyle themselves.
+ */
+@Composable
+internal fun HeaderActions(
+    profile: io.pickwick.app.data.Profile?,
+    onOpenHub: (() -> Unit)?,
+    onOpenSearch: (() -> Unit)?
+) {
+    if (onOpenSearch != null) {
+        HeaderIconButton(androidx.compose.material.icons.Icons.Filled.Search, "Search", onOpenSearch)
+    }
+    if (onOpenHub != null) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(46.dp)
+                .tvFocusHighlight()
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .clickable { onOpenHub() }
+        ) {
+            if (profile != null) ProfileAvatar(profile, size = 34)
+            else Icon(
+                androidx.compose.material.icons.Icons.Filled.Person,
+                contentDescription = "Profile",
+                modifier = Modifier.size(26.dp)
+            )
+        }
+    }
+}

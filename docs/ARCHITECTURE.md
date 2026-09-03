@@ -221,6 +221,8 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Change what happens when a video ends | `PlayerActivity.showEndCard` / `EndCardOverlay` |
 | Change the portrait player (what sits under the video) | `PlayerActivity.PortraitPlayerScaffold`; the slot's chrome is `PlayerControlsOverlay(compact = true)` |
 | Change an icon, the type scale, a chip or the channel art | `ui/Icons.kt` (the drawn Material Symbols), `Theme.kt` (`PickwickTypography`, `relativeAge`), `ui/Components.kt` (`PwChip`, `ChannelArt`, `NewPill`, `HeaderIconButton`, `metaLine`) — emoji are content (avatars, cards), never chrome |
+| Change playback quality (Auto or a ceiling) | `NetworkQuality.kt` `QualityTargets` (`userMaxHeight`, `effectiveMaxHeight`), `Whitelist.qualityTv/qualityPhone`, the Playback settings page, `PlayerActivity.setQuality` |
+| Change how many videos a grid shows before "Show more" | `Whitelist.pageSize` → `UiState.pageSize` → `VideoGrid(pageSize = …)` |
 | Change the kid's sort/filter chips or their defaults | `HomeState.orderChannels` / `filterVideos` (pure), `KidPrefs` (per-kid persistence), `MainViewModel.setChannelSort` / `setHomeFilter` / `setChannelFilter`; chips in `HomeScreens.kt` (`ChannelSortChips`, `VideoFilterChips`, TV `CycleChip`) |
 | Change the You tab | `YouScreen.kt`, `MainViewModel.youShelves` / `openYou` |
 | Change the profile hub or the look editor | `ProfileHub.kt`; the sync-back is `data/ProfileLooks.kt` + `GET /looks` + `MainViewModel.syncConfigState` (`mergeLooks`) + `MainActivity.onChangeLook` |

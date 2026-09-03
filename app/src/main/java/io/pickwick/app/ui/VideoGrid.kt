@@ -195,6 +195,8 @@ internal fun VideoGrid(
     /** One-shot jump, see [UiState.scrollTo]. Report back via [onScrolled]. */
     scrollTo: Int? = null,
     onScrolled: (() -> Unit)? = null,
+    /** The parent's page size: videos before a "Show more" button; null = all. */
+    pageSize: Int? = null,
     /**
      * Full-width rows above the grid — the channel's playlist shelves. Emitted
      * into the same lazy grid so the page scrolls as one, not as a row of rows
@@ -283,6 +285,14 @@ internal fun VideoGrid(
     }
     val menuOpener: ((VideoItem) -> Unit)? =
         if (onToggleWatchlist != null) ({ menuFor = it }) else null
+    // The parent's page size: the grid stops after this many and offers a
+    // button for the next batch, so a scroll has an end. Reset whenever the
+    // list identity changes (a new screen, a new sort), never mid-scroll.
+    var shown by remember(pageSize, videos.firstOrNull()?.video?.url) {
+        mutableIntStateOf(pageSize ?: Int.MAX_VALUE)
+    }
+    val paged = if (pageSize == null) videos else videos.take(shown)
+    val more = videos.size - paged.size
     // Phone: two columns portrait, more on a tablet; the card's own padding
     // sets the gutters. TV: the 240 dp adaptive tiles as before.
     val columns = if (cards) GridCells.Adaptive(minSize = 170.dp) else GridCells.Adaptive(minSize = 240.dp)
@@ -302,9 +312,9 @@ internal fun VideoGrid(
         header?.invoke(this)
         // Split around the injected tile rather than appending it: its index is
         // pinned to the first page, and pages loaded later join the tail below.
-        val cut = extraTileAt?.coerceIn(0, videos.size)?.takeIf { extraTile != null }
-        val head = if (cut == null) videos else videos.take(cut)
-        val tail = if (cut == null) emptyList() else videos.drop(cut)
+        val cut = extraTileAt?.coerceIn(0, paged.size)?.takeIf { extraTile != null }
+        val head = if (cut == null) paged else paged.take(cut)
+        val tail = if (cut == null) emptyList() else paged.drop(cut)
         items(head, key = { it.video.url }) { item ->
             if (cards) VideoCard(
                 item = item,
@@ -317,7 +327,7 @@ internal fun VideoGrid(
                 } else null
             ) else VideoTile(
                 item = item,
-                focusRequester = firstTileFocus.takeIf { grabFocus && item == videos.first() },
+                focusRequester = firstTileFocus.takeIf { grabFocus && item == paged.first() },
                 onPlay = onPlay,
                 onOpenMenu = menuOpener,
                 downloadPending = downloadPending,
@@ -347,6 +357,21 @@ internal fun VideoGrid(
                 downloaded = downloaded,
                 showDownloadStatus = onToggleDownload != null
             )
+        }
+        // The end of a page: a button, not more scroll. Only the last one
+        // loads further pages from the network — until then "more" is what
+        // this device already has.
+        if (more > 0) {
+            item(key = "show-more", span = { GridItemSpan(maxLineSpan) }) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                    PwChip(
+                        "Show more ($more)",
+                        selected = false,
+                        icon = PickwickIcons.ExpandMore,
+                        onClick = { shown += (pageSize ?: 20) }
+                    )
+                }
+            }
         }
         if (loadingMore) {
             item(span = { GridItemSpan(maxLineSpan) }) {

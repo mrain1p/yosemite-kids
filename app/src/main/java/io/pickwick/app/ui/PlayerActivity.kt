@@ -214,6 +214,39 @@ class PlayerActivity : ComponentActivity() {
     /** Parent's SponsorBlock switch, read off-main on first use; null = not read yet. */
     private var sponsorSkipOn: Boolean? = null
 
+    /** The quality ceiling in force, for the player's own picker; null = Auto. */
+    private val qualityCeiling = mutableStateOf<Int?>(null)
+    private val qualityPickerOpen = mutableStateOf(false)
+
+    /**
+     * The kid picked a quality in the player: re-resolve this video at the new
+     * ceiling and carry on from where they were. Applies to whatever plays
+     * next too (the ceiling is global for the session), but it is not written
+     * to the config — the parent's setting is the default, not the memory.
+     */
+    private fun setQuality(height: Int?) {
+        if (io.pickwick.app.data.QualityTargets.userMaxHeight == height) return
+        io.pickwick.app.data.QualityTargets.userMaxHeight = height
+        qualityCeiling.value = height
+        haptic()
+        notice.value = Notice("Quality: ${io.pickwick.app.data.qualityLabel(height)}")
+        val exo = player ?: return
+        val at = exo.currentPosition
+        val page = currentPageUrl ?: return
+        val playing = exo.playWhenReady
+        lifecycleScope.launch {
+            val pb = runCatching {
+                repo.resolvePlayback(page, io.pickwick.app.data.QualityTargets.effectiveMaxHeight())
+            }.getOrNull() ?: return@launch
+            // The kid may have moved on while the streams resolved.
+            if (currentPageUrl != page) return@launch
+            currentPlayback = pb
+            playbackState.value = pb
+            attachSources(pb, audioOnly = listenActive && pb.audioUrl != null, resumeMs = at)
+            player?.playWhenReady = playing
+        }
+    }
+
     /** True while the system has the video in its picture-in-picture window (phones). */
     private val inPip = mutableStateOf(false)
     /**
@@ -429,6 +462,12 @@ class PlayerActivity : ComponentActivity() {
             familyConfig = cfg
             autoplayOn = cfg.autoplayNext
             if (!isTv && listenPercent == null) listenPercent = cfg.listenPercent
+            // The parent's ceiling for this form factor. Read before the first
+            // resolve in practice (a file read beats a network fetch), and the
+            // kid's own pick in the player overrides it for the session.
+            io.pickwick.app.data.QualityTargets.userMaxHeight =
+                if (isTv) cfg.qualityTv else cfg.qualityPhone
+            qualityCeiling.value = io.pickwick.app.data.QualityTargets.userMaxHeight
         }
 
         // Read further ahead than the 50s default: with the chunked data source
@@ -662,6 +701,45 @@ class PlayerActivity : ComponentActivity() {
                 // rebuilt: a rotation would otherwise recreate the AndroidView
                 // and its SurfaceView, and cut to black mid-video.
                 val stage = remember { movableContentOf { compact: Boolean -> PlayerStage(compact) } }
+                if (qualityPickerOpen.value) {
+                    val ceiling by qualityCeiling
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { qualityPickerOpen.value = false },
+                        title = { Text("Picture quality") },
+                        text = {
+                            Column {
+                                Text(
+                                    "Auto follows the connection. A number is a ceiling — " +
+                                        "a slow connection still drops below it.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                io.pickwick.app.data.PLAYBACK_QUALITIES.forEach { h ->
+                                    androidx.compose.material3.TextButton(
+                                        onClick = { qualityPickerOpen.value = false; setQuality(h) },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                io.pickwick.app.data.qualityLabel(h),
+                                                style = MaterialTheme.typography.titleSmall,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            if (h == ceiling) Icon(Icons.Filled.Check, contentDescription = "Selected")
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {},
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { qualityPickerOpen.value = false }) {
+                                Text("Close")
+                            }
+                        }
+                    )
+                }
                 if (portrait && !pip) {
                     PortraitPlayerScaffold { stage(true) }
                 } else {
@@ -901,7 +979,7 @@ class PlayerActivity : ComponentActivity() {
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
             ) {
                 item {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Column(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp, bottom = 8.dp)) {
                         Text(
                             playback?.title ?: titles.getOrNull(index).orEmpty(),
                             color = MaterialTheme.colorScheme.onBackground,
@@ -961,6 +1039,13 @@ class PlayerActivity : ComponentActivity() {
                                 icon = PickwickIcons.Moon,
                                 onClick = ::toggleStopAfter
                             )
+                            val ceiling by qualityCeiling
+                            PwChip(
+                                io.pickwick.app.data.qualityLabel(ceiling),
+                                selected = false,
+                                icon = PickwickIcons.Quality,
+                                onClick = { qualityPickerOpen.value = true }
+                            )
                         }
                     }
                 }
@@ -997,13 +1082,22 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * A titled group in the list under the video, with a rule above it: the
+     * video's own details, what is lined up and what else the channel has
+     * ran together as one column of text otherwise.
+     */
     @Composable
     private fun SectionLabel(text: String) {
+        androidx.compose.material3.HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
         Text(
             text,
             color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp)
+            modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 4.dp)
         )
     }
 
@@ -1266,7 +1360,7 @@ class PlayerActivity : ComponentActivity() {
                 }
                 val resolved = local ?: repo.resolvePlayback(
                     queue[i],
-                    io.pickwick.app.data.QualityTargets.playbackMaxHeight
+                    io.pickwick.app.data.QualityTargets.effectiveMaxHeight()
                 )
                 // First play of a streamed video: the once-per-video deep check
                 // (description + tags + transcript), riding the StreamInfo we

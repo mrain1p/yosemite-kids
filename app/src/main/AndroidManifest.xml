@@ -39,9 +39,15 @@
         <!-- configChanges like PlayerActivity: rotation must not tear down a
              pairing flow mid-approval (its dialog + polling live in activity
              state) — Compose relayouts on the new size by itself. -->
+        <!-- The banner is declared twice on purpose: the application-level one
+             is what Google TV reads, and some launchers (Fire TV among them)
+             look for it on the leanback activity instead and fall back to the
+             square icon when it isn't there. 16:9, mark + wordmark on brand
+             teal, at every density — see scripts/Banner.java. -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
+            android:banner="@drawable/tv_banner"
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
             <intent-filter>

@@ -80,7 +80,7 @@ private fun KeepWatchingRow(
     androidx.compose.foundation.lazy.LazyRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         // Room for the focus glow so it isn't clipped by the row bounds.
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
         // Held ◀/▶ paces itself so leftward steps (nothing pre-composed behind
         // the pivot) stop sticking mid-scroll.
         modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
@@ -167,8 +167,8 @@ internal fun PhoneHome(
     LazyVerticalGrid(
         columns = columns,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 24.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 16.dp)
     ) {
         item(key = "app-header", span = { GridItemSpan(maxLineSpan) }) {
             HomeHeader(
@@ -222,14 +222,13 @@ internal fun PhoneHome(
         }
         item(key = "feed-divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
         item(key = "feed-title", span = { GridItemSpan(maxLineSpan) }) {
-            // The title stays put; the chips say how it's sorted. A title that
-            // changed with the sort read as a different section.
-            SectionRow("For you")
-        }
-        if (onHomeFilter != null) {
-            item(key = "feed-filter", span = { GridItemSpan(maxLineSpan) }) {
-                VideoFilterChips(homeFilter, onHomeFilter)
-            }
+            // The title stays put and the chips ride its line; a title that
+            // changed with the sort read as a different section, and a chip
+            // row of its own cost a band of screen.
+            SectionRow(
+                "For you",
+                trailing = onHomeFilter?.let { set -> { VideoFilterChips(homeFilter, set) } }
+            )
         }
         if (state.feed.isEmpty()) {
             // The caches are still warming (first launch, or a new channel):
@@ -254,8 +253,8 @@ internal fun PhoneHome(
 @Composable
 internal fun SectionDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+        modifier = Modifier.padding(top = 6.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     )
 }
 
@@ -284,8 +283,8 @@ internal fun channelSortLabel(sort: String): Pair<String, androidx.compose.ui.gr
 @Composable
 internal fun VideoFilterChips(selected: String, onSelect: (String) -> Unit) {
     Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(bottom = 4.dp).horizontalScroll(rememberScrollState())
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState())
     ) {
         VIDEO_FILTERS.forEach { value ->
             val (label, icon) = videoFilterLabel(value)
@@ -298,8 +297,8 @@ internal fun VideoFilterChips(selected: String, onSelect: (String) -> Unit) {
 @Composable
 internal fun ChannelSortChips(selected: String, onSelect: (String) -> Unit) {
     Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(bottom = 4.dp).horizontalScroll(rememberScrollState())
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState())
     ) {
         KID_CHANNEL_SORTS.forEach { value ->
             val (label, icon) = channelSortLabel(value)
@@ -613,6 +612,13 @@ internal fun HomeHeader(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
                 style = MaterialTheme.typography.titleLarge
             )
+            // Time left rides the header line rather than taking a band of
+            // its own. Hidden while a rule blocks watching outright — the
+            // banner below says why instead.
+            if (remainingMs != null && blockReason == null) {
+                Spacer(Modifier.width(10.dp))
+                TimeChip(remainingMs)
+            }
         }
         // Search is a task, not a place: one icon in every header. Phones
         // open the search page; the TV (no tabs, no page) unfolds the field.
@@ -676,13 +682,6 @@ internal fun HomeHeader(
                 }
             }
         }
-    }
-    // Screen time left, on its own line: a phone's header row is already full
-    // (wordmark, avatar, two icons), and squeezing a chip in there folded the
-    // wordmark into a vertical column. Hidden while a rule blocks watching
-    // outright — the banner says why instead.
-    if (remainingMs != null && blockReason == null) {
-        Row(Modifier.fillMaxWidth().padding(top = 6.dp)) { TimeChip(remainingMs) }
     }
     blockReason?.let { BlockedBanner(it) }
     if (searchOpen) SearchField(onSearch)
@@ -809,7 +808,7 @@ internal fun TvHomeRows(
                 ) {
                     androidx.compose.foundation.lazy.LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
                     ) {
                         items(feed.size, key = { feed[it].video.url }) { i ->
@@ -873,7 +872,7 @@ internal fun TvHomeRows(
                 TvRow("Watched lately") {
                     androidx.compose.foundation.lazy.LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
                     ) {
                         item(key = "all-history") {
@@ -901,7 +900,7 @@ internal fun TvHomeRows(
             TvRow("Explore") {
                 androidx.compose.foundation.lazy.LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     // Lined-up videos lead the row while any exist.
                     if (hasQueue) {

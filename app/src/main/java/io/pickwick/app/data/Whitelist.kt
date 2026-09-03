@@ -58,6 +58,25 @@ const val CHANNEL_LAYOUT_PLAYLISTS = "playlists"
 /** Settings order; unknown values from a newer build fall back to newest. */
 val CHANNEL_LAYOUTS = listOf(CHANNEL_LAYOUT_NEWEST, CHANNEL_LAYOUT_POPULAR, CHANNEL_LAYOUT_PLAYLISTS)
 
+/**
+ * Playback quality ceiling, in pixels of height; null = Auto, which picks
+ * from the connection and the device the way the app always has. A ceiling
+ * is a *max*, not a target: a weak connection still steps down under it.
+ * Separate for TVs and phones — a 1080p ceiling that suits the living room
+ * burns a phone's data plan.
+ */
+val PLAYBACK_QUALITIES = listOf<Int?>(null, 1080, 720, 480, 360)
+
+/** "Auto" / "1080p" — one spelling of a quality, in settings and in the player. */
+fun qualityLabel(height: Int?): String = if (height == null) "Auto" else "${height}p"
+
+/**
+ * How many videos a grid shows before a "Show more" button; null = all of
+ * them (endless scrolling). A kid asked to press a button every twenty
+ * videos stops sliding and starts choosing.
+ */
+val PAGE_SIZES = listOf<Int?>(null, 10, 20, 30)
+
 const val CHANNEL_ORDER_WATCHED = "watched"
 const val CHANNEL_ORDER_ALPHA = "alpha"
 const val CHANNEL_ORDER_RANDOM = "random"
@@ -248,7 +267,21 @@ data class Whitelist(
      * drain at [listenDrainPercent]. Phones only: a TV can't play with its
      * panel off, so TVs ignore it.
      */
-    val listenPercent: Int? = null
+    val listenPercent: Int? = null,
+    /**
+     * Playback quality ceiling on TVs and on phones/tablets, in pixels of
+     * height; null = Auto (the connection-and-device pick). See
+     * [PLAYBACK_QUALITIES]. A device applies the one that matches its own
+     * form factor, and the kid can still change it for the video they are
+     * watching from the player.
+     */
+    val qualityTv: Int? = null,
+    val qualityPhone: Int? = null,
+    /**
+     * Videos a grid shows before a "Show more" button; null = all of them.
+     * See [PAGE_SIZES].
+     */
+    val pageSize: Int? = null
 ) {
     fun profile(id: String?): Profile? = profiles.firstOrNull { it.id == id }
 

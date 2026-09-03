@@ -116,9 +116,8 @@ internal fun LazyGridScope.allVideosHeader(
     title: String = "All videos"
 ) {
     item(key = "all:divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
-    item(key = "all:title", span = { GridItemSpan(maxLineSpan) }) { SectionRow(title) }
-    if (onFilter != null) {
-        item(key = "all:filter", span = { GridItemSpan(maxLineSpan) }) { VideoFilterChips(filter, onFilter) }
+    item(key = "all:title", span = { GridItemSpan(maxLineSpan) }) {
+        SectionRow(title, trailing = onFilter?.let { set -> { VideoFilterChips(filter, set) } })
     }
 }
 

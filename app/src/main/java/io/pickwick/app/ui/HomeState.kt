@@ -86,6 +86,8 @@ data class UiState(
     val homeFilter: String = VIDEO_FILTER_NEW,
     /** The kid's order for channel pages (VIDEO_FILTER_*), the parent's layout as default. */
     val channelFilter: String = VIDEO_FILTER_NEW,
+    /** The parent's page size: videos a grid shows before "Show more"; null = all. */
+    val pageSize: Int? = null,
     /** The kid's last few searches, newest first — chips on the search page. */
     val recentSearches: List<String> = emptyList(),
     /** Source ids with uploads the kid hasn't seen yet. */

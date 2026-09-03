@@ -276,6 +276,11 @@ class ConfigStore(context: Context) {
                 if (!w.autoplayNext) append(";AP:off")
                 if (w.channelLayout != CHANNEL_LAYOUT_NEWEST) { append(";CL:"); append(w.channelLayout) }
                 if (w.channelOrder != CHANNEL_ORDER_WATCHED) { append(";CO:"); append(w.channelOrder) }
+                // Append-only-when-set, like every field added since: a
+                // family that never touches these keeps its old hash.
+                w.qualityTv?.let { append(";QT:"); append(it) }
+                w.qualityPhone?.let { append(";QP:"); append(it) }
+                w.pageSize?.let { append(";PS:"); append(it) }
                 // Append-only-when-set, same reasoning — and it must be in the
                 // hash so the offline reconcile re-pushes a rate change.
                 w.listenPercent?.let { append(";LN:"); append(it) }
@@ -369,6 +374,9 @@ class ConfigStore(context: Context) {
             if (!w.autoplayNext) root.put("autoplay", false)
             if (w.channelLayout != CHANNEL_LAYOUT_NEWEST) root.put("channelLayout", w.channelLayout)
             if (w.channelOrder != CHANNEL_ORDER_WATCHED) root.put("channelOrder", w.channelOrder)
+            w.qualityTv?.let { root.put("qualityTv", it) }
+            w.qualityPhone?.let { root.put("qualityPhone", it) }
+            w.pageSize?.let { root.put("pageSize", it) }
             // Written only when set — absent means listening off (see Whitelist).
             w.listenPercent?.let { root.put("listen", it) }
             return root.toString(2)
@@ -610,7 +618,10 @@ class ConfigStore(context: Context) {
                     ?: CHANNEL_LAYOUT_NEWEST,
                 channelOrder = root.optString("channelOrder").takeIf { it in CHANNEL_ORDERS }
                     ?: CHANNEL_ORDER_WATCHED,
-                listenPercent = if (root.has("listen")) root.getInt("listen") else null
+                listenPercent = if (root.has("listen")) root.getInt("listen") else null,
+                qualityTv = root.optInt("qualityTv", 0).takeIf { it in PLAYBACK_QUALITIES },
+                qualityPhone = root.optInt("qualityPhone", 0).takeIf { it in PLAYBACK_QUALITIES },
+                pageSize = root.optInt("pageSize", 0).takeIf { it in PAGE_SIZES }
             )
         }
     }
