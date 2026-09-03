@@ -14,3 +14,4 @@ local.properties
 
 # Family data for the emulator seed (built by scripts/seed-from-whitelist.sh)
 scripts/seed-config.real.json
+.kotlin/
