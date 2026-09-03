@@ -893,11 +893,24 @@ object ConfigMerge {
     private fun settingsOf(root: JSONObject): JSONObject =
         JSONObject().also { o -> SETTINGS_KEYS.forEach { k -> if (root.has(k)) o.put(k, root.get(k)) } }
 
-    /** What the AI actually judges on. A change to any of it invalidates every cached verdict. */
-    private fun judgingInputs(ai: JSONObject): String = listOf(
-        ai.optString("rules"), ai.optString("model"),
-        ai.optString("baseUrl"), ai.optString("childAge")
-    ).joinToString(" ")
+    /**
+     * What the AI actually judges on. A change to any of it invalidates every
+     * cached verdict on every device.
+     *
+     * Encoded as a JSON array rather than joined with a delimiter. With a
+     * plain separator, rules="a b" with model="c" produces the same string as
+     * rules="a" with model="b c", so a real rules change would compare equal,
+     * skip the rulesVersion bump, and leave every device reusing cached
+     * verdicts against rules it had never screened under — on a child-safety
+     * judgement. JSON quotes and escapes each value, so none of them can
+     * impersonate a boundary, and it needs no unprintable sentinel byte.
+     */
+    private fun judgingInputs(ai: JSONObject): String = JSONArray(
+        listOf(
+            ai.optString("rules"), ai.optString("model"),
+            ai.optString("baseUrl"), ai.optString("childAge")
+        )
+    ).toString()
 
     /** Compares two documents ignoring key order, which `toString` does not. */
     private fun sameDoc(a: JSONObject, b: JSONObject): Boolean = canonical(a) == canonical(b)
