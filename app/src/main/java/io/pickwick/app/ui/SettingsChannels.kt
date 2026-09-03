@@ -149,15 +149,15 @@ internal fun ChannelsSection(
         }
         AlertDialog(
             onDismissRequest = { playlistEntry = null },
-            title = { Text("Playlists — ${displayName(entry)}") },
+            title = { Text("Pinned playlists — ${displayName(entry)}") },
             text = {
                 Column(
                     Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())
                 ) {
                     Text(
-                        "Ticked playlists become rows at the top of this channel's page " +
-                            "for the kids, in the order you tick them. Only the channel's " +
-                            "own playlists are listed; Shorts never make a row.",
+                        "All of this channel's playlists already show on its page. Ticked " +
+                            "ones are pinned to the top as rows, in the order you tick them; " +
+                            "Shorts never make a row.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

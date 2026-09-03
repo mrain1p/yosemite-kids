@@ -470,6 +470,77 @@ this on real devices. The TV channel page's initial focus still lands on
 the grid's first tile, which scrolls the rows above it just out of view
 until the kid presses Up — worth a look on a real TV.
 
+### Round six: the design pass
+
+Version **0.9.1-fork (34)**. The user's verdict on round five, with real
+phone screenshots beside YouTube's: amateurish. The causes were specific
+and are gone.
+
+- **An icon set instead of emoji** (`ui/Icons.kt`): the Material Symbols
+  the core pack lacks, drawn from their path data — no `material-icons-
+  extended` (megabytes of dex). Emoji remain only where they are content:
+  the kid's avatar, the end card, the blocked cards, the hold menu's
+  rows. Tabs, chips, section titles, the hub and the time chip use icons.
+- **One type scale** (`PickwickTypography`): page titles 22 sp, sections
+  17, tile titles 15, body 15, captions 13. "Hi, Emma" is a title line,
+  not a display face. Applied to both activities.
+- **Tonal chips** (`PwChip`): a filled pill, the kid's colour when
+  selected, an 18 dp icon, 36 dp tall, no outline. Every sort, filter and
+  shelf chip on phone and TV, and the player's action chips.
+- **Rounded-square channel art** (`ChannelArt`): circles cropped the
+  square logos families add. The NEW marker is a pill (`NewPill`), never a
+  dot over the picture. Rows are inset 16 dp.
+- **Three tabs, search top-right.** Home · Channels · You; the search
+  icon sits in every header (the TV keeps its inline field). The Search
+  page gets a back arrow.
+- **Home**: the title stays "For you" (it used to change with the sort);
+  one full-width card per row on phones like YouTube's feed; the meta line
+  reads "Channel · 3 days ago" (`relativeAge`, from the upload date the
+  cache now stores).
+- **Channel page**: an anchored header — 56 dp art, the name, "30+ videos
+  · 29 playlists" — then the channel's own **Playlists strip (always, no
+  parent action; a "Shorts" playlist is dropped)**, the first three
+  playlists as rows (pinned ones first), *New for you*, then *All videos*
+  with the sort chips under its own title. Playlist titles lose the
+  channel's stamp (`cleanPlaylistName`: "The World of Insects | SciShow
+  Kids" → "The World of Insects").
+- **Channels tab**: title with a count, tonal sort chips, two-up tiles.
+- **You**: one page. Avatar, name, time chip, the kid's two actions, a
+  strip of the four shelves (always present, empty ones say what would
+  fill them), then rows; *See all* unfolds a shelf into a grid in place.
+  The second layer and its duplicate chip row are gone.
+- **The hub** is a bottom sheet on phones, a dialog on TV, with icons and
+  a small lock on the settings row.
+- **Player** (portrait): channel row with a chevron, *Favorite* / *Stop
+  after this* as labelled chips, *Up next* then *More from <channel>*
+  with "channel · duration" under each title; the landscape overlay's
+  heart and moon are icons.
+
+- **Hold menu**: icon rows instead of emoji, the icon tinted when the row
+  would undo a state (already a favourite, already watched).
+
+### Verified on both emulators (round six, headless, debug)
+
+Phone (Pixel 6 / API 34): home — three tabs, search top-right, avatar
+chip, tonal filter chips under "For you", rounded-square channel art, one
+card per row with the meta line; Channels — title with a count, sort
+chips, two-up tiles; a channel page — anchored header ("30+ videos · 29
+playlists"), the Playlists strip **with no parent action**, two playlist
+rows, *New for you*, *All videos* with the chips; You — one page, four
+shelves always present with their empty lines, chips jumping to rows; the
+hub as a bottom sheet; the portrait player — channel row with chevron,
+*Favorite* / *Stop after this* chips, *More from* rows with duration.
+
+TV (Android TV / API 34): the same home with the search icon and the
+cycling chip; a channel page with the header, the Playlists strip (names
+de-stamped: "The World of Insects", "Let's Explore Mars!") and its rows;
+the *Home · You* menu; the You page with the shelf chips; the hold menu
+as icon rows, D-pad focus intact throughout.
+
+Not verified: the phone adopting a TV's pending look (two paired
+emulators needed; the merge is unit-tested), *Latest video* against real
+dates (the seed's caches predate the column), and real devices.
+
 ### Two form factors, one codebase — how it is kept maintainable
 
 The phone and the TV are deliberately two *layouts*, not two apps. What is

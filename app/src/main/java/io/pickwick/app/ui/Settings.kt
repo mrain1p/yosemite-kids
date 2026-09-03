@@ -691,8 +691,7 @@ private fun AdminScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(
                                 CHANNEL_LAYOUT_NEWEST to "Newest first",
-                                CHANNEL_LAYOUT_POPULAR to "Popular first",
-                                CHANNEL_LAYOUT_PLAYLISTS to "By playlist"
+                                CHANNEL_LAYOUT_POPULAR to "Popular first"
                             ).forEach { (value, label) ->
                                 FilterChip(
                                     selected = channelLayout == value,
@@ -706,8 +705,8 @@ private fun AdminScreen(
                             "The kid's default for a channel's page (they can switch with the chips " +
                                 "on the page). Newest first is the upload feed. Popular first orders " +
                                 "the same videos by how often they've been watched on YouTube (no " +
-                                "numbers are ever shown). By playlist shows the channel's own " +
-                                "playlists as rows — seasons, songs, series — then everything else.",
+                                "numbers are ever shown). A channel's own playlists — seasons, songs, " +
+                                "series — always show above the videos.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

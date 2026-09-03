@@ -101,6 +101,8 @@ internal fun SpecialTile(
     circleColor: Color,
     modifier: Modifier = Modifier,
     rounded: Boolean = false,
+    /** An icon in place of the emoji — the chrome's own set, not a glyph from the emoji font. */
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     onClick: () -> Unit
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -122,9 +124,14 @@ internal fun SpecialTile(
                     .aspectRatio(1f)
                     .background(circleColor)
             ) {
-                Text(emoji, fontSize = TextUnit(56f, TextUnitType.Sp))
+                if (icon != null) {
+                    androidx.compose.material3.Icon(
+                        icon, contentDescription = null, tint = Color.White,
+                        modifier = Modifier.fillMaxSize(0.42f)
+                    )
+                } else Text(emoji, fontSize = TextUnit(56f, TextUnitType.Sp))
             }
-            Box(Modifier.padding(8.dp)) {
+            Box(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                 Text(
                     label, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleSmall
@@ -135,24 +142,33 @@ internal fun SpecialTile(
 }
 
 /**
- * "⏳ 42 min left" in the home header. Amber inside the last five minutes so
- * the kid sees it coming before the player's pill says so.
+ * "42 min left" with a timer, in the home header. Amber inside the last five
+ * minutes so the kid sees it coming before the player's pill says so.
  */
 @Composable
 internal fun TimeChip(remainingMs: Long) {
     val urgent = remainingMs <= 5 * 60_000L
-    Text(
-        "⏳ " + remainingLabel(remainingMs),
-        maxLines = 1,
-        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-        color = Color.White,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .background(
                 if (urgent) Color(0xFFB26A00) else MaterialTheme.colorScheme.primaryContainer,
                 RoundedCornerShape(16.dp)
             )
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-    )
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        androidx.compose.material3.Icon(
+            PickwickIcons.Timer, contentDescription = null, tint = Color.White,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            remainingLabel(remainingMs),
+            maxLines = 1,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+            color = Color.White
+        )
+    }
 }
 
 /**
@@ -262,29 +278,20 @@ internal fun VideoCard(
             val channelTap = if (onOpenChannel != null) {
                 Modifier.clickable { onOpenChannel(item.video.channelName) }
             } else Modifier
-            Box(
-                Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .then(channelTap)
-            ) {
-                if (avatarUrl != null) {
-                    PosterImage(avatarUrl, item.video.channelName, Modifier.fillMaxSize())
-                }
-            }
-            Spacer(Modifier.width(8.dp))
+            ChannelArt(avatarUrl, item.video.channelName, size = 34.dp, modifier = Modifier.then(channelTap))
+            Spacer(Modifier.width(10.dp))
             Column {
                 Text(
                     item.video.title,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleSmall.copy(
-                        lineHeight = TextUnit(18f, TextUnitType.Sp)
+                        lineHeight = TextUnit(19f, TextUnitType.Sp)
                     )
                 )
+                // "Channel · 3 days ago": the quiet line every video app has.
                 Text(
-                    item.video.channelName,
+                    metaLine(item.video.channelName, relativeAge(item.video.publishedAt)),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,
@@ -300,9 +307,9 @@ internal fun VideoCard(
 }
 
 /**
- * A channel in the home row: round avatar, name under it, a NEW dot when
- * there's something unseen. The round shape is what says "channel" on every
- * video app a kid has seen.
+ * A channel in the home row: its art as a rounded square (see [ChannelArt]
+ * for why not a circle), the name under it, and a NEW pill beside the name
+ * — never on the picture, where it landed on logos.
  */
 @Composable
 internal fun ChannelChip(
@@ -311,6 +318,7 @@ internal fun ChannelChip(
     isNew: Boolean,
     modifier: Modifier = Modifier,
     emoji: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     tint: Color = MaterialTheme.colorScheme.surfaceVariant,
     onClick: () -> Unit
 ) {
@@ -318,44 +326,41 @@ internal fun ChannelChip(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
-            .width(84.dp)
+            .width(88.dp)
             .pressScale(interaction)
             .clip(RoundedCornerShape(16.dp))
             .clickable(interactionSource = interaction, indication = LocalIndication.current) { onClick() }
             .padding(vertical = 6.dp, horizontal = 4.dp)
     ) {
-        Box {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(68.dp)
-                    .clip(CircleShape)
-                    .background(tint)
-            ) {
-                if (emoji != null) {
-                    Text(emoji, fontSize = TextUnit(30f, TextUnitType.Sp))
-                } else {
-                    PosterImage(avatarUrl, name, Modifier.fillMaxSize())
-                }
-            }
-            if (isNew) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .size(16.dp)
-                        .background(Color(0xFF4DB6AC), CircleShape)
-                        .border(2.dp, MaterialTheme.colorScheme.background, CircleShape)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(tint)
+        ) {
+            when {
+                icon != null -> androidx.compose.material3.Icon(
+                    icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(34.dp)
                 )
+                emoji != null -> Text(emoji, fontSize = TextUnit(30f, TextUnitType.Sp))
+                else -> PosterImage(avatarUrl, name, Modifier.fillMaxSize())
             }
         }
         Spacer(Modifier.height(6.dp))
-        Text(
-            name,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.labelMedium
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isNew) {
+                NewPill()
+                Spacer(Modifier.width(4.dp))
+            }
+            Text(
+                name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
     }
 }
 

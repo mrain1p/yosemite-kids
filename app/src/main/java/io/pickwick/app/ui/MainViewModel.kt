@@ -27,8 +27,10 @@ private const val HISTORY_ROW_MAX = 12
 private const val PLAYLIST_ROW_MAX = 30
 /** Videos per row on the You tab and per parent-picked playlist row. */
 private const val YOU_ROW_MAX = 12
+/** Videos a You shelf carries (its row shows the first dozen; "See all" unfolds the rest in place). */
+private const val YOU_PAGE_MAX = 60
 /** Parent-picked playlist rows fetched per channel visit (each is one page request when uncached). */
-private const val PLAYLIST_SHELVES_MAX = 6
+private const val PLAYLIST_SHELVES_MAX = 3
 
 class MainViewModel(
     private val whitelist: WhitelistRepository,
@@ -698,19 +700,22 @@ class MainViewModel(
             .filter { it.videoId !in blockedVideoIds && !tooShort(it) && screener?.isVisible(it) != false }
             .map { VideoItem(it, history.progress(it.url)?.fraction) }
         val known = sources.flatMap { videoCache.load(it.id) } + watchlistStore.load() + watchLaterStore.load()
-        val historyRow = historyItems(history.all(), known, HISTORY_ROW_MAX)
+        val historyRow = historyItems(history.all(), known, YOU_PAGE_MAX)
             .filter { it.video.videoId !in blockedVideoIds && !tooShort(it.video) && screener?.isVisible(it.video) != false }
         return listOf(
-            YouShelf(Screen.Watchlist, "❤️", "Favorites", annotate(watchlistStore.load()).take(YOU_ROW_MAX)),
-            YouShelf(Screen.WatchLater, "🕒", "Watch later", annotate(watchLaterStore.load()).take(YOU_ROW_MAX)),
-            YouShelf(Screen.Queue, "📚", "Up next", annotate(queueStore.load()).take(YOU_ROW_MAX)),
+            YouShelf(Screen.Watchlist, "❤️", "Favorites", annotate(watchlistStore.load()).take(YOU_PAGE_MAX)),
+            YouShelf(Screen.WatchLater, "🕒", "Watch later", annotate(watchLaterStore.load()).take(YOU_PAGE_MAX)),
+            YouShelf(Screen.Queue, "📚", "Up next", annotate(queueStore.load()).take(YOU_PAGE_MAX)),
             YouShelf(Screen.History, "🕘", "History", historyRow),
             // Downloads were approved by the parent one by one: no re-screening.
             YouShelf(
                 Screen.Downloads, "⬇️", "Downloads",
-                visibleDownloads().map { VideoItem(it, history.progress(it.url)?.fraction) }.take(YOU_ROW_MAX)
+                visibleDownloads().map { VideoItem(it, history.progress(it.url)?.fraction) }.take(YOU_PAGE_MAX)
             )
-        ).filter { it.items.isNotEmpty() }
+        // The four shelves are always there, empty or not — the page has one
+        // shape, and an empty row says what would fill it. Downloads only
+        // once anything has been downloaded (phones; a TV never has any).
+        ).filter { it.screen != Screen.Downloads || it.items.isNotEmpty() }
     }
 
     /** The You tab. */
@@ -1275,11 +1280,15 @@ class MainViewModel(
         )
         feedHandle = null
         uploadsNextPage = null
-        if (channelLayout == CHANNEL_LAYOUT_PLAYLISTS && source.kind == SourceKind.CHANNEL) {
-            launch { loadPlaylistRow(source) }
-        }
-        playlistPicks[source.url]?.let { ids ->
-            if (source.kind == SourceKind.CHANNEL) launch { loadPlaylistShelves(source, ids) }
+        // A channel's playlists are its own organisation — seasons, songs,
+        // series — pulled in for every channel: the strip of all of them,
+        // then the first few (pinned ones first) as rows.
+        if (source.kind == SourceKind.CHANNEL) {
+            launch {
+                val refs = loadPlaylistRow(source) ?: return@launch
+                val ids = (playlistPicks[source.url].orEmpty() + refs.map { it.id }).distinct()
+                loadPlaylistShelves(source, ids, refs)
+            }
         }
         // A fresh visit is where the sort catches up with what was watched last
         // time — see [finishedOnArrival].
@@ -1355,22 +1364,27 @@ class MainViewModel(
      * small request per channel actually opened. Any failure just leaves
      * the plain grid; the row is a bonus.
      */
-    private suspend fun loadPlaylistRow(source: Source) {
-        val cache = playlistsCache ?: return
+    private suspend fun loadPlaylistRow(source: Source): List<PlaylistRef>? {
+        val cache = playlistsCache ?: return null
         fun stillHere() = (_state.value.screen as? Screen.ChannelVideos)?.source?.id == source.id
-        val refs = withContext(Dispatchers.IO) {
+        val listed = withContext(Dispatchers.IO) {
             cache.load(source.id)?.takeIf { cache.isFresh(source.id) }
         } ?: runCatching { yt.channelPlaylists(source) }
             .onSuccess { withContext(Dispatchers.IO) { cache.save(source.id, it) } }
             .onFailure { android.util.Log.w("Pickwick", "playlists of ${source.id} failed", it) }
             .getOrNull()
-            ?: return
-        if (refs.isEmpty() || !stillHere()) return
+            ?: return null
+        // A channel's "Shorts" playlist is the one collection a kid's shelf
+        // never wants; every video in it would be dropped by the row's
+        // length rule anyway, so the chip would open onto nothing.
+        val refs = listed.filterNot { it.name.contains("shorts", ignoreCase = true) }
+        if (refs.isEmpty() || !stillHere()) return null
         android.util.Log.i("Pickwick", "playlist row for ${source.id}: ${refs.size} playlists")
         // The row goes in above the grid's first item, and a lazy grid keeps
         // its anchor on that item — without this snap the row would sit just
         // above the fold, invisible until the kid happened to scroll up.
         _state.value = _state.value.copy(channelPlaylists = refs.take(PLAYLIST_ROW_MAX), scrollTo = 0)
+        return refs
     }
 
     /** A channel's playlist as a source: it drains screen time at the channel's rate, not the default. */
@@ -1395,14 +1409,8 @@ class MainViewModel(
      * of the kid's own rules. Rows arrive one by one as they load; a row
      * with nothing left in it is simply absent.
      */
-    private suspend fun loadPlaylistShelves(source: Source, ids: List<String>) {
+    private suspend fun loadPlaylistShelves(source: Source, ids: List<String>, refs: List<PlaylistRef>) {
         fun stillHere() = (_state.value.screen as? Screen.ChannelVideos)?.source?.id == source.id
-        val cache = playlistsCache
-        val refs = withContext(Dispatchers.IO) { cache?.load(source.id) }
-            ?: runCatching { yt.channelPlaylists(source) }
-                .onSuccess { fresh -> cache?.let { c -> withContext(Dispatchers.IO) { c.save(source.id, fresh) } } }
-                .getOrNull()
-            ?: return
         val byId = refs.associateBy { it.id }
         for (id in ids.take(PLAYLIST_SHELVES_MAX)) {
             if (!stillHere()) return
@@ -1423,7 +1431,7 @@ class MainViewModel(
                     .filter { it.videoId !in blockedVideoIds && !tooShort(it) && screener?.isVisible(it) != false }
                     .map { VideoItem(it, history.progress(it.url)?.fraction) }
                     .filter { (it.progress ?: 0f) < 0.98f }
-                    .take(YOU_ROW_MAX)
+                    .take(YOU_PAGE_MAX)
                     .toList()
             }
             if (items.isEmpty() || !stillHere()) continue

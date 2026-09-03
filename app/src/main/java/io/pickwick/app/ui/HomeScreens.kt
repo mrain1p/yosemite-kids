@@ -16,6 +16,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -149,23 +152,29 @@ internal fun PhoneHome(
     onOpenHub: (() -> Unit)? = null,
     /** The kid's feed order (VIDEO_FILTER_*) and the chip to change it. */
     homeFilter: String = VIDEO_FILTER_NEW,
-    onHomeFilter: ((String) -> Unit)? = null
+    onHomeFilter: ((String) -> Unit)? = null,
+    onOpenSearch: (() -> Unit)? = null
 ) {
     if (state.channels.isEmpty()) {
         EmptyHome(onOpenSettings, state.allHeld)
         return
     }
+    BoxWithConstraints {
+    // One card to a row on a phone, like YouTube's feed: a poster the width
+    // of the screen is what a kid recognises as "a video to watch". Two-up
+    // was cramped on phones with display scaling, which is most of them.
+    val columns = if (maxWidth < 600.dp) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 240.dp)
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 170.dp),
+        columns = columns,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 24.dp)
     ) {
         item(key = "app-header", span = { GridItemSpan(maxLineSpan) }) {
             HomeHeader(
                 onOpenSettings, activeProfile, onSwitchProfile, onSearch,
                 state.remainingMs, state.blockReason, greet = true, showSearch = false,
-                onOpenHub = onOpenHub
+                onOpenHub = onOpenHub, onOpenSearch = onOpenSearch
             )
         }
         if (state.keepWatching.isNotEmpty()) {
@@ -191,12 +200,14 @@ internal fun PhoneHome(
         item(key = "channels-row", span = { GridItemSpan(maxLineSpan) }) {
             androidx.compose.foundation.lazy.LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                contentPadding = PaddingValues(horizontal = 4.dp)
+                // Inset like the rest of the page: a first tile flush against
+                // the edge looked cut off.
+                contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
                 item(key = "surprise") {
                     ChannelChip(
                         name = "Surprise me", avatarUrl = null, isNew = false,
-                        emoji = "🎲", tint = SurpriseTileCyan, onClick = onSurprise
+                        icon = PickwickIcons.Dice, tint = SurpriseTileCyan, onClick = onSurprise
                     )
                 }
                 items(state.channels.size, key = { state.channels[it].id }) { i ->
@@ -211,7 +222,9 @@ internal fun PhoneHome(
         }
         item(key = "feed-divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
         item(key = "feed-title", span = { GridItemSpan(maxLineSpan) }) {
-            SectionRow(videoFilterTitle(homeFilter, "you"))
+            // The title stays put; the chips say how it's sorted. A title that
+            // changed with the sort read as a different section.
+            SectionRow("For you")
         }
         if (onHomeFilter != null) {
             item(key = "feed-filter", span = { GridItemSpan(maxLineSpan) }) {
@@ -234,6 +247,7 @@ internal fun PhoneHome(
             }
         }
     }
+    }
 }
 
 /** A quiet rule between two home sections. */
@@ -245,12 +259,22 @@ internal fun SectionDivider() {
     )
 }
 
-/** The section title for a video list under the kid's filter chip. */
-internal fun videoFilterTitle(filter: String, whose: String): String = when (filter) {
-    VIDEO_FILTER_RANDOM -> "Mixed up for $whose"
-    VIDEO_FILTER_POPULAR -> "Most watched"
-    else -> "New for $whose"
-}
+/** Label and icon for a video-list order, one spelling for chips on both form factors. */
+internal fun videoFilterLabel(filter: String): Pair<String, androidx.compose.ui.graphics.vector.ImageVector> =
+    when (filter) {
+        VIDEO_FILTER_RANDOM -> "Random" to PickwickIcons.Shuffle
+        VIDEO_FILTER_POPULAR -> "Popular" to PickwickIcons.Flame
+        else -> "New" to PickwickIcons.Sparkle
+    }
+
+/** Label and icon for a channel order. */
+internal fun channelSortLabel(sort: String): Pair<String, androidx.compose.ui.graphics.vector.ImageVector> =
+    when (sort) {
+        CHANNEL_ORDER_ALPHA -> "A to Z" to PickwickIcons.SortAlpha
+        CHANNEL_ORDER_RANDOM -> "Random" to PickwickIcons.Shuffle
+        CHANNEL_ORDER_LATEST -> "Latest video" to PickwickIcons.NewRelease
+        else -> "Most watched" to Icons.Filled.Star
+    }
 
 /**
  * New · Random · Popular — the kid's own order for a video list. Chips,
@@ -261,19 +285,11 @@ internal fun videoFilterTitle(filter: String, whose: String): String = when (fil
 internal fun VideoFilterChips(selected: String, onSelect: (String) -> Unit) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(bottom = 4.dp)
+        modifier = Modifier.padding(bottom = 4.dp).horizontalScroll(rememberScrollState())
     ) {
-        listOf(
-            VIDEO_FILTER_NEW to "✨ New",
-            VIDEO_FILTER_RANDOM to "🎲 Random",
-            VIDEO_FILTER_POPULAR to "🔥 Popular"
-        ).forEach { (value, label) ->
-            FilterChip(
-                selected = selected == value,
-                onClick = { onSelect(value) },
-                label = { Text(label, style = MaterialTheme.typography.labelLarge) },
-                modifier = Modifier.tvFocusHighlight().height(40.dp)
-            )
+        VIDEO_FILTERS.forEach { value ->
+            val (label, icon) = videoFilterLabel(value)
+            PwChip(label, selected = selected == value, icon = icon, onClick = { onSelect(value) })
         }
     }
 }
@@ -283,22 +299,11 @@ internal fun VideoFilterChips(selected: String, onSelect: (String) -> Unit) {
 internal fun ChannelSortChips(selected: String, onSelect: (String) -> Unit) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier
-            .padding(bottom = 4.dp)
-            .horizontalScroll(rememberScrollState())
+        modifier = Modifier.padding(bottom = 4.dp).horizontalScroll(rememberScrollState())
     ) {
-        listOf(
-            CHANNEL_ORDER_WATCHED to "⭐ Most watched",
-            CHANNEL_ORDER_ALPHA to "🔤 A to Z",
-            CHANNEL_ORDER_RANDOM to "🎲 Random",
-            CHANNEL_ORDER_LATEST to "🆕 Latest video"
-        ).forEach { (value, label) ->
-            FilterChip(
-                selected = selected == value,
-                onClick = { onSelect(value) },
-                label = { Text(label, style = MaterialTheme.typography.labelLarge) },
-                modifier = Modifier.tvFocusHighlight().height(40.dp)
-            )
+        KID_CHANNEL_SORTS.forEach { value ->
+            val (label, icon) = channelSortLabel(value)
+            PwChip(label, selected = selected == value, icon = icon, onClick = { onSelect(value) })
         }
     }
 }
@@ -334,16 +339,16 @@ internal fun ChannelsScreen(
                 }
             }
             item(key = "surprise-tile") {
-                SpecialTile("🎲", "Surprise me!", SurpriseTileCyan, rounded = true, onClick = onSurprise)
+                SpecialTile("", "Surprise me", SurpriseTileCyan, rounded = true, icon = PickwickIcons.Dice, onClick = onSurprise)
             }
             if (state.queued.isNotEmpty()) item(key = "queue-tile") {
-                SpecialTile("📚", "Up next", QueueTilePurple, rounded = true, onClick = onOpenQueue)
+                SpecialTile("", "Up next", QueueTilePurple, rounded = true, icon = PickwickIcons.UpNext, onClick = onOpenQueue)
             }
             if (state.watchLater.isNotEmpty()) item(key = "watch-later-tile") {
-                SpecialTile("🕒", "Watch later", WatchLaterTileTeal, rounded = true, onClick = onOpenWatchLater)
+                SpecialTile("", "Watch later", WatchLaterTileTeal, rounded = true, icon = PickwickIcons.WatchLater, onClick = onOpenWatchLater)
             }
             if (state.downloaded.isNotEmpty()) item(key = "downloads-tile") {
-                SpecialTile("⬇️", "Downloads", DownloadsTileTeal, rounded = true, onClick = onOpenDownloads)
+                SpecialTile("", "Downloads", DownloadsTileTeal, rounded = true, icon = PickwickIcons.Download, onClick = onOpenDownloads)
             }
             items(state.channels, key = { it.id }) { channel ->
                 ChannelTile(channel, isNew = channel.id in state.newBadges, onOpen = onOpen, rounded = true)
@@ -472,18 +477,7 @@ private fun ChannelTile(
                     contentDescription = channel.name,
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 )
-                if (isNew) {
-                    Text(
-                        "NEW",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .background(Color(0xFF4DB6AC))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
+                if (isNew) NewPill(Modifier.align(Alignment.TopEnd).padding(8.dp))
                 // The screen-time "price tag" — shown only when it differs from
                 // normal, so kids can pick cheap/free channels knowingly.
                 timeMultiplierColor(channel.timeMultiplierPercent)?.let { color ->
@@ -572,7 +566,9 @@ internal fun HomeHeader(
      * the avatar. When set, the gear leaves the header — the hub is the one
      * door to settings; when null (legacy callers) the header keeps the gear.
      */
-    onOpenHub: (() -> Unit)? = null
+    onOpenHub: (() -> Unit)? = null,
+    /** Phones: the search icon opens the search page instead of an inline field. */
+    onOpenSearch: (() -> Unit)? = null
 ) {
     // Collapsed by default: the field costs a full row of home space, so it
     // appears only when the search icon is tapped. State lives here so both
@@ -611,15 +607,19 @@ internal fun HomeHeader(
             }
             Spacer(Modifier.width(10.dp))
             Text(
-                if (greet && activeProfile != null) "Hi, ${activeProfile.name}! 👋" else "Pickwick",
+                if (greet && activeProfile != null) "Hi, ${activeProfile.name}" else "Pickwick",
                 maxLines = 1,
                 softWrap = false,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-                    letterSpacing = androidx.compose.ui.unit.TextUnit(0.5f, androidx.compose.ui.unit.TextUnitType.Sp)
-                )
+                style = MaterialTheme.typography.titleLarge
             )
+        }
+        // Search is a task, not a place: one icon in every header. Phones
+        // open the search page; the TV (no tabs, no page) unfolds the field.
+        if (showSearch || onOpenSearch != null) {
+            HeaderIconButton(Icons.Filled.Search, "Search", onClick = {
+                if (onOpenSearch != null) onOpenSearch() else searchOpen = !searchOpen
+            })
         }
         // Whose home this is — always visible so a wrong pick gets noticed.
         // With a hub it is the kid's own corner (switch, look, the locked
@@ -650,22 +650,10 @@ internal fun HomeHeader(
                     }
                 } else {
                     // No kid named yet: the hub still opens (it holds settings).
-                    Text("🙂", style = MaterialTheme.typography.headlineSmall)
+                    Icon(Icons.Filled.Person, contentDescription = "Profile", modifier = Modifier.size(28.dp))
                 }
             }
             Spacer(Modifier.width(6.dp))
-        }
-        if (showSearch) {
-            IconButton(
-                modifier = Modifier.size(48.dp),
-                onClick = { searchOpen = !searchOpen }
-            ) {
-                Icon(
-                    Icons.Filled.Search,
-                    contentDescription = if (searchOpen) "Close search" else "Search",
-                    modifier = Modifier.size(28.dp)
-                )
-            }
         }
         if (onOpenHub == null) IconButton(
             modifier = Modifier.size(48.dp),
@@ -799,15 +787,13 @@ internal fun TvHomeRows(
         if (feed.isNotEmpty()) {
             item(key = "feed") {
                 TvRow(
-                    videoFilterTitle(homeFilter, "you"),
+                    "For you",
                     chip = onHomeFilter?.let { set ->
                         {
+                            val (label, icon) = videoFilterLabel(homeFilter)
                             CycleChip(
-                                label = when (homeFilter) {
-                                    VIDEO_FILTER_RANDOM -> "🎲 Random"
-                                    VIDEO_FILTER_POPULAR -> "🔥 Popular"
-                                    else -> "✨ New"
-                                },
+                                label = label,
+                                icon = icon,
                                 onClick = {
                                     set(
                                         when (homeFilter) {
@@ -846,13 +832,10 @@ internal fun TvHomeRows(
                 "Channels",
                 chip = onSort?.let { set ->
                     {
+                        val (label, icon) = channelSortLabel(channelSort)
                         CycleChip(
-                            label = when (channelSort) {
-                                CHANNEL_ORDER_ALPHA -> "🔤 A to Z"
-                                CHANNEL_ORDER_RANDOM -> "🎲 Random"
-                                CHANNEL_ORDER_LATEST -> "🆕 Latest video"
-                                else -> "⭐ Most watched"
-                            },
+                            label = label,
+                            icon = icon,
                             onClick = {
                                 set(
                                     when (channelSort) {
@@ -895,8 +878,9 @@ internal fun TvHomeRows(
                     ) {
                         item(key = "all-history") {
                             SpecialTile(
-                                "🕘", "All history", MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.width(150.dp), onClick = onOpenHistory
+                                "", "All history", MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.width(150.dp), icon = PickwickIcons.History,
+                                onClick = onOpenHistory
                             )
                         }
                         items(recentHistory.size, key = { recentHistory[it].video.url }) { i ->
@@ -933,8 +917,9 @@ internal fun TvHomeRows(
                     if (onOpenYou != null) {
                         item(key = "you") {
                             SpecialTile(
-                                "🙂", "You", MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.width(150.dp), onClick = onOpenYou
+                                "", "You", MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.width(150.dp), icon = Icons.Filled.Person,
+                                onClick = onOpenYou
                             )
                         }
                     } else {
@@ -974,13 +959,8 @@ private fun TvRow(title: String, chip: (@Composable () -> Unit)? = null, content
 
 /** One focusable chip that steps to the next choice on OK — the remote's version of a chip row. */
 @Composable
-private fun CycleChip(label: String, onClick: () -> Unit) {
-    FilterChip(
-        selected = false,
-        onClick = onClick,
-        label = { Text(label, style = MaterialTheme.typography.labelLarge) },
-        modifier = Modifier.tvFocusHighlight()
-    )
+private fun CycleChip(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    PwChip(label, selected = false, icon = icon, onClick = onClick)
 }
 
 /**
@@ -1010,23 +990,8 @@ private fun TvChannelChip(
             .padding(vertical = 10.dp, horizontal = 6.dp)
     ) {
         Box {
-            Box(
-                Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                PosterImage(channel.avatarUrl, channel.name, Modifier.fillMaxSize())
-            }
-            if (isNew) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(2.dp)
-                        .size(18.dp)
-                        .background(Color(0xFF4DB6AC), CircleShape)
-                )
-            }
+            ChannelArt(channel.avatarUrl, channel.name, size = 96.dp)
+            if (isNew) NewPill(Modifier.align(Alignment.TopEnd).padding(4.dp))
             timeMultiplierColor(channel.timeMultiplierPercent)?.let { color ->
                 Text(
                     timeMultiplierLabel(channel.timeMultiplierPercent),
@@ -1053,19 +1018,19 @@ private fun TvChannelChip(
 // ones, and a repaint of one layout must not drift from the other.
 @Composable
 private fun SurpriseTile(modifier: Modifier = Modifier, onClick: () -> Unit) =
-    SpecialTile("🎲", "Surprise me!", SurpriseTileCyan, modifier = modifier, onClick = onClick)
+    SpecialTile("", "Surprise me", SurpriseTileCyan, modifier = modifier, icon = PickwickIcons.Dice, onClick = onClick)
 
 @Composable
 private fun QueueTile(modifier: Modifier = Modifier, onClick: () -> Unit) =
-    SpecialTile("📚", "Up next", QueueTilePurple, modifier = modifier, onClick = onClick)
+    SpecialTile("", "Up next", QueueTilePurple, modifier = modifier, icon = PickwickIcons.UpNext, onClick = onClick)
 
 @Composable
 private fun WatchlistTile(modifier: Modifier = Modifier, onClick: () -> Unit) =
-    SpecialTile("❤️", "Favorites", WatchlistTileTeal, modifier = modifier, onClick = onClick)
+    SpecialTile("", "Favorites", WatchlistTileTeal, modifier = modifier, icon = Icons.Filled.Favorite, onClick = onClick)
 
 @Composable
 private fun WatchLaterTile(modifier: Modifier = Modifier, onClick: () -> Unit) =
-    SpecialTile("🕒", "Watch later", WatchLaterTileTeal, modifier = modifier, onClick = onClick)
+    SpecialTile("", "Watch later", WatchLaterTileTeal, modifier = modifier, icon = PickwickIcons.WatchLater, onClick = onClick)
 
 @Composable
 private fun TvRowTitle(text: String) {

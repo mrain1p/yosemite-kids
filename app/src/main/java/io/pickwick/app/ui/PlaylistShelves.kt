@@ -37,15 +37,27 @@ import io.pickwick.app.data.PlaylistRef
 internal fun LazyGridScope.playlistRow(
     playlists: List<PlaylistRef>,
     isTv: Boolean,
-    onOpenPlaylist: (PlaylistRef) -> Unit
+    onOpenPlaylist: (PlaylistRef) -> Unit,
+    channelName: String = ""
 ) {
     if (playlists.isEmpty()) return
     item(key = "pl:row", span = { GridItemSpan(maxLineSpan) }) {
-        PlaylistsRow(playlists, isTv, onOpenPlaylist)
+        PlaylistsRow(playlists.map { it.copy(name = cleanPlaylistName(it.name, channelName)) }, isTv, onOpenPlaylist)
     }
-    item(key = "pl:all", span = { GridItemSpan(maxLineSpan) }) {
-        SectionRow("All videos")
-    }
+}
+
+/**
+ * "The World of Insects | SciShow Kids" → "The World of Insects": channels
+ * stamp their own name on every playlist title, and on the channel's own
+ * page that stamp is just noise. Separators seen in the wild: | · - – — •
+ */
+internal fun cleanPlaylistName(name: String, channelName: String): String {
+    if (channelName.isBlank()) return name.trim()
+    val sep = "[|·•\\-–—:]"
+    val tail = Regex("\\s*$sep\\s*${Regex.escape(channelName)}\\s*$", RegexOption.IGNORE_CASE)
+    val head = Regex("^\\s*${Regex.escape(channelName)}\\s*$sep\\s*", RegexOption.IGNORE_CASE)
+    val cleaned = name.replace(tail, "").replace(head, "").trim()
+    return cleaned.ifBlank { name.trim() }
 }
 
 /**
@@ -61,12 +73,16 @@ internal fun LazyGridScope.playlistShelves(
     avatarFor: (String) -> String?,
     onPlay: (VideoItem) -> Unit,
     onOpenMenu: ((VideoItem) -> Unit)?,
-    onOpenPlaylist: (PlaylistRef) -> Unit
+    onOpenPlaylist: (PlaylistRef) -> Unit,
+    channelName: String = ""
 ) {
     shelves.forEach { shelf ->
         if (shelf.items.isEmpty()) return@forEach
         item(key = "pls:title:${shelf.playlist.id}", span = { GridItemSpan(maxLineSpan) }) {
-            SectionRow("🎬 ${shelf.playlist.name}", action = "See all", onAction = { onOpenPlaylist(shelf.playlist) })
+            SectionRow(
+                cleanPlaylistName(shelf.playlist.name, channelName),
+                action = "See all", onAction = { onOpenPlaylist(shelf.playlist) }
+            )
         }
         item(key = "pls:row:${shelf.playlist.id}", span = { GridItemSpan(maxLineSpan) }) {
             VideoShelfRow(shelf.items, isTv, avatarFor, onPlay, onOpenMenu)
@@ -83,16 +99,27 @@ internal fun LazyGridScope.newForYouRow(
     onOpenMenu: ((VideoItem) -> Unit)?
 ) {
     if (items.isEmpty()) return
-    item(key = "nfy:title", span = { GridItemSpan(maxLineSpan) }) { SectionRow("✨ New for you") }
+    item(key = "nfy:title", span = { GridItemSpan(maxLineSpan) }) { SectionRow("New for you") }
     item(key = "nfy:row", span = { GridItemSpan(maxLineSpan) }) {
         VideoShelfRow(items, isTv, avatarFor, onPlay, onOpenMenu)
     }
 }
 
-/** A titled section's rule + "All videos" label under the rows above the grid. */
-internal fun LazyGridScope.allVideosLabel(title: String = "All videos") {
+/**
+ * The rule, the "All videos" title and the kid's sort chips under it — the
+ * grid's own header, so the sort sits with what it sorts rather than at
+ * the top of the page over rows it doesn't touch.
+ */
+internal fun LazyGridScope.allVideosHeader(
+    filter: String,
+    onFilter: ((String) -> Unit)?,
+    title: String = "All videos"
+) {
     item(key = "all:divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
     item(key = "all:title", span = { GridItemSpan(maxLineSpan) }) { SectionRow(title) }
+    if (onFilter != null) {
+        item(key = "all:filter", span = { GridItemSpan(maxLineSpan) }) { VideoFilterChips(filter, onFilter) }
+    }
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -266,24 +293,15 @@ internal fun ShelfVideoTile(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
-                Box(
-                    Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    if (avatarUrl != null) {
-                        PosterImage(avatarUrl, item.video.channelName, Modifier.fillMaxSize())
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
+                ChannelArt(avatarUrl, item.video.channelName, size = 28.dp)
+                Spacer(Modifier.width(9.dp))
                 Column {
-                    MarqueeTitle(item.video.title, focused, style = MaterialTheme.typography.bodyMedium)
+                    MarqueeTitle(item.video.title, focused, style = MaterialTheme.typography.titleSmall)
                     Text(
-                        item.video.channelName,
+                        metaLine(item.video.channelName, relativeAge(item.video.publishedAt)),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

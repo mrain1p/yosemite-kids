@@ -17,7 +17,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -66,20 +70,56 @@ internal fun ProfileHubDialog(
                 )
             }
         },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (onSwitch != null) HubRow("👋", "Switch who's watching", onSwitch)
-                if (onChangeLook != null) HubRow("🎨", "Change my look", onChangeLook)
-                HubRow("⚙️", "Parent settings", onOpenSettings, locked = true)
-            }
-        },
+        text = { HubRows(onSwitch, onChangeLook, onOpenSettings) },
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvFocusHighlight()) { Text("Close") } }
     )
 }
 
+/**
+ * The phone's version of the hub: a bottom sheet, the way every phone app
+ * hangs an account menu off its avatar. Same rows as the TV dialog.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun HubRow(emoji: String, label: String, onClick: () -> Unit, locked: Boolean = false) {
+internal fun ProfileHubSheet(
+    profile: Profile?,
+    onSwitch: (() -> Unit)?,
+    onChangeLook: (() -> Unit)?,
+    onOpenSettings: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+                if (profile != null) {
+                    ProfileAvatar(profile, size = 48)
+                    Spacer(Modifier.width(14.dp))
+                }
+                Text(profile?.name ?: "Pickwick", style = MaterialTheme.typography.titleLarge)
+            }
+            HubRows(onSwitch, onChangeLook, onOpenSettings)
+        }
+    }
+}
+
+@Composable
+private fun HubRows(onSwitch: (() -> Unit)?, onChangeLook: (() -> Unit)?, onOpenSettings: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (onSwitch != null) HubRow(PickwickIcons.People, "Switch who's watching", onSwitch)
+        if (onChangeLook != null) HubRow(PickwickIcons.Palette, "Change my look", onChangeLook)
+        HubRow(Icons.Filled.Settings, "Parent settings", onOpenSettings, locked = true)
+    }
+}
+
+@Composable
+private fun HubRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    locked: Boolean = false
+) {
+    val fg = if (locked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -87,23 +127,20 @@ private fun HubRow(emoji: String, label: String, onClick: () -> Unit, locked: Bo
             .tvFocusHighlight()
             .clip(RoundedCornerShape(16.dp))
             .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 12.dp)
+            .padding(horizontal = 12.dp, vertical = 14.dp)
     ) {
-        Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-            Text(emoji, style = MaterialTheme.typography.headlineSmall)
-            // The lock sits on the gear's shoulder: small, but there.
-            if (locked) Text(
-                "🔒",
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.align(Alignment.TopEnd)
+        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(26.dp))
+            // The lock on the gear's shoulder: small, but there — this door
+            // reads as "not for you" rather than as a broken button.
+            if (locked) Icon(
+                Icons.Filled.Lock, contentDescription = "Locked",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.TopEnd).size(14.dp)
             )
         }
-        Spacer(Modifier.width(12.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.titleMedium,
-            color = if (locked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-        )
+        Spacer(Modifier.width(14.dp))
+        Text(label, style = MaterialTheme.typography.titleMedium, color = fg)
     }
 }
 

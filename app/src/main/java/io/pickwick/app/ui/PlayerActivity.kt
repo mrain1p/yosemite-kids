@@ -38,6 +38,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -648,7 +650,7 @@ class PlayerActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme(colorScheme = PickwickDarkColors) {
+            MaterialTheme(colorScheme = PickwickDarkColors, typography = PickwickTypography) {
                 val pip by inPip
                 val portrait by portraitLayout
                 // The PiP parameters (auto-enter, the play/pause button) follow
@@ -908,55 +910,85 @@ class PlayerActivity : ComponentActivity() {
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                         )
                         Spacer(Modifier.height(10.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(24.dp))
-                                    .then(if (avatar != null) Modifier.clickable { openChannel() } else Modifier)
-                                    .padding(end = 8.dp)
-                            ) {
-                                if (avatar != null) {
-                                    Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0x33FFFFFF))) {
-                                        coil.compose.AsyncImage(
-                                            model = avatar,
-                                            contentDescription = channel,
-                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    Spacer(Modifier.width(10.dp))
+                        // The channel, as a row that opens it: art, name, a chevron.
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .then(if (avatar != null) Modifier.clickable { openChannel() } else Modifier)
+                                .padding(vertical = 4.dp)
+                        ) {
+                            if (avatar != null) {
+                                Box(Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(Color(0x33FFFFFF))) {
+                                    coil.compose.AsyncImage(
+                                        model = avatar,
+                                        contentDescription = channel,
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
                                 }
-                                if (channel.isNotBlank()) Text(
-                                    if (avatar != null) "$channel  ›" else channel,
-                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
+                                Spacer(Modifier.width(10.dp))
                             }
-                            HeartButton(favorite, ::toggleFavorite)
-                            MoonButton(stopAfter, ::toggleStopAfter)
+                            if (channel.isNotBlank()) Text(
+                                channel,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (avatar != null) Icon(
+                                PickwickIcons.ChevronRight, contentDescription = "Open channel",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        // The kid's two actions on this video, spelled out —
+                        // a heart and a moon floating by the name read as
+                        // decoration, not as buttons.
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PwChip(
+                                if (favorite) "In Favorites" else "Favorite",
+                                selected = favorite,
+                                icon = if (favorite) androidx.compose.material.icons.Icons.Filled.Favorite
+                                else androidx.compose.material.icons.Icons.Filled.FavoriteBorder,
+                                onClick = ::toggleFavorite
+                            )
+                            PwChip(
+                                if (stopAfter) "Stopping after this" else "Stop after this",
+                                selected = stopAfter,
+                                icon = PickwickIcons.Moon,
+                                onClick = ::toggleStopAfter
+                            )
                         }
                     }
                 }
                 if (upNext.isNotEmpty()) {
                     item { SectionLabel("Up next") }
                     items(upNext) { j ->
+                        val secs = queueDurations.getOrNull(j) ?: 0L
                         SmallVideoRow(
                             title = titles.getOrNull(j)?.ifBlank { null } ?: "One more",
                             thumb = thumbs.getOrNull(j)?.ifBlank { null },
+                            subtitle = listOfNotNull(
+                                queueChannels.getOrNull(j)?.ifBlank { null },
+                                secs.takeIf { it > 0 }?.let { formatClock(it) }
+                            ).joinToString(" · ").ifBlank { null },
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
                         ) { haptic(); dismissEndCard(); playIndex(j) }
                     }
                 }
                 if (more.isNotEmpty()) {
-                    item { SectionLabel("✨ New from $channel") }
+                    item { SectionLabel("More from $channel") }
                     items(more) { v ->
                         SmallVideoRow(
                             title = v.title,
                             thumb = v.thumbnailUrl,
+                            subtitle = listOfNotNull(
+                                relativeAge(v.publishedAt),
+                                v.durationSeconds.takeIf { it > 0 }?.let { formatClock(it) }
+                            ).joinToString(" · ").ifBlank { null },
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
                         ) { playExtra(v) }
                     }
@@ -969,9 +1001,9 @@ class PlayerActivity : ComponentActivity() {
     private fun SectionLabel(text: String) {
         Text(
             text,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp)
+            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp)
         )
     }
 
@@ -1551,7 +1583,7 @@ class PlayerActivity : ComponentActivity() {
     private fun showBlockedScreen(reason: String) {
         preBlocked = true
         setContent {
-            MaterialTheme(colorScheme = PickwickDarkColors) {
+            MaterialTheme(colorScheme = PickwickDarkColors, typography = PickwickTypography) {
                 Box(
                     Modifier.fillMaxSize().background(Color.Black),
                     contentAlignment = Alignment.Center
@@ -2440,6 +2472,8 @@ private fun SmallVideoRow(
     title: String,
     thumb: String?,
     modifier: Modifier = Modifier,
+    /** "Channel · 4:53", the quiet line under the title. */
+    subtitle: String? = null,
     onClick: () -> Unit
 ) {
     Row(
@@ -2454,23 +2488,35 @@ private fun SmallVideoRow(
             contentDescription = title,
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = Modifier
-                .width(128.dp)
-                .height(72.dp)
+                .width(136.dp)
+                .height(76.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0x33FFFFFF))
         )
-        Spacer(Modifier.width(10.dp))
-        Text(
-            title,
-            color = Color.White,
-            maxLines = 2,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyMedium
-        )
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(
+                title,
+                color = Color.White,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleSmall
+            )
+            if (subtitle != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    subtitle,
+                    color = Color.White.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
     }
 }
 
-/** ❤️ / 🤍: save for later, with the pop. */
+/** The heart: save for later, with the pop. Filled and red once it's theirs. */
 @Composable
 private fun HeartButton(isFavorite: Boolean, onClick: () -> Unit) {
     Box(
@@ -2480,14 +2526,17 @@ private fun HeartButton(isFavorite: Boolean, onClick: () -> Unit) {
             .clip(CircleShape)
             .clickable { onClick() }
     ) {
-        Text(
-            if (isFavorite) "❤️" else "🤍",
-            fontSize = androidx.compose.ui.unit.TextUnit(24f, androidx.compose.ui.unit.TextUnitType.Sp)
+        Icon(
+            if (isFavorite) androidx.compose.material.icons.Icons.Filled.Favorite
+            else androidx.compose.material.icons.Icons.Filled.FavoriteBorder,
+            contentDescription = if (isFavorite) "In your Favorites" else "Add to Favorites",
+            tint = if (isFavorite) Color(0xFFFF5A79) else Color.White,
+            modifier = Modifier.size(28.dp)
         )
     }
 }
 
-/** 🌙: stop after this one; lit while armed. */
+/** The moon: stop after this one; lit while armed. */
 @Composable
 private fun MoonButton(stopAfterThis: Boolean, onClick: () -> Unit) {
     Box(
@@ -2498,9 +2547,11 @@ private fun MoonButton(stopAfterThis: Boolean, onClick: () -> Unit) {
             .background(if (stopAfterThis) Color(0x59FFFFFF) else Color.Transparent)
             .clickable { onClick() }
     ) {
-        Text(
-            "🌙",
-            fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp)
+        Icon(
+            PickwickIcons.Moon,
+            contentDescription = "Stop after this one",
+            tint = if (stopAfterThis) Color(0xFFFFD54F) else Color.White,
+            modifier = Modifier.size(26.dp)
         )
     }
 }

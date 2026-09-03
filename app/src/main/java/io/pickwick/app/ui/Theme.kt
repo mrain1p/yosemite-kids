@@ -49,6 +49,82 @@ fun kidColorScheme(profile: io.pickwick.app.data.Profile?): androidx.compose.mat
 }
 
 /**
+ * One quiet type scale for every kid-facing screen. Material's defaults are
+ * tuned for dense productivity apps; YouTube's shape is a single bold line
+ * (the video title) with everything else a step or two quieter. Page
+ * titles are titleLarge, sections titleMedium, tile titles titleSmall,
+ * captions bodySmall — and nothing else on a screen competes with them.
+ */
+val PickwickTypography = androidx.compose.material3.Typography(
+    headlineSmall = androidx.compose.ui.text.TextStyle(
+        fontSize = androidx.compose.ui.unit.TextUnit(24f, androidx.compose.ui.unit.TextUnitType.Sp),
+        lineHeight = androidx.compose.ui.unit.TextUnit(30f, androidx.compose.ui.unit.TextUnitType.Sp),
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+    ),
+    titleLarge = androidx.compose.ui.text.TextStyle(
+        fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp),
+        lineHeight = androidx.compose.ui.unit.TextUnit(28f, androidx.compose.ui.unit.TextUnitType.Sp),
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+    ),
+    titleMedium = androidx.compose.ui.text.TextStyle(
+        fontSize = androidx.compose.ui.unit.TextUnit(17f, androidx.compose.ui.unit.TextUnitType.Sp),
+        lineHeight = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp),
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+    ),
+    titleSmall = androidx.compose.ui.text.TextStyle(
+        fontSize = androidx.compose.ui.unit.TextUnit(15f, androidx.compose.ui.unit.TextUnitType.Sp),
+        lineHeight = androidx.compose.ui.unit.TextUnit(20f, androidx.compose.ui.unit.TextUnitType.Sp),
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+    ),
+    bodyLarge = androidx.compose.ui.text.TextStyle(
+        fontSize = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp),
+        lineHeight = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp)
+    ),
+    bodyMedium = androidx.compose.ui.text.TextStyle(
+        fontSize = androidx.compose.ui.unit.TextUnit(15f, androidx.compose.ui.unit.TextUnitType.Sp),
+        lineHeight = androidx.compose.ui.unit.TextUnit(20f, androidx.compose.ui.unit.TextUnitType.Sp)
+    ),
+    bodySmall = androidx.compose.ui.text.TextStyle(
+        fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp),
+        lineHeight = androidx.compose.ui.unit.TextUnit(17f, androidx.compose.ui.unit.TextUnitType.Sp)
+    ),
+    labelLarge = androidx.compose.ui.text.TextStyle(
+        fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp),
+        lineHeight = androidx.compose.ui.unit.TextUnit(18f, androidx.compose.ui.unit.TextUnitType.Sp),
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+    ),
+    labelMedium = androidx.compose.ui.text.TextStyle(
+        fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp),
+        lineHeight = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp),
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+    ),
+    labelSmall = androidx.compose.ui.text.TextStyle(
+        fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp),
+        lineHeight = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp),
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+    )
+)
+
+/**
+ * "today", "3 days ago", "2 weeks ago" — the age of an upload for the meta
+ * line under a title, the way every video app says it. Null when the cache
+ * row predates the date column (nothing is shown rather than a guess).
+ */
+fun relativeAge(publishedAt: Long?, now: Long = System.currentTimeMillis()): String? {
+    publishedAt ?: return null
+    val days = ((now - publishedAt) / 86_400_000L).toInt()
+    return when {
+        days < 0 -> null
+        days == 0 -> "today"
+        days == 1 -> "yesterday"
+        days < 7 -> "$days days ago"
+        days < 30 -> "${days / 7} week${if (days / 7 == 1) "" else "s"} ago"
+        days < 365 -> "${days / 30} month${if (days / 30 == 1) "" else "s"} ago"
+        else -> "${days / 365} year${if (days / 365 == 1) "" else "s"} ago"
+    }
+}
+
+/**
  * Watched/played progress. Deliberately not the brand teal: kids read this bar
  * by the same convention YouTube taught them, so it stays red everywhere it
  * appears (thumbnail bars and the player scrubber).

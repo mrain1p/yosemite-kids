@@ -9,6 +9,10 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -579,80 +583,91 @@ internal fun VideoActionMenu(
                 // release belongs to nothing here.
                 modifier = Modifier.ignoreSelectUntilRelease()
             ) {
-                TextButton(
-                    onClick = { onToggleQueue?.invoke(item); onDismiss() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(firstAction)
-                        .tvFocusHighlight()
-                ) {
-                    Text(
-                        if (item.video.url in queued) "➖  Remove from Up next"
-                        else "➕  Add to Up next"
-                    )
-                }
-                TextButton(
-                    onClick = { onToggleWatchlist?.invoke(item); onDismiss() },
-                    modifier = Modifier.fillMaxWidth().tvFocusHighlight()
-                ) {
-                    Text(
-                        if (item.video.url in watchlisted) "💔  Remove from Favorites"
-                        else "❤️  Add to Favorites"
-                    )
-                }
-                TextButton(
-                    onClick = { onToggleWatchLater?.invoke(item); onDismiss() },
-                    modifier = Modifier.fillMaxWidth().tvFocusHighlight()
-                ) {
-                    Text(
-                        if (item.video.url in watchLater) "➖  Remove from Watch later"
-                        else "🕒  Add to Watch later"
-                    )
-                }
+                MenuRow(
+                    if (item.video.url in queued) "Remove from Up next" else "Add to Up next",
+                    PickwickIcons.UpNext,
+                    on = item.video.url in queued,
+                    modifier = Modifier.focusRequester(firstAction)
+                ) { onToggleQueue?.invoke(item); onDismiss() }
+                MenuRow(
+                    if (item.video.url in watchlisted) "Remove from Favorites" else "Add to Favorites",
+                    if (item.video.url in watchlisted) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    on = item.video.url in watchlisted
+                ) { onToggleWatchlist?.invoke(item); onDismiss() }
+                MenuRow(
+                    if (item.video.url in watchLater) "Remove from Watch later" else "Add to Watch later",
+                    PickwickIcons.WatchLater,
+                    on = item.video.url in watchLater
+                ) { onToggleWatchLater?.invoke(item); onDismiss() }
                 if (onToggleWatched != null) {
                     // Two jobs, one row: retire a video the kid is done
                     // with (it leaves the grid for the Watched shelf), and
                     // undo a stray mark or a video the app called finished
                     // because it was left running.
                     val seen = (item.progress ?: 0f) >= 0.98f
-                    TextButton(
-                        onClick = { onToggleWatched(item); onDismiss() },
-                        modifier = Modifier.fillMaxWidth().tvFocusHighlight()
-                    ) {
-                        Text(if (seen) "↩️  Move back to not watched" else "✔️  Mark as watched")
-                    }
+                    MenuRow(
+                        if (seen) "Move back to not watched" else "Mark as watched",
+                        if (seen) PickwickIcons.History else Icons.Filled.Check,
+                        on = seen
+                    ) { onToggleWatched(item); onDismiss() }
                 }
                 // The parent browsing on their own phone: send it to the
                 // TV (or the kid's tablet) and it starts playing there.
                 castTargets.forEach { device ->
-                    TextButton(
-                        onClick = { onCast(item, device); onDismiss() },
-                        modifier = Modifier.fillMaxWidth().tvFocusHighlight()
-                    ) {
-                        Text("📺  Play on ${device.name}")
+                    MenuRow("Play on ${device.name}", PickwickIcons.Channels) {
+                        onCast(item, device); onDismiss()
                     }
                 }
                 if (onToggleDownload != null) {
                     val url = item.video.url
-                    TextButton(
-                        onClick = { onToggleDownload(item); onDismiss() },
+                    MenuRow(
+                        when {
+                            url in downloaded -> "Downloaded"
+                            url in downloadPending -> "Cancel download request"
+                            else -> "Ask to download"
+                        },
+                        PickwickIcons.Download,
+                        on = url in downloaded,
                         // Deleting a finished download is the parent's job
                         // in settings — the row goes inert, not hidden, so
                         // the state is still readable here.
-                        enabled = url !in downloaded,
-                        modifier = Modifier.fillMaxWidth().tvFocusHighlight()
-                    ) {
-                        Text(
-                            when {
-                                url in downloaded -> "✅  Downloaded"
-                                url in downloadPending -> "⏳  Cancel download request"
-                                else -> "⬇️  Ask to download"
-                            }
-                        )
-                    }
+                        enabled = url !in downloaded
+                    ) { onToggleDownload(item); onDismiss() }
                 }
             }
         },
         confirmButton = {}
     )
+}
+
+/**
+ * One row of the hold menu: an icon, then what it does. [on] marks the
+ * state the row would undo (already a favourite, already watched), tinted
+ * so a glance says which way the row goes.
+ */
+@Composable
+private fun MenuRow(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    on: Boolean = false,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth().tvFocusHighlight()
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (on) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(14.dp))
+            Text(label, style = MaterialTheme.typography.titleSmall)
+        }
+    }
 }

@@ -17,6 +17,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -126,71 +130,36 @@ private fun FriendlyError(detail: String?, onRetry: () -> Unit) {
     }
 }
 
-/** The phone's bottom tabs — YouTube's mental model, four thumb-sized targets. "You" wears the kid's own avatar. */
-private enum class Tab(val label: String, val emoji: String) {
-    Home("Home", "🏠"), Channels("Channels", "📺"), You("You", "🙂"), Search("Search", "🔍")
+/**
+ * The phone's bottom tabs: Home, Channels, You — three places. Search is a
+ * task, not a place, so it lives as an icon in every header instead. "You"
+ * wears the kid's own avatar.
+ */
+private enum class Tab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Home("Home", Icons.Filled.Home),
+    Channels("Channels", PickwickIcons.Channels),
+    You("You", Icons.Filled.Person)
 }
 
 private fun tabFor(screen: Screen): Tab? = when (screen) {
     Screen.Home -> Tab.Home
     Screen.Channels, Screen.Surprise, is Screen.ChannelVideos, is Screen.WatchedVideos -> Tab.Channels
     Screen.You, Screen.Watchlist, Screen.WatchLater, Screen.Queue, Screen.Downloads, Screen.History -> Tab.You
-    Screen.Search, is Screen.SearchResults -> Tab.Search
+    Screen.Search, is Screen.SearchResults -> null
 }
 
 /** Screens that are a tab's own root: no back arrow, the tab is the way around. */
 private fun isTabRoot(screen: Screen): Boolean =
-    screen == Screen.Home || screen == Screen.Channels ||
-        screen == Screen.You || screen == Screen.Search
+    screen == Screen.Home || screen == Screen.Channels || screen == Screen.You
 
 /** The TV's top menu on every page below home: Home and You (the kid's shelves), as focusable chips. */
 @Composable
 private fun TvTopChips(screen: Screen, vm: MainViewModel) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(
-            selected = false, onClick = vm::goHome,
-            label = { Text("🏠 Home") }, modifier = Modifier.tvFocusHighlight()
-        )
-        FilterChip(
-            selected = tabFor(screen) == Tab.You, onClick = vm::openYou,
-            label = { Text("🙂 You") }, modifier = Modifier.tvFocusHighlight()
-        )
+        PwChip("Home", selected = false, icon = Icons.Filled.Home, onClick = vm::goHome)
+        PwChip("You", selected = tabFor(screen) == Tab.You, icon = Icons.Filled.Person, onClick = vm::openYou)
     }
     Spacer(Modifier.width(8.dp))
-}
-
-/**
- * The saved shelves, as chips above the Favorites tab: one place for
- * everything the kid put aside, instead of four tiles hunting for space.
- */
-@Composable
-private fun ShelfChips(s: UiState, vm: MainViewModel) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-            .horizontalScroll(rememberScrollState())
-    ) {
-        FilterChip(
-            selected = s.screen == Screen.Watchlist, onClick = vm::openWatchlist,
-            label = { Text("❤️ Favorites") }
-        )
-        FilterChip(
-            selected = s.screen == Screen.WatchLater, onClick = vm::openWatchLater,
-            label = { Text("🕒 Watch later") }
-        )
-        FilterChip(
-            selected = s.screen == Screen.Queue, onClick = vm::openQueue,
-            label = { Text("📚 Up next") }
-        )
-        FilterChip(
-            selected = s.screen == Screen.History, onClick = vm::openHistory,
-            label = { Text("🕘 History") }
-        )
-        if (s.downloaded.isNotEmpty()) FilterChip(
-            selected = s.screen == Screen.Downloads, onClick = vm::openDownloads,
-            label = { Text("⬇️ Downloads") }
-        )
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -222,13 +191,12 @@ fun PickwickScreen(
     var lookOpen by remember { mutableStateOf(false) }
     val lookEditable = onChangeLook != null && activeProfile != null
     if (hubOpen) {
-        ProfileHubDialog(
-            profile = activeProfile,
-            onSwitch = onSwitchProfile?.let { switch -> { hubOpen = false; switch() } },
-            onChangeLook = if (lookEditable) { { hubOpen = false; lookOpen = true } } else null,
-            onOpenSettings = { hubOpen = false; onOpenSettings() },
-            onDismiss = { hubOpen = false }
-        )
+        val onSwitch = onSwitchProfile?.let { switch -> { hubOpen = false; switch() } }
+        val onLook: (() -> Unit)? = if (lookEditable) { { hubOpen = false; lookOpen = true } } else null
+        val onSettings = { hubOpen = false; onOpenSettings() }
+        // A sheet under a thumb, a dialog under a remote.
+        if (isTv) ProfileHubDialog(activeProfile, onSwitch, onLook, onSettings, onDismiss = { hubOpen = false })
+        else ProfileHubSheet(activeProfile, onSwitch, onLook, onSettings, onDismiss = { hubOpen = false })
     }
     if (lookOpen && activeProfile != null && onChangeLook != null) {
         LookDialog(
@@ -393,19 +361,27 @@ fun PickwickScreen(
                                 onSearch = vm::search,
                                 onOpenHub = openHub,
                                 homeFilter = s.homeFilter,
-                                onHomeFilter = vm::setHomeFilter
+                                onHomeFilter = vm::setHomeFilter,
+                                onOpenSearch = vm::openSearch
                             )
                         }
                     }
                 }
                 s.screen is Screen.Channels -> Column(Modifier.fillMaxSize()) {
-                    Text(
-                        "📺 Channels",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                        ),
-                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp, horizontal = 4.dp)
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Channels", style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                "${s.channels.size} channel${if (s.channels.size == 1) "" else "s"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        HeaderIconButton(Icons.Filled.Search, "Search", vm::openSearch)
+                    }
                     ChannelsScreen(
                         state = s,
                         onOpen = vm::openChannel,
@@ -432,28 +408,25 @@ fun PickwickScreen(
                         isTv = isTv,
                         onPlay = onPlay,
                         onOpenMenu = { feedMenuFor = it },
-                        onSeeAll = { screen ->
-                            when (screen) {
-                                Screen.Watchlist -> vm.openWatchlist()
-                                Screen.WatchLater -> vm.openWatchLater()
-                                Screen.Queue -> vm.openQueue()
-                                Screen.History -> vm.openHistory()
-                                Screen.Downloads -> vm.openDownloads()
-                                else -> {}
-                            }
-                        },
                         onChangeLook = if (lookEditable) { { lookOpen = true } } else null,
-                        onSwitchProfile = onSwitchProfile
+                        onSwitchProfile = onSwitchProfile,
+                        onOpenSearch = if (phone) vm::openSearch else null
                     )
                 }
                 s.screen is Screen.Search -> Column(Modifier.fillMaxSize()) {
-                    Text(
-                        "🔍 Search",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                        ),
-                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                    ) {
+                        // Reached from a header icon, so it needs a way back.
+                        if (!isTv) {
+                            IconButton(onClick = vm::goHome, modifier = Modifier.size(48.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", modifier = Modifier.size(28.dp))
+                            }
+                            Spacer(Modifier.width(4.dp))
+                        }
+                        Text("Search", style = MaterialTheme.typography.titleLarge)
+                    }
                     SearchField(
                         onSearch = vm::search, voice = phone,
                         onVoiceUnavailable = { vm.showNoticeExternal("Voice search isn't on this device yet") }
@@ -482,15 +455,25 @@ fun PickwickScreen(
                     val title = when (val sc = s.screen) {
                         is Screen.You -> ""
                         is Screen.ChannelVideos -> sc.source.name
-                        is Screen.WatchedVideos -> "🕘 History · ${sc.source.name}"
-                        is Screen.History -> "🕘 History"
-                        is Screen.Surprise -> "🎲 Surprise!"
-                        is Screen.Watchlist -> "❤️ Favorites"
-                        is Screen.WatchLater -> "🕒 Watch later"
-                        is Screen.Downloads -> "⬇️ Downloads"
-                        is Screen.Queue -> "📚 Up next"
-                        is Screen.SearchResults -> if (phone) "🔍 Search" else "🔍 “${sc.query}”"
+                        is Screen.WatchedVideos -> "Watched · ${sc.source.name}"
+                        is Screen.History -> "History"
+                        is Screen.Surprise -> "Surprise me"
+                        is Screen.Watchlist -> "Favorites"
+                        is Screen.WatchLater -> "Watch later"
+                        is Screen.Downloads -> "Downloads"
+                        is Screen.Queue -> "Up next"
+                        is Screen.SearchResults -> if (phone) "Search" else "“${sc.query}”"
                         else -> ""
+                    }
+                    val titleIcon = when (s.screen) {
+                        is Screen.WatchedVideos, is Screen.History -> PickwickIcons.History
+                        is Screen.Surprise -> PickwickIcons.Dice
+                        is Screen.Watchlist -> Icons.Filled.Favorite
+                        is Screen.WatchLater -> PickwickIcons.WatchLater
+                        is Screen.Downloads -> PickwickIcons.Download
+                        is Screen.Queue -> PickwickIcons.UpNext
+                        is Screen.SearchResults -> Icons.Filled.Search
+                        else -> null
                     }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -515,27 +498,41 @@ fun PickwickScreen(
                             }
                             Spacer(Modifier.width(4.dp))
                         }
-                        // The channel's own avatar beside its name, so the page
-                        // reads as the channel and not just a list.
-                        if (s.screen is Screen.ChannelVideos) {
-                            val src = (s.screen as Screen.ChannelVideos).source
-                            Box(
-                                Modifier.size(if (isTv) 48.dp else 36.dp)
-                                    .clip(androidx.compose.foundation.shape.CircleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            ) { PosterImage(src.avatarUrl, src.name, Modifier.fillMaxSize()) }
-                            Spacer(Modifier.width(if (isTv) 14.dp else 10.dp))
+                        // A channel page is anchored by the channel: its art,
+                        // large, then the name with a line of what's here.
+                        // Other pages carry their own icon before the title.
+                        val channelSrc = (s.screen as? Screen.ChannelVideos)?.source
+                        if (channelSrc != null) {
+                            ChannelArt(channelSrc.avatarUrl, channelSrc.name, size = if (isTv) 64.dp else 56.dp)
+                            Spacer(Modifier.width(if (isTv) 16.dp else 12.dp))
+                        } else if (titleIcon != null) {
+                            Icon(titleIcon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
+                            Spacer(Modifier.width(10.dp))
                         }
-                        Text(
-                            title,
-                            style = (if (isTv) MaterialTheme.typography.headlineSmall
-                            else MaterialTheme.typography.titleLarge).copy(
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                            ),
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                title,
+                                style = if (isTv) MaterialTheme.typography.headlineSmall
+                                else MaterialTheme.typography.titleLarge,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                            if (channelSrc != null) {
+                                val parts = buildList {
+                                    if (s.videos.isNotEmpty()) add("${s.videos.size}${if (s.loadingMore || s.videos.size >= 30) "+" else ""} videos")
+                                    if (s.channelPlaylists.isNotEmpty()) add("${s.channelPlaylists.size} playlists")
+                                    if (channelSrc.kind == SourceKind.PLAYLIST) add("playlist")
+                                }
+                                if (parts.isNotEmpty()) Text(
+                                    parts.joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        if (phone && s.screen !is Screen.SearchResults) {
+                            HeaderIconButton(Icons.Filled.Search, "Search", vm::openSearch)
+                        }
                         // TV has no tabs and no back arrow, so a page below home
                         // used to be a title and a grid with nothing above it.
                         // These chips are the ten-foot menu: where you are, and
@@ -578,13 +575,6 @@ fun PickwickScreen(
                             voice = true,
                             onVoiceUnavailable = { vm.showNoticeExternal("Voice search isn't on this device yet") }
                         )
-                    }
-                    if (phone && tabFor(s.screen) == Tab.You) ShelfChips(s, vm)
-                    // The kid's order for this channel's videos. Under the
-                    // title on both form factors; on TV the chips are the
-                    // second focus row after the top menu.
-                    if (s.screen is Screen.ChannelVideos) {
-                        VideoFilterChips(s.channelFilter, vm::setChannelFilter)
                     }
                     // Search hits from the crawled index are screened live, in
                     // windows — an honest bar (we know the window's size), with
@@ -689,26 +679,27 @@ fun PickwickScreen(
                         // and the "By playlist" chip row when the parent chose
                         // that layout — then "All videos" and the grid. Only
                         // when at least one of them has something to show.
+                        // A channel page's shape, top to bottom: the channel's
+                        // playlists as a strip (its own organisation, pulled
+                        // in on its own), the first few as rows, "New for
+                        // you", then "All videos" with the kid's sort chips.
                         header = if (s.screen is Screen.ChannelVideos && s.screen.source.kind == SourceKind.CHANNEL) {
                             val fresh = s.videos.filter { it.progress == null }.take(12)
-                            val anyRows = s.playlistShelves.any { it.items.isNotEmpty() } ||
-                                s.channelPlaylists.isNotEmpty() || fresh.size >= 3
-                            if (anyRows) {
-                                {
-                                    playlistShelves(
-                                        s.playlistShelves, isTv, { s.channelAvatars[it] },
-                                        onPlay, { feedMenuFor = it }, vm::openPlaylist
-                                    )
-                                    if (fresh.size >= 3) {
-                                        newForYouRow(fresh, isTv, { s.channelAvatars[it] }, onPlay) { feedMenuFor = it }
-                                    }
-                                    if (s.channelPlaylists.isNotEmpty()) {
-                                        playlistRow(s.channelPlaylists, isTv, vm::openPlaylist)
-                                    } else {
-                                        allVideosLabel()
-                                    }
+                            val block: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit = {
+                                val channelName = s.screen.source.name
+                                if (s.channelPlaylists.isNotEmpty()) {
+                                    playlistRow(s.channelPlaylists, isTv, vm::openPlaylist, channelName)
                                 }
-                            } else null
+                                playlistShelves(
+                                    s.playlistShelves, isTv, { s.channelAvatars[it] },
+                                    onPlay, { feedMenuFor = it }, vm::openPlaylist, channelName
+                                )
+                                if (fresh.size >= 3) {
+                                    newForYouRow(fresh, isTv, { s.channelAvatars[it] }, onPlay) { feedMenuFor = it }
+                                }
+                                allVideosHeader(s.channelFilter, vm::setChannelFilter)
+                            }
+                            block
                         } else null
                     )
                     }
@@ -753,17 +744,13 @@ fun PickwickScreen(
                                 Tab.Home -> vm.goHome()
                                 Tab.Channels -> vm.openChannels()
                                 Tab.You -> vm.openYou()
-                                Tab.Search -> vm.openSearch()
                             }
                         },
                         icon = {
                             // The You tab is the kid's own face, when they have one.
                             if (tab == Tab.You && activeProfile != null) {
-                                ProfileAvatar(activeProfile, size = 26)
-                            } else Text(
-                                tab.emoji,
-                                fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp)
-                            )
+                                ProfileAvatar(activeProfile, size = 28)
+                            } else Icon(tab.icon, contentDescription = null, modifier = Modifier.size(26.dp))
                         },
                         label = { Text(tab.label, style = MaterialTheme.typography.labelMedium) }
                     )

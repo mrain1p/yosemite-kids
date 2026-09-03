@@ -241,7 +241,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 var activeProfileId by remember { mutableStateOf(resolveActive(initialConfig)) }
                 // The kid's colour becomes the accent the moment they're picked;
                 // no kid (picker, pre-profile install) is plain Pickwick teal.
-                MaterialTheme(colorScheme = kidColorScheme(family.profile(activeProfileId))) {
+                MaterialTheme(
+                    colorScheme = kidColorScheme(family.profile(activeProfileId)),
+                    typography = PickwickTypography
+                ) {
                 // Bumped on every return to the foreground so the picker's
                 // "N min left" re-reads after a sitting — keyed on the family
                 // alone it showed pre-sitting minutes until the next push.
