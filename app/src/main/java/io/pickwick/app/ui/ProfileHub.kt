@@ -56,7 +56,11 @@ internal fun ProfileHubDialog(
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
     theme: String = THEME_DARK,
-    onTheme: ((String) -> Unit)? = null
+    onTheme: ((String) -> Unit)? = null,
+    /** Fetch new videos and sync settings now, rather than waiting for the poll. */
+    onRefresh: (() -> Unit)? = null,
+    /** Something is already in flight, so the row says so instead of inviting a second tap. */
+    busy: Boolean = false
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -72,7 +76,7 @@ internal fun ProfileHubDialog(
                 )
             }
         },
-        text = { HubRows(onSwitch, onChangeLook, onOpenSettings, theme, onTheme) },
+        text = { HubRows(onSwitch, onChangeLook, onOpenSettings, theme, onTheme, onRefresh, onDismiss, busy) },
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvFocusHighlight()) { Text("Close") } }
     )
@@ -91,7 +95,11 @@ internal fun ProfileHubSheet(
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
     theme: String = THEME_DARK,
-    onTheme: ((String) -> Unit)? = null
+    onTheme: ((String) -> Unit)? = null,
+    /** Fetch new videos and sync settings now, rather than waiting for the poll. */
+    onRefresh: (() -> Unit)? = null,
+    /** Something is already in flight, so the row says so instead of inviting a second tap. */
+    busy: Boolean = false
 ) {
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
@@ -102,7 +110,7 @@ internal fun ProfileHubSheet(
                 }
                 Text(profile?.name ?: "Pickwick", style = MaterialTheme.typography.titleLarge)
             }
-            HubRows(onSwitch, onChangeLook, onOpenSettings, theme, onTheme)
+            HubRows(onSwitch, onChangeLook, onOpenSettings, theme, onTheme, onRefresh, onDismiss, busy)
         }
     }
 }
@@ -113,7 +121,10 @@ private fun HubRows(
     onChangeLook: (() -> Unit)?,
     onOpenSettings: () -> Unit,
     theme: String = THEME_DARK,
-    onTheme: ((String) -> Unit)? = null
+    onTheme: ((String) -> Unit)? = null,
+    onRefresh: (() -> Unit)? = null,
+    onDismiss: (() -> Unit)? = null,
+    busy: Boolean = false
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // The look of the whole app, at the top of the kid's own corner
@@ -133,6 +144,13 @@ private fun HubRows(
                     PwChip(themeLabel(t), selected = theme == t, onClick = { onTheme(t) })
                 }
             }
+        }
+        if (onRefresh != null) {
+            HubRow(
+                PickwickIcons.History,
+                if (busy) "Checking for new videos…" else "Check for new videos",
+                { if (!busy) { onRefresh(); onDismiss?.invoke() } }
+            )
         }
         if (onSwitch != null) HubRow(PickwickIcons.People, "Switch who's watching", onSwitch)
         if (onChangeLook != null) HubRow(PickwickIcons.Palette, "Change my look", onChangeLook)

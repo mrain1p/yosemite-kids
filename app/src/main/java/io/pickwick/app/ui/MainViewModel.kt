@@ -230,6 +230,9 @@ class MainViewModel(
         // Init and ON_START both fire this at launch — one reconcile is plenty.
         if (devices.isEmpty() || configSyncInFlight) return
         configSyncInFlight = true
+        // Surfaced as the ring round the avatar. All of this used to happen
+        // with nothing on screen to say so.
+        _state.value = _state.value.copy(syncing = true)
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 // Master election: the first parent device to run with the slot
@@ -388,6 +391,7 @@ class MainViewModel(
                 }
             } finally {
                 configSyncInFlight = false
+                _state.value = _state.value.copy(syncing = false)
             }
         }
     }

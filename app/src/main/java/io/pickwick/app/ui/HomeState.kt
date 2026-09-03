@@ -51,6 +51,13 @@ data class UiState(
     val loadingMore: Boolean = false,
     /** A whitelist re-fetch is in flight (drives the pull-to-refresh spinner). */
     val refreshing: Boolean = false,
+    /**
+     * Settings are syncing with a paired device, or the search index is
+     * crawling. Drives the ring round the avatar — the app did all of this
+     * silently before, so a parent could not tell "it is coming" from "it did
+     * not work".
+     */
+    val syncing: Boolean = false,
     val error: String? = null,
     val channels: List<Source> = emptyList(),
     val screen: Screen = Screen.Home,

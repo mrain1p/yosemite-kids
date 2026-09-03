@@ -21,8 +21,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -154,7 +160,18 @@ internal fun videoMeta(channel: String, publishedAt: Long?): String =
 internal fun HeaderActions(
     profile: io.pickwick.app.data.Profile?,
     onOpenHub: (() -> Unit)?,
-    onOpenSearch: (() -> Unit)?
+    onOpenSearch: (() -> Unit)?,
+    /**
+     * Something is arriving — new videos being fetched, settings syncing, the
+     * search index crawling. Draws a slow arc around the avatar.
+     *
+     * The app already did all of this silently: a settings edit fans out to
+     * every device about a second and a half after the last tap, and nothing
+     * anywhere said so. A parent watching a TV that had not changed yet had no
+     * way to tell "it is coming" from "it did not work", and pressed Push
+     * again to find out.
+     */
+    busy: Boolean = false
 ) {
     if (onOpenSearch != null) {
         HeaderIconButton(androidx.compose.material.icons.Icons.Filled.Search, "Search", onOpenSearch)
@@ -168,6 +185,7 @@ internal fun HeaderActions(
                 .clip(androidx.compose.foundation.shape.CircleShape)
                 .clickable { onOpenHub() }
         ) {
+            if (busy) BusyRing()
             if (profile != null) ProfileAvatar(profile, size = 34)
             else Icon(
                 androidx.compose.material.icons.Icons.Filled.Person,
@@ -175,5 +193,48 @@ internal fun HeaderActions(
                 modifier = Modifier.size(26.dp)
             )
         }
+    }
+}
+
+/**
+ * A slow arc travelling round the avatar while the app is fetching something.
+ *
+ * Deliberately quiet: a thin arc at partial opacity, three seconds a turn, no
+ * colour change and no movement of the avatar itself. A kid should be able to
+ * ignore it completely — it is there so a parent glancing at the screen can
+ * tell the difference between working and stuck, not to ask anyone for
+ * attention.
+ */
+@Composable
+internal fun BusyRing() {
+    val spin = rememberInfiniteTransition(label = "busy")
+    val angle by spin.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 3000,
+                easing = LinearEasing
+            )
+        ),
+        label = "angle"
+    )
+    val color = MaterialTheme.colorScheme.primary
+    androidx.compose.foundation.Canvas(Modifier.size(44.dp)) {
+        val stroke = 2.5.dp.toPx()
+        drawArc(
+            color = color.copy(alpha = 0.9f),
+            startAngle = angle,
+            // A quarter turn, so it reads as motion rather than as a
+            // progress value it cannot honestly report.
+            sweepAngle = 90f,
+            useCenter = false,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = stroke,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round
+            ),
+            topLeft = androidx.compose.ui.geometry.Offset(stroke, stroke),
+            size = androidx.compose.ui.geometry.Size(size.width - stroke * 2, size.height - stroke * 2)
+        )
     }
 }

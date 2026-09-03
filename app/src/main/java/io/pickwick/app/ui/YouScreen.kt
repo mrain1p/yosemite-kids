@@ -111,7 +111,8 @@ internal fun YouScreen(
                     }
                     Spacer(Modifier.weight(1f))
                     HeaderActions(
-                        profile = profile, onOpenHub = onOpenHub, onOpenSearch = onOpenSearch
+                        profile = profile, onOpenHub = onOpenHub, onOpenSearch = onOpenSearch,
+                        busy = state.refreshing || state.syncing
                     )
                     topChips?.invoke()
                 }

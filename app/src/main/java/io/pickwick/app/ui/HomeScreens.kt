@@ -200,8 +200,8 @@ internal fun PhoneHome(
         item(key = "app-header", span = { GridItemSpan(maxLineSpan) }) {
             HomeHeader(
                 onOpenSettings, activeProfile, onSwitchProfile, onSearch,
-                state.remainingMs, state.blockReason, greet = true, showSearch = false,
-                onOpenHub = onOpenHub, onOpenSearch = onOpenSearch
+                state.remainingMs, state.blockReason, greet = true, busy = state.refreshing || state.syncing,
+                showSearch = false, onOpenHub = onOpenHub, onOpenSearch = onOpenSearch
             )
         }
         // Channels lead: the kid's own shelf of places, and the thing they
@@ -627,6 +627,13 @@ internal fun HomeHeader(
     blockReason: String? = null,
     /** Phones greet the kid by name; TV keeps the wordmark. */
     greet: Boolean = false,
+    /**
+     * Something is arriving — new videos, settings syncing. Draws a slow arc
+     * round the avatar. This header renders its own avatar rather than going
+     * through HeaderActions, so it needs telling separately; the home screen
+     * is the one place a parent actually watches for a change to land.
+     */
+    busy: Boolean = false,
     /** The inline search icon — off when the Search tab exists. */
     showSearch: Boolean = true,
     /**
@@ -718,7 +725,10 @@ internal fun HomeHeader(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 if (activeProfile != null) {
-                    ProfileAvatar(activeProfile, size = 36)
+                    Box(contentAlignment = Alignment.Center) {
+                        if (busy) BusyRing()
+                        ProfileAvatar(activeProfile, size = 36)
+                    }
                     if (!greet) {
                         Spacer(Modifier.width(6.dp))
                         Text(activeProfile.name, style = MaterialTheme.typography.bodyMedium)
@@ -773,6 +783,8 @@ internal fun TvHomeRows(
     keepWatching: List<VideoItem>,
     /** "More like what you watch"; empty when off or when nothing is watched yet. */
     suggested: List<VideoItem> = emptyList(),
+    /** Something is arriving — draws the slow arc round the avatar. */
+    busy: Boolean = false,
     feed: List<VideoItem> = emptyList(),
     recentHistory: List<VideoItem> = emptyList(),
     channelAvatars: Map<String, String?> = emptyMap(),
@@ -841,7 +853,7 @@ internal fun TvHomeRows(
         item(key = "header") {
             HomeHeader(
                 onOpenSettings, activeProfile, onSwitchProfile, onSearch, remainingMs, blockReason,
-                onOpenHub = onOpenHub
+                busy = busy, onOpenHub = onOpenHub
             )
         }
 

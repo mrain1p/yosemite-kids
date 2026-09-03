@@ -201,7 +201,11 @@ fun PickwickScreen(
         val onSettings = { hubOpen = false; onOpenSettings() }
         // A sheet under a thumb, a dialog under a remote.
         if (isTv) ProfileHubDialog(activeProfile, onSwitch, onLook, onSettings, { hubOpen = false }, theme, onTheme)
-        else ProfileHubSheet(activeProfile, onSwitch, onLook, onSettings, { hubOpen = false }, theme, onTheme)
+        else ProfileHubSheet(
+            activeProfile, onSwitch, onLook, onSettings, { hubOpen = false }, theme, onTheme,
+            onRefresh = { vm.refresh(userInitiated = true); vm.syncConfigState() },
+            busy = vm.state.value.refreshing || vm.state.value.syncing
+        )
     }
     if (lookOpen && activeProfile != null && onChangeLook != null) {
         LookDialog(
@@ -329,6 +333,7 @@ fun PickwickScreen(
                             newBadges = s.newBadges,
                             keepWatching = s.keepWatching,
                             suggested = s.suggested,
+                            busy = s.refreshing || s.syncing,
                             feed = s.feed,
                             recentHistory = s.recentHistory,
                             channelAvatars = s.channelAvatars,
@@ -410,7 +415,10 @@ fun PickwickScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        HeaderActions(activeProfile, openHub, if (phone) vm::openSearch else null)
+                        HeaderActions(
+                            activeProfile, openHub, if (phone) vm::openSearch else null,
+                            busy = s.refreshing || s.syncing
+                        )
                     }
                     ChannelsScreen(
                         state = s,
@@ -570,7 +578,8 @@ fun PickwickScreen(
                         }
                         HeaderActions(
                             activeProfile, openHub,
-                            if (phone && s.screen !is Screen.SearchResults) vm::openSearch else null
+                            if (phone && s.screen !is Screen.SearchResults) vm::openSearch else null,
+                            busy = s.refreshing || s.syncing
                         )
                         // TV has no tabs and no back arrow, so a page below home
                         // used to be a title and a grid with nothing above it.
