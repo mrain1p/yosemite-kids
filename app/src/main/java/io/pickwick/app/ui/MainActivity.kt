@@ -324,6 +324,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         QueueStore(applicationContext, profileSuffix),
                         pairingStore,
                         configStore = configStore,
+                        // Parents only: a kid device must never surface that
+                        // their parents disagreed about their rules.
+                        syncNotices = if (pairingStore.role() != PairingStore.Role.KID) {
+                            io.pickwick.app.data.SyncNotices(appContext)
+                        } else null,
                         downloadStore = downloadStore,
                         localLibrary = localLibrary,
                         isOffline = {

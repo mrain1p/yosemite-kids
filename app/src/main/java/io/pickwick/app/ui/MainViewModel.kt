@@ -49,6 +49,12 @@ class MainViewModel(
     private val pairingStore: PairingStore? = null,
     /** Phone role: lets the periodic sync re-push config a device missed while off. */
     private val configStore: ConfigStore? = null,
+    /**
+     * Where "your change lost" is recorded for this parent to find later.
+     * Null on kid devices and in tests — a child must never be shown that
+     * their parents disagreed about their rules.
+     */
+    private val syncNotices: SyncNotices? = null,
     /** This kid's chip choices (sort, filters); null in tests. */
     private val kidPrefs: KidPrefs? = null,
     /** Offline downloads (phones); null on TV and in tests. */
@@ -339,6 +345,18 @@ class MainViewModel(
                             if (outcome.changed) {
                                 ConfigEvents.onConfigChanged?.invoke()
                                 refresh()
+                            }
+                            // Recorded, never raised. A parent finds out when
+                            // they next open Settings; a background sweep does
+                            // not get to interrupt them. Parents only — a kid
+                            // must not learn that their parents disagreed
+                            // about their bedtime.
+                            if (isParent && outcome.collisions.isNotEmpty()) {
+                                syncNotices?.record(
+                                    outcome.collisions.map {
+                                        SyncNotices.describe(it, device.name)
+                                    }
+                                )
                             }
                             if (outcome.changed || outcome.peerBehind) {
                                 val ok = LanClient.pushConfig(device, store.rawJson())

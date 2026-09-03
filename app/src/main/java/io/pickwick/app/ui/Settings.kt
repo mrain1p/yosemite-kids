@@ -426,6 +426,10 @@ private fun AdminScreen(
 ) {
     val scope = rememberCoroutineScope()
     val yt = remember { YouTubeRepository() }
+    // Built here rather than passed in: this screen only ever runs on a device
+    // a parent has unlocked, so there is no kid-device case to guard.
+    val settingsContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val syncNotices = remember { io.pickwick.app.data.SyncNotices(settingsContext) }
 
     // Bumped when the config file is replaced underneath the form (a Pull from a
     // kid device) — the whole form reloads from disk, dropping unsaved edits.
@@ -1105,6 +1109,50 @@ private fun AdminScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        // "Your change lost." Found here rather than raised: a background
+        // sweep does not get to interrupt a parent, and this is the first
+        // place they look after one. One banner per unit, dismissible, and
+        // never shown on a kid device — SyncNotices is only constructed for a
+        // parent.
+        val notices = remember(configEpoch) { syncNotices?.all().orEmpty() }
+        var dismissed by remember { mutableStateOf(emptySet<String>()) }
+        notices.filterNot { it.unit in dismissed }.forEach { n ->
+            SettingsCard {
+                Text(n.text)
+                changeAge(n.at)?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    n.restore?.let { mine ->
+                        CompactButton(onClick = {
+                            // Sets the FORM, not the file. Putting it back is
+                            // itself a deliberate edit, so it wants a fresh
+                            // stamp — and writing under the open form would
+                            // just be overwritten by the next autosave.
+                            runCatching {
+                                ConfigStore.fromJson(
+                                    org.json.JSONObject()
+                                        .put("entries", org.json.JSONArray())
+                                        .put("blocked", org.json.JSONArray())
+                                        .put("limits", org.json.JSONObject(mine))
+                                        .toString()
+                                ).limits
+                            }.onSuccess { limits = it }
+                            syncNotices?.dismiss(n.unit)
+                            dismissed = dismissed + n.unit
+                        }) { Text("Put mine back") }
+                    }
+                    CompactButton(onClick = {
+                        syncNotices?.dismiss(n.unit)
+                        dismissed = dismissed + n.unit
+                    }) { Text("OK") }
+                }
+            }
+        }
         // Donations fund the re-shipping treadmill (YouTube breaks playback every
         // few weeks). Deliberately at the top: the slot is seen on every visit.
         val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
