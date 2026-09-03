@@ -152,6 +152,18 @@ far from the edit, in someone else's build. Extracting `:core` created "must
 stay Android-free" and shipped nothing to check it; the gap was found by being
 asked, not by the gate.
 
+**The transferable version, not specific to any one change:** every time you
+write *never*, *always*, *must*, *only ever* or *deliberately not* in a comment
+or a commit message, you have just stated an invariant — and prose enforces
+nothing. Someone who never reads that comment will violate it. So treat those
+words as a prompt: can this be a test? a grep? if neither, does it at least
+belong in a skill where the next session will actually meet it?
+
+This applies far beyond module boundaries. A new dependency, a security
+boundary, a file format, a threading rule, a thing that must happen before
+release — each is the same shape: a rule created by a change, with nothing
+watching it.
+
 In order of preference:
 
 1. **A test**, when the property is about values. Put it where the property
