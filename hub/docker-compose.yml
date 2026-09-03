@@ -3,7 +3,11 @@
 # Paths below are Synology's layout. On another NAS,
 # change the left-hand side of the volume line and nothing else.
 #
-#   docker compose up -d
+# The source has to be on the NAS, because this builds the image rather than
+# pulling one. Put the repo at /volume2/Docker/pickwick, then:
+#
+#   cd /volume2/Docker/pickwick
+#   docker compose -f hub/docker-compose.yml up -d --build
 #
 # Then open http://<nas-ip>:8765/health to confirm it is alive, and approve a
 # device's enrolment code to pair the first one.
@@ -29,9 +33,11 @@ services:
     #   - "8765:8765"
 
     volumes:
-      # config.json and devices.json. This is the family's whole setup: back it
-      # up like anything else you would mind losing.
-      - /volume2/Docker/pickwick:/data
+      # config.json and devices.json. Deliberately a subfolder, not the folder
+      # holding the source: the data is the family's whole setup and wants
+      # backing up, while the source is disposable and gets replaced on every
+      # update.
+      - /volume2/Docker/pickwick/data:/data
 
     environment:
       - PICKWICK_DATA=/data
