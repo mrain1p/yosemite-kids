@@ -1,6 +1,6 @@
 # Pickwick hub — an always-on peer for the family config.
 #
-# Paths below are Synology's layout (/volume1/docker/...). On another NAS,
+# Paths below are Synology's layout. On another NAS,
 # change the left-hand side of the volume line and nothing else.
 #
 #   docker compose up -d
@@ -31,7 +31,7 @@ services:
     volumes:
       # config.json and devices.json. This is the family's whole setup: back it
       # up like anything else you would mind losing.
-      - /volume1/docker/pickwick:/data
+      - /volume2/Docker/pickwick:/data
 
     environment:
       - PICKWICK_DATA=/data
