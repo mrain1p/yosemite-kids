@@ -116,6 +116,32 @@ class PairingStore(context: Context) {
             .joinToString("") { "%02x".format(it) }
             .also { prefs.edit().putString("device_token", it).apply() }
 
+    /**
+     * This device's short identity in the change log. Derived from the pairing
+     * token rather than the name, because names collide: two parents both
+     * carrying a Pixel 7 Pro would otherwise be indistinguishable, and a log
+     * whose whole purpose is attribution would credit one for the other's
+     * edits. Eight hex is plenty to tell two phones in a house apart, and the
+     * config travels the LAN so there is no reason to put more of the token
+     * in it than that.
+     */
+    fun by(): String = deviceToken().take(8)
+
+    /**
+     * What the change log calls this device. Defaults to the model name and is
+     * editable in Settings, because "Pixel 7 Pro" is no help when both parents
+     * have one and "Dad's phone" is exactly what a co-parent needs to read.
+     */
+    fun myName(): String = prefs.getString("my_name", null)?.takeIf { it.isNotBlank() }
+        ?: android.os.Build.MODEL.orEmpty().ifBlank { "This phone" }
+
+    fun setMyName(name: String) {
+        val clean = name.trim().take(40)
+        prefs.edit().apply {
+            if (clean.isBlank()) remove("my_name") else putString("my_name", clean)
+        }.apply()
+    }
+
     // --- TV role: which phones may administer this device -------------------
 
     private fun readMap(key: String): Map<String, String> = runCatching {
@@ -665,6 +691,12 @@ class LanServer(
                 JSONObject()
                     .put("hash", ConfigStore.fingerprint(configStore.load()))
                     .put("updatedAt", configStore.updatedAt())
+                    // Additive, and the absence of syncV is the signal: a peer
+                    // that does not send it cannot merge, so it is a push-only
+                    // destination and no tombstone may ever be derived from a
+                    // document it produced.
+                    .put("syncV", SyncMeta.VERSION)
+                    .put("syncHash", configStore.syncHash())
                     // Our own identity token, so the admin phone can key this
                     // device in deviceProfiles (dedicated-to-a-kid assignment).
                     .put("token", pairingStore.deviceToken())
@@ -785,7 +817,20 @@ class LanServer(
 /** Phone side: pushes to paired TVs. */
 object LanClient {
 
-    data class DeviceStatus(val hash: String, val updatedAt: Long, val deviceToken: String?)
+    data class DeviceStatus(
+        val hash: String,
+        val updatedAt: Long,
+        val deviceToken: String?,
+        /**
+         * The peer's sync-format version, or null for a build that predates it.
+         * Null means push-only: this device may send it a config but must
+         * never treat what it sends back as a merge source, because a legacy
+         * document restamps `updatedAt` at serialization time and therefore
+         * always claims to be brand new.
+         */
+        val syncV: Int? = null,
+        val syncHash: String? = null
+    )
 
     /** The device's config fingerprint + last-edit time, or null when unreachable. */
     suspend fun status(device: PairedDevice): Pair<String, Long>? =
@@ -949,7 +994,9 @@ object LanClient {
                 DeviceStatus(
                     json.getString("hash"),
                     json.optLong("updatedAt", 0L),
-                    json.optString("token").ifEmpty { null }
+                    json.optString("token").ifEmpty { null },
+                    syncV = if (json.has("syncV")) json.optInt("syncV") else null,
+                    syncHash = json.optString("syncHash").ifEmpty { null }
                 )
             }
         }.getOrNull()

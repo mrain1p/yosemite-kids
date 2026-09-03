@@ -166,8 +166,7 @@ class ConfigStore internal constructor(
             // Written by a build that still stored the key on disk. Move it and
             // rewrite the file without it, once — even when AI isn't set up,
             // because the key rides cloud backup for as long as it sits there.
-            secrets?.setAiApiKey(w.ai.apiKey)
-            runCatching { writeAtomically(stripSecrets(file.readText())) }
+            runCatching { commit(file.readText()) }
             return w
         }
         if (!aiInUse(w)) return w
@@ -183,24 +182,125 @@ class ConfigStore internal constructor(
         if (w.ai.apiKey.isNotBlank() || aiInUse(w)) secrets?.setAiApiKey(w.ai.apiKey)
     }
 
-    fun save(whitelist: Whitelist) {
+    /**
+     * The one place config bytes reach disk.
+     *
+     * Every write must stash a key it carries and then strip it, so the file
+     * never holds a credential — and there must be exactly one code path that
+     * does so, or the next writer added anywhere forgets. `writeAtomically` is
+     * called from here and nowhere else, and `scripts/check.ps1` fails the
+     * build if that stops being true.
+     *
+     * Stripped surgically rather than re-serialized, so a field a newer phone
+     * knows about and this build does not still survives the round trip.
+     */
+    private fun commit(json: String) {
         runCatching {
+            val incoming = JSONObject(json).optJSONObject("ai")?.optString("apiKey").orEmpty()
+            if (incoming.isNotBlank()) secrets?.setAiApiKey(incoming)
+        }
+        writeAtomically(stripSecrets(json))
+    }
+
+    /**
+     * Save a config the parent has edited, stamping what changed.
+     *
+     * [base] is what the editor opened with; without it the caller is saying
+     * "whatever differs from disk is mine", which is right for the small
+     * writers (the master claim, adopting a kid's restyle) and wrong for the
+     * settings form. [who] and [by] name the device in the change log.
+     *
+     * Returns the bytes that were written, so a caller that also pushes sends
+     * exactly what it saved — there is one wire shape for a config, not two.
+     */
+    /**
+     * What was actually written. [config] is the stamped result, which is what
+     * a form must adopt as its new baseline — it differs from what the form
+     * handed in, because stamping carries forward any unit that arrived
+     * underneath the open form. Adopting the form's own value instead would
+     * make the next save read those carried units as fresh adds.
+     *
+     * [json] is the wire copy and carries the API key; the disk copy never
+     * does. Push these bytes rather than re-serializing, or the push ships a
+     * config without the stamps this save just minted.
+     */
+    data class Saved(val config: Whitelist, val json: String)
+
+    fun save(
+        whitelist: Whitelist,
+        base: Whitelist? = null,
+        who: String = "",
+        by: String = ""
+    ): Saved? = runCatching {
+        synchronized(FILE_LOCK) {
+            // Read under the same lock as the write. A co-parent's push can
+            // land between an unlocked read and this write, and the stamper
+            // needs the document as it actually is to tell "arrived underneath
+            // me" from "the editor deleted it".
+            // withSecrets so both sides of the comparison carry the key. Read
+            // without it, an `ai` block identical except for the key would look
+            // edited on every single save and log "changed screening" forever.
+            // Deliberately not load(): that scrubs lapsed passes and lays a
+            // kid's pending restyle over the profiles, so stamping against it
+            // would attribute a clock tick to the parent as an edit.
+            val previous = runCatching {
+                if (file.exists()) withSecrets(fromJson(file.readText())) else null
+            }.getOrNull() ?: Whitelist(emptyList(), emptySet())
             val w = registered(whitelist)
             rememberSecrets(w)
-            writeAtomically(toJson(w, includeSecrets = false))
+            val stamped = ConfigStamp.stamped(
+                previous = previous,
+                base = base ?: previous,
+                next = w,
+                now = System.currentTimeMillis(),
+                who = who,
+                by = by
+            )
+            if (stamped.clockLooksWrong) {
+                android.util.Log.w(
+                    "Pickwick",
+                    "a peer's config claims a date more than a week ahead — check the TV's clock"
+                )
+            }
+            // The returned bytes are the *wire* copy and carry the key, because
+            // a kid device needs it to screen. `commit` strips it on the way to
+            // disk. One shape for a config, and only one place that strips.
+            val json = toJson(stamped.config)
+            commit(json)
+            Saved(stamped.config, json)
         }
-    }
+    }.getOrNull()
+
+    /**
+     * Read-modify-write under the lock — the primitive every small writer
+     * should use.
+     *
+     * The alternative, which this replaces, is to hand [save] a `Whitelist`
+     * read minutes earlier. Under the stamper that is actively dangerous: a
+     * channel merged in since that read looks like a fresh *add*, which clears
+     * its tombstone and resurrects a channel a parent deleted, with no parent
+     * action anywhere.
+     */
+    fun update(who: String = "", by: String = "", block: (Whitelist) -> Whitelist): Whitelist? =
+        runCatching {
+            synchronized(FILE_LOCK) {
+                val previous = load()
+                val next = block(previous)
+                if (next == previous) return@synchronized previous
+                val w = registered(next)
+                rememberSecrets(w)
+                val stamped = ConfigStamp.stamped(
+                    previous = previous, base = previous, next = w,
+                    now = System.currentTimeMillis(), who = who, by = by
+                )
+                commit(toJson(stamped.config))
+                stamped.config
+            }
+        }.getOrNull()
 
     fun saveRaw(json: String): Boolean = runCatching {
         val w = registered(fromJson(json)) // validate before accepting
-        // A pushed or restored payload without a key (backups strip it) must
-        // not wipe the one this device already holds.
-        if (w.ai.apiKey.isNotBlank()) secrets?.setAiApiKey(w.ai.apiKey)
-        // The pushed payload carries the key so this device can screen; the copy
-        // that lands on disk must not. Stripped surgically rather than
-        // re-serialized, so a field a newer phone knows about and this build
-        // doesn't still survives the round trip.
-        writeAtomically(stripSecrets(json))
+        commit(json)
         // Symmetric with the reject log below: an accepted push names its hash
         // and the break rules it carried, so "the TV never got it" vs "it got
         // it but didn't enforce it" is answerable from logcat alone. Kids appear
@@ -226,6 +326,22 @@ class ConfigStore internal constructor(
         val text = synchronized(FILE_LOCK) { if (file.exists()) file.readText() else null }
         text?.let { JSONObject(it).optLong("updatedAt", 0L) } ?: 0L
     }.getOrDefault(0L)
+
+    /**
+     * The bookkeeping's fingerprint, for `/status`. Same cheap raw-peek shape
+     * as [updatedAt] — no full parse, no secrets round trip, and it sits on a
+     * LAN worker thread with a ten-second budget.
+     *
+     * Two fork peers count as in sync only when this *and* the config
+     * fingerprint match. Without it, a TV holding a tombstone this phone has
+     * never seen reads as "in sync ✓" and the deletion never travels, because
+     * the reconcile short-circuits on hash equality and never fetches a body.
+     */
+    fun syncHash(): String = runCatching {
+        val text = synchronized(FILE_LOCK) { if (file.exists()) file.readText() else null }
+            ?: return@runCatching ConfigMerge.syncHash(SyncMeta.EMPTY)
+        ConfigMerge.syncHash(ConfigMerge.syncFromJson(JSONObject(text)))
+    }.getOrDefault(ConfigMerge.syncHash(SyncMeta.EMPTY))
 
     companion object {
         /** One lock for every ConfigStore instance — they all wrap the same file. */
@@ -434,6 +550,10 @@ class ConfigStore internal constructor(
             if (w.showVideoAge) root.put("showVideoAge", true)
             // Written only when set — absent means listening off (see Whitelist).
             w.listenPercent?.let { root.put("listen", it) }
+            // Last, and only when there is anything to say: a family that has
+            // never edited since upgrading writes a byte-identical file, so no
+            // fingerprint moves and no fleet-wide re-push fires at upgrade.
+            if (!w.sync.isEmpty) root.put("sync", ConfigMerge.syncToJson(w.sync))
             return root.toString(2)
         }
 
@@ -678,7 +798,11 @@ class ConfigStore internal constructor(
                 qualityTv = root.optInt("qualityTv", 0).takeIf { it in PLAYBACK_QUALITIES },
                 qualityPhone = root.optInt("qualityPhone", 0).takeIf { it in PLAYBACK_QUALITIES },
                 pageSize = root.optInt("pageSize", 0).takeIf { it in PAGE_SIZES },
-                showVideoAge = root.optBoolean("showVideoAge", false)
+                showVideoAge = root.optBoolean("showVideoAge", false),
+                // Outside the throwing path on purpose: a malformed or
+                // future-versioned blob must cost the family its bookkeeping,
+                // never its channels. See ConfigMerge.syncFromJson.
+                sync = runCatching { ConfigMerge.syncFromJson(root) }.getOrDefault(SyncMeta.EMPTY)
             )
         }
     }

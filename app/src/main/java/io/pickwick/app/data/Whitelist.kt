@@ -296,7 +296,16 @@ data class Whitelist(
      * about recency shouldn't have it. A video whose date the extractor
      * didn't carry shows nothing rather than a guess.
      */
-    val showVideoAge: Boolean = false
+    val showVideoAge: Boolean = false,
+    /**
+     * Sync bookkeeping: when each part of this config was last edited, what
+     * has been deleted, and the recent change log. Never enforced, never read
+     * by a screen — it exists so two parents' edits can be merged instead of
+     * one silently overwriting the other, and so "why did the TV change?" is
+     * answerable. Deliberately last, and deliberately excluded from
+     * [ConfigStore.fingerprint]; see `docs/PLAN-sync.md`.
+     */
+    val sync: SyncMeta = SyncMeta.EMPTY
 ) {
     fun profile(id: String?): Profile? = profiles.firstOrNull { it.id == id }
 

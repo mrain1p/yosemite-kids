@@ -335,13 +335,20 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         exportWatchState = { WatchSync.exportJson(appContext) },
                         mergeWatchState = { WatchSync.mergeJson(appContext, it) },
                         mergeLooks = { json ->
-                            val merged = io.pickwick.app.data.ProfileLooks.mergeInto(configStore.load(), json)
-                            if (merged != null) {
-                                configStore.save(merged)
-                                // The header avatar on this phone follows too.
-                                ConfigEvents.onConfigChanged?.invoke()
+                            // update{} rather than load-then-save: the read and
+                            // the write must be one locked step. A co-parent's
+                            // push landing in between would look to the stamper
+                            // like this device adding whatever it brought, which
+                            // clears that unit's tombstone and can resurrect a
+                            // channel a parent deleted.
+                            var adopted = false
+                            configStore.update(who = pairingStore.myName(), by = pairingStore.by()) { c ->
+                                io.pickwick.app.data.ProfileLooks.mergeInto(c, json)
+                                    ?.also { adopted = true } ?: c
                             }
-                            merged != null
+                            // The header avatar on this phone follows too.
+                            if (adopted) ConfigEvents.onConfigChanged?.invoke()
+                            adopted
                         },
                         exportVerdicts = {
                             io.pickwick.app.data.ScreeningStore(appContext)
@@ -599,11 +606,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             io.pickwick.app.data.ProfileLooks(appContext)
                                                 .record(pid, avatar, color, now)
                                         } else {
-                                            val c = configStore.load()
-                                            configStore.save(c.copy(profiles = c.profiles.map { p ->
-                                                if (p.id == pid) p.copy(avatar = avatar, colorArgb = color, lookAt = now)
-                                                else p
-                                            }))
+                                            configStore.update(
+                                                who = pairingStore.myName(), by = pairingStore.by()
+                                            ) { c ->
+                                                c.copy(profiles = c.profiles.map { p ->
+                                                    if (p.id == pid) {
+                                                        p.copy(avatar = avatar, colorArgb = color, lookAt = now)
+                                                    } else p
+                                                })
+                                            }
                                         }
                                     }
                                     family = withContext(Dispatchers.IO) { configStore.load() }

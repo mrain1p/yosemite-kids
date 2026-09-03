@@ -19,7 +19,25 @@ object ConfigMerge {
      * banner will key on later. [text] is the line a parent reads. Nothing
      * here ever carries a credential — see the AI branch of [describe].
      */
-    data class Change(val code: String, val text: String)
+    data class Change(
+        val code: String,
+        val text: String,
+        /** Stable identity, so two devices' logs union rather than duplicate. Empty for a diff line. */
+        val id: String = "",
+        /** The minted ordering stamp. Zero for a diff line, which was never logged. */
+        val at: Long = 0L,
+        /**
+         * The minting device's raw wall clock, which is what the feed shows.
+         * Separate from [at] because [at] is forced monotonic (see `stamped`):
+         * a device with a wrong clock still has to be able to win an edit, but
+         * a parent should never be shown the fiction that produces.
+         */
+        val shownAt: Long = 0L,
+        /** First 8 hex of the minting device's pairing token — identity, for coalescing. */
+        val by: String = "",
+        /** The phone's name as the parent set it — identity, for reading. */
+        val who: String = ""
+    )
 
     /**
      * What changes if [b] replaces [a]: adds, removes and edits, in the order
@@ -138,6 +156,119 @@ object ConfigMerge {
     /** True when [b] would change nothing on a device holding [a]. */
     fun identical(a: Whitelist, b: Whitelist): Boolean = describe(a, b).isEmpty()
 
+    // --- The sync blob: hashing and serialization -----------------------
+
+    /**
+     * A fingerprint of the *bookkeeping* — stamps, tombstones and floors — so
+     * two devices can tell "we hold the same config" from "we hold the same
+     * config but one of us knows about a deletion the other doesn't".
+     *
+     * Built from a canonically sorted string and never from
+     * `JSONObject.toString()`. Android's `JSONObject` is `LinkedHashMap`-backed
+     * and therefore insertion-ordered, so two devices holding identical maps
+     * assembled in different orders would hash differently and push at each
+     * other forever. The JVM tests' `org.json` uses a plain `HashMap`, so no
+     * test in this repo would ever catch that.
+     *
+     * The log and [SyncMeta.docAt] are excluded on purpose: a log line is not
+     * state, and two devices holding the same rules with different log tails
+     * must read as in sync.
+     */
+    fun syncHash(sync: SyncMeta): String {
+        val canonical = buildString {
+            fun section(tag: Char, m: Map<String, Long>) {
+                m.entries.sortedBy { it.key }.forEach {
+                    append(tag); append(':'); append(it.key)
+                    append('='); append(it.value); append('\n')
+                }
+            }
+            section('a', sync.at)
+            section('g', sync.gone)
+            section('f', sync.floor)
+        }
+        return java.security.MessageDigest.getInstance("SHA-256")
+            .digest(canonical.toByteArray())
+            .take(4)
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    fun syncToJson(sync: SyncMeta): org.json.JSONObject {
+        val o = org.json.JSONObject()
+        o.put("v", sync.v)
+        if (sync.docAt > 0) o.put("docAt", sync.docAt)
+        fun map(name: String, m: Map<String, Long>) {
+            if (m.isEmpty()) return
+            val j = org.json.JSONObject()
+            // Sorted so the file is diffable and two devices holding the same
+            // map write the same bytes. The hash does not depend on it, but a
+            // parent reading config.json over adb should not see it shuffle.
+            m.entries.sortedBy { it.key }.forEach { j.put(it.key, it.value) }
+            o.put(name, j)
+        }
+        map("at", sync.at)
+        map("gone", sync.gone)
+        map("floor", sync.floor)
+        if (sync.log.isNotEmpty()) {
+            val arr = org.json.JSONArray()
+            sync.log.forEach { c ->
+                arr.put(
+                    org.json.JSONObject()
+                        .put("id", c.id).put("at", c.at).put("shownAt", c.shownAt)
+                        .put("by", c.by).put("who", c.who)
+                        .put("code", c.code).put("text", c.text)
+                )
+            }
+            o.put("log", arr)
+        }
+        return o
+    }
+
+    /**
+     * Reads the blob, refusing to let a bad one cost the config.
+     *
+     * A version this build does not know reads as **no sync block at all**
+     * rather than as an error: the rest of the document is a perfectly good
+     * config, and a newer peer's bookkeeping is exactly the thing this build
+     * is not equipped to reason about. Same for a malformed entry — the
+     * channels still load.
+     */
+    fun syncFromJson(root: org.json.JSONObject): SyncMeta {
+        val o = root.optJSONObject("sync") ?: return SyncMeta.EMPTY
+        val v = o.optInt("v", 0)
+        if (v != SyncMeta.VERSION) return SyncMeta.EMPTY
+        fun map(name: String): Map<String, Long> {
+            val j = o.optJSONObject(name) ?: return emptyMap()
+            val out = LinkedHashMap<String, Long>()
+            j.keys().forEach { k -> j.optLong(k, 0L).takeIf { it != 0L }?.let { out[k] = it } }
+            return out
+        }
+        val log = ArrayList<Change>()
+        o.optJSONArray("log")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                runCatching {
+                    val e = arr.getJSONObject(i)
+                    log += Change(
+                        code = e.optString("code"),
+                        text = e.optString("text"),
+                        id = e.optString("id"),
+                        at = e.optLong("at", 0L),
+                        shownAt = e.optLong("shownAt", 0L),
+                        by = e.optString("by"),
+                        who = e.optString("who")
+                    )
+                }
+            }
+        }
+        return SyncMeta(
+            v = v,
+            docAt = o.optLong("docAt", 0L),
+            at = map("at"),
+            gone = map("gone"),
+            floor = map("floor"),
+            log = log
+        )
+    }
+
     private fun name(e: WhitelistEntry): String = e.label?.takeIf { it.isNotBlank() } ?: e.id
 
     /**
@@ -223,5 +354,61 @@ object ConfigMerge {
         1 -> items[0]
         2 -> "${items[0]} and ${items[1]}"
         else -> items.dropLast(1).joinToString(", ") + " and " + items.last()
+    }
+}
+
+/**
+ * Per-unit sync bookkeeping, carried inside `config.json` under `"sync"`.
+ *
+ * A *unit* is the smallest thing two parents can edit independently: one
+ * channel (`src|<id>`), one kid's rules (`kid.rules|<id>`), one blocked video
+ * (`blk|<id>`), the loose app settings as a group (`settings`). The key space
+ * is the whole design — see `docs/PLAN-sync.md`.
+ *
+ * None of it is ever enforced or shown as a rule. It exists so a merge can
+ * tell "Dad added this" from "Mum removed it", which whole-file
+ * last-writer-wins cannot, and so the change log can answer "why did the TV
+ * change?".
+ */
+data class SyncMeta(
+    /** Format version. A document whose `v` this build does not know reads as no sync block at all. */
+    val v: Int = VERSION,
+    /**
+     * The highest stamp this document carries. Every new stamp is minted above
+     * it, so a device whose clock came back wrong after a power cut can still
+     * win its own edit instead of losing every unit it touches.
+     */
+    val docAt: Long = 0L,
+    /** unit key → when it was last edited. */
+    val at: Map<String, Long> = emptyMap(),
+    /**
+     * unit key → when it was deleted. Permanent, because age-based pruning is
+     * clock-dependent: two devices on different clocks would prune different
+     * sets and then rewrite and re-exchange forever.
+     */
+    val gone: Map<String, Long> = emptyMap(),
+    /**
+     * namespace → the newest tombstone stamp ever dropped by the cap. A
+     * one-sided row older than the floor is not admitted, which is what stops
+     * an evicted tombstone from letting its subject come back.
+     */
+    val floor: Map<String, Long> = emptyMap(),
+    /** The recent change log, newest last, capped at [MAX_LOG]. */
+    val log: List<ConfigMerge.Change> = emptyList()
+) {
+    val isEmpty: Boolean
+        get() = at.isEmpty() && gone.isEmpty() && floor.isEmpty() && log.isEmpty()
+
+    companion object {
+        /** Bump only for a change an older build could misread. Unknown versions read as absent. */
+        const val VERSION = 1
+
+        /** Tombstones kept before the oldest is dropped and [floor] rises in its place. */
+        const val MAX_TOMBSTONES = 1000
+
+        /** Change-log lines carried in the config. It is a feed, not an audit trail. */
+        const val MAX_LOG = 30
+
+        val EMPTY = SyncMeta()
     }
 }

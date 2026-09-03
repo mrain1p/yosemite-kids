@@ -91,9 +91,28 @@ private sealed interface DeviceSync {
         val hash: String,
         val updatedAt: Long,
         /** The device's own identity token — the key in deviceProfiles. */
-        val deviceToken: String? = null
+        val deviceToken: String? = null,
+        /** Null for a build that predates the sync blob: push-only, never a merge source. */
+        val syncV: Int? = null,
+        val syncHash: String? = null
     ) : DeviceSync
 }
+
+/**
+ * Whether a device really matches this phone.
+ *
+ * Config fingerprint *and* bookkeeping fingerprint, because the two answer
+ * different questions: the first is "do we hold the same rules", the second is
+ * "do we know the same history". A TV holding a tombstone this phone has never
+ * seen matches on the first and not the second — and if that read as "in sync"
+ * the deletion would never travel, since the reconcile short-circuits on hash
+ * equality and never fetches a body.
+ *
+ * A legacy peer has no bookkeeping to compare, so it is judged on the config
+ * alone, exactly as before.
+ */
+private fun DeviceSync.Reachable.matches(localHash: String, localSyncHash: String): Boolean =
+    hash == localHash && (syncV == null || syncHash == localSyncHash)
 
 @Composable
 internal fun PhoneDevicesSection(
@@ -108,6 +127,13 @@ internal fun PhoneDevicesSection(
      * moment the parent changed anything.
      */
     localHash: String,
+    /**
+     * Fingerprint of this phone's sync bookkeeping. Read from disk rather than
+     * derived from the form, because the form has no opinion about it — the
+     * stamper mints it at save time. Compared alongside [localHash] so a peer
+     * that knows about a deletion this phone does not cannot read as in sync.
+     */
+    localSyncHash: String = "",
     /** Saves the form's current state to disk and returns its JSON — what Push sends. */
     saveCurrent: () -> String,
     /** Assign a device (by its own token) to a kid; null = shared (picker). */
@@ -146,7 +172,7 @@ internal fun PhoneDevicesSection(
         syncStates = syncStates + (device.key to DeviceSync.Checking)
         val status = LanClient.fullStatus(device)
         syncStates = syncStates + (device.key to
-            (status?.let { DeviceSync.Reachable(it.hash, it.updatedAt, it.deviceToken) }
+            (status?.let { DeviceSync.Reachable(it.hash, it.updatedAt, it.deviceToken, it.syncV, it.syncHash) }
                 ?: DeviceSync.Offline))
         pendingByDevice = pendingByDevice + (device.key to LanClient.pendingRequests(device))
         adminsByDevice = adminsByDevice + (device.key to LanClient.admins(device))
@@ -435,13 +461,13 @@ internal fun PhoneDevicesSection(
                         is DeviceSync.Checking, null -> "checking…"
                         is DeviceSync.Offline -> "offline — open Pickwick on it, on home Wi-Fi"
                         is DeviceSync.Reachable ->
-                            if (sync.hash == localHash) "in sync ✓"
+                            if (sync.matches(localHash, localSyncHash)) "in sync ✓"
                             else "out of sync — #${sync.hash} on device"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = when (sync) {
                         is DeviceSync.Reachable ->
-                            if (sync.hash == localHash) androidx.compose.ui.graphics.Color(0xFF81C784)
+                            if (sync.matches(localHash, localSyncHash)) androidx.compose.ui.graphics.Color(0xFF81C784)
                             else MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
@@ -450,7 +476,9 @@ internal fun PhoneDevicesSection(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.horizontalScroll(rememberScrollState())
                 ) {
-                    if (sync is DeviceSync.Reachable && sync.hash != localHash) {
+                    if (sync is DeviceSync.Reachable &&
+                        (!sync.matches(localHash, localSyncHash) || sync.syncV == null)
+                    ) {
                         Button(modifier = Modifier.tvFocusHighlight(), onClick = {
                             // Push = "make the device match this screen": saves the
                             // form (unsaved edits included), then overwrites the device.
@@ -472,7 +500,9 @@ internal fun PhoneDevicesSection(
                                     after == null ->
                                         "Sent, but ${device.name} stopped answering — " +
                                             "check it arrived."
-                                    after.hash == localHash -> "Pushed ✓"
+                                    after.hash == localHash &&
+                                        (after.syncV == null || after.syncHash == localSyncHash) ->
+                                        "Pushed ✓"
                                     // The device took the config and still disagrees:
                                     // almost always an older build that can't see a
                                     // setting this phone knows about (it stores the

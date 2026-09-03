@@ -468,12 +468,18 @@ private fun AdminScreen(
                     // The rules moved to the kid; only "pause everyone" stays.
                     limits = Limits(pausedUntilMillis = c.limits.pausedUntilMillis)
                 )
-                configStore.save(migrated)
-                val json = ConfigStore.toJson(migrated)
-                io.pickwick.app.data.LanPushScope.scope.launch {
-                    pairingStore.paired().forEach { LanClient.pushConfig(it, json) }
+                // base = c, so the migration is stamped as one deliberate act
+                // by this phone rather than as "everything changed".
+                val saved = configStore.save(
+                    migrated, base = c,
+                    who = pairingStore.myName(), by = pairingStore.by()
+                )
+                saved?.json?.let { json ->
+                    io.pickwick.app.data.LanPushScope.scope.launch {
+                        pairingStore.paired().forEach { LanClient.pushConfig(it, json) }
+                    }
                 }
-                migrated
+                saved?.config ?: migrated
             }
         }
     }
@@ -571,14 +577,25 @@ private fun AdminScreen(
         fun scrub(overlay: Map<String, Set<String>>) = overlay
             .mapValues { (_, pids) -> pids.intersect(validIds) }
             .filterValues { it.isNotEmpty() }
-        return Whitelist(
-            entries.map { e ->
+        // baseline.copy, never a fresh Whitelist(...). A positional constructor
+        // silently defaults out any field this form does not name, and the form
+        // does not name the sync blob — so every autosave, every close and
+        // every Push would have shipped a config with its bookkeeping erased,
+        // and the merge would never have run on the primary path. Copying
+        // inherits whatever the model grows next, too.
+        return baseline.copy(
+            sources = entries.map { e ->
                 if (e.profileIds.isEmpty()) e
                 else e.copy(profileIds = e.profileIds.intersect(validIds))
             },
-            blocked, limits, finalAi, aiAllowed,
-            profiles, scrub(blockedFor), scrub(allowedFor),
-            deviceProfiles.filterValues { it in validIds },
+            blockedVideoIds = blocked,
+            limits = limits,
+            ai = finalAi,
+            aiAllowedVideoIds = aiAllowed,
+            profiles = profiles,
+            blockedFor = scrub(blockedFor),
+            allowedFor = scrub(allowedFor),
+            deviceProfiles = deviceProfiles.filterValues { it in validIds },
             masterDeviceToken = masterToken,
             sponsorSkip = sponsorSkip,
             autoplayNext = autoplayNext,
@@ -600,8 +617,11 @@ private fun AdminScreen(
      * costs a connect timeout. Each push cancels the one before it, so a
      * superseded config never lands on a late retry.
      */
-    fun pushAll(config: Whitelist) {
-        val json = ConfigStore.toJson(config)
+    // Takes the bytes `save` wrote, not a Whitelist to re-serialize. A second
+    // serialization is a second clock read and, worse, would ship a config
+    // without the stamps the save just minted — so the merge on the receiving
+    // side would have nothing to work with.
+    fun pushAll(json: String) {
         pushJob.getAndSet(io.pickwick.app.data.LanPushScope.scope.launch {
             val devices = pairingStore.paired()
             if (devices.isEmpty()) return@launch
@@ -631,12 +651,24 @@ private fun AdminScreen(
     val current = buildCurrentConfig()
     val currentHash = ConfigStore.fingerprint(current)
     val baselineHash = ConfigStore.fingerprint(baseline)
+    // The bookkeeping's fingerprint, from disk. It moves when a save stamps or
+    // a peer's push merges, never when the form changes, so it follows the
+    // adopted baseline rather than the live edit.
+    val localSyncHash by produceState("", baseline) {
+        value = withContext(kotlinx.coroutines.Dispatchers.IO) { configStore.syncHash() }
+    }
     LaunchedEffect(currentHash) {
         if (currentHash == baselineHash) return@LaunchedEffect
         delay(1_500)
-        withContext(kotlinx.coroutines.Dispatchers.IO) { configStore.save(current) }
-        baseline = current
-        pushAll(current)
+        val saved = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            configStore.save(current, base = baseline, who = pairingStore.myName(), by = pairingStore.by())
+        }
+        // The stamped result, not `current`: stamping carries forward anything
+        // a co-parent's push landed under the open form, and adopting the
+        // form's own value as the baseline would read those as fresh adds on
+        // the next save — clearing their tombstones.
+        baseline = saved?.config ?: current
+        saved?.let { pushAll(it.json) }
     }
     // Leaving mid-debounce must not lose the last tap: flush on the way out.
     // The save lands before onDone, because closing makes MainActivity
@@ -644,9 +676,11 @@ private fun AdminScreen(
     fun close() {
         if (currentHash == baselineHash) { onDone(true); return }
         scope.launch {
-            withContext(kotlinx.coroutines.Dispatchers.IO) { configStore.save(current) }
-            baseline = current
-            pushAll(current)
+            val saved = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                configStore.save(current, base = baseline, who = pairingStore.myName(), by = pairingStore.by())
+            }
+            baseline = saved?.config ?: current
+            saved?.let { pushAll(it.json) }
             onDone(true)
         }
     }
@@ -745,11 +779,20 @@ private fun AdminScreen(
                             // edit and its auto-save, "in sync ✓" measured against
                             // disk would be a lie for a beat.
                             localHash = currentHash,
+                            // Re-read after every save, since that is when the
+                            // stamper mints it. Keyed on the saved baseline
+                            // rather than the live form: the form does not
+                            // carry bookkeeping and never changes it.
+                            localSyncHash = localSyncHash,
                             // Push must deliver what the parent is LOOKING AT.
                             saveCurrent = {
                                 val config = buildCurrentConfig()
-                                configStore.save(config)
-                                ConfigStore.toJson(config)
+                                val saved = configStore.save(
+                                    config, base = baseline,
+                                    who = pairingStore.myName(), by = pairingStore.by()
+                                )
+                                baseline = saved?.config ?: config
+                                saved?.json ?: ConfigStore.toJson(config)
                             },
                             onAssign = { token, profileId ->
                                 deviceProfiles =

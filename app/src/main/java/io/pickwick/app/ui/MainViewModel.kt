@@ -243,7 +243,12 @@ class MainViewModel(
                 // would then push that emptiness to every paired device.
                 if (loaded.masterDeviceToken == null && isParent && !store.degraded) {
                     val me = pairingStore?.deviceToken() ?: return@launch
-                    store.save(loaded.copy(masterDeviceToken = me))
+                    // Locked read-modify-write: `loaded` is already stale by
+                    // the time we get here, and handing a stale config to the
+                    // stamper reads a merged-in channel as a fresh add — which
+                    // clears its tombstone and resurrects a deleted channel.
+                    // No log line: claiming the index is not a parent's action.
+                    store.update { it.copy(masterDeviceToken = me) }
                     android.util.Log.i("Pickwick", "claimed master role (indexing)")
                 }
                 // A kid may have restyled themselves on a device. Adopt that

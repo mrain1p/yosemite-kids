@@ -11,6 +11,50 @@ if (-not (Test-Path "local.properties")) {
     exit 1
 }
 
+# --- 0/4 invariants a test cannot state ------------------------------------
+# Each of these is a property that has to hold across a whole file, so no
+# assertion can pin it. See docs/PLAN-sync.md.
+Write-Host "== 0/4 source invariants" -ForegroundColor Cyan
+
+function Fail-Guard($message) {
+    Write-Host "guard FAILED: $message" -ForegroundColor Red
+    exit 1
+}
+
+# The merge must read no clock. That is what makes idempotence and
+# associativity structural rather than artifacts that hold only while a test
+# freezes the clock, and it is why a TV with a bad RTC cannot drop a parent's
+# active pause into the shared document.
+$mergeSrc = Get-Content "app\src\main\java\io\pickwick\app\data\ConfigMerge.kt" -Raw
+if ($mergeSrc -match "currentTimeMillis|Instant\.now|System\.nanoTime") {
+    Fail-Guard "ConfigMerge.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."
+}
+
+# Every config write must pass through commit(), which stashes the API key in
+# SecretStore and strips it from the bytes. Two write paths means the next one
+# added forgets.
+$storeLines = Get-Content "app\src\main\java\io\pickwick\app\data\ConfigStore.kt"
+$writers = ($storeLines | Select-String -Pattern "writeAtomically\(" -SimpleMatch).Count
+if ($writers -gt 2) {
+    Fail-Guard "ConfigStore.kt calls writeAtomically outside commit(). Every write goes through commit."
+}
+
+# buildCurrentConfig must copy the baseline, never construct a Whitelist: a
+# positional constructor silently defaults out any field the form does not
+# name, which would erase the sync blob from every save and every push.
+$settingsSrc = Get-Content "app\src\main\java\io\pickwick\app\ui\Settings.kt" -Raw
+if ($settingsSrc -match "return Whitelist\(") {
+    Fail-Guard "Settings.kt constructs a Whitelist. Use baseline.copy(...) so new fields are inherited."
+}
+
+# The gate discovers tests by globbing *Test.kt, in this script, check.sh and
+# CI alike. A file named anything else is skipped by all three and looks green.
+$misnamed = Get-ChildItem app\src\test\java\io\pickwick\app -File |
+    Where-Object { $_.Name -notlike "*Test.kt" }
+if ($misnamed) {
+    Fail-Guard "these test files will never run: $($misnamed.Name -join ', ') — rename to *Test.kt"
+}
+
 Write-Host "== 1/3 compile (assembleDebug)" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q assembleDebug
 if ($LASTEXITCODE -ne 0) { Write-Host "compile FAILED" -ForegroundColor Red; exit 1 }
