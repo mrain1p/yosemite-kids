@@ -109,3 +109,29 @@ screening switch is now disabled until a model is set, with a line saying why,
 because a switch that turns on and silently does nothing reads as a broken
 feature rather than a missing step. Discovery's own not-ready message points at
 "AI connection" instead of at the screening section.
+
+### 5. Review the settings and connections pages as a whole
+
+Raised 2026-09-03, after the shelf settings turned out to be filed under
+Playback where nobody would look for them. That was one symptom; the ask is to
+go through the settings hub and the pairing/connection screen properly and
+check that each page holds what its name implies, and that related things link
+to each other rather than sitting in separate corners.
+
+Specifically worth checking:
+
+- **Every hub row's summary names what is actually on that page.** Two were
+  wrong or incomplete before this was raised, so the others deserve a look.
+- **Pairing and Devices.** The QR/pairing flow and the Devices page are the
+  same subject seen twice; a parent who lands on one and needs the other has
+  no link between them.
+- **The connection screen's step feedback** — waiting to scan, loading,
+  succeeded, failed, and when it is safe to go back — which was asked for
+  earlier and has not been visually verified since.
+- **AI connection**, newly split out, should be reachable from wherever a
+  parent first hits a feature that needs it, rather than only by knowing to
+  open Content screening.
+
+Do this after the sync milestones, and do it on a device rather than from the
+source — the last two settings problems were both invisible in the code and
+obvious in a screenshot.

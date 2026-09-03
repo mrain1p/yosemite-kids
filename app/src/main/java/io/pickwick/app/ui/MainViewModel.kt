@@ -266,8 +266,6 @@ class MainViewModel(
                         }
                     }
                 }
-                val localHash = ConfigStore.fingerprint(store.load())
-                val localAt = store.updatedAt()
                 devices.forEach { stored ->
                     var device = stored
                     var status = LanClient.fullStatus(device)
@@ -295,22 +293,78 @@ class MainViewModel(
                         device = device.copy(id = status.deviceToken)
                         pairingStore?.replacePaired(stored, device)
                     }
+                    // Read per iteration, not hoisted above the loop. With two
+                    // TVs, merging the first one lands a co-parent's channel —
+                    // and comparing the second against the pre-merge hash
+                    // would take the do-nothing arm and leave it stale, while
+                    // the devices list cheerfully reported it in sync.
+                    val localHash = ConfigStore.fingerprint(store.load())
+                    val localSyncHash = store.syncHash()
+                    val localAt = store.updatedAt()
                     val remoteHash = status.hash
-                    val remoteAt = status.updatedAt
-                    when {
-                        remoteHash == localHash -> {}
-                        remoteAt < localAt -> {
+                    when (
+                        syncAction(
+                            localHash = localHash,
+                            localSyncHash = localSyncHash,
+                            localAt = localAt,
+                            remoteHash = remoteHash,
+                            remoteSyncHash = status.syncHash,
+                            remoteSyncV = status.syncV,
+                            remoteAt = status.updatedAt
+                        )
+                    ) {
+                        SyncAction.Nothing -> {}
+
+                        // The rendezvous. Their copy comes here, both sides are
+                        // merged, and the result goes back — so a co-parent's
+                        // edit reaches this phone without anyone pressing
+                        // anything, which is the whole point of the milestone.
+                        SyncAction.Merge -> {
+                            val theirs = LanClient.fetchConfig(device)
+                            if (theirs == null) {
+                                android.util.Log.i(
+                                    "Pickwick",
+                                    "config sync: ${device.name} advertised sync but wouldn't serve its config"
+                                )
+                                return@forEach
+                            }
+                            val outcome = store.mergeIncoming(theirs, device.name)
+                            if (outcome == null) {
+                                android.util.Log.w(
+                                    "Pickwick",
+                                    "config sync: ${device.name} sent a config we couldn't read"
+                                )
+                                return@forEach
+                            }
+                            if (outcome.changed) {
+                                ConfigEvents.onConfigChanged?.invoke()
+                                refresh()
+                            }
+                            if (outcome.changed || outcome.peerBehind) {
+                                val ok = LanClient.pushConfig(device, store.rawJson())
+                                android.util.Log.i(
+                                    "Pickwick",
+                                    "config sync: merged with ${device.name} " +
+                                        "(learned=${outcome.changed} theyLagged=${outcome.peerBehind}) " +
+                                        "→ pushed back ${if (ok) "accepted" else "REJECTED"}"
+                                )
+                            }
+                        }
+
+                        SyncAction.PushWhole -> {
                             val ok = LanClient.pushConfig(device, store.rawJson())
                             android.util.Log.i(
                                 "Pickwick",
                                 "config sync: pushed #$localHash to ${device.name} " +
-                                    "(had #$remoteHash) → ${if (ok) "accepted" else "REJECTED"}"
+                                    "(had #$remoteHash, pre-merge build) → " +
+                                    if (ok) "accepted" else "REJECTED"
                             )
                         }
-                        else -> android.util.Log.i(
+
+                        SyncAction.LeaveForParent -> android.util.Log.i(
                             "Pickwick",
-                            "config sync: ${device.name} differs (#$remoteHash) but its copy is " +
-                                "newer (theirs $remoteAt >= ours $localAt) — leaving for Push/Pull"
+                            "config sync: ${device.name} differs (#$remoteHash) and is on a " +
+                                "pre-merge build whose copy claims to be newer — leaving for Push/Pull"
                         )
                     }
                 }
