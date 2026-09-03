@@ -537,6 +537,7 @@ private fun AdminScreen(
 
     var statsDevice by remember { mutableStateOf<PairedDevice?>(null) }
     var digestOpen by remember { mutableStateOf(false) }
+    var activityOpen by remember { mutableStateOf(false) }
 
     // Pushes chase each other: the newest cancels the one in flight, so a
     // retry never delivers a config the parent has since edited past.
@@ -547,6 +548,10 @@ private fun AdminScreen(
     // Stats takes over the screen while open.
     statsDevice?.let { device ->
         StatsScreen(device, configStore) { statsDevice = null }
+        return
+    }
+    if (activityOpen) {
+        SyncActivityScreen(configStore) { activityOpen = false }
         return
     }
     if (digestOpen) {
@@ -807,6 +812,40 @@ private fun AdminScreen(
                         // Per-device Stats answers "what's happening today"; this
                         // answers "how did the week go" across every device.
                         CompactButton(onClick = { digestOpen = true }) { Text("Weekly digest") }
+                    }
+                    // Who changed what. Nothing like this existed, so "why did
+                    // the TV change?" and "did my edit stick?" were simply
+                    // unanswerable — a parent's only recourse was comparing two
+                    // screens by eye.
+                    SectionTitle("Recent changes")
+                    SettingsCard {
+                        val latest = latestChangeLine(baseline.sync.log)
+                        Text(
+                            latest ?: "No settings changes recorded yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        CompactButton(onClick = { activityOpen = true }) { Text("See all changes") }
+                    }
+                    // This phone's name in that log. Build.MODEL is no help when
+                    // both parents carry the same handset, and "Dad's phone" is
+                    // exactly what a co-parent needs to read.
+                    SectionTitle("This phone")
+                    SettingsCard {
+                        var myName by remember { mutableStateOf(pairingStore.myName()) }
+                        OutlinedTextField(
+                            value = myName,
+                            onValueChange = { myName = it; pairingStore.setMyName(it) },
+                            singleLine = true,
+                            label = { Text("Called") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            "Shown beside the changes this phone makes, so the other " +
+                                "parent can tell who did what.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     // Search index: who's the master, and how far each channel's
                     // crawl has got. Read-only — the master does the work.
