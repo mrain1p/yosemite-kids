@@ -14,7 +14,7 @@ if (-not (Test-Path "local.properties")) {
 # --- 0/4 invariants a test cannot state ------------------------------------
 # Each of these is a property that has to hold across a whole file, so no
 # assertion can pin it. See docs/PLAN-sync.md.
-Write-Host "== 0/4 source invariants" -ForegroundColor Cyan
+Write-Host "== 0/5 source invariants" -ForegroundColor Cyan
 
 function Fail-Guard($message) {
     Write-Host "guard FAILED: $message" -ForegroundColor Red
@@ -71,6 +71,20 @@ foreach ($t in @("ConfigMergeTest", "ConfigStampTest", "ConfigSyncFormatTest", "
     }
 }
 
+# The hub must not depend on :app. :app is Android, and the whole reason the
+# hub can share this logic is that the shared half was lifted into :core. A
+# dependency here would drag the Android SDK into a container build.
+if (Select-String -Path "hub\build.gradle.kts" -Pattern 'project\(":app"\)' -Quiet) {
+    Fail-Guard ":hub depends on :app. Anything it needs belongs in :core."
+}
+
+# The hub answers /status with the keys LanClient.fullStatus parses. The hub
+# cannot depend on :app to check that, so the contract lives in a test — and
+# this makes sure the test is still there to check it.
+if (-not (Test-Path "hub\src\test\kotlin\io\pickwick\hub\HubServerTest.kt")) {
+    Fail-Guard "HubServerTest.kt is missing — it pins the /status wire contract with :app."
+}
+
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |
@@ -79,17 +93,21 @@ if ($misnamed) {
     Fail-Guard "these test files will never run: $($misnamed.Name -join ', ') — rename to *Test.kt"
 }
 
-Write-Host "== 1/4 compile (assembleDebug)" -ForegroundColor Cyan
+Write-Host "== 1/5 compile (assembleDebug)" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q assembleDebug
 if ($LASTEXITCODE -ne 0) { Write-Host "compile FAILED" -ForegroundColor Red; exit 1 }
 
 if ($Quick) { Write-Host "compile OK (quick mode)" -ForegroundColor Green; exit 0 }
 
-Write-Host "== 2/4 core tests (no Android — the hub runs this exact code)" -ForegroundColor Cyan
+Write-Host "== 2/5 core tests (no Android — the hub runs this exact code)" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q :core:test
 if ($LASTEXITCODE -ne 0) { Write-Host "core tests FAILED" -ForegroundColor Red; exit 1 }
 
-Write-Host "== 3/4 app unit tests (offline)" -ForegroundColor Cyan
+Write-Host "== 3/5 hub tests" -ForegroundColor Cyan
+& .\gradlew.bat --no-daemon -q :hub:test
+if ($LASTEXITCODE -ne 0) { Write-Host "hub tests FAILED" -ForegroundColor Red; exit 1 }
+
+Write-Host "== 4/5 app unit tests (offline)" -ForegroundColor Cyan
 # Every test class except the live-YouTube canaries. Gradle's --tests takes
 # patterns, not exclusions, so the list is built from the source tree.
 # SingleChannelProbeTest calls ChannelInfo.getInfo with no runCatching and no
@@ -102,7 +120,7 @@ $tests = Get-ChildItem app\src\test\java\io\pickwick\app -Filter *Test.kt |
 & .\gradlew.bat --no-daemon -q :app:testDebugUnitTest @tests
 if ($LASTEXITCODE -ne 0) { Write-Host "unit tests FAILED — see app\build\reports\tests\testDebugUnitTest\index.html" -ForegroundColor Red; exit 1 }
 
-Write-Host "== 4/4 worker tests" -ForegroundColor Cyan
+Write-Host "== 5/5 worker tests" -ForegroundColor Cyan
 if (Get-Command node -ErrorAction SilentlyContinue) {
     & node --test (Get-ChildItem "worker\test\*.test.mjs" | ForEach-Object { $_.FullName })
     if ($LASTEXITCODE -ne 0) { Write-Host "worker tests FAILED" -ForegroundColor Red; exit 1 }

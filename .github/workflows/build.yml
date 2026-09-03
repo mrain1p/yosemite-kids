@@ -47,6 +47,9 @@ jobs:
 
       # Every test class except the live-YouTube canary, discovered from the
       # tree so a new test file is in the gate without touching this list.
+      - name: Hub tests (the container's routes and enrolment)
+        run: ./gradlew :hub:test
+
       - name: Unit tests (non-network)
         run: |
           args=()

@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 # --- 0/4 invariants a test cannot state ------------------------------------
 # Each is a property that holds across a whole file, so no assertion can pin
 # it. See docs/PLAN-sync.md.
-echo "== 0/4 source invariants"
+echo "== 0/5 source invariants"
 guard_fail() { echo "guard FAILED: $1" >&2; exit 1; }
 
 # The merge must read no clock: that is what makes idempotence and
@@ -55,6 +55,20 @@ for t in ConfigMergeTest ConfigStampTest ConfigSyncFormatTest SyncDecisionTest; 
     guard_fail "$t.kt must live in core/src/test — there it covers the hub too, in :app it does not."
 done
 
+# The hub must not depend on :app. :app is Android, and the whole reason the
+# hub can share this logic is that the shared half was lifted into :core. A
+# dependency here would drag the Android SDK into a container build.
+if grep -qE "project\(\":app\"\)" hub/build.gradle.kts; then
+  guard_fail ":hub depends on :app. Anything it needs belongs in :core."
+fi
+
+# The hub answers /status with the keys LanClient.fullStatus parses. The hub
+# cannot depend on :app to check that, so the contract lives in a test — and
+# this makes sure the test is still there to check it.
+if [ ! -f hub/src/test/kotlin/io/pickwick/hub/HubServerTest.kt ]; then
+  guard_fail "HubServerTest.kt is missing — it pins the /status wire contract with :app."
+fi
+
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
@@ -62,15 +76,18 @@ if [ -n "$misnamed" ]; then
   guard_fail "these test files will never run: $misnamed — rename to *Test.kt"
 fi
 
-echo "== 1/3 compile (assembleDebug)"
+echo "== 1/5 compile (assembleDebug)"
 ./gradlew --no-daemon -q assembleDebug
 
 if [ "${1:-}" = "--quick" ]; then echo "compile OK (quick mode)"; exit 0; fi
 
-echo "== 2/4 core tests (no Android — the hub runs this exact code)"
+echo "== 2/5 core tests (no Android — the hub runs this exact code)"
 ./gradlew --no-daemon -q :core:test
 
-echo "== 3/4 app unit tests (offline)"
+echo "== 3/5 hub tests"
+./gradlew --no-daemon -q :hub:test
+
+echo "== 4/5 app unit tests (offline)"
 # Every test class except the live-YouTube canaries. Both reach real YouTube
 # unguarded, so a bot wall fails this gate for unrelated reasons.
 args=()
@@ -81,7 +98,7 @@ for f in app/src/test/java/io/pickwick/app/*Test.kt; do
 done
 ./gradlew --no-daemon -q :app:testDebugUnitTest "${args[@]}"
 
-echo "== 4/4 worker tests"
+echo "== 5/5 worker tests"
 if command -v node >/dev/null 2>&1; then
   node --test worker/test/*.test.mjs
 else

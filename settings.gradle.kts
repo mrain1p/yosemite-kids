@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "pickwick"
 include(":app")
 include(":core")
+include(":hub")

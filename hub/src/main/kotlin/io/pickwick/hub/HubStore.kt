@@ -1,0 +1,142 @@
+package io.pickwick.hub
+
+import io.pickwick.app.data.ConfigJson
+import io.pickwick.app.data.ConfigMerge
+import io.pickwick.app.data.SyncMeta
+import io.pickwick.app.data.Whitelist
+import java.io.File
+
+/**
+ * The hub's copy of the family config.
+ *
+ * Deliberately the same shape as the app's `ConfigStore`, minus everything
+ * Android: no Keystore, no SharedPreferences, no kid's pending restyle to
+ * overlay. What it keeps is the part that matters for correctness — the atomic
+ * write, one lock held across read-merge-write, and the merge itself, taken
+ * from `:core` rather than reimplemented.
+ *
+ * The API key is **not** stored here. A hub is optional, so the key stays where
+ * it already lives, on the devices; a config arriving with one has it stripped
+ * before it touches this disk, exactly as the app does.
+ */
+class HubStore(private val dataDir: File) {
+
+    private val file = File(dataDir, "config.json")
+
+    /**
+     * One lock across read, merge and write.
+     *
+     * The server answers on a thread pool, so two devices can push at the same
+     * instant. An unlocked read-modify-write would interleave and lose one
+     * side — the exact bug the merge exists to fix, reintroduced a layer down
+     * and much harder to see. The app's `mergeIncoming` holds its lock the same
+     * way and for the same reason.
+     */
+    private val lock = Any()
+
+    init {
+        dataDir.mkdirs()
+    }
+
+    /** The stored config, or an empty one before anything has ever been written. */
+    fun load(): Whitelist = synchronized(lock) {
+        val text = raw() ?: return Whitelist(emptyList(), emptySet())
+        runCatching { ConfigJson.fromJson(text) }.getOrElse {
+            // A file that exists but will not parse must not read as "no
+            // channels, no kids, no rules" — that emptiness would be merged
+            // into every device that syncs next.
+            System.err.println("config.json will not parse; refusing to serve it as empty")
+            throw it
+        }
+    }
+
+    /** The bytes on disk, exactly as they will be served. Null before the first write. */
+    fun raw(): String? = synchronized(lock) {
+        if (file.exists()) file.readText().takeIf { it.isNotBlank() } else null
+    }
+
+    fun fingerprint(): String = runCatching { ConfigJson.fingerprint(load()) }.getOrDefault("")
+
+    fun syncHash(): String = runCatching { ConfigMerge.syncHash(load().sync) }
+        .getOrDefault(ConfigMerge.syncHash(SyncMeta.EMPTY))
+
+    fun updatedAt(): Long = runCatching {
+        raw()?.let { org.json.JSONObject(it).optLong("updatedAt", 0L) } ?: 0L
+    }.getOrDefault(0L)
+
+    /** What one incoming push did — the same shape the app reports. */
+    data class Outcome(
+        val changed: Boolean,
+        val peerBehind: Boolean,
+        val hash: String,
+        val syncHash: String
+    )
+
+    /**
+     * Merge a pushed config in. Null when the body is not a readable config, so
+     * the caller answers 400 and nothing here is touched.
+     */
+    fun merge(incoming: String, from: String?): Outcome? = synchronized(lock) {
+        val result = ConfigMerge.merge(raw(), incoming)
+        if (result.merged == null && !result.peerBehind) {
+            // Either nothing new, or unreadable. Tell them apart the same way
+            // the app does, so a malformed push is still a 400.
+            if (runCatching { ConfigJson.fromJson(incoming) }.isFailure) return null
+        }
+
+        val beforeHash = fingerprintOf(raw())
+        val beforeSync = syncHashOf(raw())
+        result.merged?.let { commit(it) }
+        val after = load()
+        val afterHash = ConfigJson.fingerprint(after)
+        val afterSync = ConfigMerge.syncHash(after.sync)
+
+        // "Changed" means the settings or the sync history moved — NOT that the
+        // bytes differ. `toJson` stamps `updatedAt` at serialization time, so
+        // re-pushing an identical config produces different bytes every time;
+        // reporting that as a change would have the hub announce news on every
+        // sweep forever and log a merge that merged nothing.
+        val changed = beforeHash != afterHash || beforeSync != afterSync
+        if (changed) {
+            println("merged a push from ${from ?: "a peer"} → #$afterHash")
+        }
+        Outcome(
+            changed = changed,
+            peerBehind = result.peerBehind,
+            hash = afterHash,
+            syncHash = afterSync
+        )
+    }
+
+    private fun fingerprintOf(text: String?): String =
+        text?.let { runCatching { ConfigJson.fingerprint(ConfigJson.fromJson(it)) }.getOrNull() }.orEmpty()
+
+    private fun syncHashOf(text: String?): String =
+        text?.let { runCatching { ConfigMerge.syncHash(ConfigJson.fromJson(it).sync) }.getOrNull() }.orEmpty()
+
+    /**
+     * Every write goes through here, so there is one place that strips the API
+     * key and one place that writes atomically. A second write path is how the
+     * next one added forgets to do both.
+     */
+    private fun commit(json: String) {
+        val safe = ConfigJson.stripSecrets(json)
+        val tmp = File(dataDir, "config.json.tmp")
+        tmp.writeText(safe)
+        if (!tmp.renameTo(file)) {
+            // Some filesystems refuse a rename over an existing file.
+            file.delete()
+            if (!tmp.renameTo(file)) {
+                file.writeText(safe)
+                tmp.delete()
+            }
+        }
+    }
+
+    /** Adopt a config wholesale — the first enrolment, and nothing else. */
+    fun adopt(json: String): Boolean = synchronized(lock) {
+        if (runCatching { ConfigJson.fromJson(json) }.isFailure) return false
+        commit(json)
+        true
+    }
+}

@@ -1,0 +1,45 @@
+# Pickwick hub — an always-on peer for the family config.
+#
+# Paths below are Synology's layout (/volume1/docker/...). On another NAS,
+# change the left-hand side of the volume line and nothing else.
+#
+#   docker compose up -d
+#
+# Then open http://<nas-ip>:8765/health to confirm it is alive, and approve a
+# device's enrolment code to pair the first one.
+
+services:
+  pickwick-hub:
+    build:
+      # Built from the repo root: the image needs :core as well as :hub, and a
+      # context of ./hub could not see it.
+      context: ..
+      dockerfile: hub/Dockerfile
+    image: pickwick/hub:latest
+    container_name: pickwick-hub
+    restart: unless-stopped
+
+    # Host networking so the hub can be found on the LAN without anyone typing
+    # an address into a TV remote. If your NAS refuses host mode, delete this
+    # line and uncomment the ports block below — enrolment then needs the
+    # address entered once, which the phone can relay to the TV.
+    network_mode: host
+
+    # ports:
+    #   - "8765:8765"
+
+    volumes:
+      # config.json and devices.json. This is the family's whole setup: back it
+      # up like anything else you would mind losing.
+      - /volume1/docker/pickwick:/data
+
+    environment:
+      - PICKWICK_DATA=/data
+      - PICKWICK_PORT=8765
+      # Only affects log timestamps; the merge itself never reads a clock.
+      - TZ=America/New_York
+      # A config file and a few dozen devices. Left to itself the JVM sizes its
+      # heap from the NAS's total RAM and reserves far more than this will use.
+      - JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=50
+
+    mem_limit: 256m
