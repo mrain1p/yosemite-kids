@@ -734,31 +734,62 @@ included — those are what a later reader would otherwise re-investigate.
 These are decided, not merely noticed. The numbered lists below are the
 older backlog and stay in their original order.
 
-1. **"Recently added" vs "new".** Needs an `addedAt` on channels; today the
+1. **A TV cannot join a hub at all.** The one that decides what the hub is
+   for. `HubSection` exists only in the phone Settings (`Settings.kt`, inside
+   `HubPage.Devices`); a TV gets `TvSettingsScreen`, which has no hub option
+   in any build. And a TV never initiates sync in the first place — it is a
+   server that phones push to, and its own `paired()` list is empty.
+
+   So the hub today is a rendezvous between *parents*, not a server for the
+   TVs, and the thing it was built for — "the TV keeps getting new videos
+   when no phone is home" — does not actually happen. Found when a parent
+   asked why the living room did not appear in the hub GUI.
+
+   The fix is for the TV to enrol with a hub the way a phone does and run the
+   same reconcile against it. The reconcile already works on any
+   `PairedDevice`, so the work is the TV-side join, an entry point on the TV
+   settings screen that a remote can drive, and letting the TV sweep. Note
+   the hub holds no API key, so a TV whose only peer is the hub cannot screen
+   — the key has to keep arriving from a phone, or central screening has to
+   land first.
+
+2. **Mirror the phone pages, not a flat list of sections.** The phone Settings
+   is six pages — Kids, Channels & playlists, Content screening, Devices,
+   Playback, Backup & app — and `SettingsSurface` currently models sections
+   without saying which page each belongs to, so the hub nav cannot mirror
+   the phone nav. Add the page to the manifest and group the hub GUI by it.
+
+3. **The rest of the hub GUI**, in page order once (2) lands. Kids and
+   Channels & playlists first. `ai-connection` is the awkward one: the page
+   has to offer model and base URL while explaining that the key stays on the
+   phone.
+
+4. **Show build version, last sync and role on every device row**, on both
+   faces. Half of it already exists and is thrown away: a phone/TV `/status`
+   already reports `versionCode` and `versionName`, but `DeviceStatus` drops
+   both and no tile shows them — so "pushed, still out of sync" cannot be
+   read as version skew even though the wire already says so. The hub reports
+   no version of its own, and neither face says which peers are parent
+   devices.
+
+5. **"Recently added" vs "new".** Needs an `addedAt` on channels; today the
    two are conflated and a channel added months ago with a fresh upload
    reads the same as one added yesterday.
 
-2. **"More like this" on the player page.** The suggestion engine already
+6. **"More like this" on the player page.** The suggestion engine already
    produces the rows; the player has nowhere to show them.
 
-3. **The rest of the hub GUI.** Nine sections are marked outstanding in
-   `SettingsSurface`, and both the build and the hub status page name them.
-   Screen time first — it is the one a parent away from home actually wants.
-   `ai-connection` is the interesting one: the page has to offer model and
-   base URL while explaining that the key stays on the phone.
+7. **A key cleared on one device does not propagate.** Deliberate, and
+   recorded so it is a decision rather than an oversight: a blank incoming key
+   cannot be told apart from a peer that holds none, and treating blank as an
+   instruction would let a hub wipe the key on first contact. Fixing it
+   properly needs absent and empty to travel differently.
 
-4. **A key cleared on one device does not propagate.** Deliberate, and
-   recorded here so it is a decision rather than an oversight: a blank
-   incoming key cannot be told apart from a peer that holds none, and
-   treating blank as an instruction would let a hub wipe the key on first
-   contact. Fixing it properly needs absent and empty to travel differently.
-
-5. **An updatedAt-only merge still writes.** `changedLocally` compares the
-   whole document including `updatedAt`, so merging with a peer whose clock
-   is ahead produces a write and a push carrying no information. Found while
-   fixing the merge-suite flake; not changed, because it touches the core of
-   a merge with properties worth not disturbing casually.
-
+8. **An updatedAt-only merge still writes.** `changedLocally` compares the
+   whole document including `updatedAt`, so merging with a peer whose clock is
+   ahead produces a write and a push carrying no information. Found while
+   fixing the merge-suite flake; left alone rather than disturbing the core of
+   a merge whose properties are worth not touching casually.
 ## Review findings not acted on (backlog, roughly in order)
 
 Kid side:

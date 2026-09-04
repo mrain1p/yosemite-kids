@@ -4,9 +4,16 @@ An always-on peer for the family config. It runs in Docker on anything that
 stays powered — a NAS, a Pi, a spare box — holds the same `config.json` the
 phones and TVs hold, and merges with them over the existing LAN routes.
 
-It is entirely optional. A household without one loses nothing except the
-thing a hub is for: the TV keeps getting new videos and settings when no
-phone is home and awake.
+It is entirely optional. What it buys today is that two parents stay in step
+without both being home: an edit made on one phone reaches the other through
+the hub rather than waiting for a television both happen to be near.
+
+**It does not yet feed the TVs.** A television cannot join a hub — the join
+screen exists only in the phone settings — and a TV never initiates a sync in
+any case; it is a server that phones push to. So a house with both parents
+out still leaves the living room unchanged until somebody comes home. That is
+item 1 in "Next up" in `docs/FORK-NOTES.md`, and it is the thing that decides
+what the hub is ultimately for.
 
 Nothing in the app's main source set knows the hub exists. It enrols as an
 ordinary `PairedDevice` named `Pickwick hub`, and every sync path that already

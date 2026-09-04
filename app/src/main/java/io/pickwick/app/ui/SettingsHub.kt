@@ -60,8 +60,18 @@ internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
 
     Text(
         "A hub is a small server you run yourself — on a NAS, a Pi, any machine " +
-            "that stays on. It holds the same settings your devices do and keeps " +
-            "them in step when your phone is out of the house.",
+            "that stays on. It holds the same settings your phones do, so two " +
+            "parents stay in step without both being home.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    // Said plainly, because the obvious assumption is the wrong one. TVs
+    // cannot join a hub yet, so a hub does not keep the television fed while
+    // the house is empty — and a parent who believed otherwise would stop
+    // opening the app expecting it to have happened by itself.
+    Text(
+        "TVs don't use the hub yet — they still get their settings from a " +
+            "phone. This keeps parents in step with each other.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )

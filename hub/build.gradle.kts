@@ -7,9 +7,12 @@ plugins {
 //
 // Not a new architecture: it speaks the same routes a TV speaks and takes part
 // in the same merge, using the *same* `:core` code the app does. What it adds
-// is that it never sleeps — so a config change reaches the TV without a parent's
-// phone being home and awake, which is the single biggest limitation of the
-// LAN-only design.
+// is that it never sleeps, so two parents reconcile without both being home.
+//
+// It does NOT yet feed the TVs. A TV has no way to join a hub — the join
+// screen exists only in the phone settings — and a TV never initiates sync in
+// the first place. Until that lands the hub is a rendezvous between parents,
+// not a server for the televisions. See "Next up" in docs/FORK-NOTES.md.
 //
 // A household that never runs this sees no change at all. That is a hard rule:
 // every route here already exists, and nothing in :app may come to depend on
