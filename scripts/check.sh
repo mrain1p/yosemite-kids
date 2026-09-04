@@ -261,6 +261,34 @@ if [ -f "$roadmap" ]; then
     esac
   done < <(grep -E "^\| §" "$roadmap" || true)
 fi
+# 9. The AI API key must never reach cloud backup.
+#    Both XMLs are include-mode, so the key stays on the device only because
+#    its store is unlisted. Three comments say "Don't add it" and nothing
+#    enforced it. The failure is a real credential with a balance riding to
+#    Google from one plausible-looking line added by someone who never read
+#    the comment. Note secrets_plain is the Keystore-failure fallback and is
+#    NOT encrypted — it is the worse of the two to ship.
+backup_xml=app/src/main/res/xml/backup_rules.xml
+extract_xml=app/src/main/res/xml/data_extraction_rules.xml
+secretstore=app/src/main/java/io/pickwick/app/data/SecretStore.kt
+# Guard the guard: it hardcodes the store names, so a rename must fail here
+# rather than silently disarming the check below.
+grep -q "FILE = ${q}secrets${q}" "$secretstore" ||
+  guard_fail "SecretStore.FILE is no longer \"secrets\" — update guard 9 in check.sh and check.ps1 to match, or the backup check stops covering anything."
+grep -q "FALLBACK_FILE = ${q}secrets_plain${q}" "$secretstore" ||
+  guard_fail "SecretStore.FALLBACK_FILE is no longer \"secrets_plain\" — update guard 9 in check.sh and check.ps1 to match."
+for f in "$backup_xml" "$extract_xml"; do
+  if grep -qE "path=${q}secrets(_plain)?${q}" "$f"; then
+    guard_fail "$f backs up the AI API key store. Include-mode is the only thing keeping that credential on the device — remove the line."
+  fi
+done
+# The two files say "keep the two files in lockstep" and nothing checked that
+# either. A rule added to one and not the other is backed up on some Android
+# versions and not others, which is the hardest kind of bug to notice.
+b_set=$(grep -oE "path=${q}[^${q}]+${q}" "$backup_xml" | sort | tr "\n" " " || true)
+c_set=$(sed -n "/<cloud-backup>/,/<\/cloud-backup>/p" "$extract_xml" | grep -oE "path=${q}[^${q}]+${q}" | sort | tr "\n" " " || true)
+[ "$b_set" = "$c_set" ] ||
+  guard_fail "backup_rules.xml and data_extraction_rules.xml <cloud-backup> list different files. They are the API<=30 and API31+ twins of one rule and must match."
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')

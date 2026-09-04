@@ -297,6 +297,41 @@ if (Test-Path "docs/ROADMAP.md") {
         }
     }
 }
+# 9. The AI API key must never reach cloud backup.
+#    Both XMLs are include-mode, so the key stays on the device only because
+#    its store is unlisted. Three comments say "Don't add it" and nothing
+#    enforced it. The failure is a real credential with a balance riding to
+#    Google from one plausible-looking line added by someone who never read
+#    the comment. Note secrets_plain is the Keystore-failure fallback and is
+#    NOT encrypted — it is the worse of the two to ship.
+$backupXml = "app/src/main/res/xml/backup_rules.xml"
+$extractXml = "app/src/main/res/xml/data_extraction_rules.xml"
+$secretStoreSrc = Get-Content "app/src/main/java/io/pickwick/app/data/SecretStore.kt" -Raw
+# Guard the guard: it hardcodes the store names, so a rename must fail here
+# rather than silently disarming the check below.
+if ($secretStoreSrc -notmatch 'FILE = "secrets"') {
+    Fail-Guard "SecretStore.FILE is no longer ""secrets"" - update guard 9 in check.ps1 and check.sh to match, or the backup check stops covering anything."
+}
+if ($secretStoreSrc -notmatch 'FALLBACK_FILE = "secrets_plain"') {
+    Fail-Guard "SecretStore.FALLBACK_FILE is no longer ""secrets_plain"" - update guard 9 in check.ps1 and check.sh to match."
+}
+foreach ($f in @($backupXml, $extractXml)) {
+    if ((Get-Content $f -Raw) -match 'path="secrets(_plain)?"') {
+        Fail-Guard "$f backs up the AI API key store. Include-mode is the only thing keeping that credential on the device - remove the line."
+    }
+}
+# The two files say "keep the two files in lockstep" and nothing checked that
+# either. A rule added to one and not the other is backed up on some Android
+# versions and not others, which is the hardest kind of bug to notice.
+$bSet = ([regex]::Matches((Get-Content $backupXml -Raw), 'path="([^"]+)"') |
+    ForEach-Object { $_.Groups[1].Value } | Sort-Object) -join ","
+$extractRaw = Get-Content $extractXml -Raw
+$cloudBlock = [regex]::Match($extractRaw, '(?s)<cloud-backup>(.*?)</cloud-backup>').Groups[1].Value
+$cSet = ([regex]::Matches($cloudBlock, 'path="([^"]+)"') |
+    ForEach-Object { $_.Groups[1].Value } | Sort-Object) -join ","
+if ($bSet -ne $cSet) {
+    Fail-Guard "backup_rules.xml and data_extraction_rules.xml <cloud-backup> list different files. They are the API<=30 and API31+ twins of one rule and must match."
+}
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |
