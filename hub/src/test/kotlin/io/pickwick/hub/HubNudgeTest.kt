@@ -1,7 +1,7 @@
 package io.pickwick.hub
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -37,15 +37,28 @@ class HubNudgeTest {
     fun aDeviceThatHasNeverSaidWhereItListensIsNotNudgedAtAGuess() {
         // An older build sends no X-Device-Port. Guessing 8765 would nudge
         // whatever else happens to answer on that port at that address.
-        val tokens = tokensWith(Triple("Old TV", null, 0))
+        //
+        // A known-good device rides along so this cannot pass vacuously: its
+        // send proves the round actually ran. Sleeping and finding an empty
+        // queue would look identical to the worker never having started, which
+        // would keep passing after the guard stopped working.
+        val tokens = tokensWith(
+            Triple("Old TV", null, 0),
+            Triple("Current TV", "192.168.1.21", 8765)
+        )
         val sent = ConcurrentLinkedQueue<String>()
-        val nudge = HubNudge(tokens) { h, p -> sent.add("$h:$p"); true }
+        val roundRan = CountDownLatch(1)
+        val nudge = HubNudge(tokens) { h, p ->
+            sent.add("$h:$p")
+            roundRan.countDown()
+            true
+        }
 
         nudge.changed()
-        Thread.sleep(150)
+        assertTrue("the round should have run at all", roundRan.await(3, TimeUnit.SECONDS))
         nudge.stop()
 
-        assertTrue("nothing should have been sent, got $sent", sent.isEmpty())
+        assertEquals(listOf("192.168.1.21:8765"), sent.toList())
     }
 
     @Test
@@ -76,10 +89,17 @@ class HubNudgeTest {
         val latch = CountDownLatch(2)
         val reached = ConcurrentLinkedQueue<String>()
         val nudge = HubNudge(tokens) { h, _ ->
-            latch.countDown()
-            if (h.endsWith(".20")) throw java.io.IOException("host is asleep")
-            reached.add(h)
-            true
+            // Count down in a finally, AFTER the queue is written. Counting
+            // down first is a race the assertion loses on a slow machine: the
+            // latch opens, the main thread asserts, and the add has not
+            // happened yet. It passed locally and failed on the first CI run.
+            try {
+                if (h.endsWith(".20")) throw java.io.IOException("host is asleep")
+                reached.add(h)
+                true
+            } finally {
+                latch.countDown()
+            }
         }
 
         nudge.changed()
@@ -97,12 +117,17 @@ class HubNudgeTest {
         val sends = java.util.concurrent.atomic.AtomicInteger()
         val release = CountDownLatch(1)
         val firstSendStarted = CountDownLatch(1)
+        // Counts to three. Two must arrive; the third must NOT — waiting for a
+        // send that should never come is how "no more than two" gets asserted
+        // without sleeping and hoping.
+        val thirdSend = CountDownLatch(3)
         val nudge = HubNudge(tokens) { _, _ ->
             firstSendStarted.countDown()
             // Hold the worker inside the first round so the rest of the burst
             // lands while it is busy, which is the case being tested.
             release.await(3, TimeUnit.SECONDS)
             sends.incrementAndGet()
+            thirdSend.countDown()
             true
         }
 
@@ -110,7 +135,11 @@ class HubNudgeTest {
         assertTrue(firstSendStarted.await(3, TimeUnit.SECONDS))
         repeat(5) { nudge.changed() }
         release.countDown()
-        Thread.sleep(400)
+
+        assertFalse(
+            "a third round means the burst was not coalesced",
+            thirdSend.await(2, TimeUnit.SECONDS)
+        )
         nudge.stop()
 
         // Six changes, and the five that arrived during the first round
