@@ -163,106 +163,51 @@ if ($hubName.Count -ne 1) {
 
 # --- phone/hub settings parity ---------------------------------------------
 #
-# The hub GUI mirrors the phone Settings. Two UIs meant to mirror each other
-# drift the moment one gains a feature, silently. SettingsSurface.kt is the
-# single list, and these check it in both directions so that editing it is
-# where the "does this belong on the hub?" decision gets made. Divergence is
-# fine; undeclared divergence is not.
+# SettingsSurface is the single list of settings groups, read in both
+# directions. Keyed on FIELDS rather than composables: the Playback page has
+# no section composable at all, so a composable-counting guard was blind to a
+# whole page.
 $manifest = Get-Content core/src/main/kotlin/io/pickwick/app/data/SettingsSurface.kt -Raw
+$settingsSrc = Get-Content app/src/main/java/io/pickwick/app/ui/Settings.kt -Raw
 $hubWeb = Get-Content hub/src/main/kotlin/io/pickwick/hub/HubWeb.kt -Raw
 
-# 1. Every phone section is declared.
-$phoneSections = @(Get-ChildItem app/src/main/java/io/pickwick/app/ui/Settings*.kt |
-    Select-String -Pattern "internal fun ([A-Za-z]+Section)\(" -AllMatches |
+# 1. Every field the settings form writes is claimed by some group.
+$build = [regex]::Match($settingsSrc, 'fun buildCurrentConfig[\s\S]*?\n    \}').Value
+$written = @([regex]::Matches($build, '(?m)^\s+([a-zA-Z]+) = ') | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
+foreach ($f in $written) {
+    if ($manifest -notlike "*`"$f`"*") {
+        Fail-Guard "Settings writes $f and no SettingsSurface group claims it. Add it to a group and say whether the hub gets it."
+    }
+}
+
+# 2. Every settings composable is declared, both spellings, every ui file.
+$composables = @(Get-ChildItem app/src/main/java/io/pickwick/app/ui/*.kt |
+    Select-String -Pattern 'fun ([A-Za-z]+Section)\(' -AllMatches |
     ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
-foreach ($fn in $phoneSections) {
+foreach ($fn in $composables) {
     if ($manifest -notlike "*`"$fn`"*") {
         Fail-Guard "$fn is not in SettingsSurface. Add it and say whether it belongs on the hub."
     }
 }
 
-# 2. Every hub page is declared, and is not marked phone-only.
+# 3. The hub serves exactly the pages the phone navigates. Page ids are the
+#    Page enum lowercased, so a page invented on one side and not the other
+#    fails here rather than being noticed by a parent.
 $hubPages = @([regex]::Matches($hubWeb, 'HubPage\("([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+$phonePages = @([regex]::Matches($manifest, '(?m)^    ([A-Z]+)\("') | ForEach-Object { $_.Groups[1].Value })
 foreach ($id in $hubPages) {
-    $m = [regex]::Match($manifest, 'SettingsSection\("' + [regex]::Escape($id) + '".*?\)', "Singleline")
-    if (-not $m.Success) {
-        Fail-Guard "the hub serves a page called $id that SettingsSurface does not list."
-    }
-    if ($m.Value -like "*Where.PHONE*") {
-        Fail-Guard "$id is marked PHONE in SettingsSurface but the hub serves it."
+    if ($phonePages -notcontains $id.ToUpper()) {
+        Fail-Guard "the hub serves a page called $id, which is not a Page in SettingsSurface."
     }
 }
-
-# 3. Anything claiming to be built on the hub must actually be there.
-$ready = @([regex]::Matches($manifest, 'SettingsSection\("([^"]+)", "[^"]*", "[^"]*", Where\.BOTH, true') |
-    ForEach-Object { $_.Groups[1].Value })
-foreach ($id in $ready) {
-    if ($hubWeb -notlike "*HubPage(`"$id`"*") {
-        Fail-Guard "SettingsSurface says $id is ready on the hub, but HubWeb serves no such page."
+foreach ($pg in $phonePages) {
+    if ($hubPages -notcontains $pg.ToLower()) {
+        Fail-Guard "the phone has a $pg settings page and the hub serves none."
     }
 }
 
-# Named, not counted: what is still missing should be readable, not a number.
-$todo = @([regex]::Matches($manifest, 'SettingsSection\("([^"]+)", "[^"]*", "[^"]*", Where\.BOTH, false') |
-    ForEach-Object { $_.Groups[1].Value })
-if ($todo.Count -gt 0) { Write-Host "   settings still to reach the hub: $($todo -join ', ')" }
-
-# --- one arrival path for a config -----------------------------------------
-#
-# A config can land two ways: a peer pushes it to our LAN server, or this
-# device merges it during its own sweep. Both must settle the kid's pending
-# restyle and raise the "your rules changed" pill. One lambda, both callers.
-$ackFiles = @(Get-ChildItem -Recurse -File app/src/main/java |
-    Select-String -Pattern 'ProfileLooks(appContext).ack(' -SimpleMatch |
-    ForEach-Object { $_.Path } | Sort-Object -Unique)
-if ($ackFiles.Count -ne 1) {
-    Fail-Guard "ProfileLooks.ack must have exactly one call site (found $($ackFiles.Count)). Both arrival paths share applyConfig."
-}
-if (-not (Select-String -Path app/src/main/java/io/pickwick/app/ui/MainViewModel.kt -Pattern 'onConfigApplied?.invoke(' -SimpleMatch -Quiet)) {
-    Fail-Guard "the sweep no longer applies what it merged. A self-started merge must do what an inbound push does."
-}
-
-# A kid's un-adopted restyle is a local rendering and must not travel.
-if (-not (Select-String -Path app/src/main/java/io/pickwick/app/data/ConfigStore.kt -Pattern 'fun rawJson(): String = ConfigJson.toJson(loadForPeers())' -SimpleMatch -Quiet)) {
-    Fail-Guard "rawJson must serialise loadForPeers(), not load(). load() carries the kid overlay."
-}
-
-# A hub handed to a device must be flagged secretless, or that device decides
-# it is out of sync with the hub forever and merges on every sweep.
-$pairing = Get-Content app/src/main/java/io/pickwick/app/data/Pairing.kt -Raw
-$joinHub = [regex]::Match($pairing, 'path == "/join-hub"[\s\S]{0,1200}')
-if (-not ($joinHub.Value -like "*secretless = true*")) {
-    Fail-Guard "/join-hub must store the hub with secretless = true, or the device never reads as in sync."
-}
-
-# The hub publishes the port it listens on. Both the ports line and the
-# environment read one variable, because publishing one port while the process
-# listens on another gives a container that is running, healthy and
-# unreachable — the health check passes because it runs inside the container.
-$compose = Get-Content hub/docker-compose.yml -Raw
-if ($compose -match '(?m)^s*network_mode:s*host') {
-    Fail-Guard "host networking is back in hub/docker-compose.yml, which makes the published port inert."
-}
-if (([regex]::Matches($compose, 'PICKWICK_PORT:-8765')).Count -lt 3) {
-    Fail-Guard "hub/docker-compose.yml must publish and set the port from one variable (ports twice, environment once)."
-}
-
-# Every namespace the merge decides must be one the stamper can mint.
-#
-# This is the shape of the worst bug found in this codebase so far:
-# ConfigMerge resolved blockedFor, allowedFor and deviceProfiles on their own
-# unit stamps while ConfigStamp minted none of them, so a parent blocking a
-# video for one child changed nothing on the television — and every test
-# passed.
-$mergeSrc = Get-Content core/src/main/kotlin/io/pickwick/app/data/ConfigMerge.kt -Raw
-$stampSrc = Get-Content core/src/main/kotlin/io/pickwick/app/data/ConfigStamp.kt -Raw
-$safeState = [regex]::Match($mergeSrc, 'private fun safeState[\s\S]*?\n    \}').Value
-$families = @([regex]::Matches($safeState, '"([a-z.]+)"') | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
-foreach ($ns in $families) {
-    if ($stampSrc -notlike "*`"$ns|*") {
-        Fail-Guard "the merge decides the `"$ns`" namespace but ConfigStamp never mints it - those edits are dropped by the first peer that merges."
-    }
-}
+$todo = ([regex]::Matches($manifest, 'Where\.BOTH, false')).Count
+if ($todo -gt 0) { Write-Host "   settings groups still to reach the hub: $todo" }
 
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.

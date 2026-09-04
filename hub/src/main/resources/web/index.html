@@ -8,97 +8,90 @@
   Everything is inline and nothing is fetched from the internet. A NAS often
   has no outbound access at all, and a page that half-loads because a CDN is
   unreachable is worse than a plain one that always works.
+
+  The pages and their order mirror the phone's Settings exactly — Kids,
+  Channels & playlists, Content screening, Devices, Playback, Backup & app —
+  because a parent who knows one face should not have to learn the other.
 -->
 <style>
   :root {
     color-scheme: light dark;
-    --bg: #f6f7f8;
-    --card: #ffffff;
-    --line: #dfe3e6;
-    --text: #16191c;
-    --dim: #5d666e;
-    --brand: #2f8f83;
-    --brand-ink: #ffffff;
-    --danger: #b3261e;
-    --radius: 10px;
+    --bg: #f6f7f8; --card: #fff; --sunk: #eef1f3; --line: #dfe3e6;
+    --text: #16191c; --dim: #5d666e; --brand: #2f8f83; --brand-ink: #fff;
+    --danger: #b3261e; --radius: 10px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #14171a;
-      --card: #1c2024;
-      --line: #2c3237;
-      --text: #e7eaed;
-      --dim: #98a2ab;
-      --brand: #5ec5b6;
-      --brand-ink: #10201d;
+      --bg: #14171a; --card: #1c2024; --sunk: #23282d; --line: #2c3237;
+      --text: #e7eaed; --dim: #98a2ab; --brand: #5ec5b6; --brand-ink: #10201d;
     }
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  }
-  header {
-    display: flex; align-items: center; gap: 12px;
-    padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--card);
-    position: sticky; top: 0; z-index: 2;
-  }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+    border-bottom: 1px solid var(--line); background: var(--card);
+    position: sticky; top: 0; z-index: 3; }
   header h1 { font-size: 17px; margin: 0; font-weight: 620; letter-spacing: -0.01em; }
   header .spacer { flex: 1; }
-  main { max-width: 780px; margin: 0 auto; padding: 18px 16px 64px; }
-  .card {
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
-  }
-  .card h2 { margin: 0 0 4px; font-size: 15px; font-weight: 620; }
+  header .saved { color: var(--brand); font-size: 13px; opacity: 0; transition: opacity .2s; }
+  header .saved.on { opacity: 1; }
+  main { max-width: 820px; margin: 0 auto; padding: 18px 16px 72px; }
+  .card { background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  h2 { margin: 0 0 4px; font-size: 15px; font-weight: 620; }
+  h3 { margin: 18px 0 8px; font-size: 13px; font-weight: 620; color: var(--brand);
+    text-transform: none; letter-spacing: 0; }
   .hint { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
   nav { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
-  nav button {
-    background: transparent; border: 1px solid var(--line); color: var(--text);
-    padding: 7px 13px; border-radius: 999px; cursor: pointer; font-size: 14px;
-  }
+  nav button { background: transparent; border: 1px solid var(--line); color: var(--text);
+    padding: 7px 13px; border-radius: 999px; cursor: pointer; font-size: 14px; }
   nav button[aria-current="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
-  button.primary {
-    background: var(--brand); color: var(--brand-ink); border: 1px solid var(--brand);
-    padding: 8px 15px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 560;
-  }
-  button.quiet {
-    background: transparent; color: var(--dim); border: 1px solid var(--line);
-    padding: 5px 11px; border-radius: 8px; cursor: pointer; font-size: 13px;
-  }
+  button.primary { background: var(--brand); color: var(--brand-ink); border: 1px solid var(--brand);
+    padding: 8px 15px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 560; }
+  button.quiet { background: transparent; color: var(--dim); border: 1px solid var(--line);
+    padding: 5px 11px; border-radius: 8px; cursor: pointer; font-size: 13px; }
   button.quiet:hover { color: var(--danger); border-color: var(--danger); }
-  button:disabled { opacity: 0.55; cursor: default; }
-  input, textarea {
-    width: 100%; background: var(--bg); color: var(--text);
-    border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px;
-    font: inherit; margin-bottom: 10px;
-  }
+  button.chip { background: var(--sunk); color: var(--text); border: 1px solid var(--line);
+    padding: 4px 11px; border-radius: 999px; cursor: pointer; font-size: 13px; }
+  button.chip[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+  button:disabled { opacity: .55; cursor: default; }
+  input, textarea, select { width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; font: inherit; }
   textarea { min-height: 78px; resize: vertical; }
+  input[type=number] { width: 92px; }
+  label.row { display: flex; align-items: center; gap: 12px; padding: 9px 0;
+    border-top: 1px solid var(--line); }
+  label.row:first-of-type { border-top: 0; }
+  label.row .grow { flex: 1; min-width: 0; }
+  label.row .name { font-weight: 540; }
+  .sub { color: var(--dim); font-size: 12.5px; overflow-wrap: anywhere; }
   ul.rows { list-style: none; margin: 0; padding: 0; }
-  ul.rows li {
-    display: flex; align-items: center; gap: 10px;
-    padding: 9px 0; border-top: 1px solid var(--line);
-  }
-  ul.rows li:first-child { border-top: 0; }
+  ul.rows > li { padding: 11px 0; border-top: 1px solid var(--line); }
+  ul.rows > li:first-child { border-top: 0; }
+  .line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .grow { flex: 1; min-width: 0; }
   .name { font-weight: 540; overflow-wrap: anywhere; }
-  .sub { color: var(--dim); font-size: 12.5px; overflow-wrap: anywhere; }
-  .tag {
-    font-size: 11.5px; color: var(--dim); border: 1px solid var(--line);
-    border-radius: 999px; padding: 1px 8px; white-space: nowrap;
-  }
+  .tag { font-size: 11.5px; color: var(--dim); border: 1px solid var(--line);
+    border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
   .empty { color: var(--dim); font-size: 13.5px; padding: 6px 0; }
-  .note {
-    background: color-mix(in srgb, var(--brand) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--brand) 35%, transparent);
-    border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px;
-  }
   .error { color: var(--danger); font-size: 13.5px; min-height: 20px; }
+  .note { background: color-mix(in srgb, var(--brand) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand) 35%, transparent);
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 0 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field span { font-size: 12.5px; color: var(--dim); }
   dl.kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; }
   dl.kv dt { color: var(--dim); }
   dl.kv dd { margin: 0; overflow-wrap: anywhere; }
+  .switch { appearance: none; width: 44px; height: 26px; border-radius: 999px;
+    background: var(--sunk); border: 1px solid var(--line); position: relative;
+    cursor: pointer; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px;
+    border-radius: 50%; background: var(--dim); transition: transform .15s, background .15s; }
+  .switch:checked { background: var(--brand); border-color: var(--brand); }
+  .switch:checked::after { transform: translateX(18px); background: var(--brand-ink); }
   #login { max-width: 380px; margin: 12vh auto; }
   [hidden] { display: none !important; }
 </style>
@@ -112,6 +105,7 @@
     starts &mdash; <code>docker logs pickwick-hub</code>.
   </p>
   <input id="token" type="password" autocomplete="current-password" placeholder="Admin token">
+  <p></p>
   <button class="primary" id="signin">Sign in</button>
   <p class="error" id="loginError"></p>
 </section>
@@ -119,72 +113,13 @@
 <div id="app" hidden>
   <header>
     <h1>Pickwick hub</h1>
+    <span class="saved" id="saved">Saved</span>
     <span class="spacer"></span>
     <button class="quiet" id="signout">Sign out</button>
   </header>
-
   <main>
     <nav id="tabs"></nav>
-
-    <section id="page-channels" class="page" hidden>
-      <div class="card">
-        <h2>Add channels</h2>
-        <p class="hint">
-          One per line. A channel URL, an <code>@handle</code>, a playlist link,
-          or a bare ID. Add <code>| A name</code> after any line to label it.
-        </p>
-        <textarea id="addText" placeholder="@ChannelHandle&#10;https://www.youtube.com/channel/UC...&#10;https://www.youtube.com/playlist?list=PL..."></textarea>
-        <button class="primary" id="addBtn">Add</button>
-        <p class="error" id="addError"></p>
-      </div>
-
-      <div class="card">
-        <h2>Channels</h2>
-        <p class="hint">What the kids can watch. Removing one takes it off every device.</p>
-        <ul class="rows" id="channels"></ul>
-      </div>
-
-      <div class="card">
-        <h2>Blocked videos</h2>
-        <p class="hint">Individual videos hidden even inside an allowed channel.</p>
-        <ul class="rows" id="blocked"></ul>
-      </div>
-    </section>
-
-    <section id="page-devices" class="page" hidden>
-      <div class="card">
-        <h2>Waiting to join</h2>
-        <p class="hint">
-          A device showing a code is asking to be added. Approving one is what
-          lets it sync.
-        </p>
-        <ul class="rows" id="pending"></ul>
-      </div>
-
-      <div class="card">
-        <h2>Enrolled devices</h2>
-        <p class="hint">
-          Removing a device stops it syncing. It keeps whatever it already has
-          until someone uninstalls it.
-        </p>
-        <ul class="rows" id="devices"></ul>
-      </div>
-    </section>
-
-    <section id="page-hub-health" class="page" hidden>
-      <div class="card">
-        <h2>This hub</h2>
-        <dl class="kv" id="health"></dl>
-      </div>
-      <div class="card">
-        <h2>Not here yet</h2>
-        <p class="hint">
-          Settings that exist on the phone and are still to be built here. Until
-          then, use a phone for these.
-        </p>
-        <ul class="rows" id="outstanding"></ul>
-      </div>
-    </section>
+    <div id="page"></div>
   </main>
 </div>
 
@@ -193,15 +128,20 @@
   "use strict";
 
   var state = null;
-  var current = null;
+  var current = "kids";
 
   function $(id) { return document.getElementById(id); }
 
-  function text(el, value) { el.textContent = value == null ? "" : String(value); }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = String(text);
+    return e;
+  }
 
-  // Every request goes through here so the "your session went away" case is
-  // handled in exactly one place. A hub restart drops all sessions, and a page
-  // that responded to that by silently doing nothing would look broken.
+  // Every request goes through here so "your session went away" is handled in
+  // exactly one place. A hub restart drops all sessions, and a page that
+  // responded to that by silently doing nothing would look broken.
   function api(path, body) {
     var opts = {
       method: body ? "POST" : "GET",
@@ -218,21 +158,27 @@
     });
   }
 
-  function showLogin() {
-    $("app").hidden = true;
-    $("login").hidden = false;
-    $("token").focus();
+  function flashSaved() {
+    var s = $("saved");
+    s.classList.add("on");
+    setTimeout(function () { s.classList.remove("on"); }, 1200);
   }
 
-  function showApp() {
-    $("login").hidden = true;
-    $("app").hidden = false;
+  /** Patch one or more config fields, then re-render from what came back. */
+  function patch(obj) {
+    return api("/api/config", obj).then(function () {
+      flashSaved();
+      return refresh();
+    });
   }
+
+  function showLogin() { $("app").hidden = true; $("login").hidden = false; $("token").focus(); }
+  function showApp() { $("login").hidden = true; $("app").hidden = false; }
 
   function signIn() {
     var btn = $("signin");
     btn.disabled = true;
-    text($("loginError"), "");
+    $("loginError").textContent = "";
     fetch("/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -242,70 +188,76 @@
       return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; });
     }).then(function (res) {
       if (res.ok) { $("token").value = ""; showApp(); return refresh(); }
-      if (res.status === 429) {
-        text($("loginError"), "Too many attempts. Try again in " + res.body.retryAfter + "s.");
-      } else {
-        text($("loginError"), "That token was not accepted.");
-      }
+      $("loginError").textContent = res.status === 429
+        ? "Too many attempts. Try again in " + res.body.retryAfter + "s."
+        : "That token was not accepted.";
     }).catch(function () {
-      text($("loginError"), "Could not reach the hub.");
+      $("loginError").textContent = "Could not reach the hub.";
     }).then(function () { btn.disabled = false; });
   }
 
-  function selectPage(id) {
-    current = id;
-    var pages = document.querySelectorAll(".page");
-    for (var i = 0; i < pages.length; i++) pages[i].hidden = true;
-    var page = $("page-" + id);
-    if (page) page.hidden = false;
-    var buttons = $("tabs").children;
-    for (var j = 0; j < buttons.length; j++) {
-      buttons[j].setAttribute("aria-current", buttons[j].dataset.id === id ? "true" : "false");
-    }
+  // --- small builders -------------------------------------------------
+
+  function card(title, hint) {
+    var c = el("div", "card");
+    if (title) c.appendChild(el("h2", null, title));
+    if (hint) c.appendChild(el("p", "hint", hint));
+    return c;
   }
 
-  function renderTabs() {
-    var nav = $("tabs");
-    nav.innerHTML = "";
-    state.pages.forEach(function (p) {
-      var b = document.createElement("button");
-      b.textContent = p.title;
-      b.dataset.id = p.id;
-      b.onclick = function () { selectPage(p.id); };
-      nav.appendChild(b);
+  function toggleRow(name, sub, checked, onChange) {
+    var l = el("label", "row");
+    var box = el("div", "grow");
+    box.appendChild(el("div", "name", name));
+    if (sub) box.appendChild(el("div", "sub", sub));
+    l.appendChild(box);
+    var i = el("input");
+    i.type = "checkbox";
+    i.className = "switch";
+    i.checked = !!checked;
+    i.onchange = function () { i.disabled = true; onChange(i.checked).then(function () { i.disabled = false; }); };
+    l.appendChild(i);
+    return l;
+  }
+
+  function numberField(label, value, onCommit, min, max) {
+    var f = el("label", "field");
+    f.appendChild(el("span", null, label));
+    var i = el("input");
+    i.type = "number";
+    i.value = value;
+    if (min != null) i.min = min;
+    if (max != null) i.max = max;
+    i.onchange = function () { onCommit(parseInt(i.value, 10)); };
+    f.appendChild(i);
+    return f;
+  }
+
+  function textField(label, value, onCommit, placeholder) {
+    var f = el("label", "field");
+    f.appendChild(el("span", null, label));
+    var i = el("input");
+    i.type = "text";
+    i.value = value == null ? "" : value;
+    if (placeholder) i.placeholder = placeholder;
+    i.onchange = function () { onCommit(i.value); };
+    f.appendChild(i);
+    return f;
+  }
+
+  function chips(values, labels, selected, onPick) {
+    var wrap = el("div", "line");
+    values.forEach(function (v, i) {
+      var b = el("button", "chip", labels[i]);
+      b.setAttribute("aria-pressed", String(v === selected));
+      b.onclick = function () { onPick(v); };
+      wrap.appendChild(b);
     });
-    selectPage(current && $("page-" + current) ? current : state.pages[0].id);
-  }
-
-  function row(name, sub, tag, action) {
-    var li = document.createElement("li");
-    var box = document.createElement("div");
-    box.className = "grow";
-    var n = document.createElement("div");
-    n.className = "name";
-    n.textContent = name;
-    box.appendChild(n);
-    if (sub) {
-      var s = document.createElement("div");
-      s.className = "sub";
-      s.textContent = sub;
-      box.appendChild(s);
-    }
-    li.appendChild(box);
-    if (tag) {
-      var t = document.createElement("span");
-      t.className = "tag";
-      t.textContent = tag;
-      li.appendChild(t);
-    }
-    if (action) li.appendChild(action);
-    return li;
+    return wrap;
   }
 
   function button(label, cls, onClick) {
-    var b = document.createElement("button");
-    b.className = cls;
-    b.textContent = label;
+    var b = el("button", cls, label);
     b.onclick = function () {
       b.disabled = true;
       onClick().catch(function () {}).then(function () { b.disabled = false; });
@@ -313,76 +265,469 @@
     return b;
   }
 
-  function fill(listId, items, build, emptyText) {
-    var ul = $(listId);
-    ul.innerHTML = "";
-    if (!items.length) {
-      var li = document.createElement("li");
-      li.className = "empty";
-      li.textContent = emptyText;
+  function emptyLi(text) {
+    var li = el("li", "empty", text);
+    return li;
+  }
+
+  // --- pages ----------------------------------------------------------
+
+  var cfg = function () { return state.config || {}; };
+  var kids = function () { return cfg().profiles || []; };
+
+  function pageKids() {
+    var out = document.createDocumentFragment();
+    var c = card("Kids", "Each kid's profile and their screen-time rules.");
+    var ul = el("ul", "rows");
+
+    if (!kids().length) ul.appendChild(emptyLi("No kids yet."));
+    kids().forEach(function (k, idx) {
+      var li = el("li");
+      var head = el("div", "line");
+      head.appendChild(el("div", "name grow", (k.avatar ? k.avatar + " " : "") + k.name));
+      head.appendChild(button("Remove", "quiet", function () {
+        var next = kids().slice();
+        next.splice(idx, 1);
+        return patch({ profiles: next });
+      }));
+      li.appendChild(head);
+
+      var grid = el("div", "grid");
+      grid.style.marginTop = "10px";
+      grid.appendChild(textField("Name", k.name, function (v) {
+        var next = kids().slice(); next[idx] = Object.assign({}, k, { name: v });
+        patch({ profiles: next });
+      }));
+      grid.appendChild(numberField("Age", k.age == null ? "" : k.age, function (v) {
+        var next = kids().slice(); next[idx] = Object.assign({}, k, { age: v });
+        patch({ profiles: next });
+      }, 1, 18));
+      grid.appendChild(textField("Avatar", k.avatar, function (v) {
+        var next = kids().slice(); next[idx] = Object.assign({}, k, { avatar: v });
+        patch({ profiles: next });
+      }, "🦄"));
+      li.appendChild(grid);
+
+      var lim = k.limits || {};
+      var rules = el("div", "grid");
+      rules.style.marginTop = "10px";
+      function setLimit(field) {
+        return function (v) {
+          var next = kids().slice();
+          var l = Object.assign({}, lim); l[field] = v;
+          next[idx] = Object.assign({}, k, { limits: l });
+          patch({ profiles: next });
+        };
+      }
+      rules.appendChild(numberField("Minutes a session", lim.session == null ? "" : lim.session, setLimit("session"), 1, 240));
+      rules.appendChild(numberField("Weekday sessions", lim.weekdaySessions == null ? "" : lim.weekdaySessions, setLimit("weekdaySessions"), 0, 20));
+      rules.appendChild(numberField("Weekend sessions", lim.weekendSessions == null ? "" : lim.weekendSessions, setLimit("weekendSessions"), 0, 20));
+      rules.appendChild(numberField("Break minutes", lim.breakMinutes == null ? "" : lim.breakMinutes, setLimit("breakMinutes"), 0, 120));
+      li.appendChild(rules);
       ul.appendChild(li);
-      return;
-    }
-    items.forEach(function (item) { ul.appendChild(build(item)); });
+    });
+    c.appendChild(ul);
+
+    var add = el("div", "line");
+    add.style.marginTop = "12px";
+    var nameIn = el("input");
+    nameIn.placeholder = "New kid's name";
+    nameIn.style.maxWidth = "220px";
+    add.appendChild(nameIn);
+    add.appendChild(button("Add a kid", "primary", function () {
+      var n = nameIn.value.trim();
+      if (!n) return Promise.resolve();
+      var id = String(Date.now().toString(16)).slice(-8);
+      var next = kids().concat([{
+        id: id, name: n, color: 4293467747, avatar: "🙂", age: 6,
+        limits: { session: 15, weekdaySessions: 4, weekendSessions: 6, breakMinutes: 5 }
+      }]);
+      return patch({ profiles: next });
+    }));
+    c.appendChild(add);
+    out.appendChild(c);
+    return out;
+  }
+
+  function pageChannels() {
+    var out = document.createDocumentFragment();
+
+    var addCard = card("Add channels",
+      "One per line. A channel URL, an @handle, a playlist link, or a bare ID. Add \"| A name\" after any line to label it.");
+    var ta = el("textarea");
+    ta.placeholder = "@ChannelHandle\nhttps://www.youtube.com/channel/UC...\nhttps://www.youtube.com/playlist?list=PL...";
+    addCard.appendChild(ta);
+    var addErr = el("p", "error");
+    var addRow = el("div", "line");
+    addRow.style.marginTop = "10px";
+    addRow.appendChild(button("Add", "primary", function () {
+      var v = ta.value.trim();
+      addErr.textContent = "";
+      if (!v) return Promise.resolve();
+      return api("/api/channels", { add: v }).then(function (r) {
+        if (!r.added) addErr.textContent = "Nothing there was recognised as a channel, playlist or video.";
+        else ta.value = "";
+        return refresh();
+      });
+    }));
+    addCard.appendChild(addRow);
+    addCard.appendChild(addErr);
+    addCard.appendChild(el("p", "hint",
+      "Searching YouTube by name is on the phone only — it needs the video extractor, which the hub does not carry."));
+    out.appendChild(addCard);
+
+    var c = card("Channels & playlists", "What the kids can watch. Removing one takes it off every device.");
+    var ul = el("ul", "rows");
+    var entries = cfg().entries || [];
+    if (!entries.length) ul.appendChild(emptyLi("Nothing added yet."));
+
+    entries.forEach(function (e) {
+      var li = el("li");
+      var head = el("div", "line");
+      head.appendChild(el("div", "name grow", e.label || e.id));
+      head.appendChild(el("span", "tag", e.kind === "PLAYLIST" ? "Playlist" : "Channel"));
+      head.appendChild(button("Remove", "quiet", function () {
+        return api("/api/channels", { remove: e.id }).then(refresh);
+      }));
+      li.appendChild(head);
+      li.appendChild(el("div", "sub", e.url || e.id));
+
+      var mult = el("div", "line");
+      mult.style.marginTop = "8px";
+      mult.appendChild(el("span", "sub", "Counts as"));
+      mult.appendChild(chips([50, 100, 200], ["0.5x", "1x", "2x"], e.time == null ? 100 : e.time, function (v) {
+        api("/api/channels", { edit: { id: e.id, multiplier: v } }).then(function () {
+          flashSaved(); return refresh();
+        });
+      }));
+      li.appendChild(mult);
+
+      var note = el("label", "field");
+      note.style.marginTop = "8px";
+      note.appendChild(el("span", null, "Screening note for this channel"));
+      var ni = el("input");
+      ni.type = "text";
+      ni.value = e.note || "";
+      ni.placeholder = "e.g. only the science episodes";
+      ni.onchange = function () {
+        api("/api/channels", { edit: { id: e.id, note: ni.value } }).then(function () {
+          flashSaved(); return refresh();
+        });
+      };
+      note.appendChild(ni);
+      li.appendChild(note);
+
+      if (kids().length) {
+        var vis = el("div", "line");
+        vis.style.marginTop = "8px";
+        vis.appendChild(el("span", "sub", "Visible to"));
+        var picked = e.kids || [];
+        var all = el("button", "chip", "Everyone");
+        all.setAttribute("aria-pressed", String(picked.length === 0));
+        all.onclick = function () {
+          api("/api/channels", { edit: { id: e.id, kids: [] } }).then(function () { flashSaved(); return refresh(); });
+        };
+        vis.appendChild(all);
+        kids().forEach(function (k) {
+          var b = el("button", "chip", k.name);
+          var on = picked.indexOf(k.id) >= 0;
+          b.setAttribute("aria-pressed", String(on));
+          b.onclick = function () {
+            var next = on ? picked.filter(function (x) { return x !== k.id; }) : picked.concat([k.id]);
+            api("/api/channels", { edit: { id: e.id, kids: next } }).then(function () { flashSaved(); return refresh(); });
+          };
+          vis.appendChild(b);
+        });
+        li.appendChild(vis);
+      }
+      ul.appendChild(li);
+    });
+    c.appendChild(ul);
+    out.appendChild(c);
+
+    var b = card("Blocked videos", "Individual videos hidden even inside an allowed channel.");
+    var bul = el("ul", "rows");
+    var blocked = cfg().blocked || [];
+    if (!blocked.length) bul.appendChild(emptyLi("No videos blocked."));
+    blocked.forEach(function (v) {
+      var li = el("li");
+      var line = el("div", "line");
+      line.appendChild(el("div", "name grow", v));
+      line.appendChild(button("Unblock", "quiet", function () {
+        return api("/api/channels", { unblock: v }).then(refresh);
+      }));
+      li.appendChild(line);
+      bul.appendChild(li);
+    });
+    b.appendChild(bul);
+    out.appendChild(b);
+
+    var shelf = card("Kid's shelves", "How the kid's home screen is laid out.");
+    shelf.appendChild(toggleRow("Show when a video came out", null, cfg().showVideoAge, function (v) {
+      return patch({ showVideoAge: v });
+    }));
+    var sizes = el("div");
+    sizes.style.marginTop = "10px";
+    sizes.appendChild(el("div", "sub", "Videos before “Show more”"));
+    sizes.appendChild(chips([12, 24, 48], ["12", "24", "48"], cfg().pageSize || 24, function (v) {
+      patch({ pageSize: v });
+    }));
+    shelf.appendChild(sizes);
+    var layout = el("div");
+    layout.style.marginTop = "10px";
+    layout.appendChild(el("div", "sub", "Channel page layout"));
+    layout.appendChild(chips(["GRID", "PLAYLIST"], ["Grid", "By playlist"], cfg().channelLayout || "GRID", function (v) {
+      patch({ channelLayout: v });
+    }));
+    shelf.appendChild(layout);
+    var order = el("div");
+    order.style.marginTop = "10px";
+    order.appendChild(el("div", "sub", "Channel row order"));
+    order.appendChild(chips(["ADDED", "AZ"], ["As added", "A to Z"], cfg().channelOrder || "ADDED", function (v) {
+      patch({ channelOrder: v });
+    }));
+    shelf.appendChild(order);
+    out.appendChild(shelf);
+    return out;
+  }
+
+  function pageScreening() {
+    var out = document.createDocumentFragment();
+    var ai = cfg().ai || {};
+
+    var conn = card("AI connection",
+      "Where Pickwick talks to an AI, and which model. Screening and channel discovery each switch on separately.");
+    conn.appendChild(el("p", "note",
+      "The API key is set on a phone, not here. The hub strips secrets before writing and has no keystore, so a key typed here could not survive a restart."));
+    var grid = el("div", "grid");
+    grid.appendChild(textField("API base URL", ai.baseUrl, function (v) {
+      patch({ ai: Object.assign({}, ai, { baseUrl: v }) });
+    }, "https://openrouter.ai/api/v1"));
+    grid.appendChild(textField("Model", ai.model, function (v) {
+      patch({ ai: Object.assign({}, ai, { model: v }) });
+    }));
+    conn.appendChild(grid);
+    out.appendChild(conn);
+
+    var scr = card("AI screening",
+      "New videos on allowed channels are checked against your rules before a kid can see them. Only titles and channel names are sent — never watch history.");
+    scr.appendChild(toggleRow("Screen new videos with AI", null, ai.enabled, function (v) {
+      return patch({ ai: Object.assign({}, ai, { enabled: v }) });
+    }));
+    var rules = el("label", "field");
+    rules.style.marginTop = "10px";
+    rules.appendChild(el("span", null, "What to allow, in your words"));
+    var rt = el("textarea");
+    rt.value = ai.rules || "";
+    rt.placeholder = "No violence, nothing scary, nothing about dieting.";
+    rt.onchange = function () { patch({ ai: Object.assign({}, ai, { rules: rt.value }) }); };
+    rules.appendChild(rt);
+    scr.appendChild(rules);
+    var age = el("div", "grid");
+    age.style.marginTop = "10px";
+    age.appendChild(numberField("Child age the AI screens for", ai.childAge == null ? "" : ai.childAge, function (v) {
+      patch({ ai: Object.assign({}, ai, { childAge: v }) });
+    }, 1, 18));
+    scr.appendChild(age);
+    out.appendChild(scr);
+
+    out.appendChild(phoneOnlyNote("Content screening"));
+    return out;
+  }
+
+  function pageDevices() {
+    var out = document.createDocumentFragment();
+
+    var p = card("Waiting to join", "A device showing a code is asking to be added. Approving one is what lets it sync.");
+    var pul = el("ul", "rows");
+    if (!state.pending.length) pul.appendChild(emptyLi("Nothing waiting."));
+    state.pending.forEach(function (x) {
+      var li = el("li");
+      var line = el("div", "line");
+      var box = el("div", "grow");
+      box.appendChild(el("div", "name", x.name));
+      box.appendChild(el("div", "sub", "Code " + x.code));
+      line.appendChild(box);
+      line.appendChild(button("Approve", "primary", function () {
+        return api("/api/devices", { approve: x.code }).then(refresh);
+      }));
+      li.appendChild(line);
+      pul.appendChild(li);
+    });
+    p.appendChild(pul);
+    out.appendChild(p);
+
+    var d = card("Enrolled devices", "Removing a device stops it syncing. It keeps whatever it already has.");
+    var dul = el("ul", "rows");
+    if (!state.devices.length) dul.appendChild(emptyLi("No devices enrolled yet."));
+    state.devices.forEach(function (dev) {
+      var li = el("li");
+      var line = el("div", "line");
+      var box = el("div", "grow");
+      box.appendChild(el("div", "name", dev.name));
+      box.appendChild(el("div", "sub", "Joined " + new Date(dev.enrolledAt).toLocaleDateString()));
+      line.appendChild(box);
+      line.appendChild(el("span", "tag", dev.ref));
+      line.appendChild(button("Remove", "quiet", function () {
+        return api("/api/devices", { revoke: dev.ref }).then(refresh);
+      }));
+      li.appendChild(line);
+
+      if (kids().length) {
+        var row = el("div", "line");
+        row.style.marginTop = "8px";
+        row.appendChild(el("span", "sub", "This device is for"));
+        var shared = el("button", "chip", "Anyone");
+        shared.setAttribute("aria-pressed", String(!dev.kid));
+        shared.onclick = function () {
+          api("/api/devices", { assign: { ref: dev.ref, kid: "" } }).then(function () { flashSaved(); return refresh(); });
+        };
+        row.appendChild(shared);
+        kids().forEach(function (k) {
+          var b = el("button", "chip", k.name);
+          b.setAttribute("aria-pressed", String(dev.kid === k.id));
+          b.onclick = function () {
+            api("/api/devices", { assign: { ref: dev.ref, kid: k.id } }).then(function () { flashSaved(); return refresh(); });
+          };
+          row.appendChild(b);
+        });
+        li.appendChild(row);
+      }
+      dul.appendChild(li);
+    });
+    d.appendChild(dul);
+    out.appendChild(d);
+
+    out.appendChild(phoneOnlyNote("Devices"));
+    return out;
+  }
+
+  function pagePlayback() {
+    var out = document.createDocumentFragment();
+    var c = card("Playback", null);
+    c.appendChild(toggleRow("Skip sponsors & intros",
+      "Skips the parts the SponsorBlock community has marked. Lookups send only an anonymous fingerprint.",
+      cfg().sponsorSkip, function (v) { return patch({ sponsorSkip: v }); }));
+    c.appendChild(toggleRow("Autoplay the next video",
+      "When a video ends, the next unwatched one from the same channel lines up behind a short countdown.",
+      cfg().autoplay, function (v) { return patch({ autoplay: v }); }));
+    c.appendChild(toggleRow("More like what you watch",
+      "A home row of older videos from channels you have already added.",
+      cfg().suggest, function (v) { return patch({ suggest: v }); }));
+    out.appendChild(c);
+
+    var q = card("Video quality", "Set separately for televisions and phones.");
+    var tv = el("div");
+    tv.appendChild(el("div", "sub", "On televisions"));
+    tv.appendChild(chips([0, 720, 1080], ["Auto", "720p", "1080p"], cfg().qualityTv || 0, function (v) {
+      patch({ qualityTv: v });
+    }));
+    q.appendChild(tv);
+    var ph = el("div");
+    ph.style.marginTop = "10px";
+    ph.appendChild(el("div", "sub", "On phones"));
+    ph.appendChild(chips([0, 480, 720], ["Auto", "480p", "720p"], cfg().qualityPhone || 0, function (v) {
+      patch({ qualityPhone: v });
+    }));
+    q.appendChild(ph);
+    out.appendChild(q);
+
+    var l = card("Listening", "Whether playback continues with the screen off. Affects phones only.");
+    l.appendChild(chips([0, 50, 100], ["Off", "Half volume", "On"], cfg().listen || 0, function (v) {
+      patch({ listen: v });
+    }));
+    out.appendChild(l);
+    return out;
+  }
+
+  function pageBackup() {
+    var out = document.createDocumentFragment();
+
+    var h = card("This hub", null);
+    var dl = el("dl", "kv");
+    [["Settings", "#" + state.hub.hash],
+     ["Last changed", state.hub.updatedAt ? new Date(state.hub.updatedAt).toLocaleString() : "never"],
+     ["Devices", String(state.hub.deviceCount)],
+     ["Data", state.hub.dataDir]].forEach(function (pair) {
+      dl.appendChild(el("dt", null, pair[0]));
+      dl.appendChild(el("dd", null, pair[1]));
+    });
+    h.appendChild(dl);
+    out.appendChild(h);
+
+    var v = card("Version history",
+      "The hub keeps the last few versions of your settings. Restoring one is a deliberate change, not a file copy — it is applied as a fresh edit, so it wins against every device rather than being undone by the next sync.");
+    var ul = el("ul", "rows");
+    if (!state.versions.length) ul.appendChild(emptyLi("No earlier versions yet. One is kept each time the settings change."));
+    state.versions.forEach(function (ver) {
+      var li = el("li");
+      var line = el("div", "line");
+      var box = el("div", "grow");
+      box.appendChild(el("div", "name", new Date(ver.takenAt).toLocaleString()));
+      box.appendChild(el("div", "sub",
+        ver.readable
+          ? (ver.channels + " channels · " + ver.kids + " kids · " + ver.blocked + " blocked · #" + ver.hash)
+          : "unreadable"));
+      line.appendChild(box);
+      if (ver.readable) {
+        line.appendChild(button("Restore", "quiet", function () {
+          if (!window.confirm("Restore the settings from " + new Date(ver.takenAt).toLocaleString() + "?\n\nEvery device will be brought to this state.")) {
+            return Promise.resolve();
+          }
+          return api("/api/versions", { restore: ver.id }).then(function () { flashSaved(); return refresh(); });
+        }));
+      }
+      li.appendChild(line);
+      ul.appendChild(li);
+    });
+    v.appendChild(ul);
+    out.appendChild(v);
+
+    out.appendChild(phoneOnlyNote("Backup & app"));
+    return out;
+  }
+
+  /** What this page still sends a parent to their phone for, and why. */
+  function phoneOnlyNote(pageTitle) {
+    var mine = (state.hub.outstanding || []).filter(function (o) { return o.page === pageTitle; });
+    if (!mine.length) return document.createDocumentFragment();
+    var c = card("Still on the phone", "These are not here yet. Use a phone for them.");
+    var ul = el("ul", "rows");
+    mine.forEach(function (o) {
+      var li = el("li");
+      var line = el("div", "line");
+      line.appendChild(el("div", "name grow", o.title));
+      line.appendChild(el("span", "tag", "on the phone"));
+      li.appendChild(line);
+      ul.appendChild(li);
+    });
+    c.appendChild(ul);
+    return c;
+  }
+
+  var PAGES = {
+    kids: pageKids, channels: pageChannels, screening: pageScreening,
+    devices: pageDevices, playback: pagePlayback, backup: pageBackup
+  };
+
+  function renderTabs() {
+    var nav = $("tabs");
+    nav.innerHTML = "";
+    state.pages.forEach(function (p) {
+      var b = el("button", null, p.title);
+      b.dataset.id = p.id;
+      b.setAttribute("aria-current", String(p.id === current));
+      b.onclick = function () { current = p.id; render(); };
+      nav.appendChild(b);
+    });
   }
 
   function render() {
     renderTabs();
-
-    fill("channels", state.channels, function (c) {
-      return row(
-        c.label,
-        c.url,
-        c.kind === "PLAYLIST" ? "Playlist" : "Channel",
-        button("Remove", "quiet", function () {
-          return api("/api/channels", { remove: c.id }).then(refresh);
-        })
-      );
-    }, "Nothing added yet.");
-
-    fill("blocked", state.blocked, function (v) {
-      return row(v, "youtube.com/watch?v=" + v, null,
-        button("Unblock", "quiet", function () {
-          return api("/api/channels", { unblock: v }).then(refresh);
-        })
-      );
-    }, "No videos blocked.");
-
-    fill("pending", state.pending, function (p) {
-      return row(p.name, "Code " + p.code, null,
-        button("Approve", "primary", function () {
-          return api("/api/devices", { approve: p.code }).then(refresh);
-        })
-      );
-    }, "Nothing waiting.");
-
-    fill("devices", state.devices, function (d) {
-      return row(d.name, "Joined " + new Date(d.enrolledAt).toLocaleDateString(), d.ref,
-        button("Remove", "quiet", function () {
-          return api("/api/devices", { revoke: d.ref }).then(refresh);
-        })
-      );
-    }, "No devices enrolled yet.");
-
-    var dl = $("health");
-    dl.innerHTML = "";
-    [
-      ["Settings", "#" + state.hub.hash],
-      ["Last changed", state.hub.updatedAt ? new Date(state.hub.updatedAt).toLocaleString() : "never"],
-      ["Devices", String(state.hub.deviceCount)],
-      ["Data", state.hub.dataDir]
-    ].forEach(function (pair) {
-      var dt = document.createElement("dt");
-      dt.textContent = pair[0];
-      var dd = document.createElement("dd");
-      dd.textContent = pair[1];
-      dl.appendChild(dt);
-      dl.appendChild(dd);
-    });
-
-    fill("outstanding", state.hub.outstanding, function (t) {
-      return row(t, null, "on the phone", null);
-    }, "Everything the phone has is here.");
+    var host = $("page");
+    host.innerHTML = "";
+    var build = PAGES[current] || PAGES.kids;
+    host.appendChild(build());
   }
 
   function refresh() {
@@ -391,27 +736,7 @@
 
   $("signin").onclick = signIn;
   $("token").addEventListener("keydown", function (e) { if (e.key === "Enter") signIn(); });
-  $("signout").onclick = function () {
-    api("/logout", {}).catch(function () {}).then(showLogin);
-  };
-
-  $("addBtn").onclick = function () {
-    var box = $("addText");
-    var value = box.value.trim();
-    text($("addError"), "");
-    if (!value) return;
-    $("addBtn").disabled = true;
-    api("/api/channels", { add: value }).then(function (r) {
-      if (!r.added) {
-        text($("addError"), "Nothing there was recognised as a channel, playlist or video.");
-      } else {
-        box.value = "";
-      }
-      return refresh();
-    }).catch(function (e) {
-      text($("addError"), e.message);
-    }).then(function () { $("addBtn").disabled = false; });
-  };
+  $("signout").onclick = function () { api("/logout", {}).catch(function () {}).then(showLogin); };
 
   // A live session survives a reload, so try the data first and fall back to
   // the sign-in form only when the hub says no.

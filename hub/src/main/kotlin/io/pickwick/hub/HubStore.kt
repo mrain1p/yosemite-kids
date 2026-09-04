@@ -20,7 +20,7 @@ import java.io.File
  * it already lives, on the devices; a config arriving with one has it stripped
  * before it touches this disk, exactly as the app does.
  */
-class HubStore(private val dataDir: File) {
+class HubStore(internal val dataDir: File) {
 
     private val file = File(dataDir, "config.json")
 
@@ -129,6 +129,17 @@ class HubStore(private val dataDir: File) {
      */
     private fun commit(json: String) {
         val safe = ConfigJson.stripSecrets(json)
+        // Keep what is about to be displaced, if it is worth keeping. Here
+        // rather than in the callers because this is the only write path and
+        // the lock is already held — a second rotation site is how the next
+        // one added forgets, the same reason the secret strip lives here.
+        runCatching {
+            HubVersions.rotate(
+                this, raw(),
+                ConfigJson.fingerprint(ConfigJson.fromJson(safe)),
+                System.currentTimeMillis()
+            )
+        }
         val tmp = File(dataDir, "config.json.tmp")
         tmp.writeText(safe)
         if (!tmp.renameTo(file)) {
@@ -174,10 +185,11 @@ class HubStore(private val dataDir: File) {
         Outcome(changed, peerBehind = changed, hash = afterHash, syncHash = afterSync)
     }
 
-    /** Adopt a config wholesale — the first enrolment, and nothing else. */
-    fun adopt(json: String): Boolean = synchronized(lock) {
-        if (runCatching { ConfigJson.fromJson(json) }.isFailure) return false
-        commit(json)
-        true
-    }
+    // There is deliberately no adopt()/replace() here.
+    //
+    // An unstamped whole-file write is the primitive a future session
+    // implementing "restore" or "import" will reach for, and it is wrong for
+    // both: a document written without stamps carries no causality, so the
+    // first peer to sync discards it. Restores go through edit(), which
+    // stamps. See HubVersions.
 }

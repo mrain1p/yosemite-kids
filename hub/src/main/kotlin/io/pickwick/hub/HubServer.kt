@@ -265,8 +265,40 @@ class HubServer(
                         .put("removed", HubWeb.removeChannel(store, WHO, now(), body.getString("remove")))
                     body.has("unblock") -> JSONObject()
                         .put("unblocked", HubWeb.unblock(store, WHO, now(), body.getString("unblock")))
+                    body.has("edit") -> {
+                        val e = body.getJSONObject("edit")
+                        JSONObject().put(
+                            "edited",
+                            HubWeb.editChannel(
+                                store, WHO, now(), e.getString("id"),
+                                if (e.has("multiplier")) e.getInt("multiplier") else null,
+                                if (e.has("note")) e.getString("note") else null,
+                                if (e.has("kids")) {
+                                    e.getJSONArray("kids").let { a ->
+                                        (0 until a.length()).map { a.getString(it) }.toSet()
+                                    }
+                                } else null
+                            )
+                        )
+                    }
                     else -> null
                 }
+            }
+
+            // One patch route for every plain config field, rather than a
+            // route per control. A route per control is a route per control
+            // to forget when the phone grows one.
+            "/api/config" -> mutate(ex) { body ->
+                if (HubWeb.applyPatch(store, WHO, now(), body)) JSONObject().put("saved", true)
+                else null
+            }
+
+            "/api/versions" -> mutate(ex) { body ->
+                if (!body.has("restore")) null
+                else JSONObject().put(
+                    "restored",
+                    HubVersions.restore(store, WHO, now(), body.getString("restore"))
+                )
             }
 
             "/api/devices" -> mutate(ex) { body ->
@@ -284,6 +316,16 @@ class HubServer(
                     )
                     body.has("revoke") -> JSONObject()
                         .put("revoked", HubWeb.revokeDevice(tokens, body.getString("revoke")))
+                    body.has("assign") -> {
+                        val a = body.getJSONObject("assign")
+                        JSONObject().put(
+                            "assigned",
+                            HubWeb.assignDevice(
+                                store, tokens, WHO, now(),
+                                a.getString("ref"), a.optString("kid")
+                            )
+                        )
+                    }
                     else -> null
                 }
             }

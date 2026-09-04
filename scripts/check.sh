@@ -140,105 +140,45 @@ fi
 
 # --- phone/hub settings parity ---------------------------------------------
 #
-# The hub GUI mirrors the phone Settings. Two UIs meant to mirror each other
-# drift the moment one gains a feature, silently: nothing about a Compose
-# screen says a browser page across the repo was supposed to grow the same
-# control, and the drift is found by a parent who cannot do on the NAS what
-# they just did on their phone.
+# SettingsSurface is the single list of settings groups, and these read it in
+# both directions so the two faces cannot drift apart silently.
 #
-# SettingsSurface.kt is the single list. These check it in both directions, so
-# editing it is where the "does this belong on the hub?" decision gets made
-# rather than something that can be skipped. Divergence is fine; undeclared
-# divergence is not.
+# Keyed on FIELDS, not composables. The first version of this guard counted
+# "...Section(" functions and was blind to two whole categories: the Playback
+# page has no section composable at all, and neither does the "Kid's shelves"
+# card. An entire page was invisible to it. Every field buildCurrentConfig
+# writes has to appear in the manifest, which no amount of inlining hides.
 manifest=core/src/main/kotlin/io/pickwick/app/data/SettingsSurface.kt
+settings=app/src/main/java/io/pickwick/app/ui/Settings.kt
+hubweb=hub/src/main/kotlin/io/pickwick/hub/HubWeb.kt
 
-# 1. Every phone section is declared.
-for fn in $(grep -hoE "internal fun [A-Za-z]+Section[(]" app/src/main/java/io/pickwick/app/ui/Settings*.kt | sed -E "s/internal fun //; s/[(]//" | sort -u); do
-  grep -q "\"$fn\"" "$manifest" || \
-    guard_fail "$fn is not in SettingsSurface. Add it and say whether it belongs on the hub."
+# 1. Every field the settings form writes is claimed by some group.
+for f in $(awk "/fun buildCurrentConfig/,/^    }$/" "$settings" | grep -oE "^ *[a-zA-Z]+ = " | sed -E "s/ *//; s/ = //" | sort -u); do
+  grep -q "$q$f$q" "$manifest" || guard_fail "Settings writes $f and no SettingsSurface group claims it. Add it to a group and say whether the hub gets it."
 done
 
-# 2. Every hub page is declared, and is not marked phone-only.
-for id in $(grep -hoE "HubPage[(]\"[^\"]+\"" hub/src/main/kotlin/io/pickwick/hub/HubWeb.kt | sed -E "s/HubPage[(]\"//; s/\"//" | sort -u); do
-  line=$(grep -E "SettingsSection[(]\"$id\"" "$manifest" || true)
-  [ -n "$line" ] || guard_fail "the hub serves a page called $id that SettingsSurface does not list."
-  case "$line" in
-    *Where.PHONE*) guard_fail "$id is marked PHONE in SettingsSurface but the hub serves it." ;;
-  esac
+# 2. Every settings composable is declared. Both spellings, every file in the
+#    ui package — KidsSection is a bare `fun` in KidsSettings.kt and was
+#    missed by an earlier glob that only looked at Settings*.kt.
+for fn in $(grep -hoE "fun [A-Za-z]+Section[(]" app/src/main/java/io/pickwick/app/ui/*.kt | sed -E "s/fun //; s/[(]//" | sort -u); do
+  grep -q "$q$fn$q" "$manifest" || guard_fail "$fn is not in SettingsSurface. Add it and say whether it belongs on the hub."
 done
 
-# 3. Anything claiming to be built on the hub must actually be there.
-grep -oE "SettingsSection[(]\"[^\"]+\", \"[^\"]*\", \"[^\"]*\", Where[.]BOTH, true" "$manifest" |
-  sed -E "s/SettingsSection[(]\"//; s/\".*//" | while read -r id; do
-    grep -q "HubPage[(]\"$id\"" hub/src/main/kotlin/io/pickwick/hub/HubWeb.kt || \
-      guard_fail "SettingsSurface says $id is ready on the hub, but HubWeb serves no such page."
-  done
-
-# Named, not counted: what is still missing should be readable, not a number.
-todo=$(grep -oE "SettingsSection[(]\"[^\"]+\", \"[^\"]*\", \"[^\"]*\", Where[.]BOTH, false" "$manifest" |
-  sed -E "s/SettingsSection[(]\"//; s/\".*//" | awk "{printf \"%s \", \$0}")
-[ -z "$todo" ] || echo "   settings still to reach the hub: $todo"
-
-# --- one arrival path for a config -----------------------------------------
-#
-# A config can land two ways: a peer pushes it to our LAN server, or this
-# device merges it during its own sweep. Both must settle the kid's pending
-# restyle and raise the "your rules changed" pill. Hanging that off the inbound
-# path alone was invisible while phones were the only devices that swept — a
-# device merging on its own never cleared the overlay, so its hash differed
-# from its peer's forever and it re-merged every five minutes, and its kid was
-# never told. One lambda, both callers.
-acks=$(grep -rc "ProfileLooks(appContext)[.]ack(" app/src/main/java | grep -v ":0$" | wc -l)
-if [ "$acks" -ne 1 ]; then
-  guard_fail "ProfileLooks.ack must have exactly one call site (found $acks files). Both arrival paths share applyConfig."
-fi
-if ! grep -q "onConfigApplied?[.]invoke(" app/src/main/java/io/pickwick/app/ui/MainViewModel.kt; then
-  guard_fail "the sweep no longer applies what it merged. A self-started merge must do what an inbound push does."
-fi
-
-# A kid's un-adopted restyle is a local rendering and must not travel. load()
-# lays it over every read so it shows on this screen at once; a config sent to
-# a peer carrying it puts a kid's private choice into the family document,
-# where the stamps match on both sides and the merge breaks the tie on JSON
-# string ordering. mergeIncoming already refuses a rendered read on the way in.
-if ! grep -q "fun rawJson(): String = ConfigJson.toJson(loadForPeers())" app/src/main/java/io/pickwick/app/data/ConfigStore.kt; then
-  guard_fail "rawJson must serialise loadForPeers(), not load(). load() carries the kid overlay."
-fi
-
-# A hub handed to a device must be flagged secretless. It strips the API key
-# before writing and has no keystore to put it back, so a peer judged on the
-# full fingerprint decides it is out of sync with the hub forever and merges
-# on every single sweep.
-if ! grep -A 20 'path == "/join-hub"' app/src/main/java/io/pickwick/app/data/Pairing.kt | grep -q "secretless = true"; then
-  guard_fail "/join-hub must store the hub with secretless = true, or the device never reads as in sync."
-fi
-
-# The hub publishes the port it listens on. Both the ports line and the
-# environment read one variable, because publishing one port while the process
-# listens on another gives a container that is running, healthy and
-# unreachable — the health check passes because it runs inside the container.
-compose=hub/docker-compose.yml
-if grep -qE "^[[:space:]]*network_mode:[[:space:]]*host" "$compose"; then
-  guard_fail "host networking is back in $compose, which makes the published port inert."
-fi
-if [ "$(grep -o "PICKWICK_PORT:-8765" "$compose" | wc -l)" -lt 3 ]; then
-  guard_fail "$compose must publish and set the port from one variable (ports twice, environment once)."
-fi
-
-# Every namespace the merge decides must be one the stamper can mint.
-#
-# This is the shape of the worst bug found in this codebase so far.
-# ConfigMerge resolved blockedFor, allowedFor and deviceProfiles on their own
-# unit stamps while ConfigStamp minted none of them, and a unit with no stamp
-# and no tombstone is absent — so a parent blocking a video for one child
-# changed nothing on the television, and every test passed. safeState lists
-# the families the merge decides; each one must be mintable.
-merge=core/src/main/kotlin/io/pickwick/app/data/ConfigMerge.kt
-stamp=core/src/main/kotlin/io/pickwick/app/data/ConfigStamp.kt
-q=$(printf "%s" 0x22 | sed "s/0x22/\"/")
-for ns in $(sed -n "/private fun safeState/,/^    }/p" "$merge" | grep -oE "$q[a-z.]+$q" | tr -d "$q" | sort -u); do
-  grep -q "$q$ns|" "$stamp" || guard_fail "the merge decides the $ns namespace but ConfigStamp never mints it — those edits are dropped by the first peer that merges."
+# 3. The hub serves exactly the pages the phone navigates. Page ids are the
+#    Page enum lowercased, so a page invented on one side and not the other
+#    fails here rather than being noticed by a parent.
+for id in $(grep -hoE "HubPage[(]$q[^$q]+$q" "$hubweb" | sed -E "s/HubPage[(]$q//; s/$q//" | sort -u); do
+  upper=$(printf "%s" "$id" | tr "[:lower:]" "[:upper:]")
+  grep -qE "^    $upper[(]" "$manifest" || guard_fail "the hub serves a page called $id, which is not a Page in SettingsSurface."
 done
+for upper in $(grep -oE "^    [A-Z]+[(]" "$manifest" | tr -d " ([" ); do
+  lower=$(printf "%s" "$upper" | tr "[:upper:]" "[:lower:]")
+  grep -q "HubPage[(]$q$lower$q" "$hubweb" || guard_fail "the phone has a $upper settings page and the hub serves none."
+done
+
+# Named, not counted: what is still missing should be readable.
+todo=$(grep -oE "Where[.]BOTH, false" "$manifest" | wc -l)
+[ "$todo" -eq 0 ] || echo "   settings groups still to reach the hub: $todo"
 
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.

@@ -2,6 +2,7 @@ package io.pickwick.hub
 
 import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.ConfigMerge
+import io.pickwick.app.data.Page
 import io.pickwick.app.data.SettingsSurface
 import io.pickwick.app.data.Where
 import org.json.JSONObject
@@ -236,35 +237,148 @@ class HubWebTest {
     // --- parity ----------------------------------------------------------
 
     @Test
-    fun everyPageTheHubServesIsDeclaredInTheSharedManifest() {
+    fun theHubServesExactlyThePagesThePhoneNavigates() {
         // Also a build guard, deliberately. The guard catches it before a
         // commit; this catches it in a build where the guard was not run, and
-        // states the rule where a reader of :hub will actually meet it.
-        val declared = SettingsSurface.hubIds()
-        HubWeb.pages.forEach {
-            assertTrue("${it.id} is served but not declared in SettingsSurface", it.id in declared)
-        }
+        // states the rule where a reader of :hub will meet it.
+        val phonePages = Page.values().map { HubWeb.pageIdOf(it) }.toSet()
+        assertEquals(phonePages, HubWeb.pages.map { it.id }.toSet())
     }
 
     @Test
-    fun everySectionMarkedReadyOnTheHubIsActuallyServed() {
+    fun everyGroupMarkedReadyOnTheHubBelongsToAPageTheHubServes() {
         val served = HubWeb.pages.map { it.id }.toSet()
         SettingsSurface.sections
-            .filter { it.where == Where.BOTH && it.hubReady }
-            .forEach { assertTrue("${it.id} claims to be ready but is not served", it.id in served) }
+            .filter { it.where != Where.PHONE && it.hubReady }
+            .forEach {
+                assertTrue(
+                    "${it.id} is ready on the hub but its page is not served",
+                    HubWeb.pageIdOf(it.page) in served
+                )
+            }
     }
 
     @Test
     fun whatIsStillMissingIsNamedForTheParentRatherThanCounted() {
-        // The page tells a parent which settings they still need a phone for.
-        // "Nine sections outstanding" would not help anyone decide anything.
+        // The page tells a parent which settings they still need a phone for,
+        // on the page where they went looking. "Six outstanding" would not
+        // help anyone decide anything.
         val session = signIn()!!
         val hub = JSONObject(call("/api/state", cookie = session).second).getJSONObject("hub")
         val outstanding = hub.getJSONArray("outstanding")
         assertEquals(SettingsSurface.outstandingOnHub().size, outstanding.length())
-        if (outstanding.length() > 0) assertTrue(outstanding.getString(0).isNotBlank())
+        if (outstanding.length() > 0) {
+            val first = outstanding.getJSONObject(0)
+            assertTrue(first.getString("title").isNotBlank())
+            assertTrue("and says which page it lives on", first.getString("page").isNotBlank())
+        }
     }
 
+    // --- editing plain config ---------------------------------------------
+
+    @Test
+    fun aTogglePatchedFromTheBrowserIsStampedAndSurvivesAMerge() {
+        val session = signIn()!!
+        assertEquals(200, post("/api/config", JSONObject().put("sponsorSkip", false).toString(), session).first)
+
+        val after = store.load()
+        assertFalse(after.sponsorSkip)
+        // Against the merge, not against the file: an unstamped edit looks
+        // fine on disk and loses on the next sync.
+        val stale = ConfigJson.toJson(after.copy(sponsorSkip = true, sync = io.pickwick.app.data.SyncMeta.EMPTY))
+        val merged = ConfigMerge.merge(store.raw(), stale).merged ?: store.raw()!!
+        assertFalse(ConfigJson.fromJson(merged).sponsorSkip)
+    }
+
+    @Test
+    fun aBrowserCannotSetTheApiKeyHoweverItAsks() {
+        // The hub strips secrets on the way to disk, so a key set here would
+        // appear to work, ride out to every device in the next push, and then
+        // be gone after a restart.
+        val session = signIn()!!
+        val ai = JSONObject().put("enabled", true).put("model", "m").put("apiKey", "sk-nope")
+        post("/api/config", JSONObject().put("ai", ai).toString(), session)
+
+        assertEquals("m", store.load().ai.model)
+        assertFalse(java.io.File(tmp.root, "hub/config.json").readText().contains("sk-nope"))
+    }
+
+    @Test
+    fun aPatchNamingNothingSettableIsRefused() {
+        val session = signIn()!!
+        // sync is the merge's own bookkeeping and only the stamper may write it.
+        val (code, _) = post("/api/config", JSONObject().put("sync", JSONObject()).toString(), session)
+        assertEquals(400, code)
+    }
+
+    @Test
+    fun aChannelsPerKidVisibilityCanBeSetFromTheBrowser() {
+        val session = signIn()!!
+        post("/api/channels", JSONObject().put("add", "@One").toString(), session)
+        val edit = JSONObject().put("id", "@One").put("multiplier", 50)
+            .put("kids", org.json.JSONArray().put("k1"))
+        assertEquals(200, post("/api/channels", JSONObject().put("edit", edit).toString(), session).first)
+
+        val e = store.load().sources.single()
+        assertEquals(50, e.timeMultiplierPercent)
+        assertEquals(setOf("k1"), e.profileIds)
+    }
+
+    // --- versions ----------------------------------------------------------
+
+    @Test
+    fun aRestoreIsAStampedEditThatBeatsAPeerRatherThanAFileCopy() {
+        // THE property of the whole feature. A byte-restore carries the old
+        // stamps, so every peer that edited since wins its unit straight back
+        // and the parent watches the rollback undo itself.
+        val session = signIn()!!
+        post("/api/channels", JSONObject().put("add", "@Keep").toString(), session)
+        val before = store.load()
+
+        // A version exists once the settings change again, past the window.
+        clock += HubVersions.COALESCE_MS + 1
+        post("/api/channels", JSONObject().put("add", "@Mistake").toString(), session)
+        assertEquals(setOf("@Keep", "@Mistake"), store.load().sources.map { it.id }.toSet())
+
+        val versions = JSONObject(call("/api/state", cookie = session).second).getJSONArray("versions")
+        assertTrue("a version should have been kept", versions.length() > 0)
+        val id = versions.getJSONObject(0).getString("id")
+
+        clock += HubVersions.COALESCE_MS + 1
+        assertEquals(200, post("/api/versions", JSONObject().put("restore", id).toString(), session).first)
+        assertEquals(setOf("@Keep"), store.load().sources.map { it.id }.toSet())
+
+        // And it holds against a peer that still has the mistake.
+        val peerStillHasIt = ConfigJson.toJson(before.copy(sources = before.sources))
+        val merged = ConfigMerge.merge(store.raw(), peerStillHasIt).merged ?: store.raw()!!
+        assertFalse(
+            "the restore must not be undone by a peer",
+            ConfigJson.fromJson(merged).sources.any { it.id == "@Mistake" }
+        )
+    }
+
+    @Test
+    fun versionsAreKeptOnlyWhenTheSettingsActuallyChange() {
+        // toJson re-stamps updatedAt on every serialization, so byte-difference
+        // is always true and would burn the ring on sync noise alone.
+        val session = signIn()!!
+        post("/api/channels", JSONObject().put("add", "@One").toString(), session)
+        val first = JSONObject(call("/api/state", cookie = session).second).getJSONArray("versions").length()
+
+        clock += HubVersions.COALESCE_MS + 1
+        // Re-adding the same channel changes nothing.
+        post("/api/channels", JSONObject().put("add", "@One").toString(), session)
+        val second = JSONObject(call("/api/state", cookie = session).second).getJSONArray("versions").length()
+        assertEquals(first, second)
+    }
+
+    @Test
+    fun aRestoreOfSomethingThatIsNotAVersionIsRefused() {
+        val session = signIn()!!
+        val (code, body) = post("/api/versions", JSONObject().put("restore", "../config.json").toString(), session)
+        assertEquals(200, code)
+        assertFalse(JSONObject(body).getBoolean("restored"))
+    }
     // --- plumbing --------------------------------------------------------
 
     /**
