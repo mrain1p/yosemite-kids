@@ -307,7 +307,15 @@ class MainViewModel(
                     // and comparing the second against the pre-merge hash
                     // would take the do-nothing arm and leave it stale, while
                     // the devices list cheerfully reported it in sync.
-                    val localHash = ConfigJson.fingerprint(store.load())
+                    // Without the API key for a peer that holds none. A hub
+                    // strips secrets before writing and cannot put them back,
+                    // so its hash is permanently the keyless one — and judged
+                    // against the full form this took the merge arm on every
+                    // sweep forever, fetching and re-merging a config that had
+                    // never changed. Everything else is judged on the full
+                    // form, so a rotated key still forces a push to a TV.
+                    val localHash =
+                        ConfigJson.fingerprint(store.load(), includeSecrets = !device.secretless)
                     val localSyncHash = store.syncHash()
                     val localAt = store.updatedAt()
                     val remoteHash = status.hash

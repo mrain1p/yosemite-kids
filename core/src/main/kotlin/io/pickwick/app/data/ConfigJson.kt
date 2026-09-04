@@ -19,7 +19,17 @@ object ConfigJson {
          * Short content hash of what actually matters (channels, blocks, rules) —
          * two devices with equal fingerprints are provably in sync.
          */
-        fun fingerprint(w: Whitelist): String {
+        /**
+         * [includeSecrets] false substitutes an empty API key, giving the
+         * fingerprint a peer that deliberately holds no secrets would compute.
+         *
+         * It defaults to true and must stay that way. Three call sites are
+         * load-bearing on the full form: the settings autosave fires on a
+         * fingerprint change, so a key-only edit that stopped moving it would
+         * never be saved at all; /status advertises the full form; and a
+         * migrated kid mints their profile id from it.
+         */
+        fun fingerprint(w: Whitelist, includeSecrets: Boolean = true): String {
             val canonical = buildString {
                 w.sources.forEach {
                     append(it.id); append('|'); append(it.kind.name); append('|')
@@ -56,11 +66,25 @@ object ConfigJson {
                 // device that slept through the original push.
                 w.limits.pausedUntilMillis?.let { append(";P:"); append(it) }
                 append(";AI:")
+                // Escaped, unlike every other field joined on this delimiter.
+                // These are parent-typed free text and were never scrubbed of
+                // "|" the way TimeWindow.label is scrubbed of "[,;]" below, so
+                // a delimiter inside a model name could already shift across a
+                // field boundary. Blanking the key widens that: it leaves an
+                // empty slot for a stray "|" to migrate across, which would let
+                // a peer holding a different model AND different rules read as
+                // in sync. Escaping is injective, and leaves the overwhelmingly
+                // commoner case — no delimiter in the text — byte-identical to
+                // older builds, so no device is forced out of sync by this.
+                fun esc(v: Any?): String = v.toString()
+                    .replace("\\", "\\\\")
+                    .replace("|", "\\|")
                 append(
                     listOf(
-                        w.ai.enabled, w.ai.baseUrl, w.ai.model, w.ai.apiKey,
+                        w.ai.enabled, w.ai.baseUrl, w.ai.model,
+                        if (includeSecrets) w.ai.apiKey else "",
                         w.ai.rules, w.ai.childAge, w.ai.rulesVersion
-                    ).joinToString("|")
+                    ).joinToString("|") { esc(it) }
                 )
                 append(";AA:"); append(w.aiAllowedVideoIds.sorted().joinToString(","))
                 // Everything profile-shaped is append-only-when-present, so a

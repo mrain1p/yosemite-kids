@@ -126,6 +126,41 @@ foreach ($d in $docRefs) {
     if (-not (Test-Path $d)) { Fail-Guard "source points at $d, which does not exist." }
 }
 
+# includeSecrets must default to true. The settings form autosaves on a
+# fingerprint change and nothing else, so a key edit that stopped moving the
+# default fingerprint would never be saved at all — the key lost on the phone
+# itself, not merely unpropagated.
+if (-not (Select-String -Path core/src/main/kotlin/io/pickwick/app/data/ConfigJson.kt -Pattern 'includeSecrets: Boolean = true' -SimpleMatch -Quiet)) {
+    Fail-Guard "ConfigJson.fingerprint must keep includeSecrets defaulting to true. Only a secretless peer passes false."
+}
+
+# Whether a peer holds no secrets is this phone's record, made at enrolment —
+# never the peer's claim. A peer that could assert it would switch off the
+# only content-level check on the API key, and a TV holding a revoked key
+# would read "in sync" while its screening was dead. So the hub does not
+# advertise it and the app does not look for it.
+# Counted, not -Quiet: with pipeline input Select-String -Quiet emits one
+# boolean PER FILE, and a non-empty array is truthy, so the guard would fire
+# on every build no matter what the files contained.
+if (@(Get-ChildItem -Recurse -File hub/src/main | Select-String -Pattern 'secretless' -SimpleMatch).Count -gt 0) {
+    Fail-Guard ":hub must not advertise secretless. The flag is recorded on the phone at enrolment, not asserted by the peer."
+}
+
+# One comparison rule, in matches(). A hand-rolled copy in the push-result
+# message was missed when the secretless case was added, so the tile said
+# "in sync" while the note underneath blamed an old version.
+if (Select-String -Path app/src/main/java/io/pickwick/app/ui/SettingsDevices.kt -Pattern '[.]hash == local' -Quiet) {
+    Fail-Guard "SettingsDevices.kt compares a peer hash outside matches(). Route it through matches(expectedHash(...), ...)."
+}
+
+# The hub's name is load-bearing twice over: the settings screen finds the
+# hub by it, and pre-flag entries are migrated by it. Two copies drift.
+$hubName = @(Get-ChildItem -Recurse -File app/src/main/java, core/src/main/kotlin |
+    Select-String -Pattern '"Pickwick hub"' -SimpleMatch | ForEach-Object { $_.Path } | Sort-Object -Unique)
+if ($hubName.Count -ne 1) {
+    Fail-Guard "the literal `"Pickwick hub`" must appear only in PairedDevice.HUB_NAME (found in $($hubName.Count) files)."
+}
+
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |

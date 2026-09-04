@@ -1,5 +1,6 @@
 package io.pickwick.hub
 
+import io.pickwick.app.data.AiConfig
 import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.ConfigStamp
 import io.pickwick.app.data.SourceKind
@@ -221,6 +222,39 @@ class HubServerTest {
         )
     }
 
+
+    @Test
+    fun theHashStillMatchesWhenThePushCarriedAnApiKey() {
+        // The test above was passing trivially: its fixture carries no API
+        // key, so the one field the hub actually removes was never in play.
+        // With a key present the hub serves and hashes a config that differs
+        // from the one it was sent — which is correct, and is exactly the
+        // case that has to stay self-consistent.
+        val token = enrolled()
+        val withKey = ConfigJson.toJson(
+            Whitelist(
+                sources = listOf(entry("UCaaa")),
+                blockedVideoIds = emptySet(),
+                ai = AiConfig(enabled = true, model = "m", apiKey = "sk-never"),
+                sync = SyncMeta(docAt = T, at = mapOf(ConfigStamp.src("UCaaa") to T))
+            )
+        )
+        call("/config", "POST", token, withKey)
+
+        val status = JSONObject(call("/status", token = token).second)
+        val served = ConfigJson.fromJson(call("/config", token = token).second)
+        assertEquals(ConfigJson.fingerprint(served), status.getString("hash"))
+
+        // And that hash is precisely what a phone holding the key computes
+        // with includeSecrets = false. This is the wire half of the
+        // agreement ConfigSecretlessTest pins locally; if it breaks, the hub
+        // reads as out of sync forever and the reconcile never rests.
+        val onThePhone = ConfigJson.fromJson(withKey)
+        assertEquals(
+            ConfigJson.fingerprint(onThePhone, includeSecrets = false),
+            status.getString("hash")
+        )
+    }
     @Test
     fun theHashInAStatusMatchesTheConfigItServes() {
         // If these ever disagree, every device decides it is out of sync with

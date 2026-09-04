@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.pickwick.app.data.HubEnrolment
+import io.pickwick.app.data.PairedDevice
 import io.pickwick.app.data.PairingStore
 import kotlinx.coroutines.launch
 
@@ -39,7 +40,7 @@ import kotlinx.coroutines.launch
 internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
     val scope = rememberCoroutineScope()
 
-    val hub = remember { pairingStore.paired().firstOrNull { it.name == "Pickwick hub" } }
+    val hub = remember { pairingStore.paired().firstOrNull { it.name == PairedDevice.HUB_NAME } }
     var host by remember { mutableStateOf(hub?.host ?: "") }
     var admin by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }

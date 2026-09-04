@@ -111,11 +111,17 @@ object HubEnrolment {
             // Stored like any other peer. From here the ordinary reconcile
             // takes over — the hub is simply a device that never sleeps.
             PairedDevice(
-                name = "Pickwick hub",
+                name = PairedDevice.HUB_NAME,
                 host = host.trim().removePrefix("http://").removePrefix("https://")
                     .substringBefore(':').removeSuffix("/"),
                 port = Regex(":(\\d+)$").find(host.trim())?.groupValues?.get(1)?.toIntOrNull() ?: port,
-                token = token
+                token = token,
+                // Recorded now, by the side that knows. The hub strips the
+                // API key before writing and has no SecretStore to put it
+                // back, so its config fingerprint is permanently the
+                // keyless one and comparing it against this phone's full
+                // fingerprint can never match.
+                secretless = true
             )
         }.recoverCatching { e ->
             throw if (e is HubError) e else HubError(Failure.Unreachable)

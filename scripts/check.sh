@@ -107,6 +107,37 @@ for d in $(grep -rhoE 'docs/[A-Za-z0-9_.-]+[.]md' app/src core/src hub/src scrip
   [ -f "$d" ] || guard_fail "source points at $d, which does not exist."
 done
 
+# includeSecrets must default to true. The settings form autosaves on a
+# fingerprint change and nothing else, so a key edit that stopped moving the
+# default fingerprint would never be saved at all — the key lost on the phone
+# itself, not merely unpropagated.
+if ! grep -q 'includeSecrets: Boolean = true' core/src/main/kotlin/io/pickwick/app/data/ConfigJson.kt; then
+  guard_fail "ConfigJson.fingerprint must keep includeSecrets defaulting to true. Only a secretless peer passes false."
+fi
+
+# Whether a peer holds no secrets is this phone's record, made at enrolment —
+# never the peer's claim. A peer that could assert it would switch off the
+# only content-level check on the API key, and a TV holding a revoked key
+# would read "in sync" while its screening was dead. So the hub does not
+# advertise it and the app does not look for it.
+if grep -rq 'secretless' hub/src/main; then
+  guard_fail ":hub must not advertise secretless. The flag is recorded on the phone at enrolment, not asserted by the peer."
+fi
+
+# One comparison rule, in matches(). A hand-rolled copy in the push-result
+# message was missed when the secretless case was added, so the tile said
+# "in sync" while the note underneath blamed an old version.
+if grep -qE '[.]hash == local' app/src/main/java/io/pickwick/app/ui/SettingsDevices.kt; then
+  guard_fail "SettingsDevices.kt compares a peer hash outside matches(). Route it through matches(expectedHash(...), ...)."
+fi
+
+# The hub's name is load-bearing twice over: the settings screen finds the
+# hub by it, and pre-flag entries are migrated by it. Two copies drift.
+hubname=$(grep -rc '"Pickwick hub"' app/src/main/java core/src/main/kotlin 2>/dev/null | grep -v ":0$" | wc -l)
+if [ "$hubname" -ne 1 ]; then
+  guard_fail "the literal \"Pickwick hub\" must appear only in PairedDevice.HUB_NAME (found in $hubname files)."
+fi
+
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')

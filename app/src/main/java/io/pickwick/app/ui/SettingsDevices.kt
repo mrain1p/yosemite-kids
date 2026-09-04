@@ -112,8 +112,48 @@ private sealed interface DeviceSync {
  * A legacy peer has no bookkeeping to compare, so it is judged on the config
  * alone, exactly as before.
  */
-private fun DeviceSync.Reachable.matches(localHash: String, localSyncHash: String): Boolean =
-    hash == localHash && (syncV == null || syncHash == localSyncHash)
+/**
+ * The one comparison rule, over plain values.
+ *
+ * Two types carry a peer's reported hashes — [DeviceSync.Reachable] for the
+ * tile and [LanClient.DeviceStatus] for the re-read after a push — and the
+ * push site used to hand-roll this rather than share it. That copy was then
+ * missed, so the tile and the note directly beneath it could disagree about
+ * the same device. Both wrappers below delegate here; neither restates it.
+ */
+private fun hashesAgree(
+    remoteHash: String,
+    remoteSyncV: Int?,
+    remoteSyncHash: String?,
+    expectedHash: String,
+    localSyncHash: String
+): Boolean =
+    remoteHash == expectedHash && (remoteSyncV == null || remoteSyncHash == localSyncHash)
+
+private fun DeviceSync.Reachable.matches(expectedHash: String, localSyncHash: String): Boolean =
+    hashesAgree(hash, syncV, syncHash, expectedHash, localSyncHash)
+
+private fun LanClient.DeviceStatus.matches(expectedHash: String, localSyncHash: String): Boolean =
+    hashesAgree(hash, syncV, syncHash, expectedHash, localSyncHash)
+
+/**
+ * The fingerprint [device] should be reporting if it agrees with this phone.
+ *
+ * A secretless peer — a hub — strips the API key before writing and has no
+ * SecretStore to put it back, so the hash it advertises is computed over a
+ * config with a blank key. Compared against this phone's full fingerprint it
+ * could never match, and the hub read as permanently out of sync: the tile
+ * said so, Push and Pull were offered forever, and the background reconcile
+ * took the merge arm on every single sweep instead of doing nothing.
+ *
+ * The flag comes from the stored [PairedDevice], recorded at enrolment, never
+ * from the peer's own /status. A peer that could declare itself secretless
+ * could switch off this phone's only content-level check on the key — and a
+ * TV holding a revoked key would then read "in sync" while its screening was
+ * dead.
+ */
+private fun expectedHash(device: PairedDevice, localHash: String, localSecretlessHash: String): String =
+    if (device.secretless) localSecretlessHash else localHash
 
 @Composable
 internal fun PhoneDevicesSection(
@@ -135,6 +175,11 @@ internal fun PhoneDevicesSection(
      * that knows about a deletion this phone does not cannot read as in sync.
      */
     localSyncHash: String = "",
+    /**
+     * The same form fingerprint as [localHash], computed without the API key.
+     * What a peer that deliberately holds no secrets should be reporting.
+     */
+    localSecretlessHash: String = localHash,
     /** Force a config sweep now rather than waiting for the five-minute poll. */
     onSyncNow: () -> Unit = {},
     /** Saves the form's current state to disk and returns its JSON — what Push sends. */
@@ -508,13 +553,13 @@ internal fun PhoneDevicesSection(
                         is DeviceSync.Checking, null -> "checking…"
                         is DeviceSync.Offline -> "offline — open Pickwick on it, on home Wi-Fi"
                         is DeviceSync.Reachable ->
-                            if (sync.matches(localHash, localSyncHash)) "in sync ✓"
+                            if (sync.matches(expectedHash(device, localHash, localSecretlessHash), localSyncHash)) "in sync ✓"
                             else "out of sync — #${sync.hash} on device"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = when (sync) {
                         is DeviceSync.Reachable ->
-                            if (sync.matches(localHash, localSyncHash)) androidx.compose.ui.graphics.Color(0xFF81C784)
+                            if (sync.matches(expectedHash(device, localHash, localSecretlessHash), localSyncHash)) androidx.compose.ui.graphics.Color(0xFF81C784)
                             else MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
@@ -524,7 +569,7 @@ internal fun PhoneDevicesSection(
                     modifier = Modifier.horizontalScroll(rememberScrollState())
                 ) {
                     if (sync is DeviceSync.Reachable &&
-                        (!sync.matches(localHash, localSyncHash) || sync.syncV == null)
+                        (!sync.matches(expectedHash(device, localHash, localSecretlessHash), localSyncHash) || sync.syncV == null)
                     ) {
                         Button(modifier = Modifier.tvFocusHighlight(), onClick = {
                             // Push = "make the device match this screen": saves the
@@ -547,9 +592,15 @@ internal fun PhoneDevicesSection(
                                     after == null ->
                                         "Sent, but ${device.name} stopped answering — " +
                                             "check it arrived."
-                                    after.hash == localHash &&
-                                        (after.syncV == null || after.syncHash == localSyncHash) ->
-                                        "Pushed ✓"
+                                    // Through matches(), not a second copy of
+                                    // its rule. The copy that used to live here
+                                    // was missed when the secretless case was
+                                    // added, so the tile said "in sync ✓" while
+                                    // this note blamed an old version.
+                                    after.matches(
+                                        expectedHash(device, localHash, localSecretlessHash),
+                                        localSyncHash
+                                    ) -> "Pushed ✓"
                                     // The device took the config and still disagrees:
                                     // almost always an older build that can't see a
                                     // setting this phone knows about (it stores the

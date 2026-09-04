@@ -44,7 +44,20 @@ data class PairedDevice(
      * Null on entries written by older builds until the first successful
      * sync backfills it.
      */
-    val id: String? = null
+    val id: String? = null,
+    /**
+     * This peer holds no API key, so it must be compared on a fingerprint
+     * computed without one. True for a self-hosted hub, which strips secrets
+     * before writing and has no SecretStore to put them back.
+     *
+     * Recorded here, at enrolment, and deliberately NOT read from the peer's
+     * /status. A peer that could assert this about itself could switch off
+     * the phone's only content-level check on the key — and a TV holding a
+     * revoked key would then read "in sync" while its screening was dead.
+     * The one party that must not be trusted for this is the peer being
+     * checked.
+     */
+    val secretless: Boolean = false
 ) {
     /**
      * Stable list key: the remote identity when known, else the address the
@@ -53,6 +66,16 @@ data class PairedDevice(
      * collapse the list to a single device.
      */
     val key: String get() = id ?: "$host:$port"
+
+    companion object {
+        /**
+         * The name [io.pickwick.app.data.HubEnrolment] gives a hub it joins.
+         * A constant because it is load-bearing in two places: the settings
+         * screen finds the hub by it, and entries written before [secretless]
+         * existed are migrated by it on read.
+         */
+        const val HUB_NAME = "Pickwick hub"
+    }
 }
 
 /**
@@ -213,6 +236,44 @@ class PairingStore(context: Context) {
          * older build) is kept — it predates the rule and there is no honest
          * age for it; anything stamped older than the TTL is gone.
          */
+        /**
+         * The stored form of the paired list. Pure and in the companion so a
+         * JVM test can reach it without a Context — the migration below is
+         * exactly the kind of thing that is written once, never exercised,
+         * and quietly wrong.
+         */
+        internal fun parsePaired(stored: String?): List<PairedDevice> = runCatching {
+            val arr = JSONArray(stored ?: "[]")
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                val name = o.getString("name")
+                PairedDevice(
+                    name, o.getString("host"), o.getInt("port"),
+                    o.getString("token"), o.optString("id").ifEmpty { null },
+                    // Entries written before the flag existed. A hub is the
+                    // only peer this phone ever named HUB_NAME, and it wrote
+                    // that name itself at enrolment, so the name is this
+                    // phone's own record rather than the peer's claim. The
+                    // next savePaired persists the flag explicitly, so a
+                    // later rename cannot lose it.
+                    o.optBoolean("secretless", name == PairedDevice.HUB_NAME)
+                )
+            }
+        }.getOrDefault(emptyList())
+
+        internal fun serializePaired(list: List<PairedDevice>): String {
+            val arr = JSONArray()
+            list.forEach { d ->
+                arr.put(JSONObject().apply {
+                    put("name", d.name); put("host", d.host)
+                    put("port", d.port); put("token", d.token)
+                    d.id?.let { put("id", it) }
+                    if (d.secretless) put("secretless", true)
+                })
+            }
+            return arr.toString()
+        }
+
         internal fun prunePending(
             pending: Map<String, String>,
             stampedAt: Map<String, String>,
@@ -229,17 +290,7 @@ class PairingStore(context: Context) {
     }
 
     /** Phone role: devices this phone administers. */
-    fun paired(): List<PairedDevice> =
-        runCatching {
-            val arr = JSONArray(prefs.getString("paired", "[]"))
-            (0 until arr.length()).map { i ->
-                val o = arr.getJSONObject(i)
-                PairedDevice(
-                    o.getString("name"), o.getString("host"), o.getInt("port"),
-                    o.getString("token"), o.optString("id").ifEmpty { null }
-                )
-            }
-        }.getOrDefault(emptyList())
+    fun paired(): List<PairedDevice> = parsePaired(prefs.getString("paired", "[]"))
 
     fun addPaired(device: PairedDevice) = savePaired(paired().upsertPaired(device))
 
@@ -258,14 +309,7 @@ class PairingStore(context: Context) {
     )
 
     private fun savePaired(list: List<PairedDevice>) {
-        val arr = JSONArray()
-        list.forEach { d ->
-            arr.put(JSONObject().apply {
-                put("name", d.name); put("host", d.host); put("port", d.port); put("token", d.token)
-                d.id?.let { put("id", it) }
-            })
-        }
-        prefs.edit().putString("paired", arr.toString()).apply()
+        prefs.edit().putString("paired", serializePaired(list)).apply()
     }
 }
 

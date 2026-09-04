@@ -669,6 +669,10 @@ private fun AdminScreen(
     }
     val current = buildCurrentConfig()
     val currentHash = ConfigJson.fingerprint(current)
+    // The same form, fingerprinted as a peer that holds no API key would see
+    // it. Only a hub is compared against this; everything else uses the full
+    // form above, so a rotated key still moves the hash a TV is judged on.
+    val currentSecretlessHash = ConfigJson.fingerprint(current, includeSecrets = false)
     val baselineHash = ConfigJson.fingerprint(baseline)
     // The bookkeeping's fingerprint, from disk. It moves when a save stamps or
     // a peer's push merges, never when the form changes, so it follows the
@@ -891,6 +895,7 @@ private fun AdminScreen(
                             // edit and its auto-save, "in sync ✓" measured against
                             // disk would be a lie for a beat.
                             localHash = currentHash,
+                            localSecretlessHash = currentSecretlessHash,
                             // Re-read after every save, since that is when the
                             // stamper mints it. Keyed on the saved baseline
                             // rather than the live form: the form does not
