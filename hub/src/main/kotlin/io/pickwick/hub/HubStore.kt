@@ -2,6 +2,7 @@ package io.pickwick.hub
 
 import io.pickwick.app.data.ConfigJson
 import io.pickwick.app.data.ConfigMerge
+import io.pickwick.app.data.ConfigStamp
 import io.pickwick.app.data.SyncMeta
 import io.pickwick.app.data.Whitelist
 import java.io.File
@@ -22,6 +23,13 @@ import java.io.File
 class HubStore(private val dataDir: File) {
 
     private val file = File(dataDir, "config.json")
+
+    /**
+     * This box, in the change feed a parent reads on their phone. Short and
+     * stable, like a device token prefix — "the hub" is a more useful answer
+     * to "who changed this?" than eight characters of hex nobody can place.
+     */
+    private val BY = "hub"
 
     /**
      * One lock across read, merge and write.
@@ -131,6 +139,39 @@ class HubStore(private val dataDir: File) {
                 tmp.delete()
             }
         }
+    }
+
+    /**
+     * An edit made on the hub itself, from the admin GUI.
+     *
+     * Stamped, like any other device's edit. An unstamped change would carry
+     * no causality and lose to the first peer that synced, so a parent
+     * changing something on the NAS would watch it silently revert — which
+     * is worse than not offering the control at all.
+     *
+     * `previous` and `base` are the same document here, and that is correct
+     * rather than a shortcut: unlike the phone, the hub holds no form open
+     * across a co-parent's push. The read and the write happen inside one
+     * lock, so there is no third version to diff against.
+     */
+    fun edit(
+        who: String,
+        now: Long,
+        transform: (Whitelist) -> Whitelist
+    ): Outcome = synchronized(lock) {
+        val current = runCatching { load() }.getOrElse { Whitelist(emptyList(), emptySet()) }
+        val beforeHash = ConfigJson.fingerprint(current)
+        val beforeSync = ConfigMerge.syncHash(current.sync)
+
+        val stamped = ConfigStamp.stamped(current, current, transform(current), now, who, BY)
+        commit(ConfigJson.toJson(stamped.config))
+
+        val after = load()
+        val afterHash = ConfigJson.fingerprint(after)
+        val afterSync = ConfigMerge.syncHash(after.sync)
+        val changed = beforeHash != afterHash || beforeSync != afterSync
+        if (changed) println("edited on the hub by $who → #$afterHash")
+        Outcome(changed, peerBehind = changed, hash = afterHash, syncHash = afterSync)
     }
 
     /** Adopt a config wholesale — the first enrolment, and nothing else. */

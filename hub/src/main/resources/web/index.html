@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pickwick hub</title>
+<!--
+  Everything is inline and nothing is fetched from the internet. A NAS often
+  has no outbound access at all, and a page that half-loads because a CDN is
+  unreachable is worse than a plain one that always works.
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f8;
+    --card: #ffffff;
+    --line: #dfe3e6;
+    --text: #16191c;
+    --dim: #5d666e;
+    --brand: #2f8f83;
+    --brand-ink: #ffffff;
+    --danger: #b3261e;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a;
+      --card: #1c2024;
+      --line: #2c3237;
+      --text: #e7eaed;
+      --dim: #98a2ab;
+      --brand: #5ec5b6;
+      --brand-ink: #10201d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--card);
+    position: sticky; top: 0; z-index: 2;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 620; letter-spacing: -0.01em; }
+  header .spacer { flex: 1; }
+  main { max-width: 780px; margin: 0 auto; padding: 18px 16px 64px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 15px; font-weight: 620; }
+  .hint { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
+  nav { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  nav button {
+    background: transparent; border: 1px solid var(--line); color: var(--text);
+    padding: 7px 13px; border-radius: 999px; cursor: pointer; font-size: 14px;
+  }
+  nav button[aria-current="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+  button.primary {
+    background: var(--brand); color: var(--brand-ink); border: 1px solid var(--brand);
+    padding: 8px 15px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 560;
+  }
+  button.quiet {
+    background: transparent; color: var(--dim); border: 1px solid var(--line);
+    padding: 5px 11px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  button.quiet:hover { color: var(--danger); border-color: var(--danger); }
+  button:disabled { opacity: 0.55; cursor: default; }
+  input, textarea {
+    width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px;
+    font: inherit; margin-bottom: 10px;
+  }
+  textarea { min-height: 78px; resize: vertical; }
+  ul.rows { list-style: none; margin: 0; padding: 0; }
+  ul.rows li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0; border-top: 1px solid var(--line);
+  }
+  ul.rows li:first-child { border-top: 0; }
+  .grow { flex: 1; min-width: 0; }
+  .name { font-weight: 540; overflow-wrap: anywhere; }
+  .sub { color: var(--dim); font-size: 12.5px; overflow-wrap: anywhere; }
+  .tag {
+    font-size: 11.5px; color: var(--dim); border: 1px solid var(--line);
+    border-radius: 999px; padding: 1px 8px; white-space: nowrap;
+  }
+  .empty { color: var(--dim); font-size: 13.5px; padding: 6px 0; }
+  .note {
+    background: color-mix(in srgb, var(--brand) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand) 35%, transparent);
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px;
+  }
+  .error { color: var(--danger); font-size: 13.5px; min-height: 20px; }
+  dl.kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; }
+  dl.kv dt { color: var(--dim); }
+  dl.kv dd { margin: 0; overflow-wrap: anywhere; }
+  #login { max-width: 380px; margin: 12vh auto; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<section id="login" class="card" hidden>
+  <h2>Pickwick hub</h2>
+  <p class="hint">
+    Enter the admin token. It is printed in the container log when the hub
+    starts &mdash; <code>docker logs pickwick-hub</code>.
+  </p>
+  <input id="token" type="password" autocomplete="current-password" placeholder="Admin token">
+  <button class="primary" id="signin">Sign in</button>
+  <p class="error" id="loginError"></p>
+</section>
+
+<div id="app" hidden>
+  <header>
+    <h1>Pickwick hub</h1>
+    <span class="spacer"></span>
+    <button class="quiet" id="signout">Sign out</button>
+  </header>
+
+  <main>
+    <nav id="tabs"></nav>
+
+    <section id="page-channels" class="page" hidden>
+      <div class="card">
+        <h2>Add channels</h2>
+        <p class="hint">
+          One per line. A channel URL, an <code>@handle</code>, a playlist link,
+          or a bare ID. Add <code>| A name</code> after any line to label it.
+        </p>
+        <textarea id="addText" placeholder="@ChannelHandle&#10;https://www.youtube.com/channel/UC...&#10;https://www.youtube.com/playlist?list=PL..."></textarea>
+        <button class="primary" id="addBtn">Add</button>
+        <p class="error" id="addError"></p>
+      </div>
+
+      <div class="card">
+        <h2>Channels</h2>
+        <p class="hint">What the kids can watch. Removing one takes it off every device.</p>
+        <ul class="rows" id="channels"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Blocked videos</h2>
+        <p class="hint">Individual videos hidden even inside an allowed channel.</p>
+        <ul class="rows" id="blocked"></ul>
+      </div>
+    </section>
+
+    <section id="page-devices" class="page" hidden>
+      <div class="card">
+        <h2>Waiting to join</h2>
+        <p class="hint">
+          A device showing a code is asking to be added. Approving one is what
+          lets it sync.
+        </p>
+        <ul class="rows" id="pending"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Enrolled devices</h2>
+        <p class="hint">
+          Removing a device stops it syncing. It keeps whatever it already has
+          until someone uninstalls it.
+        </p>
+        <ul class="rows" id="devices"></ul>
+      </div>
+    </section>
+
+    <section id="page-hub-health" class="page" hidden>
+      <div class="card">
+        <h2>This hub</h2>
+        <dl class="kv" id="health"></dl>
+      </div>
+      <div class="card">
+        <h2>Not here yet</h2>
+        <p class="hint">
+          Settings that exist on the phone and are still to be built here. Until
+          then, use a phone for these.
+        </p>
+        <ul class="rows" id="outstanding"></ul>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var state = null;
+  var current = null;
+
+  function $(id) { return document.getElementById(id); }
+
+  function text(el, value) { el.textContent = value == null ? "" : String(value); }
+
+  // Every request goes through here so the "your session went away" case is
+  // handled in exactly one place. A hub restart drops all sessions, and a page
+  // that responded to that by silently doing nothing would look broken.
+  function api(path, body) {
+    var opts = {
+      method: body ? "POST" : "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin"
+    };
+    if (body) opts.body = JSON.stringify(body);
+    return fetch(path, opts).then(function (r) {
+      if (r.status === 401) { showLogin(); throw new Error("sign in"); }
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+        return j;
+      });
+    });
+  }
+
+  function showLogin() {
+    $("app").hidden = true;
+    $("login").hidden = false;
+    $("token").focus();
+  }
+
+  function showApp() {
+    $("login").hidden = true;
+    $("app").hidden = false;
+  }
+
+  function signIn() {
+    var btn = $("signin");
+    btn.disabled = true;
+    text($("loginError"), "");
+    fetch("/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ token: $("token").value.trim() })
+    }).then(function (r) {
+      return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; });
+    }).then(function (res) {
+      if (res.ok) { $("token").value = ""; showApp(); return refresh(); }
+      if (res.status === 429) {
+        text($("loginError"), "Too many attempts. Try again in " + res.body.retryAfter + "s.");
+      } else {
+        text($("loginError"), "That token was not accepted.");
+      }
+    }).catch(function () {
+      text($("loginError"), "Could not reach the hub.");
+    }).then(function () { btn.disabled = false; });
+  }
+
+  function selectPage(id) {
+    current = id;
+    var pages = document.querySelectorAll(".page");
+    for (var i = 0; i < pages.length; i++) pages[i].hidden = true;
+    var page = $("page-" + id);
+    if (page) page.hidden = false;
+    var buttons = $("tabs").children;
+    for (var j = 0; j < buttons.length; j++) {
+      buttons[j].setAttribute("aria-current", buttons[j].dataset.id === id ? "true" : "false");
+    }
+  }
+
+  function renderTabs() {
+    var nav = $("tabs");
+    nav.innerHTML = "";
+    state.pages.forEach(function (p) {
+      var b = document.createElement("button");
+      b.textContent = p.title;
+      b.dataset.id = p.id;
+      b.onclick = function () { selectPage(p.id); };
+      nav.appendChild(b);
+    });
+    selectPage(current && $("page-" + current) ? current : state.pages[0].id);
+  }
+
+  function row(name, sub, tag, action) {
+    var li = document.createElement("li");
+    var box = document.createElement("div");
+    box.className = "grow";
+    var n = document.createElement("div");
+    n.className = "name";
+    n.textContent = name;
+    box.appendChild(n);
+    if (sub) {
+      var s = document.createElement("div");
+      s.className = "sub";
+      s.textContent = sub;
+      box.appendChild(s);
+    }
+    li.appendChild(box);
+    if (tag) {
+      var t = document.createElement("span");
+      t.className = "tag";
+      t.textContent = tag;
+      li.appendChild(t);
+    }
+    if (action) li.appendChild(action);
+    return li;
+  }
+
+  function button(label, cls, onClick) {
+    var b = document.createElement("button");
+    b.className = cls;
+    b.textContent = label;
+    b.onclick = function () {
+      b.disabled = true;
+      onClick().catch(function () {}).then(function () { b.disabled = false; });
+    };
+    return b;
+  }
+
+  function fill(listId, items, build, emptyText) {
+    var ul = $(listId);
+    ul.innerHTML = "";
+    if (!items.length) {
+      var li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = emptyText;
+      ul.appendChild(li);
+      return;
+    }
+    items.forEach(function (item) { ul.appendChild(build(item)); });
+  }
+
+  function render() {
+    renderTabs();
+
+    fill("channels", state.channels, function (c) {
+      return row(
+        c.label,
+        c.url,
+        c.kind === "PLAYLIST" ? "Playlist" : "Channel",
+        button("Remove", "quiet", function () {
+          return api("/api/channels", { remove: c.id }).then(refresh);
+        })
+      );
+    }, "Nothing added yet.");
+
+    fill("blocked", state.blocked, function (v) {
+      return row(v, "youtube.com/watch?v=" + v, null,
+        button("Unblock", "quiet", function () {
+          return api("/api/channels", { unblock: v }).then(refresh);
+        })
+      );
+    }, "No videos blocked.");
+
+    fill("pending", state.pending, function (p) {
+      return row(p.name, "Code " + p.code, null,
+        button("Approve", "primary", function () {
+          return api("/api/devices", { approve: p.code }).then(refresh);
+        })
+      );
+    }, "Nothing waiting.");
+
+    fill("devices", state.devices, function (d) {
+      return row(d.name, "Joined " + new Date(d.enrolledAt).toLocaleDateString(), d.ref,
+        button("Remove", "quiet", function () {
+          return api("/api/devices", { revoke: d.ref }).then(refresh);
+        })
+      );
+    }, "No devices enrolled yet.");
+
+    var dl = $("health");
+    dl.innerHTML = "";
+    [
+      ["Settings", "#" + state.hub.hash],
+      ["Last changed", state.hub.updatedAt ? new Date(state.hub.updatedAt).toLocaleString() : "never"],
+      ["Devices", String(state.hub.deviceCount)],
+      ["Data", state.hub.dataDir]
+    ].forEach(function (pair) {
+      var dt = document.createElement("dt");
+      dt.textContent = pair[0];
+      var dd = document.createElement("dd");
+      dd.textContent = pair[1];
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    });
+
+    fill("outstanding", state.hub.outstanding, function (t) {
+      return row(t, null, "on the phone", null);
+    }, "Everything the phone has is here.");
+  }
+
+  function refresh() {
+    return api("/api/state").then(function (s) { state = s; render(); });
+  }
+
+  $("signin").onclick = signIn;
+  $("token").addEventListener("keydown", function (e) { if (e.key === "Enter") signIn(); });
+  $("signout").onclick = function () {
+    api("/logout", {}).catch(function () {}).then(showLogin);
+  };
+
+  $("addBtn").onclick = function () {
+    var box = $("addText");
+    var value = box.value.trim();
+    text($("addError"), "");
+    if (!value) return;
+    $("addBtn").disabled = true;
+    api("/api/channels", { add: value }).then(function (r) {
+      if (!r.added) {
+        text($("addError"), "Nothing there was recognised as a channel, playlist or video.");
+      } else {
+        box.value = "";
+      }
+      return refresh();
+    }).catch(function (e) {
+      text($("addError"), e.message);
+    }).then(function () { $("addBtn").disabled = false; });
+  };
+
+  // A live session survives a reload, so try the data first and fall back to
+  // the sign-in form only when the hub says no.
+  refresh().catch(showLogin);
+})();
+</script>
+</body>
+</html>

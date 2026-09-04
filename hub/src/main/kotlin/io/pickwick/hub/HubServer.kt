@@ -25,9 +25,25 @@ class HubServer(
     private val port: Int,
     /** The secret that may approve a device code. See HubTokens.adminToken. */
     private val adminToken: String,
-    /** Passed in so tests need no clock and the merge stays clock-free. */
+    /** Shown on the status page so a parent can see which volume is live. */
+    private val dataDir: String = System.getenv("PICKWICK_DATA") ?: "/data",
+    /**
+     * Passed in so tests need no clock and the merge stays clock-free.
+     *
+     * Last on purpose. Every existing call site passes it as a trailing
+     * lambda, so a parameter added after it does not read as a compile error
+     * — it silently rebinds those lambdas to the new parameter instead.
+     * Anything new goes above this line.
+     */
     private val now: () -> Long = { System.currentTimeMillis() }
 ) {
+
+    /**
+     * Built here rather than injected: it needs [now], and a constructor
+     * parameter defaulting to another parameter would have to sit after it,
+     * which is the trailing-lambda trap described above.
+     */
+    private val sessions = HubSessions(now)
 
     private var server: HttpServer? = null
 
@@ -46,6 +62,14 @@ class HubServer(
         s.createContext("/approve") { ex -> guarded(ex) { approve(ex) } }
         s.createContext("/pending") { ex -> guarded(ex) { pending(ex) } }
         s.createContext("/health") { ex -> respond(ex, 200, "ok") }
+
+        // The admin GUI. "/" is registered last and matches everything not
+        // claimed above, so an unknown path lands on the page rather than on
+        // a 404 a parent has to interpret.
+        s.createContext("/login") { ex -> guarded(ex) { login(ex) } }
+        s.createContext("/logout") { ex -> guarded(ex) { logout(ex) } }
+        s.createContext("/api/") { ex -> guarded(ex) { api(ex) } }
+        s.createContext("/") { ex -> guarded(ex) { web(ex) } }
 
         s.start()
         server = s
@@ -159,6 +183,147 @@ class HubServer(
         respond(ex, 200, JSONObject().put("pending", arr).toString())
     }
 
+    // --- the admin GUI --------------------------------------------------
+
+    /**
+     * The page itself. Served to anyone who asks, because it contains nothing:
+     * every byte of family data arrives later, over /api, behind a session.
+     */
+    private fun web(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val html = javaClass.getResourceAsStream("/web/index.html")?.readBytes()
+            ?: return respond(ex, 500, "the GUI is missing from this build")
+        ex.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+        // The cost of these is nothing and the alternative is arguing about
+        // it later. A LAN page is still a page in a browser.
+        ex.responseHeaders.add("X-Content-Type-Options", "nosniff")
+        ex.responseHeaders.add("X-Frame-Options", "DENY")
+        ex.responseHeaders.add("Referrer-Policy", "no-referrer")
+        ex.sendResponseHeaders(200, html.size.toLong())
+        ex.responseBody.use { it.write(html) }
+    }
+
+    /**
+     * Trade the admin token for a session cookie.
+     *
+     * This route is what makes the admin token guessable: before the GUI it
+     * could only be presented programmatically, one call at a time. Hence the
+     * throttle, which refuses rather than slows — a parent mistyping it twice
+     * is unaffected, and anything trying thousands is stopped rather than
+     * merely inconvenienced.
+     */
+    private fun login(ex: HttpExchange) {
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        if (!sessions.mayAttempt()) {
+            val wait = sessions.retryAfterSeconds()
+            ex.responseHeaders.add("Retry-After", wait.toString())
+            return respond(ex, 429, JSONObject().put("retryAfter", wait).toString())
+        }
+        val body = readBody(ex) ?: return respond(ex, 413, "too large")
+        val given = runCatching { JSONObject(body).optString("token") }.getOrNull().orEmpty()
+        if (!constantTimeEquals(given, adminToken)) {
+            sessions.recordFailure()
+            return respond(ex, 401, JSONObject().put("error", "wrong token").toString())
+        }
+        val id = sessions.open()
+        // No Secure flag: this is plain HTTP on a home LAN, and marking the
+        // cookie Secure would stop it being sent at all. HttpOnly and
+        // SameSite are the two that do work here.
+        ex.responseHeaders.add(
+            "Set-Cookie",
+            "$SESSION_COOKIE=$id; HttpOnly; SameSite=Strict; Path=/; Max-Age=" +
+                (HubSessions.SESSION_TTL_MS / 1000)
+        )
+        respond(ex, 200, JSONObject().put("ok", true).toString())
+    }
+
+    private fun logout(ex: HttpExchange) {
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        sessions.close(sessionOf(ex))
+        ex.responseHeaders.add(
+            "Set-Cookie",
+            "$SESSION_COOKIE=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"
+        )
+        respond(ex, 200, JSONObject().put("ok", true).toString())
+    }
+
+    private fun api(ex: HttpExchange) {
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        if (!sessions.valid(sessionOf(ex))) {
+            return respond(ex, 401, JSONObject().put("error", "sign in").toString())
+        }
+
+        when (ex.requestURI.path) {
+            "/api/state" -> respond(ex, 200, HubWeb.state(store, tokens, dataDir, now()))
+
+            "/api/channels" -> mutate(ex) { body ->
+                when {
+                    body.has("add") -> JSONObject()
+                        .put("added", HubWeb.addChannels(store, WHO, now(), body.getString("add")))
+                    body.has("remove") -> JSONObject()
+                        .put("removed", HubWeb.removeChannel(store, WHO, now(), body.getString("remove")))
+                    body.has("unblock") -> JSONObject()
+                        .put("unblocked", HubWeb.unblock(store, WHO, now(), body.getString("unblock")))
+                    else -> null
+                }
+            }
+
+            "/api/devices" -> mutate(ex) { body ->
+                when {
+                    body.has("approve") -> tokens.approve(body.getString("approve"), now()).fold(
+                        // The token goes to the device showing the code, never
+                        // to this page: the page is administering, not joining.
+                        onSuccess = { JSONObject().put("approved", true) },
+                        onFailure = {
+                            JSONObject().put("approved", false).put(
+                                "refused",
+                                (it as? EnrolmentRefused)?.reason?.name ?: "UNKNOWN_CODE"
+                            )
+                        }
+                    )
+                    body.has("revoke") -> JSONObject()
+                        .put("revoked", HubWeb.revokeDevice(tokens, body.getString("revoke")))
+                    else -> null
+                }
+            }
+
+            else -> respond(ex, 404, JSONObject().put("error", "no such route").toString())
+        }
+    }
+
+    /** POST-only and body-bounded. A null result from [block] is a 400. */
+    private fun mutate(ex: HttpExchange, block: (JSONObject) -> JSONObject?) {
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        val body = readBody(ex) ?: return respond(ex, 413, "too large")
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return respond(ex, 400, JSONObject().put("error", "bad request").toString())
+        val result = block(json)
+            ?: return respond(ex, 400, JSONObject().put("error", "nothing to do").toString())
+        respond(ex, 200, result.toString())
+    }
+
+    private fun sessionOf(ex: HttpExchange): String? =
+        ex.requestHeaders.getFirst("Cookie")
+            ?.split(";")
+            ?.map { it.trim() }
+            ?.firstOrNull { it.startsWith("$SESSION_COOKIE=") }
+            ?.substringAfter("=")
+
+    /**
+     * Refuse anything a browser on another site initiated.
+     *
+     * SameSite=Strict already stops the cookie riding along, but a page that
+     * checks only the cookie is trusting the browser to have enforced that.
+     * The same reasoning as /pair-request in the app, which refuses any
+     * request carrying an Origin at all.
+     */
+    private fun sameOrigin(ex: HttpExchange): Boolean {
+        val origin = ex.requestHeaders.getFirst("Origin") ?: return true
+        val host = ex.requestHeaders.getFirst("Host") ?: return false
+        return origin.substringAfter("://") == host
+    }
+
     // --- plumbing -------------------------------------------------------
 
     /**
@@ -167,12 +332,23 @@ class HubServer(
      * and this is the secret that can add devices.
      */
     private fun admin(ex: HttpExchange): Boolean {
-        val given = ex.requestHeaders.getFirst("X-Admin-Token").orEmpty()
-        val expected = adminToken
-        val ok = given.length == expected.length &&
-            given.indices.fold(0) { acc, i -> acc or (given[i].code xor expected[i].code) } == 0
+        val ok = constantTimeEquals(
+            ex.requestHeaders.getFirst("X-Admin-Token").orEmpty(), adminToken
+        )
         if (!ok) respond(ex, 401, "not admin")
         return ok
+    }
+
+    /** Shared with the login route, which compares the same secret. */
+    private fun constantTimeEquals(given: String, expected: String): Boolean =
+        given.length == expected.length &&
+            given.indices.fold(0) { acc, i -> acc or (given[i].code xor expected[i].code) } == 0
+
+    private companion object {
+        const val SESSION_COOKIE = "pw_session"
+
+        /** How a hub edit is attributed in the change feed a parent reads. */
+        const val WHO = "The hub"
     }
 
     /**

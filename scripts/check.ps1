@@ -161,6 +161,52 @@ if ($hubName.Count -ne 1) {
     Fail-Guard "the literal `"Pickwick hub`" must appear only in PairedDevice.HUB_NAME (found in $($hubName.Count) files)."
 }
 
+# --- phone/hub settings parity ---------------------------------------------
+#
+# The hub GUI mirrors the phone Settings. Two UIs meant to mirror each other
+# drift the moment one gains a feature, silently. SettingsSurface.kt is the
+# single list, and these check it in both directions so that editing it is
+# where the "does this belong on the hub?" decision gets made. Divergence is
+# fine; undeclared divergence is not.
+$manifest = Get-Content core/src/main/kotlin/io/pickwick/app/data/SettingsSurface.kt -Raw
+$hubWeb = Get-Content hub/src/main/kotlin/io/pickwick/hub/HubWeb.kt -Raw
+
+# 1. Every phone section is declared.
+$phoneSections = @(Get-ChildItem app/src/main/java/io/pickwick/app/ui/Settings*.kt |
+    Select-String -Pattern "internal fun ([A-Za-z]+Section)\(" -AllMatches |
+    ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
+foreach ($fn in $phoneSections) {
+    if ($manifest -notlike "*`"$fn`"*") {
+        Fail-Guard "$fn is not in SettingsSurface. Add it and say whether it belongs on the hub."
+    }
+}
+
+# 2. Every hub page is declared, and is not marked phone-only.
+$hubPages = @([regex]::Matches($hubWeb, 'HubPage\("([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+foreach ($id in $hubPages) {
+    $m = [regex]::Match($manifest, 'SettingsSection\("' + [regex]::Escape($id) + '".*?\)', "Singleline")
+    if (-not $m.Success) {
+        Fail-Guard "the hub serves a page called $id that SettingsSurface does not list."
+    }
+    if ($m.Value -like "*Where.PHONE*") {
+        Fail-Guard "$id is marked PHONE in SettingsSurface but the hub serves it."
+    }
+}
+
+# 3. Anything claiming to be built on the hub must actually be there.
+$ready = @([regex]::Matches($manifest, 'SettingsSection\("([^"]+)", "[^"]*", "[^"]*", Where\.BOTH, true') |
+    ForEach-Object { $_.Groups[1].Value })
+foreach ($id in $ready) {
+    if ($hubWeb -notlike "*HubPage(`"$id`"*") {
+        Fail-Guard "SettingsSurface says $id is ready on the hub, but HubWeb serves no such page."
+    }
+}
+
+# Named, not counted: what is still missing should be readable, not a number.
+$todo = @([regex]::Matches($manifest, 'SettingsSection\("([^"]+)", "[^"]*", "[^"]*", Where\.BOTH, false') |
+    ForEach-Object { $_.Groups[1].Value })
+if ($todo.Count -gt 0) { Write-Host "   settings still to reach the hub: $($todo -join ', ')" }
+
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |

@@ -138,6 +138,47 @@ if [ "$hubname" -ne 1 ]; then
   guard_fail "the literal \"Pickwick hub\" must appear only in PairedDevice.HUB_NAME (found in $hubname files)."
 fi
 
+# --- phone/hub settings parity ---------------------------------------------
+#
+# The hub GUI mirrors the phone Settings. Two UIs meant to mirror each other
+# drift the moment one gains a feature, silently: nothing about a Compose
+# screen says a browser page across the repo was supposed to grow the same
+# control, and the drift is found by a parent who cannot do on the NAS what
+# they just did on their phone.
+#
+# SettingsSurface.kt is the single list. These check it in both directions, so
+# editing it is where the "does this belong on the hub?" decision gets made
+# rather than something that can be skipped. Divergence is fine; undeclared
+# divergence is not.
+manifest=core/src/main/kotlin/io/pickwick/app/data/SettingsSurface.kt
+
+# 1. Every phone section is declared.
+for fn in $(grep -hoE "internal fun [A-Za-z]+Section[(]" app/src/main/java/io/pickwick/app/ui/Settings*.kt | sed -E "s/internal fun //; s/[(]//" | sort -u); do
+  grep -q "\"$fn\"" "$manifest" || \
+    guard_fail "$fn is not in SettingsSurface. Add it and say whether it belongs on the hub."
+done
+
+# 2. Every hub page is declared, and is not marked phone-only.
+for id in $(grep -hoE "HubPage[(]\"[^\"]+\"" hub/src/main/kotlin/io/pickwick/hub/HubWeb.kt | sed -E "s/HubPage[(]\"//; s/\"//" | sort -u); do
+  line=$(grep -E "SettingsSection[(]\"$id\"" "$manifest" || true)
+  [ -n "$line" ] || guard_fail "the hub serves a page called $id that SettingsSurface does not list."
+  case "$line" in
+    *Where.PHONE*) guard_fail "$id is marked PHONE in SettingsSurface but the hub serves it." ;;
+  esac
+done
+
+# 3. Anything claiming to be built on the hub must actually be there.
+grep -oE "SettingsSection[(]\"[^\"]+\", \"[^\"]*\", \"[^\"]*\", Where[.]BOTH, true" "$manifest" |
+  sed -E "s/SettingsSection[(]\"//; s/\".*//" | while read -r id; do
+    grep -q "HubPage[(]\"$id\"" hub/src/main/kotlin/io/pickwick/hub/HubWeb.kt || \
+      guard_fail "SettingsSurface says $id is ready on the hub, but HubWeb serves no such page."
+  done
+
+# Named, not counted: what is still missing should be readable, not a number.
+todo=$(grep -oE "SettingsSection[(]\"[^\"]+\", \"[^\"]*\", \"[^\"]*\", Where[.]BOTH, false" "$manifest" |
+  sed -E "s/SettingsSection[(]\"//; s/\".*//" | awk "{printf \"%s \", \$0}")
+[ -z "$todo" ] || echo "   settings still to reach the hub: $todo"
+
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
