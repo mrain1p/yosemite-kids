@@ -247,6 +247,23 @@ if (([regex]::Matches($compose, 'PICKWICK_PORT:-8765')).Count -lt 3) {
     Fail-Guard "hub/docker-compose.yml must publish and set the port from one variable (ports twice, environment once)."
 }
 
+# Every namespace the merge decides must be one the stamper can mint.
+#
+# This is the shape of the worst bug found in this codebase so far:
+# ConfigMerge resolved blockedFor, allowedFor and deviceProfiles on their own
+# unit stamps while ConfigStamp minted none of them, so a parent blocking a
+# video for one child changed nothing on the television — and every test
+# passed.
+$mergeSrc = Get-Content core/src/main/kotlin/io/pickwick/app/data/ConfigMerge.kt -Raw
+$stampSrc = Get-Content core/src/main/kotlin/io/pickwick/app/data/ConfigStamp.kt -Raw
+$safeState = [regex]::Match($mergeSrc, 'private fun safeState[\s\S]*?\n    \}').Value
+$families = @([regex]::Matches($safeState, '"([a-z.]+)"') | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
+foreach ($ns in $families) {
+    if ($stampSrc -notlike "*`"$ns|*") {
+        Fail-Guard "the merge decides the `"$ns`" namespace but ConfigStamp never mints it - those edits are dropped by the first peer that merges."
+    }
+}
+
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |

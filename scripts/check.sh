@@ -225,6 +225,21 @@ if [ "$(grep -o "PICKWICK_PORT:-8765" "$compose" | wc -l)" -lt 3 ]; then
   guard_fail "$compose must publish and set the port from one variable (ports twice, environment once)."
 fi
 
+# Every namespace the merge decides must be one the stamper can mint.
+#
+# This is the shape of the worst bug found in this codebase so far.
+# ConfigMerge resolved blockedFor, allowedFor and deviceProfiles on their own
+# unit stamps while ConfigStamp minted none of them, and a unit with no stamp
+# and no tombstone is absent — so a parent blocking a video for one child
+# changed nothing on the television, and every test passed. safeState lists
+# the families the merge decides; each one must be mintable.
+merge=core/src/main/kotlin/io/pickwick/app/data/ConfigMerge.kt
+stamp=core/src/main/kotlin/io/pickwick/app/data/ConfigStamp.kt
+q=$(printf "%s" 0x22 | sed "s/0x22/\"/")
+for ns in $(sed -n "/private fun safeState/,/^    }/p" "$merge" | grep -oE "$q[a-z.]+$q" | tr -d "$q" | sort -u); do
+  grep -q "$q$ns|" "$stamp" || guard_fail "the merge decides the $ns namespace but ConfigStamp never mints it — those edits are dropped by the first peer that merges."
+done
+
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
