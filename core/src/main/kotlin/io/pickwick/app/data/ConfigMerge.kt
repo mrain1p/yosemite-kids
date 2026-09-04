@@ -425,6 +425,16 @@ object ConfigMerge {
         else -> Safe.SCALAR
     }
 
+    /**
+     * Whether a namespace fails closed — presence wins ties, and lifting is
+     * the act that needs proof.
+     *
+     * Exposed because ConfigStamp has to remove a unit differently
+     * depending on the answer, and a second copy of this table in the
+     * stamper would be a table that drifts. One source, two readers.
+     */
+    internal fun failsClosed(ns: String): Boolean = safeState(ns) == Safe.PRESENT
+
     private data class Side(val root: JSONObject, val sync: SyncMeta, val legacy: Boolean)
 
     /**

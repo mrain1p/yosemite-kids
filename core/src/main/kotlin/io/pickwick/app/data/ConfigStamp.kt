@@ -30,6 +30,15 @@ object ConfigStamp {
     fun allow(id: String) = "allow|$id"
     fun dev(token: String) = "dev|$token"
 
+    /**
+     * Per-kid overlays. The shape must match ConfigMerge.mergeOverlay, which
+     * builds "$ns|$videoId|$kidId" from overlayKeys — a different spelling
+     * here would mint stamps the merge never looks at, which is worse than
+     * minting none because it looks fixed.
+     */
+    fun forKid(videoId: String, kidId: String) = "for|$videoId|$kidId"
+    fun aforKid(videoId: String, kidId: String) = "afor|$videoId|$kidId"
+
     const val LIM_RULES = "lim.rules"
     const val LIM_WINDOWS = "lim.windows"
     const val LIM_PAUSE = "lim.pause"
@@ -82,10 +91,23 @@ object ConfigStamp {
 
         fun touch(key: String) { at[key] = mint }
         fun remove(key: String) {
-            // The stamp goes, the tombstone arrives. Keeping both would let the
-            // unit satisfy its own causality check on the next merge and come
-            // straight back.
-            at.remove(key)
+            // Which of the two stamps survives depends on which way the unit
+            // fails, and getting that backwards is silent in both directions.
+            //
+            // Fails ABSENT (a channel, a kid): the stamp goes. Keeping both
+            // would let the unit satisfy its own causality check on the next
+            // merge and come straight back.
+            //
+            // Fails CLOSED (a block): the stamp stays. Here it is lifting the
+            // block that has to be proved, and the proof is precisely that
+            // this side was holding the block when it removed it. Dropping
+            // the stamp produced a document the merge could not tell apart
+            // from a stale copy that had never seen the block — so it
+            // refused it, correctly, and no unblock ever reached a
+            // television. ConfigMergeTest.aDeliberateUnblockWorks asserts
+            // the right shape but builds the document by hand, which is why
+            // nothing caught that the stamper never produced it.
+            if (!ConfigMerge.failsClosed(namespace(key))) at.remove(key)
             gone[key] = mint
         }
         fun readd(key: String) {
@@ -133,6 +155,19 @@ object ConfigStamp {
             val b = baseKid[id]
             if (b == null) {
                 readd(kid(id))
+                // And every unit that rides inside the profile object.
+                // Removing a kid tombstones all six below; re-adding only
+                // the kid left the other five tombstoned and unstamped, so
+                // the merge stripped them straight back out of a kid who
+                // had just been restored. The PIN is the one that matters:
+                // the kid returns without it and the picker lets a sibling
+                // into their profile. On a genuinely new kid there is no
+                // tombstone, so readd is exactly touch.
+                readd(kidPin(id))
+                readd(kidRules(id))
+                readd(kidWindows(id))
+                readd(kidPause(id))
+                readd(kidBrk(id))
                 changes += line("kid.add", "added ${p.name}", who, by, mint)
             } else {
                 if (b.name != p.name || b.age != p.age || b.avatar != p.avatar ||
@@ -173,6 +208,31 @@ object ConfigStamp {
             changes += line("allow", "changed the safe list", who, by, mint)
         }
 
+        // --- Per-kid overlays, and which kid a device belongs to ---------
+        //
+        // These three were decided by the merge on their own unit stamps
+        // and minted by nothing. A unit with no stamp and no tombstone is
+        // absent — decide() reads `g == 0L -> a > 0` — so every one of
+        // these edits was silently dropped by the first peer that merged
+        // it. Blocking a video for one kid never reached the television,
+        // and neither did dedicating a device to a kid.
+        val blockedFor = overlayUnit(
+            previous.blockedFor, base.blockedFor, next.blockedFor, "for", at, gone, mint
+        )
+        if (next.blockedFor != base.blockedFor) {
+            changes += line("for", "changed what is blocked for one kid", who, by, mint)
+        }
+        val allowedFor = overlayUnit(
+            previous.allowedFor, base.allowedFor, next.allowedFor, "afor", at, gone, mint
+        )
+        if (next.allowedFor != base.allowedFor) {
+            changes += line("afor", "changed what is allowed for one kid", who, by, mint)
+        }
+        val deviceProfiles = mapUnit(
+            previous.deviceProfiles, base.deviceProfiles, next.deviceProfiles,
+            ::dev, at, gone, mint
+        )
+
         // --- Sections ---------------------------------------------------
         val limits = section3(previous.limits, base.limits, next.limits)
         if (!sameRules(base.limits, next.limits)) touch(LIM_RULES)
@@ -204,6 +264,9 @@ object ConfigStamp {
             profiles = profiles,
             blockedVideoIds = blocked,
             aiAllowedVideoIds = aiAllowed,
+            blockedFor = blockedFor,
+            allowedFor = allowedFor,
+            deviceProfiles = deviceProfiles,
             limits = limits,
             ai = ai,
             masterDeviceToken = master,
@@ -270,9 +333,70 @@ object ConfigStamp {
     ): Set<String> {
         val out = LinkedHashSet(next)
         (next - base).forEach { at[key(it)] = mint }
-        (base - next).forEach { at.remove(key(it)); gone[key(it)] = mint }
+        // Same polarity rule as remove(): a fail-closed unit keeps its add
+        // stamp beside the tombstone, because lifting it is the act that has
+        // to be proved and that stamp is the proof.
+        (base - next).forEach {
+            val k = key(it)
+            if (!ConfigMerge.failsClosed(namespace(k))) at.remove(k)
+            gone[k] = mint
+        }
         // Arrived under the open form: keep it, do not stamp, do not tombstone.
         (previous - base - next).forEach { out += it }
+        return out
+    }
+
+    /**
+     * A map of video id to the kids it applies to, diffed pair by pair.
+     *
+     * Per pair rather than per video, because the merge decides per pair:
+     * two parents blocking the same video for different kids must both
+     * land, not overwrite each other.
+     */
+    private fun overlayUnit(
+        previous: Map<String, Set<String>>,
+        base: Map<String, Set<String>>,
+        next: Map<String, Set<String>>,
+        ns: String,
+        at: MutableMap<String, Long>,
+        gone: MutableMap<String, Long>,
+        mint: Long
+    ): Map<String, Set<String>> {
+        fun pairs(m: Map<String, Set<String>>): Set<String> =
+            m.entries.flatMap { (video, kids) -> kids.map { "$video|$it" } }.toSet()
+
+        val b = pairs(base)
+        val n = pairs(next)
+        (n - b).forEach { at["$ns|$it"] = mint }
+        (b - n).forEach {
+            if (!ConfigMerge.failsClosed(ns)) at.remove("$ns|$it")
+            gone["$ns|$it"] = mint
+        }
+
+        // Arrived under the open form: keep it, do not stamp, do not
+        // tombstone — the same rule setUnit follows.
+        val out = LinkedHashMap<String, MutableSet<String>>()
+        (n + (pairs(previous) - b - n)).forEach { pair ->
+            out.getOrPut(pair.substringBefore(Char(124))) { linkedSetOf() } +=
+                pair.substringAfter(Char(124))
+        }
+        return out.mapValues { it.value.toSet() }
+    }
+
+    /** Which kid a device is dedicated to, one unit per device token. */
+    private fun mapUnit(
+        previous: Map<String, String>,
+        base: Map<String, String>,
+        next: Map<String, String>,
+        key: (String) -> String,
+        at: MutableMap<String, Long>,
+        gone: MutableMap<String, Long>,
+        mint: Long
+    ): Map<String, String> {
+        val out = LinkedHashMap(next)
+        next.forEach { (token, kid) -> if (base[token] != kid) at[key(token)] = mint }
+        (base.keys - next.keys).forEach { at.remove(key(it)); gone[key(it)] = mint }
+        (previous.keys - base.keys - next.keys).forEach { out[it] = previous.getValue(it) }
         return out
     }
 
