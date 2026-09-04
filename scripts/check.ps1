@@ -207,6 +207,34 @@ $todo = @([regex]::Matches($manifest, 'SettingsSection\("([^"]+)", "[^"]*", "[^"
     ForEach-Object { $_.Groups[1].Value })
 if ($todo.Count -gt 0) { Write-Host "   settings still to reach the hub: $($todo -join ', ')" }
 
+# --- one arrival path for a config -----------------------------------------
+#
+# A config can land two ways: a peer pushes it to our LAN server, or this
+# device merges it during its own sweep. Both must settle the kid's pending
+# restyle and raise the "your rules changed" pill. One lambda, both callers.
+$ackFiles = @(Get-ChildItem -Recurse -File app/src/main/java |
+    Select-String -Pattern 'ProfileLooks(appContext).ack(' -SimpleMatch |
+    ForEach-Object { $_.Path } | Sort-Object -Unique)
+if ($ackFiles.Count -ne 1) {
+    Fail-Guard "ProfileLooks.ack must have exactly one call site (found $($ackFiles.Count)). Both arrival paths share applyConfig."
+}
+if (-not (Select-String -Path app/src/main/java/io/pickwick/app/ui/MainViewModel.kt -Pattern 'onConfigApplied?.invoke(' -SimpleMatch -Quiet)) {
+    Fail-Guard "the sweep no longer applies what it merged. A self-started merge must do what an inbound push does."
+}
+
+# A kid's un-adopted restyle is a local rendering and must not travel.
+if (-not (Select-String -Path app/src/main/java/io/pickwick/app/data/ConfigStore.kt -Pattern 'fun rawJson(): String = ConfigJson.toJson(loadForPeers())' -SimpleMatch -Quiet)) {
+    Fail-Guard "rawJson must serialise loadForPeers(), not load(). load() carries the kid overlay."
+}
+
+# A hub handed to a device must be flagged secretless, or that device decides
+# it is out of sync with the hub forever and merges on every sweep.
+$pairing = Get-Content app/src/main/java/io/pickwick/app/data/Pairing.kt -Raw
+$joinHub = [regex]::Match($pairing, 'path == "/join-hub"[\s\S]{0,1200}')
+if (-not ($joinHub.Value -like "*secretless = true*")) {
+    Fail-Guard "/join-hub must store the hub with secretless = true, or the device never reads as in sync."
+}
+
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |

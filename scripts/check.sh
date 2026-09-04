@@ -179,6 +179,40 @@ todo=$(grep -oE "SettingsSection[(]\"[^\"]+\", \"[^\"]*\", \"[^\"]*\", Where[.]B
   sed -E "s/SettingsSection[(]\"//; s/\".*//" | awk "{printf \"%s \", \$0}")
 [ -z "$todo" ] || echo "   settings still to reach the hub: $todo"
 
+# --- one arrival path for a config -----------------------------------------
+#
+# A config can land two ways: a peer pushes it to our LAN server, or this
+# device merges it during its own sweep. Both must settle the kid's pending
+# restyle and raise the "your rules changed" pill. Hanging that off the inbound
+# path alone was invisible while phones were the only devices that swept — a
+# device merging on its own never cleared the overlay, so its hash differed
+# from its peer's forever and it re-merged every five minutes, and its kid was
+# never told. One lambda, both callers.
+acks=$(grep -rc "ProfileLooks(appContext)[.]ack(" app/src/main/java | grep -v ":0$" | wc -l)
+if [ "$acks" -ne 1 ]; then
+  guard_fail "ProfileLooks.ack must have exactly one call site (found $acks files). Both arrival paths share applyConfig."
+fi
+if ! grep -q "onConfigApplied?[.]invoke(" app/src/main/java/io/pickwick/app/ui/MainViewModel.kt; then
+  guard_fail "the sweep no longer applies what it merged. A self-started merge must do what an inbound push does."
+fi
+
+# A kid's un-adopted restyle is a local rendering and must not travel. load()
+# lays it over every read so it shows on this screen at once; a config sent to
+# a peer carrying it puts a kid's private choice into the family document,
+# where the stamps match on both sides and the merge breaks the tie on JSON
+# string ordering. mergeIncoming already refuses a rendered read on the way in.
+if ! grep -q "fun rawJson(): String = ConfigJson.toJson(loadForPeers())" app/src/main/java/io/pickwick/app/data/ConfigStore.kt; then
+  guard_fail "rawJson must serialise loadForPeers(), not load(). load() carries the kid overlay."
+fi
+
+# A hub handed to a device must be flagged secretless. It strips the API key
+# before writing and has no keystore to put it back, so a peer judged on the
+# full fingerprint decides it is out of sync with the hub forever and merges
+# on every single sweep.
+if ! grep -A 20 'path == "/join-hub"' app/src/main/java/io/pickwick/app/data/Pairing.kt | grep -q "secretless = true"; then
+  guard_fail "/join-hub must store the hub with secretless = true, or the device never reads as in sync."
+fi
+
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')

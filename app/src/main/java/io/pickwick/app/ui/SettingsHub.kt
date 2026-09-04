@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.pickwick.app.data.HubEnrolment
+import io.pickwick.app.data.LanClient
 import io.pickwick.app.data.PairedDevice
 import io.pickwick.app.data.PairingStore
 import kotlinx.coroutines.launch
@@ -34,18 +35,21 @@ import kotlinx.coroutines.launch
  * that already syncs with a TV syncs with it, and there is no second code path
  * to keep in step.
  *
- * This screen will also be where the TVs are introduced to the hub, because a
- * TV cannot do it for itself: its entire parent settings screen is a QR code,
- * so there is no field to type an address into and a remote is the worst
- * imaginable way to enter one. This phone is paired with both ends, so it is
- * the only thing that can make the introduction.
+ * This screen also introduces the TVs to the hub, because a TV cannot do it for
+ * itself: its entire parent settings screen is a QR code, so there is no field
+ * to type an address into and a remote is the worst imaginable way to enter
+ * one. This phone is paired with both ends, so it is the only thing that can
+ * make the introduction. Once a TV holds the hub as a peer, the reconcile in
+ * MainViewModel picks it up untouched — that loop is gated only on the paired
+ * list being non-empty, never on role or device kind.
  *
- * The plumbing for that is built and tested — HubEnrolment.tokenFor,
- * LanClient.sendHubDetails, POST /join-hub — and is deliberately not called
- * from here yet. An enrolled TV would re-merge every five minutes forever,
- * because ProfileLooks.ack runs only on an inbound push and its overlay would
- * never clear, and its kid would stop seeing the "your rules changed" pill for
- * the same reason. Both are named in "Next up" in docs/FORK-NOTES.md.
+ * What that buys, precisely: a TV reconciles when Pickwick opens on it and
+ * while a kid is looking at it. It does NOT reconcile while the TV is asleep or
+ * on another app — the sweep lives in viewModelScope behind `uiActive`, and
+ * there is no background worker. So the promise here is "current the moment a
+ * kid opens it, without a parent's phone being nearby", and it is worded that
+ * way on purpose: this feature was described as "always up to date" twice
+ * before anybody checked whether a TV could sync at all.
  */
 @Composable
 internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
@@ -57,6 +61,41 @@ internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var joined by remember { mutableStateOf(hub != null) }
+
+    /**
+     * Give every kid device this phone administers a hub of its own.
+     *
+     * Skips any that already has one. Without that check a second run mints a
+     * fresh token for a device that is already set up and leaves the old one
+     * enrolled on the hub forever, so its device list fills with duplicates
+     * nobody can tell apart.
+     *
+     * Returns how many were newly connected and how many could not be reached,
+     * because "3 of 4" is actionable and "done" is not — the missing one is a
+     * TV that is switched off, and the parent needs to know to come back.
+     */
+    suspend fun connectDevices(hubHost: String, hubPort: Int, adminToken: String): Pair<Int, Int> {
+        var added = 0
+        var missed = 0
+        pairingStore.paired()
+            .filterNot { it.secretless }   // never the hub itself
+            .forEach { device ->
+                val status = LanClient.fullStatus(device)
+                when {
+                    status == null -> missed++
+                    status.hasHub -> Unit
+                    else -> {
+                        val token = HubEnrolment
+                            .tokenFor(hubHost, hubPort, adminToken, device.name)
+                            .getOrNull()
+                        if (token == null) missed++
+                        else if (LanClient.sendHubDetails(device, hubHost, hubPort, token)) added++
+                        else missed++
+                    }
+                }
+            }
+        return added to missed
+    }
 
     fun describe(e: Throwable): String = when ((e as? HubEnrolment.HubError)?.failure) {
         // Each of these sends a parent somewhere different, so none of them
@@ -81,32 +120,67 @@ internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(6.dp))
-        // Stated, not hidden. The plumbing to connect a TV exists and is
-        // tested (LanClient.sendHubDetails, HubEnrolment.tokenFor,
-        // POST /join-hub), and it is deliberately not wired up yet: a TV that
-        // synced with a hub today would re-merge every five minutes forever,
-        // because ProfileLooks.ack only runs on an inbound push, and its kid
-        // would stop getting the "your rules changed" pill for the same
-        // reason. See "Next up" in docs/FORK-NOTES.md.
         Text(
-            "Your TVs still get their settings from a phone, not from the hub. " +
-                "Connecting them directly is coming.",
+            "Added a TV since? Enter the admin token again to connect it.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        OutlinedTextField(
+            value = admin,
+            onValueChange = { admin = it },
+            label = { Text("Admin token") },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            CompactButton(
+                enabled = !busy && admin.isNotBlank(),
+                onClick = {
+                    scope.launch {
+                        busy = true
+                        message = "Connecting your TVs…"
+                        val (added, missed) = connectDevices(host, hub?.port ?: 8765, admin.trim())
+                        admin = ""
+                        message = when {
+                            added == 0 && missed == 0 -> "Every device is already using the hub."
+                            missed == 0 -> "Connected $added ${if (added == 1) "device" else "devices"}."
+                            else -> "Connected $added. $missed couldn't be reached — " +
+                                "switch them on and try again."
+                        }
+                        busy = false
+                    }
+                }
+            ) { Text(if (busy) "Connecting…" else "Connect my TVs") }
+            if (busy) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp)
+        }
+        message?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         return
     }
 
     Text(
         "A hub is a small server you run yourself — on a NAS, a Pi, any machine " +
-            "that stays on. It holds the same settings your phones do, so two " +
+            "that stays on. It holds the same settings your devices do, so two " +
             "parents stay in step without both being home.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+    // Precise on purpose. A TV reconciles when Pickwick opens on it, not while
+    // it is asleep — there is no background sync — and this screen promised the
+    // latter twice before anybody checked.
     Text(
-        "TVs still get their settings from a phone. Connecting them straight " +
-            "to the hub is coming.",
+        "Your TVs are connected to it too, automatically. They pick up new " +
+            "videos and rules whenever Pickwick opens on them, without waiting " +
+            "for a parent's phone to be nearby.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -156,8 +230,23 @@ internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
                             // device, the same rule the QR flow applies.
                             pairingStore.setRole(PairingStore.Role.PARENT)
                             joined = true
+
+                            // Straight on to the TVs, in the same action. Left
+                            // as a separate step it would be the step nobody
+                            // did, and the hub would sit there doing half of
+                            // what the screen above it promises.
+                            message = "Connecting your TVs…"
+                            val (added, missed) =
+                                connectDevices(device.host, device.port, token)
                             admin = ""
-                            message = null
+                            message = when {
+                                added == 0 && missed == 0 -> null
+                                missed == 0 ->
+                                    "Connected, and $added ${if (added == 1) "TV" else "TVs"} now use it too."
+                                else ->
+                                    "Connected, and $added of ${added + missed} TVs now use it. " +
+                                        "Switch the others on and use \"Connect my TVs\"."
+                            }
                             onJoined()
                         },
                         onFailure = { e -> message = describe(e) }

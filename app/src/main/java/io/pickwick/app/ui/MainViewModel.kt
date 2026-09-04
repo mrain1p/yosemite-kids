@@ -55,6 +55,19 @@ class MainViewModel(
      * their parents disagreed about their rules.
      */
     private val syncNotices: SyncNotices? = null,
+    /**
+     * What to run when a config lands during this device's own sweep.
+     *
+     * The same lambda the LAN server is given for an inbound push, so both
+     * arrival paths settle the kid's pending restyle and raise the "your
+     * rules changed" pill. Hanging that off the inbound path alone was
+     * harmless only while phones were the only devices that swept: a device
+     * merging on its own never cleared the overlay, so its hash differed
+     * from its peer's forever and it re-merged every five minutes.
+     *
+     * Null in tests, which have no Context to notify from.
+     */
+    private val onConfigApplied: ((Whitelist, Whitelist) -> Unit)? = null,
     /** This kid's chip choices (sort, filters); null in tests. */
     private val kidPrefs: KidPrefs? = null,
     /** Offline downloads (phones); null on TV and in tests. */
@@ -339,9 +352,21 @@ class MainViewModel(
                         SyncAction.Merge -> {
                             val theirs = LanClient.fetchConfig(device)
                             if (theirs == null) {
+                                // A peer that advertises the sync format and
+                                // then serves nothing is almost always a hub
+                                // with an empty volume: it answers 404 until
+                                // its first write. Bailing here left it empty
+                                // forever, because a hub never initiates and
+                                // a TV has no Push button — only a parent
+                                // opening settings and saving would break the
+                                // deadlock. Seeding it is the obvious repair
+                                // and costs nothing when the peer is simply
+                                // unreachable, since the push fails too.
+                                val seeded = LanClient.pushConfig(device, store.rawJson())
                                 android.util.Log.i(
                                     "Pickwick",
-                                    "config sync: ${device.name} advertised sync but wouldn't serve its config"
+                                    "config sync: ${device.name} advertised sync but served no config " +
+                                        "→ seeded it ${if (seeded) "accepted" else "REJECTED"}"
                                 )
                                 return@forEach
                             }
@@ -355,6 +380,13 @@ class MainViewModel(
                             }
                             if (outcome.changed) {
                                 ConfigEvents.onConfigChanged?.invoke()
+                                // Exactly what an inbound push does. Without
+                                // it this device never clears its kid's
+                                // pending restyle, so its hash differs from
+                                // the peer's forever and this arm runs again
+                                // every five minutes — and the kid is never
+                                // told their rules moved.
+                                onConfigApplied?.invoke(outcome.before, outcome.after)
                                 refresh()
                             }
                             // Recorded, never raised. A parent finds out when

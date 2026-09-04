@@ -99,6 +99,34 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             if (f.profiles.isEmpty()) null
             else f.deviceProfiles[pairingStore.deviceToken()]
                 ?: activeProfiles.activeId()?.takeIf { f.profile(it) != null }
+        /**
+         * What must happen whenever a config lands, however it arrived.
+         *
+         * Two paths reach this: a peer pushing to our LAN server, and this
+         * device merging during its own sweep. It used to hang off the
+         * first only, which was invisible while phones were the only
+         * things that swept — a device that merged on its own never
+         * cleared its kid's pending restyle, so its hash stayed different
+         * from the peer's forever and it re-merged every five minutes,
+         * and its kid never saw the pill that says a rule moved.
+         *
+         * One lambda, both callers, so they cannot drift.
+         */
+        val applyConfig: (Whitelist, Whitelist) -> Unit = { before, after ->
+            // The phone adopted (or overrode) a look this device's kid
+            // chose: the pending copy has done its job.
+            io.pickwick.app.data.ProfileLooks(appContext).ack(after)
+            // The pill is the only thing that says a rule moved; otherwise
+            // the kid finds out by hitting it. Judged on this device's own
+            // kid, so a change to their sibling's rules stays quiet here.
+            val kid = kidHere(after)
+            val fresh = after.limitsFor(kid)
+            KidNotices.configChange(
+                before.limitsFor(kid), fresh,
+                SessionGuard(appContext, profileNs.suffixFor(kid)).remainingTodayMin(fresh)
+            )?.let { KidNotices.post(it) }
+        }
+
         // Every device runs the LAN server now, not just TVs: a kid's phone or
         // tablet is pairable too (config pushes, grants, index sync). Same
         // token-gated listener as before, just no longer gated on form factor.
@@ -153,21 +181,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 indexMerger = { sourceId, body ->
                     io.pickwick.app.data.ChannelIndex(appContext).importSourceWithState(sourceId, body)
                 },
-                onConfigApplied = { before, after ->
-                    // The phone adopted (or overrode) a look this device's kid
-                    // chose: the pending copy has done its job.
-                    io.pickwick.app.data.ProfileLooks(appContext).ack(after)
-                    // The pill is the only thing that says a rule moved;
-                    // otherwise the kid finds out by hitting it. Judged on this
-                    // device's own kid, so a change to their sibling's rules
-                    // stays quiet here.
-                    val kid = kidHere(after)
-                    val fresh = after.limitsFor(kid)
-                    KidNotices.configChange(
-                        before.limitsFor(kid), fresh,
-                        SessionGuard(appContext, profileNs.suffixFor(kid)).remainingTodayMin(fresh)
-                    )?.let { KidNotices.post(it) }
-                }
+                onConfigApplied = applyConfig
             ).also { it.start() }
         }
         // "Play this on the TV" from a parent's phone. The device applies its
@@ -324,6 +338,12 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         QueueStore(applicationContext, profileSuffix),
                         pairingStore,
                         configStore = configStore,
+                        // The same lambda the LAN server gets. A merge this
+                        // device starts itself has to settle the kid's
+                        // pending look and raise the pill exactly as an
+                        // inbound push does, or it never converges and the
+                        // kid is never told.
+                        onConfigApplied = applyConfig,
                         // Parents only: a kid device must never surface that
                         // their parents disagreed about their rules.
                         syncNotices = if (pairingStore.role() != PairingStore.Role.KID) {
