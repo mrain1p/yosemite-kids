@@ -1200,30 +1200,6 @@ private fun AdminScreen(
                 }
             }
         }
-        // Donations fund the re-shipping treadmill (YouTube breaks playback every
-        // few weeks). Deliberately at the top: the slot is seen on every visit.
-        val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-        ElevatedCard(
-            onClick = { uriHandler.openUri("https://pickwick.tv/donate.html") },
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Text("❤️", style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("Support Pickwick", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Free forever — but not maintenance-free",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
         Spacer(Modifier.height(20.dp))
         SettingsCard(padded = false) {
             val kidsLine = profiles.joinToString(", ") { it.name }.ifEmpty { "No kids yet" }

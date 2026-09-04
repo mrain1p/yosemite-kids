@@ -1,0 +1,2266 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: #0B0B0F; font-family: Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #8FCFBE; text-decoration: none; }
+  a:hover { color: #B4E0D3; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  @keyframes om-spin { to { transform: rotate(360deg); } }
+  input::placeholder { color: #6D6979; }
+</style>
+</helmet>
+
+<section style="display:flex;flex-direction:column;gap:30px;padding:52px 52px 80px">
+
+  <div style="max-width:820px;display:flex;flex-direction:column;gap:14px">
+    <div style="font:500 12.5px/1 Roboto;color:#8B8794">Pickwick 0.12.2-fork &nbsp;·&nbsp; parent settings</div>
+    <h1 style="margin:0;font:700 38px/1.14 Roboto;color:#EDEBF0;letter-spacing:-0.7px">Parent settings, rebuilt &mdash; tap through it</h1>
+    <p style="margin:0;font:400 15px/1.65 Roboto;color:#A5A1AD;text-wrap:pretty">One navigable prototype at 344dp, the Galaxy&nbsp;Fold&nbsp;5 cover width. Every row pushes a real screen with a working back stack, so the navigation is the thing you are reviewing, not a picture of it. The coverage audit is <a href="#2b">2b</a>.</p>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:44px;align-items:flex-start">
+
+    <div id="2a" style="display:flex;flex-direction:column;gap:14px;flex:0 0 auto">
+      <div style="display:flex;align-items:center;gap:11px">
+        <span style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:23px;padding:0 9px;border-radius:6px;background:#8FCFBE;color:#0F2A24;font:700 12px/1 Roboto">2a</span>
+        <span style="font:500 16px/1.3 Roboto;color:#EDEBF0">{{ app.crumb }}</span>
+      </div>
+
+      <div style="width:344px;flex:0 0 auto;border-radius:24px;border:1px solid #2E2B36;background:#101014;overflow:hidden;box-shadow:0 26px 64px rgba(0,0,0,.62)">
+        <div style="display:flex;align-items:center;justify-content:space-between;height:26px;padding:0 15px;background:#000;font:500 10.5px/1 Roboto;color:#A5A1AD">
+          <span>1:07</span><span style="letter-spacing:2px">&#9679;&#9679;&#9679;&nbsp;84</span>
+        </div>
+
+        <div style="position:relative;width:344px;height:716px;overflow:hidden;background:#101014">
+        <sc-for list="{{ app.layers }}" as="L" hint-placeholder-count="1">
+          <div data-screen-label="{{ L.title }}" style="position:absolute;inset:0;display:flex;flex-direction:column;background:#101014;will-change:transform;transition:transform .28s cubic-bezier(.2,.85,.25,1),opacity .28s;transform:{{ L.transform }};opacity:{{ L.opacity }};box-shadow:{{ L.shadow }}">
+
+            <div style="flex:0 0 auto;display:flex;align-items:center;gap:2px;min-height:52px;padding:0 6px;border-bottom:1px solid #252430;background:#101014">
+              <sc-if value="{{ L.canBack }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ app.pop }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:8px;cursor:pointer" style-active="background:#1E1D24">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EDEBF0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg>
+                </div>
+              </sc-if>
+              <span style="flex:1 1 auto;min-width:0;padding:0 8px;font:500 17px/1.25 Roboto;color:#EDEBF0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ L.title }}</span>
+              <sc-for list="{{ L.acts }}" as="A" hint-placeholder-count="0">
+                <button onClick="{{ A.fn }}" style="flex:0 0 auto;border:0;background:none;min-height:32px;min-width:44px;padding:0 10px;border-radius:8px;font:500 {{ A.size }} Roboto;color:#8FCFBE;white-space:nowrap;cursor:pointer" style-active="background:#1E1D24">{{ A.label }}</button>
+              </sc-for>
+            </div>
+
+            <div style="flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden">
+
+              <sc-if value="{{ L.at.root }}" hint-placeholder-val="{{ true }}">
+                <div style="padding:14px 14px 0">
+                  <div style="border-radius:10px;border:1px solid #3A3744;background:#1E1D24;overflow:hidden">
+                    <div onClick="{{ app.go.kid }}" style="display:flex;align-items:center;gap:12px;min-height:64px;padding:12px 12px 10px;cursor:pointer" style-active="background:#25242C">
+                      <div style="position:relative;flex:0 0 auto">
+                        <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(160deg,#F0407F,#C41358);display:flex;align-items:center;justify-content:center;font:400 20px/1 Roboto">&#129412;</div>
+                        <div style="position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;border:2px solid #1E1D24;background:{{ kid.dot }}"></div>
+                      </div>
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="display:flex;align-items:baseline;gap:7px">
+                          <span style="font:500 15.5px/1.3 Roboto;color:#EDEBF0">Amelia</span>
+                          <span style="font:400 12px/1.3 Roboto;color:{{ kid.tone }}">{{ kid.status }}</span>
+                        </div>
+                        <div style="margin-top:2px;font:400 12.5px/1.4 Roboto;color:#8B8794;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ kid.nowPlaying }}</div>
+                      </div>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B8794" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                    <div style="padding:0 12px 12px">
+                      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+                        <span style="font:500 13.5px/1.3 Roboto;color:{{ kid.leftTone }};white-space:nowrap">{{ kid.leftLabel }}</span>
+                        <span style="font:400 12px/1.3 Roboto;color:#8B8794;white-space:nowrap">{{ kid.usedLabel }}</span>
+                      </div>
+                      <div style="margin-top:7px;height:5px;border-radius:3px;background:#101014;overflow:hidden">
+                        <div style="height:100%;border-radius:3px;transition:width .25s;width:{{ kid.pct }};background:{{ kid.leftTone }}"></div>
+                      </div>
+                      <sc-if value="{{ kid.hasBonus }}" hint-placeholder-val="{{ false }}">
+                        <div style="margin-top:7px;font:400 12px/1.4 Roboto;color:#7FC8A9">{{ kid.bonusLabel }}</div>
+                      </sc-if>
+                      <div style="display:flex;gap:7px;margin-top:9px">
+                        <button onClick="{{ sheet.openTime }}" style="flex:1 1 0;min-width:0;border:0;background:#8FCFBE;border-radius:8px;min-height:32px;padding:0 8px;font:500 13px/1 Roboto;color:#0F2A24;white-space:nowrap;cursor:pointer" style-active="background:#7EC8B2">Add time</button>
+                        <button onClick="{{ kid.pause }}" style="flex:1 1 0;min-width:0;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:32px;padding:0 8px;font:500 13px/1 Roboto;color:{{ kid.pauseFg }};white-space:nowrap;cursor:pointer" style-active="background:#25242C">{{ kid.pauseLabel }}</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <sc-if value="{{ review.hasHeld }}" hint-placeholder-val="{{ true }}">
+                  <div style="padding:10px 14px 0">
+                    <div onClick="{{ review.go }}" style="display:flex;align-items:center;gap:11px;min-height:60px;padding:11px 12px;border-radius:10px;border:1px solid #5A4A30;background:#221D14;cursor:pointer" style-active="background:#2A2418">
+                      <div style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-width:30px;height:24px;padding:0 8px;border-radius:6px;background:#E0B77E;font:500 12.5px/1 Roboto;color:#231B10">{{ review.badge }}</div>
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 14px/1.35 Roboto;color:#E0B77E">Waiting for your OK</div>
+                        <div style="margin-top:2px;font:400 12px/1.4 Roboto;color:#8B8794">Videos the AI held back until you decide</div>
+                      </div>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B8794" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 14px 0">
+                  <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="2">
+                    <div onClick="{{ t.go }}" style="padding:11px 12px;border-radius:10px;border:1px solid #2E2B36;background:#17161C;cursor:pointer" style-active="background:#1E1D24">
+                      <div style="font:400 12px/1.35 Roboto;color:#8B8794">{{ t.name }}</div>
+                      <div style="margin-top:4px;font:500 13.5px/1.35 Roboto;color:{{ t.tone }}">{{ t.state }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <sc-for list="{{ nav.groups }}" as="G" hint-placeholder-count="4">
+                  <div style="padding:20px 14px 0">
+                    <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">{{ G.label }}</div>
+                    <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                      <sc-for list="{{ G.rows }}" as="r" hint-placeholder-count="2">
+                        <div onClick="{{ r.go }}" style="display:flex;align-items:center;gap:12px;min-height:60px;padding:10px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                          <div style="flex:0 0 auto;width:22px;display:flex;justify-content:center;color:#8B8794">{{ r.icon }}</div>
+                          <div style="min-width:0;flex:1 1 auto">
+                            <div style="font:400 15px/1.35 Roboto;color:#EDEBF0">{{ r.name }}</div>
+                            <div style="margin-top:1px;font:400 12.5px/1.4 Roboto;color:#8B8794">{{ r.state }}</div>
+                          </div>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-for>
+
+                <div style="padding:20px 14px 0">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 8px">
+                    <span style="font:500 12.5px/1 Roboto;color:#8B8794">Everyone at once</span>
+                    <div onClick="{{ help.pauseAll.toggle }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:-11px -12px -11px 0;cursor:pointer">
+                      <span style="display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;border:1px solid #3A3744;font:500 11.5px/1 Roboto;color:#8B8794">?</span>
+                    </div>
+                  </div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-if value="{{ help.pauseAll.open }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px 12px 2px;font:400 12.5px/1.6 Roboto;color:#8B8794">Bonus minutes and a single kid&rsquo;s pause are on that kid&rsquo;s page. This one stops every kid at once, until midnight.</div>
+                    </sc-if>
+                    <div style="display:flex;align-items:center;gap:12px;min-height:60px;padding:10px 12px;border-top:1px solid #252430">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 15px/1.35 Roboto;color:#EDEBF0">Turn off all watching</div>
+                        <div style="margin-top:1px;font:400 12.5px/1.4 Roboto;color:#8B8794">{{ sw.pauseAll.caption }}</div>
+                      </div>
+                      <div onClick="{{ sw.pauseAll.toggle }}" style="position:relative;flex:0 0 auto;width:46px;height:28px;border-radius:14px;cursor:pointer;transition:background .18s;background:{{ sw.pauseAll.track }}">
+                        <div style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;transition:transform .18s;background:{{ sw.pauseAll.knob }};transform:{{ sw.pauseAll.shift }}"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="padding:20px 18px 26px;font:400 12px/1.5 Roboto;color:#6D6979">Pickwick 0.12.2-fork (49) &nbsp;·&nbsp; changes apply as you make them and reach the kids&rsquo; devices on their own.</div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.kids }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:16px 14px 0">
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div onClick="{{ app.go.kid }}" style="display:flex;align-items:center;gap:12px;min-height:68px;padding:11px 12px;cursor:pointer" style-active="background:#1E1D24">
+                      <div style="width:38px;height:38px;flex:0 0 auto;border-radius:50%;background:linear-gradient(160deg,#F0407F,#C41358);display:flex;align-items:center;justify-content:center;font:400 19px/1 Roboto">&#129412;</div>
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:500 15px/1.3 Roboto;color:#EDEBF0">Amelia</div>
+                        <div style="margin-top:2px;font:400 12.5px/1.4 Roboto;color:#8B8794">{{ kid.listSub }}</div>
+                      </div>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;min-height:56px;padding:10px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <span style="width:38px;text-align:center;font:400 22px/1 Roboto;color:#8FCFBE">+</span>
+                      <span style="font:400 15px/1.3 Roboto;color:#8FCFBE">Add a kid</span>
+                    </div>
+                  </div>
+                  <p style="margin:12px 4px 0;font:400 12.5px/1.65 Roboto;color:#8B8794;text-wrap:pretty">A kid&rsquo;s page holds their profile, screen-time rules and today&rsquo;s extras. The pause that stops everyone is on the settings home.</p>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.kid }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:11px;padding:20px 14px 4px">
+                  <div style="width:68px;height:68px;border-radius:50%;background:linear-gradient(160deg,#F0407F,#C41358);display:flex;align-items:center;justify-content:center;font:400 33px/1 Roboto">&#129412;</div>
+                  <div style="font:400 12.5px/1.4 Roboto;color:#8B8794">{{ kid.listSub }}</div>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:18px;padding:16px 18px 0">
+                  <sc-for list="{{ stats.periods }}" as="p" hint-placeholder-count="3">
+                    <div onClick="{{ p.pick }}" style="flex:0 0 auto;padding:2px 0 7px;border-bottom:2px solid {{ p.line }};font:500 13px/1.3 Roboto;color:{{ p.fg }};white-space:nowrap;cursor:pointer">{{ p.label }}</div>
+                  </sc-for>
+                </div>
+                <div style="height:1px;margin:0 14px;background:#252430"></div>
+
+                <div style="padding:14px 14px 0">
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="padding:14px 12px 12px">
+                      <div style="display:flex;align-items:baseline;gap:10px">
+                        <span style="font:500 26px/1 Roboto;color:#EDEBF0;letter-spacing:-0.5px">{{ stats.total }}</span>
+                        <span style="font:400 13px/1.3 Roboto;color:#8B8794">{{ stats.videos }}</span>
+                      </div>
+                      <div style="margin-top:6px;font:400 12.5px/1.5 Roboto;color:#8B8794">{{ stats.extra }}</div>
+                    </div>
+                    <div style="padding:12px;border-top:1px solid #252430">
+                      <div style="font:400 12.5px/1 Roboto;color:#8B8794">{{ stats.channelLabel }}</div>
+                      <div style="display:flex;flex-direction:column;gap:9px;margin-top:11px">
+                        <sc-for list="{{ stats.channels }}" as="c" hint-placeholder-count="4">
+                          <div>
+                            <div style="display:flex;align-items:baseline;gap:10px">
+                              <span style="min-width:0;flex:1 1 auto;font:400 13px/1.35 Roboto;color:#EDEBF0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span>
+                              <span style="flex:0 0 auto;font:400 12.5px/1.35 Roboto;color:#8B8794">{{ c.count }}</span>
+                            </div>
+                            <div style="margin-top:5px;height:4px;border-radius:2px;background:#101014;overflow:hidden">
+                              <div style="height:100%;border-radius:2px;background:#8FCFBE;width:{{ c.width }}"></div>
+                            </div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;min-height:56px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <span style="min-width:0;flex:1 1 auto;font:400 14.5px/1.3 Roboto;color:#EDEBF0">Watch history</span>
+                      <span style="flex:0 0 auto;font:400 12.5px/1 Roboto;color:#8B8794">every video, newest first</span>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                    <div onClick="{{ review.go }}" style="display:flex;align-items:center;gap:10px;min-height:56px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <span style="min-width:0;flex:1 1 auto;font:400 14.5px/1.3 Roboto;color:#EDEBF0">Held for review</span>
+                      <span style="flex:0 0 auto;font:400 12.5px/1 Roboto;color:#E0B77E">{{ review.badge }} waiting</span>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 0">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Profile</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="display:flex;align-items:center;gap:12px;min-height:56px;padding:9px 12px">
+                      <span style="flex:0 0 auto;font:400 15px/1.3 Roboto;color:#EDEBF0">Name</span>
+                      <input value="Amelia" style="flex:1 1 auto;min-width:0;border:0;outline:none;background:none;text-align:right;font:400 15px/1 Roboto;color:#A5A1AD">
+                    </div>
+                    <div onClick="{{ kid.cycleAge }}" style="display:flex;align-items:center;gap:10px;min-height:64px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Age</div>
+                        <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">The AI screener judges videos against it</div>
+                      </div>
+                      <span style="flex:0 0 auto;font:400 15px/1 Roboto;color:#A5A1AD">{{ kid.age }}</span>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                    <div style="padding:12px;border-top:1px solid #252430">
+                      <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Colour</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:11px">
+                        <sc-for list="{{ kid.colours }}" as="c" hint-placeholder-count="8">
+                          <div onClick="{{ c.pick }}" style="width:34px;height:34px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;background:{{ c.hex }};box-shadow:{{ c.ring }};font:700 15px/1 Roboto;color:#fff">{{ c.mark }}</div>
+                        </sc-for>
+                      </div>
+                    </div>
+                    <div style="padding:12px;border-top:1px solid #252430">
+                      <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Avatar</div>
+                      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:11px">
+                        <sc-for list="{{ kid.avatars }}" as="a" hint-placeholder-count="22">
+                          <div onClick="{{ a.pick }}" style="aspect-ratio:1;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;background:#25242C;box-shadow:{{ a.ring }};font:400 17px/1 Roboto">{{ a.glyph }}</div>
+                        </sc-for>
+                      </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;min-height:64px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Profile lock</div>
+                        <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">No code &mdash; anyone can pick this profile</div>
+                      </div>
+                      <span style="flex:0 0 auto;font:500 13.5px/1 Roboto;color:#8FCFBE">Set code</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 0">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 8px">
+                    <span style="font:500 12.5px/1 Roboto;color:#8B8794">Screen-time rules</span>
+                    <div onClick="{{ help.rules.toggle }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:-11px -12px -11px 0;cursor:pointer">
+                      <span style="display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;border:1px solid #3A3744;font:500 11.5px/1 Roboto;color:#8B8794">?</span>
+                    </div>
+                  </div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-if value="{{ help.rules.open }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px 12px 2px;font:400 12.5px/1.6 Roboto;color:#8B8794">Every rule off means unlimited watching. Tap a value to step through the options; the first is always Off. YouTube Shorts are never shown regardless of the last rule &mdash; it also hides the short clips a channel uploads as regular videos.</div>
+                    </sc-if>
+                    <sc-for list="{{ ruleRows }}" as="r" hint-placeholder-count="5">
+                      <div onClick="{{ r.cycle }}" style="display:flex;align-items:center;gap:10px;min-height:56px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                        <span style="min-width:0;flex:1 1 auto;font:400 15px/1.35 Roboto;color:#EDEBF0">{{ r.name }}</span>
+                        <span style="flex:0 0 auto;font:400 15px/1 Roboto;color:{{ r.color }}">{{ r.value }}</span>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="padding:9px 4px 0;font:400 12px/1.5 Roboto;color:#8B8794">{{ rulesSummary }}</div>
+                </div>
+
+                <div style="padding:18px 14px 0">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Blocked times</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-for list="{{ blocked }}" as="b" hint-placeholder-count="1">
+                      <div style="display:flex;align-items:center;gap:12px;min-height:64px;padding:9px 12px;border-top:1px solid #252430">
+                        <div style="min-width:0;flex:1 1 auto">
+                          <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">{{ b.name }}</div>
+                          <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">{{ b.detail }}</div>
+                        </div>
+                        <div onClick="{{ b.toggle }}" style="position:relative;flex:0 0 auto;width:46px;height:28px;border-radius:14px;cursor:pointer;transition:background .18s;background:{{ b.track }}">
+                          <div style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;transition:transform .18s;background:{{ b.knob }};transform:{{ b.shift }}"></div>
+                        </div>
+                      </div>
+                    </sc-for>
+                    <sc-if value="{{ blockedEmpty }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px;border-top:1px solid #252430;font:400 12.5px/1.55 Roboto;color:#8B8794">No blocked times &mdash; screen time is limited by minutes only, not by clock.</div>
+                    </sc-if>
+                    <div onClick="{{ sheet.openBlocked }}" style="display:flex;align-items:center;gap:10px;min-height:52px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <span style="font:400 19px/1 Roboto;color:#8FCFBE">+</span>
+                      <span style="font:400 14.5px/1.3 Roboto;color:#8FCFBE">Add blocked time</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 0">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Today</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="padding:12px">
+                      <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Bonus watch time</div>
+                      <div style="display:flex;gap:7px;margin-top:9px">
+                        <sc-for list="{{ seg.bonus }}" as="o" hint-placeholder-count="4">
+                          <button onClick="{{ o.pick }}" style="flex:1 1 0;min-width:0;border-radius:8px;min-height:32px;padding:0 4px;font:500 13px/1 Roboto;white-space:nowrap;cursor:pointer;border:1px solid {{ o.bc }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                        </sc-for>
+                      </div>
+                      <button onClick="{{ kid.grant }}" style="width:100%;margin-top:10px;border:0;border-radius:8px;min-height:38px;background:#8FCFBE;color:#0F2A24;font:500 14.5px/1 Roboto;cursor:pointer" style-active="background:#7EC8B2">{{ kid.grantFull }}</button>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;min-height:64px;padding:9px 12px;border-top:1px solid #252430">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Turn off Amelia&rsquo;s watching</div>
+                        <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">Until midnight</div>
+                      </div>
+                      <div onClick="{{ sw.pauseAmelia.toggle }}" style="position:relative;flex:0 0 auto;width:46px;height:28px;border-radius:14px;cursor:pointer;transition:background .18s;background:{{ sw.pauseAmelia.track }}">
+                        <div style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;transition:transform .18s;background:{{ sw.pauseAmelia.knob }};transform:{{ sw.pauseAmelia.shift }}"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 26px">
+                  <button onClick="{{ kid.remove }}" style="width:100%;border:1px solid #5A3038;background:none;border-radius:8px;min-height:36px;font:500 14px/1 Roboto;color:#E38C7E;cursor:pointer" style-active="background:#2A1A1E">Remove Amelia</button>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.channels }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:12px 14px 0">
+                  <div style="display:flex;align-items:center;gap:9px;min-height:40px;padding:0 12px;border-radius:8px;background:#17161C;border:1px solid #2E2B36">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8B8794" stroke-width="2" stroke-linecap="round" style="flex:0 0 auto"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5L21 21"></path></svg>
+                    <input value="{{ ch.query }}" onInput="{{ ch.setQuery }}" placeholder="Search your sources" style="flex:1 1 auto;min-width:0;border:0;outline:none;background:none;font:400 14px/1 Roboto;color:#EDEBF0">
+                  </div>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:16px;padding:12px 14px 0;overflow-x:auto">
+                  <sc-for list="{{ ch.filters }}" as="f" hint-placeholder-count="5">
+                    <div onClick="{{ f.pick }}" style="flex:0 0 auto;padding:2px 0 7px;border-bottom:2px solid {{ f.line }};font:500 13px/1.3 Roboto;color:{{ f.fg }};white-space:nowrap;cursor:pointer">{{ f.label }}</div>
+                  </sc-for>
+                </div>
+                <div style="height:1px;margin:0 14px;background:#252430"></div>
+
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px 0">
+                  <span style="min-width:0;font:400 12.5px/1.4 Roboto;color:#8B8794;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ch.countLabel }}</span>
+                  <div onClick="{{ ch.openSort }}" style="flex:0 0 auto;display:flex;align-items:center;gap:6px;margin:-8px -6px -8px 0;padding:8px 6px;border-radius:7px;cursor:pointer" style-active="background:#1E1D24">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8FCFBE" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M7 12h10M10 17h4"></path></svg>
+                    <span style="font:500 12.5px/1.4 Roboto;color:#8FCFBE;white-space:nowrap">{{ ch.sortLabel }}</span>
+                  </div>
+                </div>
+
+                <div style="padding:10px 14px 26px">
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-for list="{{ ch.rows }}" as="c" hint-placeholder-count="9">
+                      <div onClick="{{ c.tap }}" style="display:flex;align-items:center;gap:11px;min-height:60px;padding:9px 11px;border-top:1px solid #252430;cursor:pointer;background:{{ c.rowBg }}" style-active="background:#1E1D24">
+                        <div style="flex:0 0 auto;width:32px;height:32px;border-radius:50%;background:#1E1D24;border:1px solid #2E2B36;display:flex;align-items:center;justify-content:center;font:500 13px/1 Roboto;color:#A5A1AD">{{ c.initial }}</div>
+                        <div style="min-width:0;flex:1 1 auto">
+                          <div style="font:400 14.5px/1.35 Roboto;color:#EDEBF0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</div>
+                          <div style="margin-top:2px;font:400 12px/1.4 Roboto;color:{{ c.metaTone }}">{{ c.meta }}</div>
+                        </div>
+                        <sc-if value="{{ ch.selectMode }}" hint-placeholder-val="{{ false }}">
+                          <div style="flex:0 0 auto;width:24px;height:24px;border-radius:6px;border:1.5px solid {{ c.markBorder }};background:{{ c.markBg }};display:flex;align-items:center;justify-content:center;font:700 12px/1 Roboto;color:#0F2A24">{{ c.mark }}</div>
+                        </sc-if>
+                        <sc-if value="{{ ch.browseMode }}" hint-placeholder-val="{{ true }}">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+
+              </sc-if>
+
+              <sc-if value="{{ L.at.digest }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:14px 14px 0">
+                  <div style="font:500 17px/1.3 Roboto;color:#EDEBF0">Week of 29 Aug</div>
+                  <div style="margin-top:4px;font:400 12.5px/1.6 Roboto;color:#8B8794">Sent to every parent device each Sunday. Nothing leaves your network.</div>
+                </div>
+
+                <div style="padding:14px 14px 0">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Watching</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="padding:12px">
+                      <div style="display:flex;align-items:baseline;gap:10px">
+                        <span style="font:500 24px/1 Roboto;color:#EDEBF0;letter-spacing:-0.5px">4h 55m</span>
+                        <span style="font:400 13px/1.3 Roboto;color:#8B8794">38 videos · Amelia</span>
+                      </div>
+                      <div style="margin-top:6px;font:400 12.5px/1.5 Roboto;color:#8B8794">Watched on 5 of 7 days · 42 min a day · 1h 12m more than last week</div>
+                    </div>
+                    <div onClick="{{ app.go.kid }}" style="display:flex;align-items:center;gap:10px;min-height:52px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <span style="min-width:0;flex:1 1 auto;font:400 14px/1.3 Roboto;color:#EDEBF0">Most watched</span>
+                      <span style="flex:0 0 auto;font:400 12.5px/1 Roboto;color:#8B8794;white-space:nowrap">Kid Crew · 9</span>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 0">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Screening</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div onClick="{{ review.go }}" style="display:flex;align-items:center;gap:10px;min-height:52px;padding:9px 12px;cursor:pointer" style-active="background:#1E1D24">
+                      <span style="min-width:0;flex:1 1 auto;font:400 14px/1.3 Roboto;color:#EDEBF0">Waiting for your OK</span>
+                      <span style="flex:0 0 auto;font:400 12.5px/1 Roboto;color:#E0B77E;white-space:nowrap">{{ review.badge }}</span>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                    <div onClick="{{ blockedView.go }}" style="display:flex;align-items:center;gap:10px;min-height:52px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <span style="min-width:0;flex:1 1 auto;font:400 14px/1.3 Roboto;color:#EDEBF0">Blocked this week</span>
+                      <span style="flex:0 0 auto;font:400 12.5px/1 Roboto;color:#8B8794;white-space:nowrap">{{ blockedView.rowLabel }}</span>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 26px">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Changes this week</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-for list="{{ digestChanges }}" as="c" hint-placeholder-count="5">
+                      <div style="padding:10px 12px;border-top:1px solid #252430">
+                        <div style="font:400 13px/1.5 Roboto;color:#EDEBF0">{{ c.what }}</div>
+                        <div style="margin-top:2px;font:400 11.5px/1.4 Roboto;color:#6D6979">{{ c.who }} &nbsp;·&nbsp; {{ c.when }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.blocked }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:14px 14px 0">
+                  <div style="font:500 17px/1.3 Roboto;color:#EDEBF0">{{ blockedView.headline }}</div>
+                  <div style="margin-top:4px;font:400 12.5px/1.6 Roboto;color:#8B8794">{{ blockedView.sub }}</div>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:16px;padding:14px 14px 0;overflow-x:auto">
+                  <sc-for list="{{ blockedView.filters }}" as="f" hint-placeholder-count="3">
+                    <div onClick="{{ f.pick }}" style="flex:0 0 auto;padding:2px 0 7px;border-bottom:2px solid {{ f.line }};font:500 13px/1.3 Roboto;color:{{ f.fg }};white-space:nowrap;cursor:pointer">{{ f.label }}</div>
+                  </sc-for>
+                </div>
+                <div style="height:1px;margin:0 14px;background:#252430"></div>
+
+                <sc-if value="{{ blockedView.empty }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:22px 18px;font:400 13px/1.6 Roboto;color:#8B8794">Nothing is blocked.</div>
+                </sc-if>
+
+                <div style="padding:12px 14px 26px">
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-for list="{{ blockedView.items }}" as="b" hint-placeholder-count="4">
+                      <div style="padding:11px 12px;border-top:1px solid #252430">
+                        <div style="display:flex;align-items:flex-start;gap:11px">
+                          <div style="flex:0 0 auto;width:56px;height:34px;border-radius:5px;background:#25242C;border:1px solid #2E2B36"></div>
+                          <div style="min-width:0;flex:1 1 auto">
+                            <div style="font:400 14px/1.4 Roboto;color:#EDEBF0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ b.title }}</div>
+                            <div style="margin-top:2px;font:400 12px/1.4 Roboto;color:#8B8794">{{ b.meta }}</div>
+                          </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
+                          <span style="min-width:0;flex:1 1 auto;font:400 12px/1.45 Roboto;color:{{ b.whyTone }}">{{ b.why }}</span>
+                          <button onClick="{{ b.unblock }}" style="flex:0 0 auto;border:1px solid #2E2B36;background:none;border-radius:6px;min-height:28px;padding:0 9px;font:500 11.5px/1 Roboto;color:#8FCFBE;white-space:nowrap;cursor:pointer" style-active="background:#25242C">Allow</button>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.review }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:14px 14px 0">
+                  <div style="font:500 17px/1.3 Roboto;color:#EDEBF0">{{ review.headline }}</div>
+                  <div style="margin-top:4px;font:400 12.5px/1.6 Roboto;color:#8B8794">{{ review.sub }}</div>
+                  <sc-if value="{{ review.hasHeld }}" hint-placeholder-val="{{ true }}">
+                    <div style="margin-top:9px;font:400 12.5px/1.55 Roboto;color:#E0B77E">{{ review.pendingNote }}</div>
+                  </sc-if>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:16px;padding:14px 14px 0;overflow-x:auto">
+                  <sc-for list="{{ review.filters }}" as="f" hint-placeholder-count="3">
+                    <div onClick="{{ f.pick }}" style="flex:0 0 auto;padding:2px 0 7px;border-bottom:2px solid {{ f.line }};font:500 13px/1.3 Roboto;color:{{ f.fg }};white-space:nowrap;cursor:pointer">{{ f.label }}</div>
+                  </sc-for>
+                </div>
+                <div style="height:1px;margin:0 14px;background:#252430"></div>
+
+                <sc-if value="{{ review.empty }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:22px 18px;font:400 13px/1.6 Roboto;color:#8B8794">{{ review.emptyLabel }}</div>
+                </sc-if>
+
+                <div style="padding:12px 14px 26px;display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ review.items }}" as="v" hint-placeholder-count="4">
+                    <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                      <div style="display:flex;align-items:flex-start;gap:11px;padding:12px">
+                        <div style="flex:0 0 auto;width:72px;height:44px;border-radius:6px;background:#25242C;border:1px solid #2E2B36"></div>
+                        <div style="min-width:0;flex:1 1 auto">
+                          <div style="font:400 14px/1.4 Roboto;color:#EDEBF0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ v.title }}</div>
+                          <div style="margin-top:3px;font:400 12px/1.4 Roboto;color:#8B8794">{{ v.held }}</div>
+                        </div>
+                      </div>
+                      <div style="padding:0 12px 12px">
+                        <div style="padding:9px 11px;border-radius:8px;background:#101014;border-left:2px solid {{ v.reasonTone }};font:400 12.5px/1.55 Roboto;color:{{ v.reasonTone }}">{{ v.reason }}</div>
+                        <sc-if value="{{ v.isNoVerdict }}" hint-placeholder-val="{{ false }}">
+                          <div style="margin-top:7px;font:400 12px/1.5 Roboto;color:#6D6979">Nothing is wrong with the video &mdash; the model failed to answer. Try screening it again.</div>
+                        </sc-if>
+                        <div style="display:flex;gap:7px;margin-top:9px">
+                          <button style="flex:0 0 auto;border:1px solid #3A3744;background:#101014;border-radius:7px;min-height:32px;padding:0 11px;font:500 12.5px/1 Roboto;color:#A5A1AD;white-space:nowrap;cursor:pointer" style-active="background:#1E1D24">YouTube</button>
+                          <button onClick="{{ v.block }}" style="flex:1 1 0;min-width:0;border:1px solid #5A3038;background:none;border-radius:7px;min-height:32px;font:500 13px/1 Roboto;color:#E38C7E;white-space:nowrap;cursor:pointer" style-active="background:#2A1A1E">Block</button>
+                          <button onClick="{{ v.allow }}" style="flex:1 1 0;min-width:0;border:0;background:#8FCFBE;border-radius:7px;min-height:32px;font:500 13px/1 Roboto;color:#0F2A24;white-space:nowrap;cursor:pointer" style-active="background:#7EC8B2">Allow</button>
+                        </div>
+                        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:10px">
+                          <sc-if value="{{ v.hasChannelBulk }}" hint-placeholder-val="{{ false }}">
+                            <div onClick="{{ v.bulkAllow }}" style="font:500 12.5px/1.4 Roboto;color:#8FCFBE;cursor:pointer">{{ v.allowChannel }}</div>
+                          </sc-if>
+                          <div onClick="{{ v.trust }}" style="font:500 12.5px/1.4 Roboto;color:#8FCFBE;cursor:pointer">{{ v.trustLabel }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.ytsearch }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:12px 14px 0">
+                  <div style="display:flex;align-items:center;gap:9px;min-height:40px;padding:0 12px;border-radius:8px;background:#17161C;border:1px solid #8FCFBE">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8FCFBE" stroke-width="2" stroke-linecap="round" style="flex:0 0 auto"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5L21 21"></path></svg>
+                    <input value="{{ yt.query }}" onInput="{{ yt.setQuery }}" placeholder="Channel or playlist name" style="flex:1 1 auto;min-width:0;border:0;outline:none;background:none;font:400 14px/1 Roboto;color:#EDEBF0">
+                    <sc-if value="{{ yt.hasQuery }}" hint-placeholder-val="{{ true }}">
+                      <div onClick="{{ yt.clear }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:30px;height:30px;margin-right:-6px;border-radius:8px;cursor:pointer" style-active="background:#25242C">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B8794" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:16px;padding:12px 14px 0">
+                  <sc-for list="{{ yt.filters }}" as="f" hint-placeholder-count="3">
+                    <div onClick="{{ f.pick }}" style="flex:0 0 auto;padding:2px 0 7px;border-bottom:2px solid {{ f.line }};font:500 13px/1.3 Roboto;color:{{ f.fg }};white-space:nowrap;cursor:pointer">{{ f.label }}</div>
+                  </sc-for>
+                </div>
+                <div style="height:1px;margin:0 14px;background:#252430"></div>
+
+                <div style="padding:10px 18px 0;font:400 12.5px/1.4 Roboto;color:#8B8794">{{ yt.countLabel }}</div>
+
+                <div style="padding:10px 14px 26px">
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-for list="{{ yt.results }}" as="r" hint-placeholder-count="6">
+                      <div style="padding:12px;border-top:1px solid #252430">
+                        <div style="display:flex;align-items:flex-start;gap:11px">
+                          <div style="flex:0 0 auto;width:44px;height:44px;border-radius:8px;background:#25242C;border:1px solid #2E2B36;display:flex;align-items:center;justify-content:center;font:500 15px/1 Roboto;color:#8B8794">{{ r.initial }}</div>
+                          <div style="min-width:0;flex:1 1 auto">
+                            <div style="display:flex;align-items:baseline;gap:7px">
+                              <span style="min-width:0;font:400 14.5px/1.35 Roboto;color:#EDEBF0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.title }}</span>
+                              <sc-if value="{{ r.isAdded }}" hint-placeholder-val="{{ false }}">
+                                <span style="flex:0 0 auto;padding:2px 6px;border-radius:5px;background:#1E2A26;font:500 10.5px/1.5 Roboto;color:#7FC8A9;white-space:nowrap">Added</span>
+                              </sc-if>
+                            </div>
+                            <div style="margin-top:3px;font:400 12px/1.4 Roboto;color:#8B8794">{{ r.meta }}</div>
+                          </div>
+                        </div>
+                        <div style="display:flex;gap:7px;margin-top:9px">
+                          <button style="flex:0 0 auto;border:1px solid #3A3744;background:#101014;border-radius:7px;min-height:30px;padding:0 10px;font:500 12px/1 Roboto;color:#A5A1AD;white-space:nowrap;cursor:pointer" style-active="background:#1E1D24">Open in YouTube</button>
+                          <button onClick="{{ r.add }}" style="flex:0 0 auto;border:1px solid {{ r.bc }};background:{{ r.bg }};border-radius:7px;min-height:30px;padding:0 10px;font:500 12px/1 Roboto;color:{{ r.fg }};white-space:nowrap;cursor:pointer">{{ r.label }}</button>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="padding:11px 4px 0;font:400 12px/1.55 Roboto;color:#6D6979">Inspect anything in YouTube before you allow it. Added sources land tagged NEW in your list, with your per-kid switches and screening applying as usual.</div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.listing }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:16px 14px 0">
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="display:flex;align-items:center;gap:12px;min-height:64px;padding:9px 12px">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Show when a video came out</div>
+                        <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">&ldquo;3 days ago&rdquo; beside the channel name</div>
+                      </div>
+                      <div onClick="{{ sw.showDate.toggle }}" style="position:relative;flex:0 0 auto;width:46px;height:28px;border-radius:14px;cursor:pointer;transition:background .18s;background:{{ sw.showDate.track }}">
+                        <div style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;transition:transform .18s;background:{{ sw.showDate.knob }};transform:{{ sw.showDate.shift }}"></div>
+                      </div>
+                    </div>
+                    <div style="padding:12px;border-top:1px solid #252430">
+                      <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Videos before &ldquo;Show more&rdquo;</div>
+                      <div style="display:flex;gap:7px;margin-top:9px">
+                        <sc-for list="{{ seg.batch }}" as="o" hint-placeholder-count="4">
+                          <button onClick="{{ o.pick }}" style="flex:1 1 0;min-width:0;border-radius:8px;min-height:32px;padding:0 4px;font:500 13px/1 Roboto;white-space:nowrap;cursor:pointer;border:1px solid {{ o.bc }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                        </sc-for>
+                      </div>
+                      <div style="margin-top:9px;font:400 12px/1.55 Roboto;color:#8B8794">Grids stop after this many videos and offer a button for the next batch, so a scroll has an end. All keeps loading as the kid scrolls.</div>
+                    </div>
+                    <div style="padding:12px;border-top:1px solid #252430">
+                      <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Channel page layout</div>
+                      <div style="display:flex;gap:7px;margin-top:9px">
+                        <sc-for list="{{ seg.layout }}" as="o" hint-placeholder-count="2">
+                          <button onClick="{{ o.pick }}" style="flex:1 1 0;min-width:0;border-radius:8px;min-height:32px;padding:0 8px;font:500 13px/1 Roboto;white-space:nowrap;cursor:pointer;border:1px solid {{ o.bc }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                        </sc-for>
+                      </div>
+                      <div style="margin-top:9px;font:400 12px/1.55 Roboto;color:#8B8794">{{ seg.layoutHelp }}</div>
+                    </div>
+                    <div style="padding:12px;border-top:1px solid #252430">
+                      <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Channel row order</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:11px">
+                        <sc-for list="{{ seg.rowOrder }}" as="o" hint-placeholder-count="4">
+                          <button onClick="{{ o.pick }}" style="border-radius:8px;min-height:30px;padding:0 11px;font:500 12.5px/1 Roboto;white-space:nowrap;cursor:pointer;border:1px solid {{ o.bc }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                        </sc-for>
+                      </div>
+                      <div style="margin-top:9px;font:400 12px/1.55 Roboto;color:#8B8794">{{ seg.rowOrderHelp }}</div>
+                    </div>
+                  </div>
+                  <p style="margin:12px 4px 26px;font:400 12px/1.6 Roboto;color:#6D6979;text-wrap:pretty">These are the kid&rsquo;s defaults. They can re-sort with the chips on a channel page and their choice sticks for them only. A channel&rsquo;s own playlists always show above its videos.</p>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.screening }}" hint-placeholder-val="{{ false }}">
+                <sc-if value="{{ scr.needsSetup }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:14px 14px 0">
+                    <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;border:1px solid #5A4A30;background:#221D14">
+                      <span style="flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:#E0B77E"></span>
+                      <div style="min-width:0;flex:1 1 auto;font:400 12.5px/1.5 Roboto;color:#E0B77E">Connect a provider below before either feature can be switched on.</div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <div style="padding:16px 14px 0">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 8px">
+                    <span style="font:500 12.5px/1 Roboto;color:#8B8794">AI connection</span>
+                    <div onClick="{{ help.conn.toggle }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:-11px -12px -11px 0;cursor:pointer">
+                      <span style="display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;border:1px solid #3A3744;font:500 11.5px/1 Roboto;color:#8B8794">?</span>
+                    </div>
+                  </div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-if value="{{ help.conn.open }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px 12px 2px;font:400 12.5px/1.6 Roboto;color:#8B8794">Where Pickwick talks to an AI, and which model. Set this up once and the two features below each switch on separately. You can bring your own provider; a model running on your own network works too.</div>
+                    </sc-if>
+                    <div onClick="{{ conn.toggleOpen }}" style="display:flex;align-items:center;gap:11px;min-height:64px;padding:10px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">{{ conn.provider }}</div>
+                        <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:{{ conn.tone }}">{{ conn.status }}</div>
+                      </div>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;transition:transform .2s;transform:{{ conn.spin }}"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                    <sc-if value="{{ conn.open }}" hint-placeholder-val="{{ true }}">
+                      <div style="padding:12px;border-top:1px solid #252430;display:flex;flex-direction:column;gap:14px">
+                        <div>
+                          <div style="font:400 12.5px/1 Roboto;color:#8B8794">Provider</div>
+                          <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:9px">
+                            <sc-for list="{{ seg.provider }}" as="o" hint-placeholder-count="5">
+                              <button onClick="{{ o.pick }}" style="border-radius:8px;min-height:30px;padding:0 11px;font:500 12.5px/1 Roboto;white-space:nowrap;cursor:pointer;border:1px solid {{ o.bc }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                            </sc-for>
+                          </div>
+                        </div>
+                        <div>
+                          <div style="font:400 12.5px/1 Roboto;color:#8B8794">API base URL &mdash; OpenAI-compatible</div>
+                          <input value="https://generativelanguage.googleapis.com/v1beta/openai/" style="width:100%;margin-top:7px;border:1px solid #2E2B36;border-radius:10px;background:#101014;padding:11px 11px;font:400 12.5px/1.35 Roboto;color:#EDEBF0;outline:none">
+                        </div>
+                        <div>
+                          <div style="font:400 12.5px/1 Roboto;color:#8B8794">API key &mdash; leave empty for a local server</div>
+                          <input value="••••••••••••••••••••••••••" style="width:100%;margin-top:7px;border:1px solid #2E2B36;border-radius:10px;background:#101014;padding:11px 11px;font:400 12.5px/1.35 Roboto;color:#EDEBF0;outline:none">
+                        </div>
+                        <div>
+                          <div style="font:400 12.5px/1 Roboto;color:#8B8794">Model &mdash; type to filter, tap to pick</div>
+                          <div style="display:flex;align-items:center;gap:8px;margin-top:7px;border:1px solid #2E2B36;border-radius:10px;background:#101014;padding:11px">
+                            <span style="min-width:0;flex:1 1 auto;font:400 13px/1.3 Roboto;color:#EDEBF0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">models/gemini-2.5-flash-lite</span>
+                            <span style="flex:0 0 auto;font:400 10px/1 Roboto;color:#6D6979">&#9660;</span>
+                          </div>
+                        </div>
+                        <div>
+                          <button onClick="{{ conn.test }}" style="width:100%;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:32px;font:500 14px/1 Roboto;color:#EDEBF0;cursor:pointer" style-active="background:#1E1D24">{{ conn.testLabel }}</button>
+                          <sc-if value="{{ conn.failed }}" hint-placeholder-val="{{ false }}">
+                            <div style="margin-top:9px;font:400 12px/1.55 Roboto;color:#E38C7E">{{ conn.failLabel }}</div>
+                          </sc-if>
+                          <div style="margin-top:9px;font:400 12px/1.55 Roboto;color:#8B8794">Sends one short test question, so a wrong key or model says so here rather than failing quietly later.</div>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 0">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">The two features</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="display:flex;align-items:center;gap:11px;min-height:68px;padding:11px 12px;opacity:{{ scr.dim }}">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Screen new videos with AI</div>
+                        <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">Titles and channel names only &mdash; never watch history</div>
+                      </div>
+                      <div onClick="{{ sw.screenAi.toggle }}" style="position:relative;flex:0 0 auto;width:46px;height:28px;border-radius:14px;cursor:pointer;transition:background .18s;background:{{ sw.screenAi.track }}">
+                        <div style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;transition:transform .18s;background:{{ sw.screenAi.knob }};transform:{{ sw.screenAi.shift }}"></div>
+                      </div>
+                    </div>
+                    <sc-if value="{{ sw.screenAi.on }}" hint-placeholder-val="{{ false }}">
+                      <div onClick="{{ blockedView.go }}" style="display:flex;align-items:center;gap:10px;min-height:56px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                        <span style="min-width:0;flex:1 1 auto;font:400 14.5px/1.3 Roboto;color:#EDEBF0">Blocked videos</span>
+                        <span style="flex:0 0 auto;font:400 12.5px/1 Roboto;color:#8B8794;white-space:nowrap">{{ blockedView.rowLabel }}</span>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:10px;min-height:56px;padding:9px 12px;border-top:1px solid #252430">
+                        <div style="min-width:0;flex:1 1 auto">
+                          <div style="font:400 14.5px/1.3 Roboto;color:#EDEBF0">Trusted channels</div>
+                          <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ trustedView.label }}</div>
+                        </div>
+                        <span style="flex:0 0 auto;font:400 12.5px/1 Roboto;color:#8B8794">not screened</span>
+                      </div>
+                    </sc-if>
+                    <div style="display:flex;align-items:center;gap:11px;min-height:68px;padding:11px 12px;border-top:1px solid #252430;opacity:{{ scr.dim }}">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Find channels with AI</div>
+                        <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">Suggestions, each verified against YouTube</div>
+                      </div>
+                      <div onClick="{{ sw.discoverAi.toggle }}" style="position:relative;flex:0 0 auto;width:46px;height:28px;border-radius:14px;cursor:pointer;transition:background .18s;background:{{ sw.discoverAi.track }}">
+                        <div style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;transition:transform .18s;background:{{ sw.discoverAi.knob }};transform:{{ sw.discoverAi.shift }}"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <sc-if value="{{ sw.screenAi.on }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:18px 14px 0">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:0 4px 8px">
+                      <span style="font:500 12.5px/1 Roboto;color:#8B8794">House rules the AI enforces</span>
+                      <span style="font:400 11.5px/1 Roboto;color:#6D6979">{{ rules.lineCount }}</span>
+                    </div>
+                    <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                      <div style="padding:12px">
+                        <textarea value="{{ rules.text }}" onInput="{{ rules.set }}" rows="6" style="width:100%;border:1px solid #2E2B36;border-radius:10px;background:#101014;padding:11px;font:400 13.5px/1.65 Roboto;color:#EDEBF0;outline:none;resize:none"></textarea>
+                        <div style="margin-top:9px;font:400 12px/1.55 Roboto;color:#8B8794">Rough notes are fine &mdash; the AI understands shorthand. One rule per line.</div>
+                      </div>
+                      <sc-if value="{{ rules.dirty }}" hint-placeholder-val="{{ false }}">
+                        <div style="padding:12px;border-top:1px solid #252430">
+                          <div style="display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:8px;border:1px solid #5A4A30;background:#221D14">
+                            <span style="min-width:0;flex:1 1 auto;font:400 12px/1.5 Roboto;color:#E0B77E">Saving re-screens the whole catalogue on every device.</span>
+                            <button onClick="{{ rules.save }}" style="flex:0 0 auto;border:0;background:#E0B77E;border-radius:7px;min-height:32px;padding:0 11px;font:500 12.5px/1 Roboto;color:#231B10;white-space:nowrap;cursor:pointer">Save rules</button>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <div style="padding:12px;border-top:1px solid #252430;font:400 12px/1.6 Roboto;color:#6D6979">{{ rules.scope }}</div>
+                    </div>
+                  </div>
+
+                  <div style="padding:18px 14px 0">
+                    <div onClick="{{ review.go }}" style="display:flex;align-items:center;gap:11px;min-height:64px;padding:11px 12px;border-radius:10px;border:1px solid #3A3744;background:#1E1D24;cursor:pointer" style-active="background:#25242C">
+                      <div style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-width:30px;height:24px;padding:0 8px;border-radius:6px;background:#E0B77E;font:500 12.5px/1 Roboto;color:#231B10">{{ review.badge }}</div>
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 14.5px/1.3 Roboto;color:#EDEBF0">Waiting for your OK</div>
+                        <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">{{ review.rowSub }}</div>
+                      </div>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B8794" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ sw.discoverAi.on }}" hint-placeholder-val="{{ true }}">
+                  <div style="padding:18px 14px 26px">
+                    <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Find channels</div>
+                    <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                      <div style="padding:12px">
+                        <div style="font:400 12.5px/1.6 Roboto;color:#8B8794">Describe what your kid loves. Inspect anything in YouTube before adding it.</div>
+                        <div style="display:flex;gap:7px;margin-top:9px">
+                          <input value="magic schoolbus" style="flex:1 1 auto;min-width:0;border:1px solid #8FCFBE;border-radius:8px;background:#101014;padding:0 14px;min-height:32px;font:400 13.5px/1 Roboto;color:#EDEBF0;outline:none">
+                          <button style="flex:0 0 auto;border:0;border-radius:8px;min-height:32px;padding:0 12px;background:#8FCFBE;color:#0F2A24;font:500 13.5px/1 Roboto;cursor:pointer" style-active="background:#7EC8B2">Suggest</button>
+                        </div>
+                        <div style="margin-top:11px;font:400 12.5px/1.4 Roboto;color:#7FC8A9">Verified 3 of 3 &mdash; inspect, then add what you like</div>
+                      </div>
+                      <sc-for list="{{ suggestions }}" as="s" hint-placeholder-count="3">
+                        <div style="padding:12px;border-top:1px solid #252430">
+                          <div style="display:flex;align-items:flex-start;gap:11px">
+                            <div style="flex:0 0 auto;width:36px;height:36px;border-radius:8px;background:#1E1D24;border:1px solid #2E2B36"></div>
+                            <div style="min-width:0;flex:1 1 auto">
+                              <div style="font:400 14.5px/1.35 Roboto;color:#EDEBF0">{{ s.title }}</div>
+                              <div style="margin-top:2px;font:400 12px/1.4 Roboto;color:#8B8794">{{ s.meta }}</div>
+                            </div>
+                          </div>
+                          <div style="margin-top:8px;font:400 12.5px/1.55 Roboto;color:#A5A1AD">{{ s.blurb }}</div>
+                          <div style="display:flex;gap:7px;margin-top:9px">
+                            <button style="flex:1 1 0;min-width:0;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:32px;font:500 12.5px/1 Roboto;color:#A5A1AD;cursor:pointer" style-active="background:#1E1D24">Inspect</button>
+                            <button onClick="{{ s.add }}" style="flex:1 1 0;min-width:0;border:1px solid {{ s.bc }};background:{{ s.bg }};border-radius:8px;min-height:32px;font:500 12.5px/1 Roboto;color:{{ s.fg }};cursor:pointer">{{ s.label }}</button>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+              </sc-if>
+
+              <sc-if value="{{ L.at.devices }}" hint-placeholder-val="{{ false }}">
+
+                <sc-if value="{{ dev.anyOutdated }}" hint-placeholder-val="{{ true }}">
+                  <div style="padding:14px 14px 0">
+                    <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;border:1px solid #5A4A30;background:#221D14">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 13.5px/1.35 Roboto;color:#E0B77E">{{ dev.outdatedLabel }}</div>
+                        <div style="margin-top:2px;font:400 12px/1.4 Roboto;color:#8B8794">Latest is {{ dev.latest }}</div>
+                      </div>
+                      <button onClick="{{ dev.updateAll }}" style="flex:0 0 auto;border:0;background:#E0B77E;border-radius:7px;min-height:32px;padding:0 11px;font:500 12.5px/1 Roboto;color:#231B10;white-space:nowrap;cursor:pointer">{{ dev.updateAllLabel }}</button>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-for list="{{ dev.groups }}" as="g" hint-placeholder-count="3">
+                  <div style="padding:16px 14px 0">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 4px 8px">
+                      <div style="display:flex;align-items:center;gap:4px;min-width:0">
+                        <span style="font:500 12.5px/1 Roboto;color:#8B8794">{{ g.label }}</span>
+                        <div onClick="{{ dev.refreshAll }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:32px;height:32px;margin:-8px 0;border-radius:7px;color:#8FCFBE;cursor:pointer;animation:{{ dev.spinAll }}" style-active="background:#1E1D24"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.34-5.66"></path><path d="M20 4v4h-4"></path></svg></div>
+                      </div>
+                      <span style="flex:0 0 auto;font:400 11.5px/1 Roboto;color:#6D6979">{{ g.note }}</span>
+                    </div>
+                    <div style="border-radius:10px;border:1px solid {{ g.edge }};background:{{ g.bg }};overflow:hidden">
+                      <sc-for list="{{ g.items }}" as="d" hint-placeholder-count="5">
+                        <div style="border-top:1px solid #252430;background:{{ d.rowBg }}">
+                          <div onClick="{{ d.toggle }}" style="display:flex;align-items:center;gap:10px;min-height:62px;padding:10px 12px;cursor:pointer" style-active="background:#25242C">
+                            <div style="min-width:0;flex:1 1 auto">
+                              <div style="display:flex;align-items:center;gap:7px">
+                                <span style="min-width:0;font:400 14.5px/1.3 Roboto;color:#EDEBF0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.name }}</span>
+                                <span style="flex:0 0 auto;padding:2px 5px;border-radius:4px;background:{{ d.chipBg }};font:500 9.5px/1.6 Roboto;letter-spacing:.06em;color:{{ d.chipFg }};white-space:nowrap">{{ d.chip }}</span>
+                              </div>
+                              <div style="margin-top:3px;font:400 12px/1.45 Roboto;color:{{ d.tone }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.line }}</div>
+                            </div>
+                            <sc-if value="{{ d.needsUpdate }}" hint-placeholder-val="{{ false }}">
+                              <span style="flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:#E0B77E"></span>
+                            </sc-if>
+                            <div onClick="{{ d.refresh }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:7px;color:#8B8794;cursor:pointer;animation:{{ d.spinIcon }}" style-active="background:#25242C"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.34-5.66"></path><path d="M20 4v4h-4"></path></svg></div>
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;transition:transform .2s;transform:{{ d.spin }}"><path d="M9 5l7 7-7 7"></path></svg>
+                          </div>
+
+                          <sc-if value="{{ d.open }}" hint-placeholder-val="{{ false }}">
+                            <div style="padding:0 12px 12px">
+                              <div style="font:400 12px/1.55 Roboto;color:#8B8794">{{ d.detail }}</div>
+                              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+                                <sc-if value="{{ d.needsUpdate }}" hint-placeholder-val="{{ false }}">
+                                  <button onClick="{{ d.update }}" style="flex:0 0 auto;border:0;background:#E0B77E;border-radius:6px;min-height:28px;padding:0 9px;font:500 11.5px/1 Roboto;color:#231B10;white-space:nowrap;cursor:pointer">{{ d.updateLabel }}</button>
+                                </sc-if>
+                                <sc-for list="{{ d.actions }}" as="b" hint-placeholder-count="3">
+                                  <button onClick="{{ b.fn }}" style="flex:0 0 auto;border:1px solid #2E2B36;background:none;border-radius:6px;min-height:28px;padding:0 9px;font:500 11.5px/1 Roboto;color:{{ b.fg }};white-space:nowrap;cursor:pointer" style-active="background:#25242C">{{ b.label }}</button>
+                                </sc-for>
+                              </div>
+                            </div>
+                          </sc-if>
+                        </div>
+                      </sc-for>
+                      <div onClick="{{ dev.add }}" style="display:flex;align-items:center;gap:10px;min-height:52px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                        <span style="font:400 19px/1 Roboto;color:#8FCFBE">+</span>
+                        <span style="font:400 14.5px/1.3 Roboto;color:#8FCFBE">Add a device</span>
+                      </div>
+                    </div>
+                  </div>
+                </sc-for>
+
+                <div style="padding:18px 14px 0">
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div onClick="{{ app.go.digest }}" style="display:flex;align-items:center;gap:10px;min-height:56px;padding:9px 12px;cursor:pointer" style-active="background:#1E1D24">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 14.5px/1.3 Roboto;color:#EDEBF0">Weekly digest</div>
+                        <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">What everyone watched, and every change made</div>
+                      </div>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                    <div style="padding:11px 12px;border-top:1px solid #252430">
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <span style="min-width:0;flex:1 1 auto;font:500 12.5px/1 Roboto;color:#8B8794">Recent changes</span>
+                        <span onClick="{{ app.go.digest }}" style="flex:0 0 auto;font:500 12.5px/1 Roboto;color:#8FCFBE;white-space:nowrap;cursor:pointer">See all</span>
+                      </div>
+                      <div style="margin-top:9px;display:flex;flex-direction:column;gap:7px">
+                        <sc-for list="{{ changesFeed }}" as="c" hint-placeholder-count="2">
+                          <div style="font:400 12.5px/1.5 Roboto;color:#A5A1AD">{{ c.what }} <span style="color:#6D6979">· {{ c.when }}</span></div>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="padding:11px 4px 26px;font:400 12px/1.5 Roboto;color:#6D6979">Settings #cbb6faea &nbsp;·&nbsp; edited 4 Sep 1:07 PM. Each device checks every few minutes on its own.</div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.phone }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:16px 14px 0">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Called</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="padding:12px">
+                      <input value="Mike's Phone" style="width:100%;border:1px solid #2E2B36;border-radius:10px;background:#101014;padding:12px 11px;font:400 14px/1 Roboto;color:#EDEBF0;outline:none">
+                      <div style="margin-top:9px;font:400 12px/1.55 Roboto;color:#8B8794">Shown beside the changes this phone makes, so the other parent can tell who did what.</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 0">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Search index</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="padding:12px">
+                      <div style="font:400 15px/1.35 Roboto;color:#EDEBF0">61,495 videos across 56 channels</div>
+                      <div style="margin-top:3px;font:400 12.5px/1.45 Roboto;color:#E0B77E">55 fully indexed &nbsp;·&nbsp; this device is the master</div>
+                      <button onClick="{{ idx.rebuild }}" style="width:100%;margin-top:11px;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:32px;font:500 13.5px/1 Roboto;color:#EDEBF0;cursor:pointer" style-active="background:#1E1D24">{{ idx.label }}</button>
+                      <div style="margin-top:9px;font:400 12px/1.55 Roboto;color:#8B8794">The master builds the index and shares it with the other devices.</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 0">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 8px">
+                    <span style="font:500 12.5px/1 Roboto;color:#8B8794">Offline downloads</span>
+                    <div onClick="{{ help.dl.toggle }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:-11px -12px -11px 0;cursor:pointer">
+                      <span style="display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;border:1px solid #3A3744;font:500 11.5px/1 Roboto;color:#8B8794">?</span>
+                    </div>
+                  </div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-if value="{{ help.dl.open }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px 12px 2px;font:400 12.5px/1.6 Roboto;color:#8B8794">The kid taps the download arrow on any video to ask for it offline. Approved videos are saved to this device and play without internet &mdash; good for car trips. Watching them still uses screen time. With AI screening on, each request is deep-checked first; refused ones never reach this list, they go under Blocked videos where you can overrule.</div>
+                    </sc-if>
+                    <div style="padding:12px;border-top:1px solid #252430">
+                      <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Download quality</div>
+                      <div style="display:flex;gap:7px;margin-top:9px">
+                        <sc-for list="{{ seg.dlQuality }}" as="o" hint-placeholder-count="3">
+                          <button onClick="{{ o.pick }}" style="flex:1 1 0;min-width:0;border-radius:8px;min-height:32px;padding:0 4px;font:500 13px/1 Roboto;white-space:nowrap;cursor:pointer;border:1px solid {{ o.bc }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                        </sc-for>
+                      </div>
+                    </div>
+                    <div style="display:flex;align-items:center;min-height:52px;padding:9px 12px;border-top:1px solid #252430;font:400 13px/1.4 Roboto;color:#8B8794">No requests yet</div>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 26px">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Videos from this phone</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="padding:12px">
+                      <div style="font:400 12.5px/1.6 Roboto;color:#8B8794">Home videos, rips, purchases. Pickwick links to the files where they are &mdash; nothing is copied or uploaded &mdash; and shows them on the kid&rsquo;s Downloads shelf, with the folder name where the channel name usually goes.</div>
+                      <div style="display:flex;gap:7px;margin-top:9px">
+                        <button style="flex:1 1 0;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:32px;font:500 13px/1 Roboto;color:#EDEBF0;cursor:pointer" style-active="background:#1E1D24">Add folder</button>
+                        <button style="flex:1 1 0;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:32px;font:500 13px/1 Roboto;color:#EDEBF0;cursor:pointer" style-active="background:#1E1D24">Add videos</button>
+                      </div>
+                      <div style="margin-top:11px;font:400 13px/1.4 Roboto;color:#8B8794">Nothing linked yet</div>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.playback }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:16px 14px 0">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">While a video plays</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-for list="{{ playbackSwitches }}" as="p" hint-placeholder-count="4">
+                      <div style="border-top:1px solid #252430">
+                        <div style="display:flex;align-items:center;gap:6px;min-height:68px;padding:10px 12px">
+                          <div style="min-width:0;flex:1 1 auto;padding-right:4px">
+                            <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">{{ p.name }}</div>
+                            <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">{{ p.sub }}</div>
+                          </div>
+                          <div onClick="{{ p.helpToggle }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:8px;cursor:pointer" style-active="background:#1E1D24">
+                            <span style="display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;border:1px solid #3A3744;font:500 11.5px/1 Roboto;color:#8B8794">?</span>
+                          </div>
+                          <div onClick="{{ p.toggle }}" style="position:relative;flex:0 0 auto;width:46px;height:28px;border-radius:14px;cursor:pointer;transition:background .18s;background:{{ p.track }}">
+                            <div style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;transition:transform .18s;background:{{ p.knob }};transform:{{ p.shift }}"></div>
+                          </div>
+                        </div>
+                        <sc-if value="{{ p.helpOpen }}" hint-placeholder-val="{{ false }}">
+                          <div style="padding:0 12px 13px;font:400 12.5px/1.6 Roboto;color:#8B8794">{{ p.help }}</div>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 26px">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">Picture quality</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="padding:12px">
+                      <div style="font:400 12.5px/1.6 Roboto;color:#8B8794">Auto follows the connection and the device, with no cap. Pick a number to set a ceiling instead. Either way a kid can change it for the video they are watching, from the player.</div>
+                    </div>
+                    <div style="padding:12px;border-top:1px solid #252430">
+                      <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">On TVs</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:11px">
+                        <sc-for list="{{ seg.tvQuality }}" as="o" hint-placeholder-count="5">
+                          <button onClick="{{ o.pick }}" style="border-radius:8px;min-height:30px;padding:0 11px;font:500 12.5px/1 Roboto;white-space:nowrap;cursor:pointer;border:1px solid {{ o.bc }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                        </sc-for>
+                      </div>
+                    </div>
+                    <div style="padding:12px;border-top:1px solid #252430">
+                      <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">On phones &amp; tablets</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:11px">
+                        <sc-for list="{{ seg.phoneQuality }}" as="o" hint-placeholder-count="5">
+                          <button onClick="{{ o.pick }}" style="border-radius:8px;min-height:30px;padding:0 11px;font:500 12.5px/1 Roboto;white-space:nowrap;cursor:pointer;border:1px solid {{ o.bc }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ L.at.backup }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:16px 14px 0">
+                  <div style="padding:0 4px 8px;font:500 12.5px/1 Roboto;color:#8B8794">App</div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <div style="padding:12px">
+                      <div style="font:400 15px/1.3 Roboto;color:#EDEBF0">Pickwick 0.12.2-fork</div>
+                      <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">Build 49</div>
+                      <button onClick="{{ upd.check }}" style="width:100%;margin-top:11px;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:32px;font:500 13.5px/1 Roboto;color:#EDEBF0;cursor:pointer" style-active="background:#1E1D24">{{ upd.label }}</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 0">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:0 4px 8px">
+                    <span style="font:500 12.5px/1 Roboto;color:#8B8794">Hub</span>
+                    <span style="font:400 11.5px/1 Roboto;color:#6D6979">Docker on your network</span>
+                  </div>
+                  <div style="border-radius:10px;border:1px solid #2E4A42;background:#141A18;overflow:hidden">
+                    <div style="padding:12px">
+                      <div style="font:400 12.5px/1 Roboto;color:#8B8794">Called</div>
+                      <input value="{{ hub.name }}" onInput="{{ hub.rename }}" style="width:100%;margin-top:7px;border:1px solid #2E2B36;border-radius:10px;background:#101014;padding:11px;font:400 14px/1 Roboto;color:#EDEBF0;outline:none">
+                      <div style="margin-top:8px;font:400 12px/1.5 Roboto;color:#8B8794">The name it shows under Kid devices and beside the changes it makes.</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;min-height:56px;padding:9px 12px;border-top:1px solid #252430">
+                      <span style="min-width:0;flex:1 1 auto;font:400 14px/1.3 Roboto;color:#EDEBF0">192.168.1.245</span>
+                      <span style="flex:0 0 auto;font:400 12.5px/1 Roboto;color:#7FC8A9;white-space:nowrap">Connected</span>
+                    </div>
+                    <div style="padding:12px;border-top:1px solid #252430">
+                      <div style="font:400 12.5px/1.6 Roboto;color:#8B8794">Added a TV since? Enter the admin token again to connect it.</div>
+                      <input placeholder="Admin token" style="width:100%;margin-top:10px;border:1px solid #2E2B36;border-radius:10px;background:#101014;padding:11px;font:400 13px/1.3 Roboto;color:#EDEBF0;outline:none">
+                      <div style="display:flex;gap:8px;margin-top:9px">
+                        <button style="flex:1 1 0;min-width:0;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:32px;font:500 13px/1 Roboto;color:#EDEBF0;white-space:nowrap;cursor:pointer" style-active="background:#1E1D24">Connect my TVs</button>
+                        <button style="flex:0 0 auto;border:1px solid #5A3038;background:none;border-radius:8px;min-height:32px;padding:0 11px;font:500 13px/1 Roboto;color:#E38C7E;white-space:nowrap;cursor:pointer" style-active="background:#2A1A1E">Remove</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="padding:10px 4px 0;font:400 12px/1.5 Roboto;color:#6D6979">The hub still appears as a device under Devices &amp; sync, with its version and sync state.</div>
+                </div>
+
+                <div style="padding:18px 14px 0">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 8px">
+                    <span style="font:500 12.5px/1 Roboto;color:#8B8794">The channel list</span>
+                    <div onClick="{{ help.list.toggle }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:-11px -12px -11px 0;cursor:pointer">
+                      <span style="display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;border:1px solid #3A3744;font:500 11.5px/1 Roboto;color:#8B8794">?</span>
+                    </div>
+                  </div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-if value="{{ help.list.open }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px 12px 2px;font:400 12.5px/1.6 Roboto;color:#8B8794">Save the channel list as a file &mdash; keep it as a backup, or send it to another parent. Import a saved file to add its channels here. Or offer the whole list to the shared Pickwick directory, where other families can find it after review.</div>
+                    </sc-if>
+                    <sc-for list="{{ listActions }}" as="a" hint-placeholder-count="4">
+                      <div style="display:flex;align-items:center;gap:10px;min-height:56px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                        <span style="min-width:0;flex:1 1 auto;font:400 14.5px/1.3 Roboto;color:#EDEBF0">{{ a.name }}</span>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+
+                <div style="padding:18px 14px 26px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 8px">
+                    <span style="font:500 12.5px/1 Roboto;color:#8B8794">Full backup</span>
+                    <div onClick="{{ help.backup.toggle }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:-11px -12px -11px 0;cursor:pointer">
+                      <span style="display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;border:1px solid #3A3744;font:500 11.5px/1 Roboto;color:#8B8794">?</span>
+                    </div>
+                  </div>
+                  <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+                    <sc-if value="{{ help.backup.open }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px 12px 2px;font:400 12.5px/1.6 Roboto;color:#8B8794">Everything on this phone &mdash; channels, kids and their rules, blocked and allowed videos, AI screening settings without the key, every kid&rsquo;s resume points and favourites, and the AI verdict cache. Restore it on a fresh install and push to the kid devices.</div>
+                    </sc-if>
+                    <div style="display:flex;align-items:center;gap:10px;min-height:64px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <div style="min-width:0;flex:1 1 auto">
+                        <div style="font:400 14.5px/1.3 Roboto;color:#EDEBF0">Full backup&hellip;</div>
+                        <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#E0B77E">Never backed up</div>
+                      </div>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;min-height:56px;padding:9px 12px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                      <span style="min-width:0;flex:1 1 auto;font:400 14.5px/1.3 Roboto;color:#EDEBF0">Restore backup&hellip;</span>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+            </div>
+
+            <sc-if value="{{ ch.showBulkBar }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:0 0 auto;display:flex;align-items:center;gap:9px;padding:11px 12px;background:#1E1D24;border-top:1px solid #3A3744">
+                <span style="min-width:0;flex:1 1 auto;font:400 13px/1.4 Roboto;color:#A5A1AD">{{ ch.bulkLabel }}</span>
+                <button onClick="{{ ch.selectAll }}" style="flex:0 0 auto;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:32px;padding:0 11px;font:500 12.5px/1 Roboto;color:#EDEBF0;white-space:nowrap;cursor:pointer" style-active="background:#25242C">{{ ch.selectAllLabel }}</button>
+                <button onClick="{{ ch.remove }}" style="flex:0 0 auto;border:0;border-radius:8px;min-height:32px;padding:0 11px;font:500 12.5px/1 Roboto;background:{{ ch.removeBg }};color:{{ ch.removeFg }};white-space:nowrap;cursor:pointer">Remove</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ review.showUndo }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:0 0 auto;display:flex;align-items:center;gap:10px;margin:0 12px 12px;padding:11px 14px;border-radius:10px;background:#1E1D24;border:1px solid #3A3744">
+                <span style="min-width:0;flex:1 1 auto;font:400 13px/1.4 Roboto;color:#EDEBF0">{{ review.undoLabel }}</span>
+                <button onClick="{{ review.undoAction }}" style="flex:0 0 auto;border:0;background:none;min-height:32px;padding:0 8px;font:500 13.5px/1 Roboto;color:#8FCFBE;cursor:pointer">Undo</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ ch.showUndo }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:0 0 auto;display:flex;align-items:center;gap:10px;margin:0 12px 12px;padding:11px 14px;border-radius:10px;background:#1E1D24;border:1px solid #3A3744">
+                <span style="min-width:0;flex:1 1 auto;font:400 13px/1.4 Roboto;color:#EDEBF0">{{ ch.undoLabel }}</span>
+                <button onClick="{{ ch.undoAction }}" style="flex:0 0 auto;border:0;background:none;min-height:32px;padding:0 8px;font:500 13.5px/1 Roboto;color:#8FCFBE;cursor:pointer">Undo</button>
+              </div>
+            </sc-if>
+
+          </div>
+        </sc-for>
+
+        <sc-if value="{{ sheet.open }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ sheet.close }}" style="position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.6)"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;z-index:21;border-radius:14px 14px 0 0;border-top:1px solid #3A3744;background:#17161C">
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:14px 14px 0">
+              <div style="min-width:0;flex:1 1 auto">
+                <div style="font:500 16px/1.3 Roboto;color:#EDEBF0">{{ sheet.title }}</div>
+                <div style="margin-top:3px;font:400 12.5px/1.5 Roboto;color:#8B8794">{{ sheet.sub }}</div>
+              </div>
+              <div onClick="{{ sheet.close }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:-11px -12px 0 0;border-radius:8px;cursor:pointer" style-active="background:#1E1D24">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8B8794" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+              </div>
+            </div>
+
+            <sc-if value="{{ sheet.isTime }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:14px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                  <sc-for list="{{ sheet.presets }}" as="p" hint-placeholder-count="4">
+                    <button onClick="{{ p.pick }}" style="border-radius:8px;min-height:32px;font:500 14px/1 Roboto;white-space:nowrap;cursor:pointer;border:1px solid {{ p.bc }};background:{{ p.bg }};color:{{ p.fg }}">{{ p.label }}</button>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px 10px;border-radius:8px;border:1px solid {{ sheet.customBc }};background:{{ sheet.customBg }}">
+                  <span style="min-width:0;flex:1 1 auto;font:400 14px/1.3 Roboto;color:{{ sheet.customFg }}">Custom</span>
+                  <div onClick="{{ sheet.minus }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:40px;height:32px;border-radius:8px;border:1px solid #3A3744;font:400 19px/1 Roboto;color:#EDEBF0;cursor:pointer" style-active="background:#25242C">&minus;</div>
+                  <span style="flex:0 0 62px;text-align:center;font:500 15px/1 Roboto;color:#EDEBF0">{{ sheet.customLabel }}</span>
+                  <div onClick="{{ sheet.plus }}" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:40px;height:32px;border-radius:8px;border:1px solid #3A3744;font:400 19px/1 Roboto;color:#EDEBF0;cursor:pointer" style-active="background:#25242C">+</div>
+                </div>
+                <button onClick="{{ sheet.confirmTime }}" style="width:100%;margin-top:9px;border:0;border-radius:8px;min-height:42px;background:#8FCFBE;color:#0F2A24;font:500 15px/1 Roboto;cursor:pointer" style-active="background:#7EC8B2">{{ sheet.confirmLabel }}</button>
+                <div style="margin-top:10px;font:400 12px/1.5 Roboto;color:#8B8794">{{ sheet.footnote }}</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ sheet.isAdd }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:12px 0 14px">
+                <sc-for list="{{ sheet.addOptions }}" as="a" hint-placeholder-count="3">
+                  <div onClick="{{ a.go }}" style="display:flex;align-items:center;gap:11px;min-height:64px;padding:11px 14px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                    <div style="min-width:0;flex:1 1 auto">
+                      <div style="font:400 14.5px/1.3 Roboto;color:#EDEBF0">{{ a.name }}</div>
+                      <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">{{ a.sub }}</div>
+                    </div>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ sheet.isDevice }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:12px 0 14px">
+                <sc-for list="{{ sheet.deviceOptions }}" as="o" hint-placeholder-count="3">
+                  <div onClick="{{ o.go }}" style="display:flex;align-items:center;gap:11px;min-height:58px;padding:10px 14px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                    <div style="min-width:0;flex:1 1 auto">
+                      <div style="font:400 14.5px/1.3 Roboto;color:#EDEBF0">{{ o.name }}</div>
+                      <div style="margin-top:2px;font:400 12px/1.45 Roboto;color:#8B8794">{{ o.sub }}</div>
+                    </div>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6D6979" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M9 5l7 7-7 7"></path></svg>
+                  </div>
+                </sc-for>
+                <div style="margin:12px 14px 0;padding:11px;border-radius:10px;border:1px dashed #3A3744;background:#101014;text-align:center">
+                  <div style="font:400 11.5px/1 Roboto;color:#8B8794">Pairing code</div>
+                  <div style="margin-top:6px;font:500 21px/1 Roboto;color:#8FCFBE;letter-spacing:2px">{{ sheet.pairCode }}</div>
+                  <div style="margin-top:6px;font:400 11.5px/1.45 Roboto;color:#6D6979">Expires in 10 minutes</div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ sheet.isConfirm }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:8px;padding:14px 14px 14px">
+                <button onClick="{{ sheet.close }}" style="flex:1 1 0;min-width:0;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:36px;font:500 14px/1 Roboto;color:#EDEBF0;white-space:nowrap;cursor:pointer" style-active="background:#25242C">Cancel</button>
+                <button onClick="{{ sheet.runConfirm }}" style="flex:1 1 0;min-width:0;border:0;background:#E38C7E;border-radius:8px;min-height:36px;font:500 14px/1 Roboto;color:#2A1015;white-space:nowrap;cursor:pointer">{{ sheet.confirmCta }}</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ sheet.isSort }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:12px 0 14px">
+                <sc-for list="{{ sheet.sortOptions }}" as="o" hint-placeholder-count="4">
+                  <div onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:11px;min-height:52px;padding:9px 14px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                    <span style="min-width:0;flex:1 1 auto;font:400 14.5px/1.3 Roboto;color:{{ o.fg }}">{{ o.label }}</span>
+                    <span style="flex:0 0 auto;font:500 14px/1 Roboto;color:#8FCFBE">{{ o.mark }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ sheet.isBlocked }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:12px 0 8px">
+                <sc-for list="{{ sheet.blockedPresets }}" as="b" hint-placeholder-count="5">
+                  <div onClick="{{ b.add }}" style="display:flex;align-items:center;gap:11px;min-height:60px;padding:10px 14px;border-top:1px solid #252430;cursor:pointer" style-active="background:#1E1D24">
+                    <div style="min-width:0;flex:1 1 auto">
+                      <div style="font:400 14.5px/1.35 Roboto;color:#EDEBF0">{{ b.name }}</div>
+                      <div style="margin-top:2px;font:400 12px/1.4 Roboto;color:#8B8794">{{ b.detail }}</div>
+                    </div>
+                    <span style="flex:0 0 auto;font:500 12.5px/1 Roboto;color:{{ b.tone }};white-space:nowrap">{{ b.action }}</span>
+                  </div>
+                </sc-for>
+                <div style="padding:12px 14px 4px">
+                  <button onClick="{{ sheet.close }}" style="width:100%;border:1px solid #3A3744;background:#101014;border-radius:8px;min-height:36px;font:500 14.5px/1 Roboto;color:#EDEBF0;cursor:pointer" style-active="background:#1E1D24">Set my own hours</button>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        </div>
+      </div>
+
+      <div style="width:344px;display:flex;flex-wrap:wrap;gap:7px">
+        <sc-for list="{{ app.jump }}" as="j" hint-placeholder-count="9">
+          <button onClick="{{ j.go }}" style="border-radius:7px;padding:7px 11px;font:500 11.5px/1 Roboto;cursor:pointer;border:1px solid {{ j.bc }};background:{{ j.bg }};color:{{ j.fg }}">{{ j.label }}</button>
+        </sc-for>
+      </div>
+      <div style="width:344px;font:400 11.5px/1.55 Roboto;color:#6D6979">Jump chips are review scaffolding, not part of the design.</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:22px;flex:1 1 460px;min-width:340px;max-width:640px">
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font:500 12.5px/1 Roboto;color:#8B8794">What changed since turn 1</div>
+        <sc-for list="{{ changes }}" as="c" hint-placeholder-count="9">
+          <div style="display:flex;gap:13px;padding:13px 15px;border-radius:10px;border:1px solid #2E2B36;background:#17161C">
+            <span style="flex:0 0 auto;width:20px;font:500 13px/1.5 Roboto;color:#8FCFBE">{{ c.n }}</span>
+            <div style="min-width:0;flex:1 1 auto">
+              <div style="font:500 14px/1.4 Roboto;color:#EDEBF0">{{ c.title }}</div>
+              <div style="margin-top:4px;font:400 12.5px/1.6 Roboto;color:#8B8794;text-wrap:pretty">{{ c.body }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div id="2b" style="display:flex;flex-direction:column;gap:12px">
+        <div style="font:500 12.5px/1 Roboto;color:#8B8794">2b &nbsp;·&nbsp; coverage audit</div>
+        <p style="margin:0;font:400 12.5px/1.6 Roboto;color:#8B8794;text-wrap:pretty">Every control from the eight screenshots. Amber rows moved page or merged; nothing was cut.</p>
+        <sc-for list="{{ audit }}" as="g" hint-placeholder-count="8">
+          <div style="border-radius:10px;border:1px solid #2E2B36;background:#17161C;overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid #252430;background:#101014">
+              <span style="font:500 13px/1.3 Roboto;color:#EDEBF0">{{ g.screen }}</span>
+              <span style="font:400 11.5px/1 Roboto;color:#6D6979">{{ g.count }}</span>
+            </div>
+            <sc-for list="{{ g.items }}" as="i" hint-placeholder-count="6">
+              <div style="display:flex;gap:11px;padding:9px 14px;border-top:1px solid #252430">
+                <span style="flex:0 0 auto;width:13px;font:500 12px/1.5 Roboto;color:{{ i.tone }}">{{ i.mark }}</span>
+                <span style="flex:1 1 auto;min-width:0;font:400 12.5px/1.5 Roboto;color:#EDEBF0">{{ i.name }}</span>
+                <span style="flex:0 0 138px;font:400 12px/1.5 Roboto;color:{{ i.tone }};text-align:right">{{ i.where }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+
+    </div>
+
+  </div>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:1100}}">
+const TEAL = "#8FCFBE", TEAL_DIM = "#7EC8B2", ON_TEAL = "#0F2A24";
+const TEXT = "#EDEBF0", DIM = "#A5A1AD", DIM2 = "#8B8794", FAINT = "#6D6979";
+const EDGE = "#3A3744", OK = "#7FC8A9", WARN = "#E0B77E", DANGER = "#E38C7E";
+
+const ico = paths => React.createElement("svg", {
+  width: 21, height: 21, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+  strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round"
+}, paths.map((p, i) => React.createElement("path", { key: i, d: p })));
+
+const ICONS = {
+  channels: ["M4.5 7.5h15a2.5 2.5 0 012.5 2.5v8a2.5 2.5 0 01-2.5 2.5h-15A2.5 2.5 0 012 18v-8a2.5 2.5 0 012.5-2.5z", "M6 4.5h12", "M10 12l5 2.6-5 2.6z"],
+  shield: ["M12 3l7.5 3v5.6c0 4.4-3 8.1-7.5 9.4-4.5-1.3-7.5-5-7.5-9.4V6z"],
+  play: ["M21 12a9 9 0 11-18 0 9 9 0 0118 0", "M10 8.5l6 3.5-6 3.5z"],
+  devices: ["M3.6 5h9.8a1.6 1.6 0 011.6 1.6v7.9a1.6 1.6 0 01-1.6 1.6H3.6A1.6 1.6 0 012 14.5V6.6A1.6 1.6 0 013.6 5z", "M17.9 9h2.7a1.4 1.4 0 011.4 1.4v7.2a1.4 1.4 0 01-1.4 1.4h-2.7a1.4 1.4 0 01-1.4-1.4v-7.2A1.4 1.4 0 0117.9 9z"],
+  disk: ["M4 4h11l5 5v11H4z", "M8 4v5h7", "M8 20v-6h8v6"],
+  list: ["M4 7h10", "M18 7h2", "M4 16h4", "M12 16h8", "M16 5v4", "M8 14v4"],
+  kids: ["M12.2 8.2a3.2 3.2 0 11-6.4 0 3.2 3.2 0 016.4 0", "M2.5 19c0-3.3 2.9-5.2 6.5-5.2s6.5 1.9 6.5 5.2", "M19.9 9a2.4 2.4 0 11-4.8 0 2.4 2.4 0 014.8 0", "M17 14c2.7.2 4.5 1.9 4.5 5"]
+};
+
+const TITLES = {
+  root: "Parent settings", kids: "Kids", kid: "Amelia", channels: "Channels & playlists",
+  listing: "How videos are listed", screening: "Content screening", devices: "Devices & sync",
+  phone: "This phone", playback: "Playback", backup: "App, hub & backup",
+  ytsearch: "Add from YouTube", review: "Waiting for your OK", blocked: "Blocked videos",
+  digest: "Weekly digest"
+};
+
+const BLOCKED_SEED = [
+  ["Try Not To Laugh Challenge #47", "Kid Crew", "You blocked this · 2 days ago", "you"],
+  ["Unboxing 50 Surprise Eggs!!!", "Toy Time", "AI blocked this · unboxing and consumerism", "ai"],
+  ["Scary Teacher 3D — Chapter 9", "GameZone", "AI blocked this · scary for a 7-year-old", "ai"],
+  ["FNAF Jumpscare Compilation", "GameZone", "You blocked this · last week", "you"]
+];
+
+const REVIEW = [
+  ["Police action compilation with spy, detective, helicopter, trucks and toys. Educational | Kid Crew", "Kid Crew", "Police action compilation might be too intense or scary for a 7-year-old.", "held"],
+  ["Solving kids police mystery story as spy with ride on command center, drone. Educational | Kid Crew", "Kid Crew", "Spy and mystery themes might be too complex or scary for a 7-year-old.", "held"],
+  ["Where Do Planets Come From? (Part 8/10) | Ask the StoryBots", "StonerBang", "The model returned no verdict.", "noverdict"],
+  ["SONIC Comes to Fortnite! Override!", "ZackScottGames", "Sonic in Fortnite could be okay, but needs review for age appropriateness.", "held"],
+  ["I Engineered The Perfect First Date", "Mark Rober", "Title implies romance, needs review for age appropriateness.", "held"],
+  ["How to Escape a Police Sniffing Dog", "Mark Rober", "Escaping a dog might be scary, needs review.", "held"],
+  ["Giant Centipede Bite and Worst Stings I've Ever Taken!", "Brave Wilderness", "Title mentions centipede bite and worst stings, potentially scary.", "held"]
+];
+
+const DEFAULT_RULES = "No scary, violent, or disturbing content.\nNo adult themes, romance, or innuendo.\nNo unboxing, toy hauls, or heavy consumerism.\nNo clickbait or low-effort \"brainrot\" content.";
+
+const YT = [
+  ["Operation Ouch", "channel", "1.2M subscribers · science for kids"],
+  ["Operation Ouch! Full Episodes", "playlist", "84 videos · by Operation Ouch"],
+  ["Octonauts - Official", "channel", "912K subscribers · preschool adventure"],
+  ["The Magic School Bus", "channel", "177K subscribers · educational cartoons"],
+  ["Numberblocks", "channel", "2.1M subscribers · early maths"],
+  ["Wild Kratts Full Episodes", "playlist", "142 videos · by PBS KIDS"],
+  ["Blippi", "channel", "19M subscribers · toddler edutainment"],
+  ["Nature League", "channel", "148K subscribers · ecology explainers"]
+];
+
+const CHANNELS = [
+  ["SciShow Kids", "channel", "Amelia", 3], ["Crash Course Kids", "channel", "Amelia", 0],
+  ["Wild Kratts", "channel", "Amelia", 1], ["Nat Geo Kids", "channel", "Amelia", 0],
+  ["Maddie Moate", "channel", "Amelia", 0], ["Storytime with Ryan & Craig", "channel", "Amelia", 0],
+  ["Peppa Pig", "channel", "nobody", 0], ["Ask the StoryBots: Season 1", "playlist", "Amelia", 0],
+  ["Ask the StoryBots: Season 2", "playlist", "Amelia", 0], ["A StoryBots Space Adventure", "playlist", "Amelia", 0],
+  ["Numberblocks", "channel", "Amelia", 2], ["Alphablocks", "channel", "Amelia", 0],
+  ["Bill Nye the Science Guy", "channel", "Amelia", 0], ["Khan Academy", "channel", "Amelia", 0],
+  ["BBC Earth", "channel", "Amelia", 4], ["Journey to the Microcosmos", "channel", "Amelia", 0],
+  ["MinutePhysics", "channel", "Amelia", 0], ["The Action Lab", "channel", "nobody", 0],
+  ["Bluey - Official Channel", "channel", "Amelia", 1], ["PBS KIDS", "channel", "Amelia", 0],
+  ["Mark Rober", "channel", "Amelia", 0], ["SmarterEveryDay", "channel", "Amelia", 0],
+  ["The Slow Mo Guys", "channel", "nobody", 0], ["Luigi's Mansion 3", "playlist", "Amelia", 0],
+  ["The Magic School Bus", "channel", "Amelia", 0], ["Curious George Official", "channel", "Amelia", 5],
+  ["Ask the StoryBots: Season 3", "playlist", "Amelia", 0], ["StoryBots Christmas", "playlist", "Amelia", 0],
+  ["StoryBots Answer Time: Season 1", "playlist", "Amelia", 0], ["StoryBots Answer Time: Season 2", "playlist", "Amelia", 0],
+  ["StorylineOnline", "channel", "Amelia", 0], ["Thomas & Friends", "channel", "Amelia", 0],
+  ["Math with Mr. J", "channel", "Amelia", 0], ["Brains On!", "channel", "Amelia", 1],
+  ["TED-Ed", "channel", "Amelia", 0], ["MashUp Math", "channel", "Amelia", 0],
+  ["Math Antics", "channel", "Amelia", 0], ["BBC Earth Science", "channel", "Amelia", 0],
+  ["Deep Look", "channel", "Amelia", 0], ["MinuteEarth", "channel", "Amelia", 0],
+  ["Geography Now", "channel", "nobody", 0], ["Numberphile", "channel", "Amelia", 0],
+  ["Bingo - Official Channel", "channel", "Amelia", 0], ["Bluey - Topic", "channel", "Amelia", 0],
+  ["Bluey's Bestest Friends - Official Channel", "channel", "Amelia", 0],
+  ["Coyote Peterson", "channel", "Amelia", 0], ["Brave Wilderness", "channel", "nobody", 0],
+  ["Bill Nye The Science Guy HD", "channel", "Amelia", 0], ["Physics Girl", "channel", "Amelia", 0],
+  ["Danny Go!", "channel", "Amelia", 2], ["Kid Crew", "channel", "Amelia", 0],
+  ["Art for Kids Hub", "channel", "Amelia", 0], ["ZackScottGames", "channel", "nobody", 0],
+  ["Super Mario 3D World + Bowser's Fury", "playlist", "Amelia", 0],
+  ["Mario + Rabbids Kingdom Battle", "playlist", "Amelia", 0],
+  ["Sesame Street", "channel", "Amelia", 0]
+].map(([name, kind, kids, nu]) => ({ name, kind, kids, new: nu }));
+
+const RULE_STEPS = {
+  "Time per session": ["Off", "15 min", "30 min", "45 min", "60 min"],
+  "Sessions on weekdays": ["Off", "1", "2", "3"],
+  "Sessions on weekends": ["Off", "1", "2", "3", "4"],
+  "Break between sessions": ["Off", "10 min", "20 min", "30 min"],
+  "Hide videos shorter than": ["Off", "60 sec", "2 min", "5 min"]
+};
+
+const COLOURS = ["#E14B3A", "#EE7A1E", "#F0C23C", "#3FA84E", "#149A88", "#2B7FE0", "#8E3FC4", "#E01B62"];
+const AVATARS = ["🦊","🐼","🦁","🐸","🐰","🦄","🐙","🦖","🚗","🚀","🚂","🚜","🚁","⛵","🤖","👻","⭐","🌈","🍉","⚽","🎸","🧁"];
+
+const INDEX = [
+  ["Autoplay the next video", "playback", "On"],
+  ["Skip sponsors & intros", "playback", "On"],
+  ["Keep playing when the phone locks", "playback", "Off"],
+  ["More like what you watch", "playback", "On"],
+  ["Picture quality on TVs", "playback", "1080p"],
+  ["Picture quality on phones", "playback", "1080p"],
+  ["Download quality", "phone", "720p"],
+  ["Search index", "phone", "Master"],
+  ["Screen new videos with AI", "screening", "Off"],
+  ["Find channels with AI", "screening", "On"],
+  ["Time per session", "kid", "Off"],
+  ["Break between sessions", "kid", "Off"],
+  ["Hide videos shorter than", "kid", "Off"],
+  ["Bonus watch time", "kid", "15 min"],
+  ["Channel row order", "listing", "Random"],
+  ["Channel page layout", "listing", "Newest first"],
+  ["Show when a video came out", "listing", "On"],
+  ["Full backup", "backup", "Never"]
+];
+
+const CHANGES = [
+  ["1", "Two sections, plainly named", "Kids & content, then App & devices — seven rows in two sections instead of four thin ones. “How videos are listed” left the Channels page to stand beside Playback, and “Backup & app” became “App, hub & backup” now that hub setup lives there. No settings-wide search: the channel list keeps its own, where the volume justifies it."],
+  ["2", "Listing settings left Channels", "The four kid-shelf defaults are about how videos appear, not which sources you allow. They moved to their own page, reached from the bottom of Channels."],
+  ["3", "The kid errand escaped the kid page", "Grant and Pause sit on the root card, so the daily request never needs the 16-control detail page."],
+  ["4", "Screening reordered", "The connection now comes before the two switches that depend on it, with an amber notice when it isn't set — the switches were previously dead with no explanation."],
+  ["5", "Hub collapsed", "Least-used group on Devices, previously the heaviest. One row, expandable when you need the admin token."],
+  ["6", "Warnings reach the root", "The Devices tile carries the offline TV, and Backup & app states “never backed up” in its row — both were buried two levels deep."],
+  ["7", "Accent discipline", "Teal is now only interactive text and the primary button. Nav icons dropped to neutral; destructive went red; success/warning are their own colours — so “2 of 3 in sync” is amber, not green."],
+  ["8", "Squared off", "Radii pulled back from pills to 7–10px, section labels back to sentence case, and the device actions are compact buttons instead of full-width slabs — the 1-series density without its formatting."],
+  ["9", "Targets and states", "Every ?, pencil, chip and chevron sits in a 44px target; every row and button has a pressed state; screens push and pop with a real back stack."]
+];
+
+const AUDIT = [
+  ["Parent settings (root)", [
+    ["Version + build", "kept"], ["“Changes apply as you make them”", "kept"], ["Support Pickwick", "REMOVED — see CLAUDE.md"],
+    ["Kids row", "merged into kid card"], ["Channels & playlists row", "kept"], ["Content screening row", "kept"],
+    ["Devices row", "kept"], ["Playback row", "kept"], ["Backup & app row", "kept"],
+    ["Pause everyone explainer", "behind ?"], ["Turn off all watching + Pause for today", "merged: one switch"], ["Done", "kept"]
+  ]],
+  ["Kids", [["“Tap a kid…” explainer", "kept"], ["Kid row: name, age, avatar", "kept + state"], ["Add a kid", "kept"]]],
+  ["Amelia (kid detail)", [
+    ["Name", "kept"], ["Age (was −/+)", "value row"], ["Colour — 8 swatches", "kept inline"],
+    ["Avatar — 22 options", "kept inline"], ["Profile lock / Set code", "kept"],
+    ["Time per session", "value row"], ["Sessions on weekdays", "value row"], ["Sessions on weekends", "value row"],
+    ["Break between sessions", "value row"], ["“No limits set” note", "live summary"],
+    ["Hide videos shorter than", "value row"], ["Shorts note", "behind ?"],
+    ["Blocked times + Add", "kept"], ["Bonus watch time + Grant", "kept + root shortcut"],
+    ["Pause Amelia today", "merged: one switch"], ["Remove Amelia", "kept"]
+  ]],
+  ["Channels & playlists", [
+    ["56 source rows", "kept + search"], ["Playlist tag", "kept, as meta"], ["Per-kid switch icon", "moved: source page"],
+    ["Screening icon", "moved: source page"], ["Delete icon", "bulk select"], ["Search YouTube channels", "kept, top"],
+    ["Paste a channel/playlist link", "kept"], ["Suggested channels + directory", "kept"],
+    ["Show when a video came out", "moved: listing"], ["Videos before “Show more”", "moved: listing"],
+    ["Channel page layout", "moved: listing"], ["Channel row order", "moved: listing"], ["All four help paragraphs", "kept, in place"]
+  ]],
+  ["Content screening", [
+    ["AI connection explainer", "behind ?"], ["Provider chips ×5", "kept"], ["API base URL", "kept"],
+    ["API key", "kept"], ["Model picker", "kept"], ["Test connection", "kept, full-width"],
+    ["Screen new videos with AI", "kept, after connection"], ["Blocked videos pointer", "now a row"],
+    ["Discover with AI", "own switch"], ["Suggest field + button", "kept"], ["Verified count", "kept"],
+    ["Result rows + Add / Added", "kept"], ["YouTube inspect link", "kept, labelled"]
+  ]],
+  ["Devices", [
+    ["Hub IP + explainer", "collapsed row"], ["Admin token + Connect my TVs", "kept, in hub row"],
+    ["Settings id + edited time", "kept, subhead"], ["Checks every few minutes", "kept, subhead"],
+    ["Check now", "app bar action"], ["3 device cards: name, status, Stats, Unpair", "kept"],
+    ["Rename pencil", "kept, 44px target"], ["Weekly digest", "kept"], ["Recent changes + See all", "kept"],
+    ["This phone — Called", "moved: This phone"], ["Search index + rebuild + Read more", "moved: This phone"],
+    ["Offline downloads + quality", "moved: This phone"], ["Videos from this phone", "moved: This phone"]
+  ]],
+  ["Playback", [
+    ["Skip sponsors & intros", "kept"], ["Keep playing when phone locks", "was pill, now switch"],
+    ["Autoplay the next video", "kept"], ["More like what you watch", "kept"], ["How this works", "behind ?"],
+    ["Picture quality on TVs", "kept"], ["Picture quality on phones & tablets", "kept"], ["All four explainers", "behind ?"]
+  ]],
+  ["Backup & app", [
+    ["Version + Check for updates", "kept"], ["Share…", "kept, row"], ["Save to file…", "kept, row"],
+    ["Import from file…", "kept, row"], ["Submit list to directory…", "kept, row"],
+    ["Full backup…", "kept + last-backup state"], ["Restore backup…", "kept, row"], ["Both explainers", "behind ?"]
+  ]]
+];
+
+class Component extends DCLogic {
+  state = {
+    stack: ["root"], entering: null, leaving: null,
+    sw: {
+      pauseAll: false, pauseAmelia: false, schoolNights: true, showDate: true,
+      screenAi: true, discoverAi: true, skipSponsors: true, keepPlaying: false,
+      autoplay: true, moreLike: true
+    },
+    help: {
+      pauseAll: false, rules: false, conn: false, dl: false, list: false, backup: false,
+      skipSponsors: false, keepPlaying: false, autoplay: false, moreLike: false
+    },
+    seg: {
+      bonus: "15 min", batch: "10", layout: "Newest first", rowOrder: "Random",
+      provider: "Gemini", tvQuality: "1080p", phoneQuality: "1080p", dlQuality: "720p"
+    },
+    rules: {
+      "Time per session": 2, "Sessions on weekdays": 2, "Sessions on weekends": 0,
+      "Break between sessions": 0, "Hide videos shorter than": 0
+    },
+    age: 7, colour: 7, avatar: 5,
+    watching: true, usedMin: 42, bonusMin: 0,
+    sheet: null, customMin: 20, sheetPick: 15,
+    blocked: [{ name: "School nights", detail: "Mon–Thu · 19:30 → 07:00", on: true }],
+    rootQuery: "", chQuery: "", chFilter: "All",
+    ytQuery: "", ytFilter: "All", extra: [], chSort: "Recently added",
+    houseRules: DEFAULT_RULES, rulesDirty: false, rulesFocus: false,
+    reviewFilter: "All", decided: {}, reviewUndo: null, screeningPending: 65,
+    updated: {}, updating: null, updatingAll: false, statPeriod: "Week", devOpen: null,
+    confirm: null, trusted: [], connFail: false, conflict: true, unblocked: [], blockedFilter: "All",
+    checking: null, checkingAll: false,
+    selectMode: false, selected: [], removed: [], undo: null,
+    connOpen: false, connected: true, hubName: "Pickwick hub",
+    added: ["The Magic School Bus"],
+    granted: false,
+    testLabel: "Test connection", checkLabel: "Check now",
+    idxLabel: "Rebuild index", updLabel: "Check for updates"
+  };
+
+  componentWillUnmount() { clearTimeout(this._t); clearTimeout(this._t2); }
+
+  push = key => {
+    if (this.state.stack[this.state.stack.length - 1] === key) return;
+    this.setState(s => ({ stack: s.stack.concat(key), entering: key }));
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState({ entering: null }), 30);
+  };
+
+  pop = () => {
+    const s = this.state;
+    if (s.stack.length < 2) return;
+    const top = s.stack[s.stack.length - 1];
+    this.setState({ leaving: top });
+    clearTimeout(this._t2);
+    this._t2 = setTimeout(() => this.setState(st => ({
+      stack: st.stack.slice(0, -1), leaving: null, selectMode: false, selected: []
+    })), 280);
+  };
+
+  reset = key => this.setState({ stack: key === "root" ? ["root"] : ["root", key], entering: null, leaving: null });
+
+  flip = (bag, k) => this.setState(s => ({ [bag]: { ...s[bag], [k]: !s[bag][k] } }));
+
+  toggle(key) {
+    const on = this.state.sw[key];
+    return {
+      on, track: on ? TEAL : "#3A3744", knob: on ? ON_TEAL : "#8B8794",
+      shift: on ? "translateX(18px)" : "translateX(0)",
+      toggle: () => this.flip("sw", key)
+    };
+  }
+
+  chip(segKey, label) {
+    const on = this.state.seg[segKey] === label;
+    return {
+      label, bg: on ? "rgba(143,207,190,0.16)" : "transparent",
+      bc: on ? TEAL : "#3A3744", fg: on ? TEAL : DIM,
+      pick: () => this.setState(s => ({ seg: { ...s.seg, [segKey]: label } }))
+    };
+  }
+  chips(k, arr) { return arr.map(l => this.chip(k, l)); }
+
+  decide = (title, verdict) => this.setState(s => ({
+    decided: { ...s.decided, [title]: verdict },
+    reviewUndo: { names: [title], verdict }
+  }));
+
+  ask = (title, body, label, run) => this.setState({ confirm: { title, body, label, run }, sheet: "confirm" });
+
+  renderVals() {
+    const s = this.state;
+    const top = s.stack[s.stack.length - 1];
+
+    const sw = {};
+    Object.keys(s.sw).forEach(k => { sw[k] = this.toggle(k); });
+    sw.pauseAll.caption = s.sw.pauseAll ? "Paused until midnight" : "Every kid, every device";
+
+    const help = {};
+    Object.keys(s.help).forEach(k => { help[k] = { open: s.help[k], toggle: () => this.flip("help", k) }; });
+
+    const seg = {
+      bonus: this.chips("bonus", ["5 min", "15 min", "30 min", "60 min"]),
+      batch: this.chips("batch", ["All", "10", "20", "30"]),
+      layout: this.chips("layout", ["Newest first", "Popular first"]),
+      rowOrder: this.chips("rowOrder", ["Most watched", "A to Z", "Random", "Latest video"]),
+      provider: this.chips("provider", ["OpenRouter", "OpenAI", "Anthropic", "Gemini", "Local"]),
+      tvQuality: this.chips("tvQuality", ["Auto", "1080p", "720p", "480p", "360p"]),
+      phoneQuality: this.chips("phoneQuality", ["Auto", "1080p", "720p", "480p", "360p"]),
+      dlQuality: this.chips("dlQuality", ["480p", "720p", "1080p"]),
+      layoutHelp: s.seg.layout === "Newest first"
+        ? "Newest first is the channel's own upload order."
+        : "Popular first orders the same videos by how often they have been watched on YouTube. View counts are never shown.",
+      rowOrderHelp: {
+        "Most watched": "The kid's favourites lead.",
+        "A to Z": "A steady order, so the first chip is always the same one.",
+        "Random": "Re-mixed on every visit, so nothing stays buried.",
+        "Latest video": "Whoever uploaded most recently leads."
+      }[s.seg.rowOrder]
+    };
+
+    const ruleRows = Object.keys(RULE_STEPS).map(name => {
+      const steps = RULE_STEPS[name];
+      const value = steps[s.rules[name]];
+      return {
+        name, value, color: value === "Off" ? FAINT : TEXT,
+        cycle: () => this.setState(st => ({ rules: { ...st.rules, [name]: (st.rules[name] + 1) % steps.length } }))
+      };
+    });
+    const setCount = ruleRows.filter(r => r.value !== "Off").length;
+    const rulesSummary = setCount === 0 ? "No limits set — unlimited watching." : setCount + " of 5 rules set.";
+
+    const live = s.extra.concat(CHANNELS).filter(c => !s.removed.includes(c.name));
+    const fleetTotal = 5;
+    const fleetOffline = 1;
+    const fleetSynced = fleetTotal - fleetOffline;
+    const pending = REVIEW.filter(r => !s.decided[r[0]]);
+    const heldTotal = 93 - Object.keys(s.decided).length;
+
+    const rq = s.rootQuery.trim().toLowerCase();
+    const results = rq
+      ? INDEX.filter(([n, p]) => (n + " " + TITLES[p]).toLowerCase().includes(rq)).slice(0, 6)
+        .map(([name, key, value]) => ({ name, value, path: TITLES[key], go: () => this.push(key) }))
+      : [];
+
+    const hash = str => { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 9973; return h; };
+    const SORTS = ["Recently added", "A to Z", "Most watched", "Most videos"];
+    const cq = s.chQuery.trim().toLowerCase();
+    const filtered = live.filter(c => {
+      if (cq && !c.name.toLowerCase().includes(cq)) return false;
+      if (s.chFilter === "Playlists") return c.kind === "playlist";
+      if (s.chFilter === "Channels") return c.kind === "channel";
+      if (s.chFilter === "New") return c.new > 0;
+      if (s.chFilter === "Nobody sees") return c.kids === "nobody";
+      if (s.chFilter === "Trusted") return s.trusted.includes(c.name);
+      return true;
+    });
+
+    const opensOf = c => hash(c.name) % 180;
+    const videosOf = c => 12 + hash(c.name) % 640;
+    const sorted = filtered.slice();
+    if (s.chSort === "A to Z") sorted.sort((a, b) => a.name.replace(/^(The|A) /, "").localeCompare(b.name.replace(/^(The|A) /, "")));
+    if (s.chSort === "Most watched") sorted.sort((a, b) => opensOf(b) - opensOf(a));
+    if (s.chSort === "Most videos") sorted.sort((a, b) => videosOf(b) - videosOf(a));
+
+    const rows = sorted.slice(0, 10).map(c => {
+      const picked = s.selected.includes(c.name);
+      const base = c.kind === "playlist" ? "Playlist" : "Channel";
+      const isTrusted = s.trusted.includes(c.name);
+      const sortMeta = s.chSort === "Most watched"
+        ? base + " · opened " + opensOf(c) + "×"
+        : (s.chSort === "Most videos" ? base + " · " + videosOf(c) + " videos" : null);
+      return {
+        name: c.name,
+        initial: c.name.replace(/^(The|A) /, "").charAt(0),
+        meta: c.kids === "nobody" ? "No kid can see this"
+          : (sortMeta || base + (isTrusted ? " · trusted, not screened" : (c.new > 0 ? " · " + c.new + " new" : " · " + c.kids))),
+        metaTone: c.kids === "nobody" ? WARN : (isTrusted ? OK : (c.new > 0 && !sortMeta ? OK : DIM2)),
+        trusted: isTrusted,
+        rowBg: picked ? "rgba(143,207,190,0.08)" : "transparent",
+        mark: picked ? "✓" : "",
+        markBorder: picked ? TEAL : "#3A3744",
+        markBg: picked ? TEAL : "transparent",
+        tap: () => {
+          if (!s.selectMode) return;
+          this.setState(st => ({
+            selected: st.selected.includes(c.name) ? st.selected.filter(n => n !== c.name) : st.selected.concat(c.name)
+          }));
+        }
+      };
+    });
+
+    const ch = {
+      query: s.chQuery,
+      setQuery: e => this.setState({ chQuery: e.target.value }),
+      filters: ["All", "Channels", "Playlists", "New", "Trusted", "Nobody sees"].map(label => {
+        const on = s.chFilter === label;
+        return {
+          label, line: on ? TEAL : "transparent", fg: on ? TEAL : DIM2,
+          pick: () => this.setState({ chFilter: label })
+        };
+      }),
+      rows,
+      countLabel: filtered.length === live.length
+        ? live.length + " sources" + (rows.length < filtered.length ? " · showing first " + rows.length : "")
+        : filtered.length + " of " + live.length + " sources",
+      sortLabel: s.chSort,
+      openSort: () => this.setState({ sheet: "sort" }),
+      allSelected: filtered.length > 0 && s.selected.length === filtered.length,
+      selectAllLabel: s.selected.length === filtered.length ? "Clear all" : "Select all " + filtered.length,
+      selectAll: () => this.setState(st => ({
+        selected: st.selected.length === filtered.length ? [] : filtered.map(c => c.name)
+      })),
+      selectMode: s.selectMode,
+      browseMode: !s.selectMode,
+      showBulkBar: s.selectMode && top === "channels",
+      showUndo: !!s.undo && top === "channels",
+      bulkLabel: s.selected.length === 0 ? "Tap sources to remove" : s.selected.length + " selected",
+      clear: () => this.setState({ selected: [] }),
+      removeBg: s.selected.length ? DANGER : "#252430",
+      removeFg: s.selected.length ? "#2A1015" : FAINT,
+      remove: () => {
+        if (!s.selected.length) return;
+        const n = s.selected.length;
+        this.ask(
+          "Remove " + n + " source" + (n === 1 ? "" : "s") + "?",
+          "The kids stop seeing anything from " + (n === 1 ? "it" : "them") + ". Their watch history and favourites are kept, so adding it back restores where they were.",
+          "Remove " + n,
+          () => this.setState({ removed: s.removed.concat(s.selected), undo: s.selected, selected: [], selectMode: false })
+        );
+      },
+      undoLabel: s.undo ? "Removed " + s.undo.length + " source" + (s.undo.length === 1 ? "" : "s") : "",
+      undoAction: () => this.setState(st => ({ removed: st.removed.filter(n => !st.undo.includes(n)), undo: null }))
+    };
+
+    const offline = 1;
+    const alerts = [];
+    if (offline) alerts.push({ name: "Living Room is offline", sub: "Open Pickwick on it, on home Wi-Fi", tone: WARN, go: () => this.push("devices") });
+    alerts.push({ name: "Never backed up", sub: "Channels, kids and rules are only on this phone", tone: WARN, go: () => this.push("backup") });
+
+    const nav = {
+      groups: [
+        {
+          label: "Kids & content",
+          rows: [
+            { icon: ico(ICONS.kids), name: "Kids", state: "Amelia · profiles, rules, bonus time", go: () => this.push("kids") },
+            { icon: ico(ICONS.channels), name: "Channels & playlists", state: live.length + " sources · " + (live.filter(c => c.new > 0).length) + " with new videos", go: () => this.push("channels") },
+            { icon: ico(ICONS.shield), name: "Content screening", state: s.sw.screenAi ? "On · " + heldTotal + " held for review" : "Off · " + s.seg.provider + " connected", go: () => this.push("screening") }
+          ]
+        },
+        {
+          label: "App & devices",
+          rows: [
+            { icon: ico(ICONS.play), name: "Playback", state: (s.sw.autoplay ? "Autoplay on" : "Autoplay off") + " · " + (s.seg.phoneQuality === "Auto" ? "quality auto" : "up to " + s.seg.phoneQuality), go: () => this.push("playback") },
+            { icon: ico(ICONS.list), name: "How videos are listed", state: (s.sw.showDate ? "Dates on" : "Dates off") + " · " + s.seg.layout.toLowerCase() + " · " + s.seg.rowOrder.toLowerCase(), go: () => this.push("listing") },
+            { icon: ico(ICONS.devices), name: "Devices & sync", state: fleetTotal + " paired · " + fleetOffline + " offline", go: () => this.push("devices") },
+            { icon: ico(ICONS.disk), name: "App, hub & backup", state: "0.12.2-fork · never backed up", go: () => this.push("backup") }
+          ]
+        }
+      ]
+    };
+
+    const playbackSwitches = [
+      { key: "skipSponsors", name: "Skip sponsors & intros", sub: "Using SponsorBlock community markers", help: "Skips the parts of a video the SponsorBlock community has marked: sponsor messages, merch plugs, intros/outros and “like and subscribe” reminders. Marked parts show in green on the TV's playback bar. Lookups send only an anonymous fingerprint of the video, never what is being watched." },
+      { key: "keepPlaying", name: "Keep playing when the phone locks", sub: s.sw.keepPlaying ? "Audio continues with the screen off" : "Locking the phone stops playback", help: "For listening rather than watching — audio keeps going with the screen off." },
+      { key: "autoplay", name: "Autoplay the next video", sub: "Behind a short countdown", help: "When a video the kid picked ends, the next unwatched one from the same channel lines up behind a short countdown (Play now / Not now). Screen-time rules still apply. Off: every video ends on the shelf." },
+      { key: "moreLike", name: "More like what you watch", sub: "A home row of older videos", help: "A home row of older videos from the channels you have already added, matched to what this kid actually watched. Off: the home screen stays newest-first." }
+    ].map(p => {
+      const t = this.toggle(p.key);
+      return { ...p, track: t.track, knob: t.knob, shift: t.shift, toggle: t.toggle, helpOpen: s.help[p.key], helpToggle: () => this.flip("help", p.key) };
+    });
+
+    const suggestions = [
+      { title: "The Magic School Bus", meta: "Channel · 177K subscribers", blurb: "Classic educational cartoons about science, perfect for curious kids." },
+      { title: "Magic School Bus Rides Again", meta: "Channel · 59 subscribers", blurb: "Modern reboot with new adventures and updated science lessons." },
+      { title: "The Magic School Bus Full Episodes", meta: "Playlist · 210 videos · Dollar Panther", blurb: "A collection of complete episodes for uninterrupted learning fun." }
+    ].map(x => {
+      const on = s.added.includes(x.title);
+      return {
+        ...x, label: on ? "Added ✓" : "Add",
+        bg: on ? "transparent" : "rgba(143,207,190,0.16)",
+        bc: on ? "#3A3744" : TEAL, fg: on ? FAINT : TEAL,
+        add: () => this.setState(st => ({ added: on ? st.added.filter(t => t !== x.title) : st.added.concat(x.title) }))
+      };
+    });
+
+    const layers = s.stack.map((key, i) => {
+      const isTop = i === s.stack.length - 1;
+      const entering = s.entering === key && isTop;
+      const leaving = s.leaving === key;
+      let transform = "translateX(0)", opacity = "1", shadow = "none";
+      if (entering || leaving) { transform = "translateX(100%)"; shadow = "-12px 0 30px rgba(0,0,0,.45)"; }
+      else if (isTop && i > 0) { shadow = "-12px 0 30px rgba(0,0,0,.45)"; }
+      else if (!isTop) {
+        const behind = s.leaving ? 0 : 1;
+        transform = behind ? "translateX(-22%)" : "translateX(0)";
+        opacity = behind ? "0.35" : "1";
+      }
+      const at = {};
+      Object.keys(TITLES).forEach(k => { at[k] = k === key; });
+      const acts = {
+        channels: [
+          { label: s.selectMode ? "Done" : "Select", size: "13.5px/1", fn: () => this.setState(st => ({ selectMode: !st.selectMode, selected: [] })) },
+          { label: "+", size: "22px/1", fn: () => this.setState({ sheet: "add" }) }
+        ],
+        devices: [],
+        review: s.reviewFilter === "All" ? [] : [{ label: "Clear filter", size: "13.5px/1", fn: () => this.setState({ reviewFilter: "All" }) }],
+        root: [{ label: "Done", size: "14px/1", fn: () => {} }]
+      }[key] || [];
+      return { key, at, title: TITLES[key], canBack: i > 0, transform, opacity, shadow, acts };
+    });
+
+    const bonus = s.seg.bonus;
+
+    const perSession = parseInt(RULE_STEPS["Time per session"][s.rules["Time per session"]], 10);
+    const sessions = parseInt(RULE_STEPS["Sessions on weekdays"][s.rules["Sessions on weekdays"]], 10);
+    const capped = !isNaN(perSession) && !isNaN(sessions);
+    const limit = capped ? perSession * sessions + s.bonusMin : 0;
+    const leftMin = capped ? Math.max(0, limit - s.usedMin) : 0;
+    const pct = capped ? Math.min(100, Math.round((s.usedMin / limit) * 100)) + "%" : "100%";
+    const leftTone = !capped ? DIM2 : (leftMin === 0 ? DANGER : (leftMin <= 15 ? WARN : OK));
+    const leftLabel = !capped
+      ? "No daily limit set"
+      : (leftMin === 0 ? "Time is up for today" : leftMin + " min left today");
+    const usedLabel = capped ? s.usedMin + " of " + limit + " min used" : s.usedMin + " min watched today";
+
+    const TIME_PRESETS = [10, 15, 30, 60];
+    const BLOCKED_PRESETS = [
+      { name: "School nights", detail: "Mon–Thu · 19:30 → 07:00" },
+      { name: "Bedtime, every night", detail: "Every day · 20:00 → 07:00" },
+      { name: "Dinner", detail: "Every day · 17:30 → 18:30" },
+      { name: "Homework hour", detail: "Mon–Fri · 16:00 → 17:00" },
+      { name: "School hours", detail: "Mon–Fri · 08:30 → 15:15" }
+    ];
+
+    const sheet = {
+      open: !!s.sheet,
+      isTime: s.sheet === "time",
+      isBlocked: s.sheet === "blocked",
+      isAdd: s.sheet === "add",
+      isSort: s.sheet === "sort",
+      isConfirm: s.sheet === "confirm",
+      isDevice: s.sheet === "device",
+      deviceOptions: [
+        { name: "Pair a kid device", sub: "Open Pickwick on the TV or tablet and enter the code below" },
+        { name: "Add another parent", sub: "They enter the admin token on their own phone" },
+        { name: "Reconnect the hub", sub: "If the Docker container moved or changed address" }
+      ].map(o => ({ ...o, go: () => this.setState({ sheet: null }) })),
+      pairCode: "4 8 2 · 1 9 6",
+      confirmTitle: s.confirm ? s.confirm.title : "",
+      confirmBody: s.confirm ? s.confirm.body : "",
+      confirmCta: s.confirm ? s.confirm.label : "",
+      runConfirm: () => {
+        if (s.confirm && s.confirm.run) s.confirm.run();
+        this.setState({ sheet: null, confirm: null });
+      },
+      sortOptions: SORTS.map(label => {
+        const on = s.chSort === label;
+        return {
+          label, mark: on ? "✓" : "", fg: on ? TEAL : TEXT,
+          pick: () => this.setState({ chSort: label, sheet: null })
+        };
+      }),
+      title: s.sheet === "confirm" ? (s.confirm ? s.confirm.title : "") : (s.sheet === "device" ? "Add a device" : (s.sheet === "blocked" ? "Add a blocked time" : (s.sheet === "add" ? "Add a source" : (s.sheet === "sort" ? "Sort sources" : "Add time for Amelia")))),
+      sub: s.sheet === "confirm"
+        ? (s.confirm ? s.confirm.body : "")
+        : s.sheet === "device"
+        ? "Everything on your home Wi-Fi. Nothing leaves the house."
+        : s.sheet === "blocked"
+        ? "Pick a common one, or set your own hours."
+        : (s.sheet === "sort"
+          ? "Changes the order you see here. The kid's own order is set under How videos are listed."
+          : s.sheet === "add"
+          ? "Everything you allow lands in your list, tagged NEW."
+          : (capped ? "On top of today’s " + (limit - s.bonusMin) + " min. Today only." : "Today only — no daily limit is set.")),
+      addOptions: [
+        { name: "Search YouTube", sub: "By channel or playlist name", go: () => { this.setState({ sheet: null }); this.push("ytsearch"); } },
+        { name: "Paste a channel or playlist link", sub: "Straight from the YouTube app", go: () => this.setState({ sheet: null }) },
+        { name: "Browse the directory", sub: "Reviewed lists other Pickwick families vouch for", go: () => this.setState({ sheet: null }) }
+      ],
+      openTime: () => this.setState({ sheet: "time", sheetPick: 15 }),
+      openBlocked: () => this.setState({ sheet: "blocked" }),
+      close: () => this.setState({ sheet: null }),
+      presets: TIME_PRESETS.map(m => {
+        const on = s.sheetPick === m;
+        return {
+          label: "+" + m + " min",
+          bg: on ? "rgba(143,207,190,0.16)" : "transparent",
+          bc: on ? TEAL : "#3A3744",
+          fg: on ? TEAL : TEXT,
+          pick: () => this.setState({ sheetPick: m })
+        };
+      }),
+      customLabel: s.customMin + " min",
+      customBc: s.sheetPick === "custom" ? TEAL : "#2E2B36",
+      customBg: s.sheetPick === "custom" ? "rgba(143,207,190,0.10)" : "#101014",
+      customFg: s.sheetPick === "custom" ? TEAL : DIM,
+      minus: () => this.setState(st => ({ customMin: Math.max(5, st.customMin - 5), sheetPick: "custom" })),
+      plus: () => this.setState(st => ({ customMin: Math.min(180, st.customMin + 5), sheetPick: "custom" })),
+      confirmLabel: "Add " + (s.sheetPick === "custom" ? s.customMin : s.sheetPick) + " minutes",
+      confirmTime: () => {
+        const m = s.sheetPick === "custom" ? s.customMin : s.sheetPick;
+        this.setState(st => ({ bonusMin: st.bonusMin + m, sheet: null }));
+      },
+      footnote: "Bonus minutes expire at midnight and never change the daily rules.",
+      blockedPresets: BLOCKED_PRESETS.map(p => {
+        const already = s.blocked.some(b => b.name === p.name);
+        return {
+          name: p.name, detail: p.detail,
+          action: already ? "Added" : "Add",
+          tone: already ? DIM2 : TEAL,
+          add: () => {
+            if (already) return;
+            this.setState(st => ({ blocked: st.blocked.concat({ ...p, on: true }), sheet: null }));
+          }
+        };
+      })
+    };
+
+    const blocked = s.blocked.map((b, i) => ({
+      name: b.name, detail: b.detail,
+      track: b.on ? TEAL : "#3A3744",
+      knob: b.on ? ON_TEAL : "#8B8794",
+      shift: b.on ? "translateX(18px)" : "translateX(0)",
+      toggle: () => this.setState(st => ({
+        blocked: st.blocked.map((x, j) => j === i ? { ...x, on: !x.on } : x)
+      }))
+    }));
+
+    const ytq = s.ytQuery.trim().toLowerCase();
+    const ytPool = YT.filter(([title, kind]) => {
+      if (ytq && !title.toLowerCase().includes(ytq)) return false;
+      if (s.ytFilter === "Channels") return kind === "channel";
+      if (s.ytFilter === "Playlists") return kind === "playlist";
+      return true;
+    });
+
+    const yt = {
+      query: s.ytQuery,
+      hasQuery: s.ytQuery.length > 0,
+      setQuery: e => this.setState({ ytQuery: e.target.value }),
+      clear: () => this.setState({ ytQuery: "" }),
+      filters: ["All", "Channels", "Playlists"].map(label => {
+        const on = s.ytFilter === label;
+        return { label, line: on ? TEAL : "transparent", fg: on ? TEAL : DIM2, pick: () => this.setState({ ytFilter: label }) };
+      }),
+      countLabel: ytPool.length + " result" + (ytPool.length === 1 ? "" : "s") + " · " + ytPool.filter(([t]) => live.some(c => c.name === t)).length + " already added",
+      results: ytPool.map(([title, kind, meta]) => {
+        const added = live.some(c => c.name === title);
+        return {
+          title, initial: title.replace(/^(The|A) /, "").charAt(0),
+          meta: (kind === "playlist" ? "Playlist · " : "Channel · ") + meta,
+          isAdded: added,
+          label: added ? "In your list" : "Add to Pickwick",
+          bg: added ? "transparent" : "#8FCFBE",
+          bc: added ? "#3A3744" : "#8FCFBE",
+          fg: added ? DIM2 : ON_TEAL,
+          add: () => {
+            if (added) return;
+            this.setState(st => ({ extra: st.extra.concat({ name: title, kind, kids: "Amelia", new: 1 }) }));
+          }
+        };
+      })
+    };
+
+    const byChannel = {};
+    pending.forEach(r => { byChannel[r[1]] = (byChannel[r[1]] || 0) + 1; });
+    const reviewItems = pending.filter(r => s.reviewFilter === "All" || r[1] === s.reviewFilter);
+
+    const review = {
+      count: heldTotal,
+      hasHeld: heldTotal > 0,
+      badge: heldTotal > 99 ? "99+" : String(heldTotal),
+      rowLabel: heldTotal + " video" + (heldTotal === 1 ? "" : "s") + " waiting for your OK",
+      rowSub: s.screeningPending > 0 ? s.screeningPending + " more still being screened" : "Everything has been screened",
+      headline: heldTotal + " held back",
+      sub: "Hidden from the kid until you decide. Each Allow or Block is saved as you tap it.",
+      pendingNote: s.screeningPending + " more still being screened — they’ll appear here as the AI finishes.",
+      go: () => this.push("review"),
+      filters: ["All"].concat(Object.keys(byChannel)).map(label => {
+        const on = s.reviewFilter === label;
+        return {
+          label: label === "All" ? "All " + pending.length : label + " " + byChannel[label],
+          line: on ? TEAL : "transparent", fg: on ? TEAL : DIM2,
+          pick: () => this.setState({ reviewFilter: label })
+        };
+      }),
+      empty: reviewItems.length === 0,
+      emptyLabel: pending.length === 0
+        ? "Nothing waiting — the kid sees everything the AI approved."
+        : "Nothing left from " + s.reviewFilter + ".",
+      items: reviewItems.map(([title, channel, reason, kind]) => ({
+        title, channel,
+        held: channel + " · held for Amelia",
+        reason,
+        reasonTone: kind === "noverdict" ? WARN : DIM,
+        isNoVerdict: kind === "noverdict",
+        allow: () => this.decide(title, "allowed"),
+        block: () => this.decide(title, "blocked"),
+        allowChannel: byChannel[channel] > 1 ? "Allow all " + byChannel[channel] + " from " + channel : "",
+        hasChannelBulk: byChannel[channel] > 1,
+        bulkAllow: () => {
+          const names = pending.filter(r => r[1] === channel).map(r => r[0]);
+          const next = { ...s.decided };
+          names.forEach(n => { next[n] = "allowed"; });
+          this.setState({ decided: next, reviewUndo: { names, verdict: "allowed" }, reviewFilter: "All" });
+        },
+        trustLabel: "Trust " + channel,
+        trust: () => this.ask(
+          "Trust " + channel + "?",
+          "Everything from this channel is allowed from now on and it stops being screened, including the " + (byChannel[channel] || 1) + " held here. Use it for channels you have watched enough of to vouch for.",
+          "Trust channel",
+          () => {
+            const names = pending.filter(r => r[1] === channel).map(r => r[0]);
+            const next = { ...s.decided };
+            names.forEach(n => { next[n] = "allowed"; });
+            this.setState(st => ({ decided: next, trusted: st.trusted.concat(channel), reviewFilter: "All" }));
+          }
+        )
+      })),
+      showUndo: !!s.reviewUndo && top === "review",
+      undoLabel: s.reviewUndo
+        ? (s.reviewUndo.names.length === 1 ? (s.reviewUndo.verdict === "allowed" ? "Allowed" : "Blocked") : s.reviewUndo.names.length + " " + s.reviewUndo.verdict)
+        : "",
+      undoAction: () => {
+        const next = { ...s.decided };
+        s.reviewUndo.names.forEach(n => { delete next[n]; });
+        this.setState({ decided: next, reviewUndo: null });
+      }
+    };
+
+    const LATEST = "0.12.2-fork (49)";
+    const FLEET = [
+      { id: "hub", group: "hub", name: s.hubName, chip: "HUB · DOCKER", host: "192.168.1.245", ver: "0.12.1-fork (47)", status: "In sync", tone: OK, detail: "Runs as a Docker container at 192.168.1.245 and syncs like any other device." },
+      { id: "mike", group: "parent", name: "Mike’s Phone", chip: "PARENT · THIS DEVICE", ver: LATEST, status: "Search-index master", tone: OK, detail: "Builds the search index and shares it with the others." },
+      { id: "sarah", group: "parent", name: "Sarah’s Phone", chip: "PARENT", ver: "0.12.1-fork (47)", status: "In sync · seen 20 min ago", tone: OK, detail: "Can change these settings." },
+      { id: "living", group: "kid", name: "Living Room", chip: "TV", ver: LATEST, status: "Offline", tone: WARN, detail: "Open Pickwick on it, on home Wi-Fi, and it will pick up your changes." },
+      { id: "bedroom", group: "kid", name: "Master Bedroom", chip: "TABLET", ver: LATEST, status: "In sync", tone: OK, detail: "Receives settings only." }
+    ];
+
+    const chipStyle = chip => chip.indexOf("HUB") === 0
+      ? { chipBg: "#1E2A26", chipFg: OK }
+      : (chip.indexOf("PARENT") === 0 ? { chipBg: "#2E1A1C", chipFg: DANGER } : { chipBg: "#1C1B21", chipFg: DIM2 });
+
+    const decorate = d => {
+      const behind = d.ver !== LATEST && !s.updated[d.id];
+      const shown = s.updated[d.id] ? LATEST : d.ver;
+      const open = s.devOpen === d.id;
+      return {
+        name: d.name, chip: d.chip, ...chipStyle(d.chip),
+        rowBg: "transparent",
+        line: d.status + " · " + shown + (behind ? " · update available" : ""),
+        tone: d.tone === WARN ? WARN : DIM2,
+        detail: d.detail,
+        version: shown,
+        open,
+        spin: open ? "rotate(90deg)" : "rotate(0deg)",
+        toggle: () => this.setState(st => ({ devOpen: st.devOpen === d.id ? null : d.id })),
+        verTone: behind ? WARN : DIM2,
+        needsUpdate: behind,
+        updateLabel: s.updating === d.id ? "Updating…" : "Update",
+        update: () => {
+          this.setState({ updating: d.id });
+          setTimeout(() => this.setState(st => ({ updated: { ...st.updated, [d.id]: true }, updating: null })), 900);
+        },
+        isHub: d.group === "hub",
+        spinIcon: (s.checking === d.id || s.checkingAll) ? "om-spin .8s linear infinite" : "none",
+        refresh: e => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          this.setState({ checking: d.id });
+          setTimeout(() => this.setState({ checking: null }), 900);
+        },
+        actions: (d.group === "hub"
+          ? [{ label: "Hub setup", fg: TEAL, fn: () => this.push("backup") },
+             { label: "Remove", fg: DANGER, fn: () => this.ask("Remove the hub?", "Kid devices keep the settings they already have, but they stop picking up changes while you are away from home. Your channels and rules are not deleted.", "Remove hub", () => {}) }]
+          : (d.group === "parent"
+            ? (d.id === "mike"
+              ? [{ label: "This phone’s settings", fg: TEAL, fn: () => this.push("phone") }]
+              : [{ label: "Remove parent", fg: DANGER, fn: () => this.ask("Remove " + d.name + "?", "That phone stops being able to change these settings, and stops receiving them. You can pair it again with the admin token.", "Remove parent", () => {}) }])
+            : [{ label: "Stats", fg: TEXT, fn: () => {} },
+               { label: "Unpair", fg: DANGER, fn: () => this.ask("Unpair " + d.name + "?", "Pickwick on that device signs out and shows the pairing screen. Downloaded videos on it are deleted. Watch history is kept on your phone.", "Unpair", () => {}) }]))
+          .concat([{ label: "Rename", fg: DIM, fn: () => {} }])
+      };
+    };
+
+    const behindCount = FLEET.filter(d => d.ver !== LATEST && !s.updated[d.id]).length;
+    const devUi = {
+      latest: LATEST,
+      add: () => this.setState({ sheet: "device" }),
+      spinAll: s.checkingAll ? "om-spin .8s linear infinite" : "none",
+      refreshAll: () => {
+        this.setState({ checkingAll: true });
+        setTimeout(() => this.setState({ checkingAll: false }), 1000);
+      },
+      anyOutdated: behindCount > 0,
+      outdatedLabel: behindCount + " device" + (behindCount === 1 ? "" : "s") + " behind on updates",
+      updateAllLabel: s.updatingAll ? "Updating…" : "Update all",
+      updateAll: () => {
+        this.setState({ updatingAll: true });
+        setTimeout(() => this.setState(st => {
+          const next = { ...st.updated };
+          FLEET.forEach(d => { next[d.id] = true; });
+          return { updated: next, updatingAll: false };
+        }), 1100);
+      },
+      checkLabel: s.checkLabel,
+      check: () => { this.setState({ checkLabel: "Checking…" }); setTimeout(() => this.setState({ checkLabel: "Check now" }), 900); },
+      groups: [{
+        label: "Devices", note: FLEET.length + " paired",
+        edge: "#2E2B36", bg: "#17161C",
+        items: FLEET.map(decorate)
+      }]
+    };
+
+    const STATS = {
+      Today: { total: "42 min", videos: "6 videos", extra: "18 min still available", channels: [["Kid Crew", 3], ["Wild Kratts", 2], ["Numberblocks", 1]] },
+      Week: { total: "4h 55m", videos: "38 videos", extra: "Watched on 5 of 7 days · 42 min a day", channels: [["Kid Crew", 9], ["Wild Kratts", 7], ["Numberblocks", 5], ["Bluey - Official Channel", 4], ["BBC Earth", 3]] },
+      Year: { total: "96h 20m", videos: "1,240 videos", extra: "Since 4 Jan · busiest month was March", channels: [["Wild Kratts", 214], ["Numberblocks", 186], ["Kid Crew", 141], ["Bluey - Official Channel", 98], ["SciShow Kids", 74]] }
+    };
+    const sd = STATS[s.statPeriod];
+    const chMax = Math.max.apply(null, sd.channels.map(c => c[1]));
+    const stats = {
+      periods: ["Today", "Week", "Year"].map(label => {
+        const on = s.statPeriod === label;
+        return {
+          label, line: on ? TEAL : "transparent", fg: on ? TEAL : DIM2,
+          pick: () => this.setState({ statPeriod: label })
+        };
+      }),
+      total: sd.total, videos: sd.videos, extra: sd.extra,
+      channelLabel: s.statPeriod === "Today" ? "Watched today" : "Most watched",
+      channels: sd.channels.map(([name, n]) => ({
+        name, count: n + (s.statPeriod === "Today" ? "" : ""),
+        width: Math.round((n / chMax) * 100) + "%"
+      }))
+    };
+
+    const blockedList = BLOCKED_SEED.map(([title, channel, why, by]) => ({ title, channel, why, by }))
+      .concat(Object.keys(s.decided).filter(t => s.decided[t] === "blocked").map(t => {
+        const row = REVIEW.filter(r => r[0] === t)[0];
+        return { title: t, channel: row ? row[1] : "", why: "You blocked this · just now", by: "you" };
+      }))
+      .filter(b => !s.unblocked.includes(b.title));
+
+    const blockedChannels = {};
+    blockedList.forEach(b => { blockedChannels[b.channel] = (blockedChannels[b.channel] || 0) + 1; });
+
+    const blockedView = {
+      count: blockedList.length,
+      rowLabel: blockedList.length + " blocked",
+      headline: blockedList.length + " blocked video" + (blockedList.length === 1 ? "" : "s"),
+      sub: "Never shown to the kids. Allowing one puts it back on their shelves.",
+      go: () => this.push("blocked"),
+      empty: blockedList.length === 0,
+      filters: ["All"].concat(Object.keys(blockedChannels)).map(label => {
+        const on = s.blockedFilter === label;
+        return {
+          label: label === "All" ? "All " + blockedList.length : label + " " + blockedChannels[label],
+          line: on ? TEAL : "transparent", fg: on ? TEAL : DIM2,
+          pick: () => this.setState({ blockedFilter: label })
+        };
+      }),
+      items: blockedList.filter(b => s.blockedFilter === "All" || b.channel === s.blockedFilter).map(b => ({
+        title: b.title,
+        meta: b.channel,
+        why: b.why,
+        whyTone: b.by === "ai" ? DIM2 : DIM,
+        unblock: () => this.setState(st => ({ unblocked: st.unblocked.concat(b.title) }))
+      }))
+    };
+
+    const trustedView = {
+      count: s.trusted.length,
+      label: s.trusted.length === 0 ? "None yet" : s.trusted.join(", "),
+      has: s.trusted.length > 0
+    };
+
+    const rules = {
+      text: s.houseRules,
+      set: e => this.setState({ houseRules: e.target.value, rulesDirty: true }),
+      dirty: s.rulesDirty,
+      save: () => this.setState({ rulesDirty: false }),
+      lineCount: s.houseRules.split("\n").filter(l => l.trim()).length + " rules",
+      scope: "Checked once for the whole family — one AI call, a verdict per kid, against the ages set under Kids. Amelia is 7."
+    };
+
+    return {
+      sheet, blocked, yt, review, rules, stats, blockedView, trustedView,
+      blockedEmpty: blocked.length === 0,
+      changesFeed: [
+        { what: "Sarah’s Phone changed Amelia’s screen-time rules", when: "4 min ago" },
+        { what: "The hub added @CuriousGeorge", when: "2h ago" },
+        { what: "You granted Amelia 15 bonus minutes", when: "yesterday" }
+      ],
+      sw, help, seg, ruleRows, rulesSummary, ch, nav, playbackSwitches, suggestions,
+      app: {
+        layers, pop: this.pop,
+        crumb: s.stack.map(k => TITLES[k]).join("  ›  "),
+        go: {
+          kid: () => this.push("kid"), listing: () => this.push("listing"),
+          phone: () => this.push("phone"), digest: () => this.push("digest"), kid: () => this.push("kid")
+        },
+        jump: Object.keys(TITLES).map(k => {
+          const on = top === k;
+          return {
+            label: TITLES[k], bg: on ? "rgba(143,207,190,0.16)" : "transparent",
+            bc: on ? TEAL : "#2E2B36", fg: on ? TEAL : DIM2,
+            go: () => this.reset(k)
+          };
+        })
+      },
+      q: {
+        value: s.rootQuery, set: e => this.setState({ rootQuery: e.target.value }),
+        has: results.length > 0, results,
+        countLabel: results.length + " setting" + (results.length === 1 ? "" : "s")
+      },
+      kid: {
+        age: s.age,
+        cycleAge: () => this.setState(st => ({ age: st.age >= 12 ? 3 : st.age + 1 })),
+        status: s.sw.pauseAmelia ? "· paused" : (s.watching ? "· watching now" : "· not watching"),
+        dot: s.sw.pauseAmelia ? WARN : (s.watching ? OK : "#3A3744"),
+        tone: s.sw.pauseAmelia ? WARN : (s.watching ? OK : DIM2),
+        nowPlaying: s.sw.pauseAmelia
+          ? "Paused until midnight"
+          : (s.watching ? "Wild Kratts · Falcon City · Living Room" : "Last watched 2h ago"),
+        leftLabel, leftTone, usedLabel, pct,
+        hasBonus: s.bonusMin > 0,
+        bonusLabel: "+" + s.bonusMin + " min bonus granted today",
+        listSub: "Age " + s.age + " · " + rulesSummary.replace(".", "") + " · no profile code",
+        grantLabel: s.granted ? "Granted ✓" : "+" + bonus.replace(" min", " min"),
+        grantFull: s.granted ? "Granted " + bonus + " ✓" : "Grant " + bonus,
+        grant: () => {
+          const m = parseInt(bonus, 10);
+          this.setState(st => ({ granted: true, bonusMin: st.bonusMin + m }));
+          setTimeout(() => this.setState({ granted: false }), 1600);
+        },
+        remove: () => this.ask(
+          "Remove Amelia?",
+          "Her profile, screen-time rules, blocked times, watch history, favourites and resume points are deleted from every device, and anything downloaded for her is removed. Your channel list is not affected.",
+          "Remove Amelia",
+          () => {}
+        ),
+        pauseLabel: s.sw.pauseAmelia ? "Resume" : "Pause today",
+        pauseFg: s.sw.pauseAmelia ? TEAL : TEXT,
+        pause: () => this.flip("sw", "pauseAmelia"),
+        colours: COLOURS.map((hex, i) => ({
+          hex, mark: i === s.colour ? "✓" : "",
+          ring: i === s.colour ? "0 0 0 2px #101014, 0 0 0 4px " + TEAL : "none",
+          pick: () => this.setState({ colour: i })
+        })),
+        avatars: AVATARS.map((glyph, i) => ({
+          glyph, ring: i === s.avatar ? "0 0 0 2px #101014, 0 0 0 3px " + TEAL : "none",
+          pick: () => this.setState({ avatar: i })
+        }))
+      },
+      tiles: [
+        { name: "Devices", state: fleetSynced + " of " + fleetTotal + " in sync", tone: fleetSynced === fleetTotal ? OK : WARN, go: () => this.push("devices") },
+        { name: "AI screening", state: s.sw.screenAi ? "On" : "Off", tone: s.sw.screenAi ? OK : DIM, go: () => this.push("screening") }
+      ],
+      listing: {
+        summary: (s.sw.showDate ? "Dates on" : "Dates off") + " · " + s.seg.layout.toLowerCase() + " · " + s.seg.rowOrder.toLowerCase()
+      },
+      scr: { needsSetup: !s.connected, dim: s.connected ? "1" : "0.45" },
+      conn: {
+        open: s.connOpen, provider: s.seg.provider,
+        status: s.connected ? "Connected · gemini-2.5-flash-lite" : "Not set up yet",
+        tone: s.connected ? OK : WARN,
+        spin: s.connOpen ? "rotate(90deg)" : "rotate(0deg)",
+        toggleOpen: () => this.setState(st => ({ connOpen: !st.connOpen })),
+        testLabel: s.testLabel,
+        test: () => {
+          this.setState({ testLabel: "Testing…" });
+          setTimeout(() => this.setState(st => (st.connFail
+            ? { testLabel: "Reached the model ✓", connFail: false }
+            : { testLabel: "Test again", connFail: true })), 700);
+        },
+        failed: s.connFail,
+        failLabel: "The provider rejected that key. Screening keeps using the last good verdicts until it works."
+      },
+      hub: {
+        name: s.hubName,
+        rename: e => this.setState({ hubName: e.target.value })
+      },
+      dev: devUi,
+      idx: { label: s.idxLabel, rebuild: () => { this.setState({ idxLabel: "Working…" }); setTimeout(() => this.setState({ idxLabel: "Rebuild index" }), 900); } },
+      upd: { label: s.updLabel, check: () => { this.setState({ updLabel: "Checking…" }); setTimeout(() => this.setState({ updLabel: "Up to date" }), 800); } },
+      addRows: [
+        { name: "Search YouTube", sub: "By channel name" },
+        { name: "Paste a channel or playlist link", sub: "Lands tagged NEW; per-kid switches and screening apply as usual" },
+        { name: "Browse the directory", sub: "Reviewed lists other Pickwick families vouch for" }
+      ],
+      listActions: [{ name: "Share…" }, { name: "Save to file…" }, { name: "Import from file…" }, { name: "Submit list to directory…" }],
+      changes: CHANGES.map(([n, title, body]) => ({ n, title, body })),
+      audit: AUDIT.map(([screen, items]) => ({
+        screen,
+        count: items.length + " controls",
+        items: items.map(([name, where]) => {
+          const gone = /^REMOVED/.test(where);
+          const moved = /^(moved|merged|collapsed)/.test(where);
+          return { name, where, mark: gone ? "✕" : (moved ? "→" : "✓"), tone: gone ? DANGER : (moved ? WARN : FAINT) };
+        })
+      }))
+    };
+  }
+}
+
+</script>
+</body>
+</html>
