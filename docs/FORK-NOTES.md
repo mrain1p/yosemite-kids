@@ -734,37 +734,30 @@ included — those are what a later reader would otherwise re-investigate.
 These are decided, not merely noticed. The numbered lists below are the
 older backlog and stay in their original order.
 
-1. **A rotated API key can be silently reverted.** Found while auditing the
-   hub sync mismatch; unrelated to it and worse. The key is the one field
-   merged by "last document I read wins" rather than by stamp:
-   `ConfigStore.mergeIncoming` passes the *disk* copy as the local side, and
-   disk never holds the key, so `apiKey = incomingKey.ifBlank { localKey }`
-   always resolves to whatever the peer sent. A parent rotates the key while
-   a TV is off; the TV wakes, serves its stale key, the phone adopts it,
-   pushes it back, and both ends settle on the old key reporting "in sync".
-   If the rotation was because the key leaked, the app restores the leaked
-   credential. `ConfigStamp` already stamps the whole `AiConfig` as one unit,
-   so the stamp needed to resolve this correctly exists and is simply not
-   being used. A blank key from a secretless peer must not clobber a real
-   one. Test belongs in `core/src/test` — the hub runs the same merge.
-
-2. **The hub has no GUI.** Until it does it is a rendezvous point rather than
-   an administration centre: everything a parent can *do* still has to be
-   done from a phone. Full plan, including how phone/hub parity is turned
-   into a build failure rather than an intention, in `docs/PLAN-hub-gui.md`.
-
-3. **Deploy the self-repairing hub container.** Committed, staged on the NAS,
-   not yet rebuilt there. Nothing depends on it: it matters for a fresh
-   install, or if a volume's permissions change again. See the permissions
-   section of `docs/HUB.md` for what it repairs and why a chown alone did
-   not.
-
-4. **"Recently added" vs "new".** Needs an `addedAt` on channels; today the
+1. **"Recently added" vs "new".** Needs an `addedAt` on channels; today the
    two are conflated and a channel added months ago with a fresh upload
    reads the same as one added yesterday.
 
-5. **"More like this" on the player page.** The suggestion engine already
+2. **"More like this" on the player page.** The suggestion engine already
    produces the rows; the player has nowhere to show them.
+
+3. **The rest of the hub GUI.** Nine sections are marked outstanding in
+   `SettingsSurface`, and both the build and the hub status page name them.
+   Screen time first — it is the one a parent away from home actually wants.
+   `ai-connection` is the interesting one: the page has to offer model and
+   base URL while explaining that the key stays on the phone.
+
+4. **A key cleared on one device does not propagate.** Deliberate, and
+   recorded here so it is a decision rather than an oversight: a blank
+   incoming key cannot be told apart from a peer that holds none, and
+   treating blank as an instruction would let a hub wipe the key on first
+   contact. Fixing it properly needs absent and empty to travel differently.
+
+5. **An updatedAt-only merge still writes.** `changedLocally` compares the
+   whole document including `updatedAt`, so merging with a peer whose clock
+   is ahead produces a write and a push carrying no information. Found while
+   fixing the merge-suite flake; not changed, because it touches the core of
+   a merge with properties worth not disturbing casually.
 
 ## Review findings not acted on (backlog, roughly in order)
 

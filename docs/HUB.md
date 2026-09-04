@@ -55,6 +55,28 @@ curl -i http://<host>:8765/status       -> 401, which is correct
 is the proof that the LAN cannot read a family's configuration without a
 token.
 
+## The admin GUI
+
+Open `http://<host>:8765/` in a browser on the same network and sign in with
+the admin token from the log. From there you can manage channels and blocked
+videos, approve or remove devices, and see what the hub holds.
+
+The status page names every setting that exists on the phone and is not here
+yet, so "can I do this on the NAS?" is answerable without guessing. That list
+comes from `SettingsSurface` in `:core`, which is the same list the build
+checks — a page cannot exist without an entry, and an entry cannot claim to be
+built without a page.
+
+Notes on the session:
+
+- It lives in memory. Restarting the hub signs everyone out. That is
+  deliberate: a bearer credential never lands on the volume.
+- Sign-in is throttled. Eight wrong tokens in fifteen minutes and it refuses
+  everything, the correct token included, until the window passes.
+- The API key is not editable here and will not be. The hub strips secrets
+  before writing and has no keystore, so a key typed here could not survive a
+  restart. It stays on the phone.
+
 ## Connecting a phone
 
 On the phone: Settings, then Devices, then the hub section. Enter the address
