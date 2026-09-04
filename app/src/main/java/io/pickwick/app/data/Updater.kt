@@ -33,8 +33,8 @@ class Updater(private val context: Context) {
 
     /** Null when up to date (or the update URL isn't configured / reachable). */
     suspend fun check(): UpdateInfo? = withContext(Dispatchers.IO) {
+        if (!canCheck()) return@withContext null
         val url = BuildConfig.UPDATE_MANIFEST_URL
-        if (url.isBlank() || "CHANGE_ME" in url) return@withContext null
         runCatching {
             val busted = url + (if ('?' in url) "&" else "?") + "cb=" + System.currentTimeMillis()
             val body = Http.client.newCall(Request.Builder().url(busted).build())
@@ -108,8 +108,24 @@ class Updater(private val context: Context) {
         )
     }
 
-    private companion object {
+    companion object {
+        /**
+         * Whether this build can check for updates at all.
+         *
+         * `UPDATE_MANIFEST_URL` is a build property that defaults to blank, so
+         * every build shipped so far answers false — [check] then returns null
+         * without making a request. That is indistinguishable from "up to
+         * date" unless the caller asks, which is exactly how the settings
+         * screen came to tell parents they were current after a check that
+         * never happened. One predicate, so a UI that reports a result and the
+         * code that produces it cannot disagree about what null means.
+         */
+        fun canCheck(): Boolean {
+            val url = BuildConfig.UPDATE_MANIFEST_URL
+            return url.isNotBlank() && "CHANGE_ME" !in url
+        }
+
         /** One fresh manifest fetch per process, however many Updaters exist. */
-        val checkedThisProcess = java.util.concurrent.atomic.AtomicBoolean(false)
+        private val checkedThisProcess = java.util.concurrent.atomic.AtomicBoolean(false)
     }
 }

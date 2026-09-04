@@ -239,7 +239,19 @@ private fun KidDeviceScreen(configStore: ConfigStore) {
 @Composable
 private fun TvSettingsScreen(configStore: ConfigStore, pairingStore: PairingStore) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            // Scrollable, because this column was not and the content outgrew a
+            // 1080p screen: UpdateSection is the last child, so the version and
+            // the Install button were the exact things clipped off the bottom.
+            // A parent looking for "what build is this TV on, and can I update
+            // it" found a screen that ended before the answer — the controls
+            // were there and shipped and simply could not be seen.
+            //
+            // Centred only while it fits. Arrangement.Center on a scrolling
+            // column pushes overflow off BOTH ends, which loses the heading too.
+            .verticalScroll(rememberScrollState())
+            .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -366,9 +378,26 @@ internal fun PairingPanel(configStore: ConfigStore, tv: Boolean = false) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
+
+            // Which device this is and what it is running.
+            //
+            // Answering "is that TV on the new build?" meant adb, or reading
+            // devices.json on the hub over ssh. This is the screen a parent is
+            // already standing in front of with the remote in their hand, and
+            // it is the one place a TV can be identified without a keyboard.
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "${android.os.Build.MODEL ?: "This device"}  ·  Pickwick " +
+                    "${io.pickwick.app.BuildConfig.VERSION_NAME} " +
+                    "(${io.pickwick.app.BuildConfig.VERSION_CODE})",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         }
     }
 }
+
 
 /** Where pairing has got to, for the line under the QR. */
 private enum class PairStep { NoNetwork, Waiting, Asking, Paired }

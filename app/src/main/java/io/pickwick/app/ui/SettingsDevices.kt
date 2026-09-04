@@ -726,11 +726,14 @@ internal fun UpdateSection(tv: Boolean = false, onUpdateFound: () -> Unit = {}) 
         // check/install button to the trailing edge of the form row.
         horizontalArrangement = if (tv) Arrangement.Center else Arrangement.Start
     ) {
-        Text(
+        // Phone only. On a TV the pairing panel directly above now prints the
+        // device name and this same version, and two version lines a centimetre
+        // apart on a 10-foot screen reads as a bug rather than as thoroughness.
+        if (!tv) Text(
             "Pickwick ${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = if (tv) Modifier.padding(end = 12.dp) else Modifier.weight(1f)
+            modifier = Modifier.weight(1f)
         )
         val pending = update
         if (pending == null) {
@@ -749,6 +752,16 @@ internal fun UpdateSection(tv: Boolean = false, onUpdateFound: () -> Unit = {}) 
                         val found = updater.check()
                         update = found
                         message = when {
+                            // Not "You're up to date". UPDATE_MANIFEST_URL is
+                            // blank in every build shipped so far, and check()
+                            // returns null for that without making a request —
+                            // so the reassuring message was reporting the
+                            // result of a check that never happened. It matters
+                            // most in the one case this exists for: extraction
+                            // breaks, and a parent presses this to find out
+                            // whether a fix is waiting.
+                            !io.pickwick.app.data.Updater.canCheck() ->
+                                "Updates aren't set up for this build"
                             found == null -> "You're up to date"
                             tv -> "Press OK on the remote to install"
                             else -> "Version ${found.versionName} is available"
