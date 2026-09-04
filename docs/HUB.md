@@ -8,12 +8,18 @@ It is entirely optional. What it buys today is that two parents stay in step
 without both being home: an edit made on one phone reaches the other through
 the hub rather than waiting for a television both happen to be near.
 
-**It does not yet feed the TVs.** A television cannot join a hub — the join
-screen exists only in the phone settings — and a TV never initiates a sync in
-any case; it is a server that phones push to. So a house with both parents
-out still leaves the living room unchanged until somebody comes home. That is
-item 1 in "Next up" in `docs/FORK-NOTES.md`, and it is the thing that decides
-what the hub is ultimately for.
+**The TVs use it too, with one honest limit.** A television cannot join a hub
+itself — its entire parent settings screen is a QR code, so there is nowhere
+to type an address — so the phone introduces them: joining a hub also mints a
+token for every TV that phone administers and hands it over. From then on the
+TV reconciles with the hub directly, using the same code path a phone does.
+
+The limit: a TV reconciles when Pickwick opens on it and while a kid is
+looking at it, **not** while it is asleep or on another app. The sweep lives
+in the ViewModel behind a foreground check and there is no background worker.
+So the hub means "current the moment a kid opens it, without a parent being
+home" — not "always up to date". Making the latter true needs a background
+tick, which is in "Next up" in `docs/FORK-NOTES.md`.
 
 Nothing in the app's main source set knows the hub exists. It enrols as an
 ordinary `PairedDevice` named `Pickwick hub`, and every sync path that already
@@ -83,6 +89,21 @@ Notes on the session:
 - The API key is not editable here and will not be. The hub strips secrets
   before writing and has no keystore, so a key typed here could not survive a
   restart. It stays on the phone.
+
+## The port
+
+The hub publishes 8765. Both the `ports` line and `PICKWICK_PORT` in
+`docker-compose.yml` read the same variable, so they cannot drift — publishing
+one port while the process listens on another gives a container that is
+running, healthy and unreachable, and the health check does not catch it
+because it runs inside the container.
+
+To move it, put `PICKWICK_PORT=9000` in a `.env` beside the compose file. Then
+use that port when connecting a phone, because the app assumes 8765.
+
+It no longer uses host networking. The hub is a plain server that devices dial
+by IP; it never broadcasts or discovers, so host mode bought nothing and cost
+the isolation.
 
 ## Connecting a phone
 

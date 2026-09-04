@@ -213,6 +213,18 @@ if ! grep -A 20 'path == "/join-hub"' app/src/main/java/io/pickwick/app/data/Pai
   guard_fail "/join-hub must store the hub with secretless = true, or the device never reads as in sync."
 fi
 
+# The hub publishes the port it listens on. Both the ports line and the
+# environment read one variable, because publishing one port while the process
+# listens on another gives a container that is running, healthy and
+# unreachable — the health check passes because it runs inside the container.
+compose=hub/docker-compose.yml
+if grep -qE "^[[:space:]]*network_mode:[[:space:]]*host" "$compose"; then
+  guard_fail "host networking is back in $compose, which makes the published port inert."
+fi
+if [ "$(grep -o "PICKWICK_PORT:-8765" "$compose" | wc -l)" -lt 3 ]; then
+  guard_fail "$compose must publish and set the port from one variable (ports twice, environment once)."
+fi
+
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')

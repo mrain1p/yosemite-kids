@@ -28,14 +28,23 @@ services:
     container_name: pickwick-hub
     restart: unless-stopped
 
-    # Host networking so the hub can be found on the LAN without anyone typing
-    # an address into a TV remote. If your NAS refuses host mode, delete this
-    # line and uncomment the ports block below — enrolment then needs the
-    # address entered once, which the phone can relay to the TV.
-    network_mode: host
-
-    # ports:
-    #   - "8765:8765"
+    # One published port, not host networking.
+    #
+    # The hub is a plain server: devices dial it by IP and it never broadcasts,
+    # discovers, or listens on anything else. Host mode therefore bought it
+    # nothing and cost the isolation — a container in host mode sees every
+    # interface and every other service on the NAS.
+    #
+    # Both sides read the same variable on purpose. Publishing one port while
+    # the process listens on another gives you a container that is healthy,
+    # running, and unreachable, which is a genuinely nasty half hour: the
+    # health check passes because it runs inside the container.
+    #
+    # To move it, set PICKWICK_PORT in a .env file beside this one, or export
+    # it before running compose. Then use the new port when you connect a
+    # phone, because the app defaults to 8765.
+    ports:
+      - "${PICKWICK_PORT:-8765}:${PICKWICK_PORT:-8765}"
 
     volumes:
       # config.json and devices.json. Deliberately a subfolder, not the folder
@@ -46,7 +55,8 @@ services:
 
     environment:
       - PICKWICK_DATA=/data
-      - PICKWICK_PORT=8765
+      # The same variable the ports line above uses, so the two cannot drift.
+      - PICKWICK_PORT=${PICKWICK_PORT:-8765}
       # Only affects log timestamps; the merge itself never reads a clock.
       - TZ=America/New_York
       # A config file and a few dozen devices. Left to itself the JVM sizes its

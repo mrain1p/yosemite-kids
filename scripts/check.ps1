@@ -235,6 +235,18 @@ if (-not ($joinHub.Value -like "*secretless = true*")) {
     Fail-Guard "/join-hub must store the hub with secretless = true, or the device never reads as in sync."
 }
 
+# The hub publishes the port it listens on. Both the ports line and the
+# environment read one variable, because publishing one port while the process
+# listens on another gives a container that is running, healthy and
+# unreachable — the health check passes because it runs inside the container.
+$compose = Get-Content hub/docker-compose.yml -Raw
+if ($compose -match '(?m)^s*network_mode:s*host') {
+    Fail-Guard "host networking is back in hub/docker-compose.yml, which makes the published port inert."
+}
+if (([regex]::Matches($compose, 'PICKWICK_PORT:-8765')).Count -lt 3) {
+    Fail-Guard "hub/docker-compose.yml must publish and set the port from one variable (ports twice, environment once)."
+}
+
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |
