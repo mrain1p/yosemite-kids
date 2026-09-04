@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 # Pickwick pre-commit check: compile, offline unit tests, worker tests.
-# Usage: scripts/check.sh [--quick]
+# Usage: scripts/check.sh [--quick|--guards]
+#
+#   --quick   step 0 + compile
+#   --guards  step 0 only. No SDK, no Gradle, no local.properties — the guards
+#             read source and nothing else, which is what lets CI run them on a
+#             clean checkout. That matters: these are the checks most likely to
+#             stop working silently, and until CI ran them they were enforced
+#             only when a human remembered to type the command.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-[ -f local.properties ] || { echo "local.properties is missing — create it with sdk.dir=<Android SDK path>" >&2; exit 1; }
+# Only the paths that actually invoke Gradle need an SDK.
+if [ "${1:-}" != "--guards" ]; then
+  [ -f local.properties ] || { echo "local.properties is missing — create it with sdk.dir=<Android SDK path>" >&2; exit 1; }
+fi
 
 # --- 0/4 invariants a test cannot state ------------------------------------
 # Each is a property that holds across a whole file, so no assertion can pin
@@ -289,12 +299,28 @@ b_set=$(grep -oE "path=${q}[^${q}]+${q}" "$backup_xml" | sort | tr "\n" " " || t
 c_set=$(sed -n "/<cloud-backup>/,/<\/cloud-backup>/p" "$extract_xml" | grep -oE "path=${q}[^${q}]+${q}" | sort | tr "\n" " " || true)
 [ "$b_set" = "$c_set" ] ||
   guard_fail "backup_rules.xml and data_extraction_rules.xml <cloud-backup> list different files. They are the API<=30 and API31+ twins of one rule and must match."
+# 10. The two gate scripts must declare the same guards.
+#     They are mirrors by convention and nothing checked it, so they had
+#     already drifted once. CI runs only the bash one — which makes the
+#     PowerShell mirror the half that can rot unnoticed, and it is the half
+#     the author of this project actually runs before committing.
+#
+#     Compares the numbered headings, not the logic: two languages cannot be
+#     diffed, but "a guard was added to one file and not the other" is the
+#     failure that actually happens, and a heading is enough to catch it.
+sh_guards=$(grep -oE "^# [0-9]+[.]" scripts/check.sh | tr -d " #." | sort -n | tr "\n" " " || true)
+ps_guards=$(grep -oE "^# [0-9]+[.]" scripts/check.ps1 | tr -d " #." | sort -n | tr "\n" " " || true)
+if [ "$sh_guards" != "$ps_guards" ]; then
+  guard_fail "check.sh declares guards [$sh_guards] and check.ps1 declares [$ps_guards]. They are mirrors; add it to both."
+fi
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
 if [ -n "$misnamed" ]; then
   guard_fail "these test files will never run: $misnamed — rename to *Test.kt"
 fi
+
+if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/5 compile (assembleDebug)"
 ./gradlew --no-daemon -q assembleDebug

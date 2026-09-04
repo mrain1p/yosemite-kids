@@ -29,6 +29,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # First, and before the toolchain: these are pure source inspection, they
+      # need no SDK, and they finish in a second. A guard failure should be
+      # reported now rather than after a ten-minute Gradle build.
+      #
+      # Until this step existed the ~29 guards ran only when a human typed the
+      # command — and this repo has twice shipped a guard that silently stopped
+      # covering anything (check.sh died at line 78 for weeks; a PowerShell
+      # guard keyed on a character 5.1 mangles). Enforcing them by memory is
+      # what allowed both.
+      - name: Source invariants
+        run: bash scripts/check.sh --guards
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

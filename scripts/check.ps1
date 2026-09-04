@@ -332,6 +332,24 @@ $cSet = ([regex]::Matches($cloudBlock, 'path="([^"]+)"') |
 if ($bSet -ne $cSet) {
     Fail-Guard "backup_rules.xml and data_extraction_rules.xml <cloud-backup> list different files. They are the API<=30 and API31+ twins of one rule and must match."
 }
+# 10. The two gate scripts must declare the same guards.
+#     They are mirrors by convention and nothing checked it, so they had
+#     already drifted once. CI runs only the bash one — which makes this
+#     mirror the half that can rot unnoticed, and it is the half the author
+#     of this project actually runs before committing.
+#
+#     Compares the numbered headings, not the logic: two languages cannot be
+#     diffed, but "a guard was added to one file and not the other" is the
+#     failure that actually happens, and a heading is enough to catch it.
+$shNums = ((Get-Content "scripts/check.sh" |
+    Where-Object { $_ -match '^# (\d+)\.' } |
+    ForEach-Object { [int]$Matches[1] }) | Sort-Object -Unique) -join ","
+$psNums = ((Get-Content "scripts/check.ps1" |
+    Where-Object { $_ -match '^# (\d+)\.' } |
+    ForEach-Object { [int]$Matches[1] }) | Sort-Object -Unique) -join ","
+if ($shNums -ne $psNums) {
+    Fail-Guard "check.sh declares guards [$shNums] and check.ps1 declares [$psNums]. They are mirrors; add it to both."
+}
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |
