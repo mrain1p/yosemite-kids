@@ -329,11 +329,19 @@ class ConfigStore internal constructor(
      * choice as parent edits.
      */
     fun mergeIncoming(json: String, from: String? = null): MergeOutcome? {
+        // Read before the lock: the Keystore is a slow round trip and holding
+        // the config lock across it stalls every other reader.
+        //
+        // The merge needs this because the local side it is handed is the
+        // disk copy, which never holds a key. Without it the local side looks
+        // keyless, the incoming key wins unconditionally, and a peer holding
+        // a stale key silently undoes a rotation.
+        val heldKey = secrets?.aiApiKey().orEmpty()
         var carriedKey = ""
         val outcome = runCatching {
             synchronized(FILE_LOCK) {
                 val localRaw = if (file.exists()) file.readText() else null
-                val result = ConfigMerge.merge(localRaw, json)
+                val result = ConfigMerge.merge(localRaw, json, localApiKey = heldKey)
                 carriedKey = result.apiKey
                 // A payload we cannot read at all: the route answers 400 and
                 // nothing here is touched, exactly as before.

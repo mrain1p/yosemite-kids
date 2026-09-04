@@ -10,6 +10,7 @@ import io.pickwick.app.data.SourceKind
 import io.pickwick.app.data.SyncMeta
 import io.pickwick.app.data.Whitelist
 import io.pickwick.app.data.WhitelistEntry
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -49,19 +50,37 @@ class ConfigMergeTest {
         gone: Map<String, Long> = emptyMap(),
         floor: Map<String, Long> = emptyMap(),
         log: List<ConfigMerge.Change> = emptyList()
-    ): String = ConfigJson.toJson(
-        Whitelist(
-            sources = sources,
-            blockedVideoIds = blocked,
-            limits = limits,
-            ai = ai,
-            profiles = profiles,
-            autoplayNext = autoplay,
-            sync = if (at.isEmpty() && gone.isEmpty() && floor.isEmpty() && log.isEmpty()) {
-                SyncMeta.EMPTY
-            } else SyncMeta(docAt = (at.values + gone.values + 0L).max(), at = at, gone = gone, floor = floor, log = log)
-        )
+    ): String = pinUpdatedAt(
+        ConfigJson.toJson(
+            Whitelist(
+                sources = sources,
+                blockedVideoIds = blocked,
+                limits = limits,
+                ai = ai,
+                profiles = profiles,
+                autoplayNext = autoplay,
+                sync = if (at.isEmpty() && gone.isEmpty() && floor.isEmpty() && log.isEmpty()) {
+                    SyncMeta.EMPTY
+                } else SyncMeta(docAt = (at.values + gone.values + 0L).max(), at = at, gone = gone, floor = floor, log = log)
+            )
+        ),
+        (at.values + gone.values + floor.values + T).max()
     )
+
+    /**
+     * ConfigJson.toJson stamps updatedAt from the wall clock, and the merge's
+     * sameDoc compares every field of the document including that one. Two
+     * fixture documents built either side of a millisecond boundary therefore
+     * differ by a field no test here is about, and assertions like "we learn
+     * nothing" fail perhaps one run in a hundred.
+     *
+     * That is worse than it sounds in this suite specifically: it guards the
+     * merge, so an intermittent red is indistinguishable from a real
+     * regression and gets re-run rather than read. Pinning it makes every
+     * document here a function of its arguments alone.
+     */
+    private fun pinUpdatedAt(json: String, value: Long): String =
+        JSONObject(json).put("updatedAt", value).toString(2)
 
     /** A config with no sync blob at all — what an older build produces. */
     private fun legacyDoc(
@@ -152,7 +171,9 @@ class ConfigMergeTest {
         // Structural, not stylistic: idempotence and associativity above hold
         // only because nothing in here can read the time.
         val m = ConfigMerge::class.java.methods.single { it.name == "merge" }
-        assertEquals(2, m.parameterCount)
+        // local, incoming, and the API key this device holds — which has to
+        // be passed in because the local document never carries one.
+        assertEquals(3, m.parameterCount)
         m.parameterTypes.forEach {
             assertFalse("merge must take no clock: $it", it == Long::class.java || it.name.contains("Clock"))
         }

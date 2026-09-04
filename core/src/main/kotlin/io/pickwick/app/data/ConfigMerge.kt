@@ -436,7 +436,16 @@ object ConfigMerge {
      * cannot drop a parent's live pause into the shared document just by
      * taking part in a sync.
      */
-    fun merge(local: String?, incoming: String): Result {
+    /**
+     * [localApiKey] is the key this device actually holds, supplied out of
+     * band because on Android it is never in [local]: the caller passes the
+     * disk copy, and the key is stripped before anything reaches disk.
+     *
+     * Without it the local side always looked keyless, so the incoming key
+     * won unconditionally — and a rotation could be undone by any peer that
+     * still held the old one, silently, reporting "in sync" afterwards.
+     */
+    fun merge(local: String?, incoming: String, localApiKey: String = ""): Result {
         // Refuse anything that is not a config, exactly as the route did
         // before: the caller answers 400 and the contract is unchanged.
         val inRoot = runCatching { JSONObject(incoming) }.getOrNull()
@@ -459,10 +468,15 @@ object ConfigMerge {
                 peerBehind = false,
                 collisions = emptyList(),
                 learned = ConfigMerge.syncFromJson(inRoot).log,
-                apiKey = incomingKey
+                // We are adopting their document wholesale, but a key they
+                // never carried is not theirs to erase.
+                apiKey = incomingKey.ifBlank { localApiKey }
             )
         }
-        val localKey = locRoot.optJSONObject("ai")?.optString("apiKey").orEmpty()
+        // Whatever the local document happens to say, plus what the caller
+        // actually holds. On Android the former is always empty.
+        val localKey = locRoot.optJSONObject("ai")?.optString("apiKey")
+            .orEmpty().ifBlank { localApiKey }
 
         // The key never reaches the merge, so it can never reach the output.
         stripKey(locRoot)
@@ -651,8 +665,12 @@ object ConfigMerge {
         mergeLimits(L.root, R.root, out, ::decide, at, gone, collisions)
 
         // --- ai ----------------------------------------------------------
+        // Which side won the ai unit, so the key can follow the same
+        // decision instead of "whichever document I read last".
+        var aiFromLocal: Boolean? = null
         run {
             val d = decide(ConfigStamp.AI)
+            aiFromLocal = d.fromLocal
             val mine = L.root.optJSONObject("ai")
             val theirs = R.root.optJSONObject("ai")
             val pick = pickValue(d, mine, theirs)
@@ -738,7 +756,7 @@ object ConfigMerge {
             peerBehind = peerBehind,
             collisions = collisions,
             learned = learned,
-            apiKey = incomingKey.ifBlank { localKey }
+            apiKey = pickKey(aiFromLocal, localKey, incomingKey)
         )
     }
 
@@ -753,6 +771,35 @@ object ConfigMerge {
     )
 
     /** On a tie, the lexicographically smaller compact form — symmetric, so both sides agree. */
+    /**
+     * The API key, resolved by the same stamp that decided the ai unit.
+     *
+     * It used to be "whatever the peer sent, if anything" — the one field in
+     * the whole document merged by last-read-wins rather than by stamp. A
+     * parent rotating the key while a TV was off got it back: the TV woke,
+     * served its stale key, the phone adopted it, pushed it on, and both ends
+     * settled on the old one reporting "in sync". If the rotation was because
+     * the key had leaked, the app restored the leaked credential.
+     *
+     * A blank incoming key deliberately never clears a real one. It cannot be
+     * told apart from "this peer holds no key at all" — a hub strips it before
+     * writing, and so does every device's own disk copy — so treating blank as
+     * an instruction would let the commonest peer in the fleet wipe the key on
+     * first contact. The cost is that clearing a key does not propagate; that
+     * is a smaller and much less alarming failure than the one it prevents.
+     */
+    internal fun pickKey(aiFromLocal: Boolean?, mine: String, theirs: String): String = when {
+        theirs.isBlank() -> mine
+        mine.isBlank() -> theirs
+        mine == theirs -> mine
+        aiFromLocal == true -> mine
+        aiFromLocal == false -> theirs
+        // A tie means neither side edited the ai unit more recently, so there
+        // is nothing to prefer. Both sides must still land on the same answer
+        // or they never converge — the same lexicographic rule master uses.
+        else -> minOf(mine, theirs)
+    }
+
     private fun pickValue(d: Decision, mine: JSONObject?, theirs: JSONObject?): JSONObject? =
         when (d.fromLocal) {
             true -> mine ?: theirs
