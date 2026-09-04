@@ -244,7 +244,7 @@ fi
 nudge_url=$(grep -c "sync-now" hub/src/main/kotlin/io/pickwick/hub/HubNudge.kt || true)
 [ "$nudge_url" -ge 1 ] || guard_fail "HubNudge no longer posts to /sync-now. That route is the whole contract."
 # 6. A worker that nothing schedules is dead code that reads as shipped.
-for w in IndexCrawlWorker ConfigSyncWorker; do
+for w in IndexCrawlWorker ConfigSyncWorker ContentWarmWorker; do
   grep -q "$w.schedule(" app/src/main/java/io/pickwick/app/ui/MainActivity.kt ||
     guard_fail "$w is never scheduled from MainActivity, so it never runs."
 done

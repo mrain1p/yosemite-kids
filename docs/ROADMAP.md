@@ -85,15 +85,21 @@ Needs a foreground service: `dataSync` is the honest type and is already declare
 for downloads. Gate on form factor; a persistent notification is defensible on a
 mains-powered TV and a real cost on a phone. *Medium.*
 
-**B. Background content warm.** From `OPEN-QUESTIONS.md` §4, tracked nowhere else
-and the highest kid-facing value found in the audit: the difference between a TV
-showing last week's videos and one showing this week's. Needs no hub. *Medium.*
+**B. Background content warm — done.** `ContentWarmWorker` refreshes the stalest
+twelve channels every six hours on unmetered power, so a TV switched on after a
+week is already current instead of showing last week's uploads until someone
+leaves it sitting on Home. It deliberately does **not** screen: handing new
+videos to the AI unattended spends a parent's API balance on a timer, and the
+failure mode of a bug there is a bill. Background screening is the follow-on if
+held videos on first open turn out to annoy.
 
-**C. The API key can reach cloud backup.** Stated three times in prose, enforced
-nowhere. The failure is a real credential with a balance riding to Google's cloud
-backup because someone added a plausible line to a backup rule without reading
-the comment. This project's own rule says a "never" in a comment owes a guard.
-**Five lines in both check scripts.** *Small — do this one now.*
+**C. The API key can reach cloud backup — done.** Guard 9 covers both the
+encrypted store and the unencrypted Keystore-failure fallback, enforces the
+"keep the two files in lockstep" rule those XMLs ask for, and fails if
+`SecretStore` is renamed out from under it. It had been stated three times in
+prose and enforced nowhere — one plausible-looking line added by someone who
+never read the comment would have sent a live credential with a balance to
+Google's cloud backup.
 
 **D. mDNS/NSD advertisement.** A new router or a DHCP reshuffle is the single most
 likely way a working install breaks for a non-technical parent, and today's answer

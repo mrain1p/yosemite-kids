@@ -231,6 +231,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         // nobody opens it. Scheduled from here because a device that has never
         // been opened has nothing to sync anyway.
         io.pickwick.app.data.ConfigSyncWorker.schedule(applicationContext)
+        // And the video caches, so a TV switched on after a week does not show
+        // last week's uploads until someone leaves it sitting on Home.
+        io.pickwick.app.data.ContentWarmWorker.schedule(applicationContext)
         setContent {
                 // The family config drives who exists and whether this device is
                 // dedicated; reloaded whenever a push lands or settings close.

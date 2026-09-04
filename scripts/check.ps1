@@ -257,7 +257,7 @@ if ((Get-Content "hub/src/main/kotlin/io/pickwick/hub/HubNudge.kt" -Raw) -notmat
 }
 # 6. A worker that nothing schedules is dead code that reads as shipped.
 $mainActivity = Get-Content "app/src/main/java/io/pickwick/app/ui/MainActivity.kt" -Raw
-foreach ($w in @("IndexCrawlWorker", "ConfigSyncWorker")) {
+foreach ($w in @("IndexCrawlWorker", "ConfigSyncWorker", "ContentWarmWorker")) {
     if ($mainActivity -notmatch ([regex]::Escape("$w.schedule("))) {
         Fail-Guard "$w is never scheduled from MainActivity, so it never runs."
     }
