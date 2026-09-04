@@ -734,62 +734,63 @@ included — those are what a later reader would otherwise re-investigate.
 These are decided, not merely noticed. The numbered lists below are the
 older backlog and stay in their original order.
 
-1. **A TV cannot join a hub at all.** The one that decides what the hub is
-   for. `HubSection` exists only in the phone Settings (`Settings.kt`, inside
-   `HubPage.Devices`); a TV gets `TvSettingsScreen`, which has no hub option
-   in any build. And a TV never initiates sync in the first place — it is a
-   server that phones push to, and its own `paired()` list is empty.
+1. **The hub GUI is three pages, not six.** It has Channels, Devices and Hub
+   status. The phone navigates Kids, Channels & playlists, Content screening,
+   Devices, Playback, and Backup & app — so Kids, Content screening, Playback
+   and Backup do not exist on the hub at all, and Channels there is only
+   add/remove: no per-channel notes, time multipliers, playlist picking or
+   per-kid visibility. `SettingsSurface` names the nine outstanding sections,
+   the build prints them on every run, and the hub's own status page lists
+   them for the parent.
 
-   So the hub today is a rendezvous between *parents*, not a server for the
-   TVs, and the thing it was built for — "the TV keeps getting new videos
-   when no phone is home" — does not actually happen. Found when a parent
-   asked why the living room did not appear in the hub GUI.
+   Do this by page, in the phone's order, and fix the manifest first: it
+   models sections without recording which page each belongs to, so the hub
+   nav cannot mirror the phone nav until it does. `ai-connection` is the
+   awkward one — the page must offer model and base URL while explaining that
+   the key stays on the phone.
 
-   The fix is for the TV to enrol with a hub the way a phone does and run the
-   same reconcile against it. The reconcile already works on any
-   `PairedDevice`, so the work is the TV-side join, an entry point on the TV
-   settings screen that a remote can drive, and letting the TV sweep. Note
-   the hub holds no API key, so a TV whose only peer is the hub cannot screen
-   — the key has to keep arriving from a phone, or central screening has to
-   land first.
+2. **A TV only syncs while Pickwick is open on it.** The sweep lives in
+   `viewModelScope` behind `uiActive`, and the only background worker
+   (`IndexCrawlWorker`) makes no LAN calls and exits early on a non-master
+   device. So a hub-connected TV is current the moment a kid opens it, and
+   never while it is asleep or on another app. Closing that needs a real
+   background tick — a WorkManager job or a foreground-service beat — which
+   is the thing the hub was originally justified on.
 
-2. **Mirror the phone pages, not a flat list of sections.** The phone Settings
-   is six pages — Kids, Channels & playlists, Content screening, Devices,
-   Playback, Backup & app — and `SettingsSurface` currently models sections
-   without saying which page each belongs to, so the hub nav cannot mirror
-   the phone nav. Add the page to the manifest and group the hub GUI by it.
+3. **A TV that loses its hub sweeps the whole subnet every five minutes.**
+   When a peer is unreachable `LanClient.rediscover` walks 1..254 across
+   `PORT_RANGE` behind a 48-way semaphore, and `SWEEP_COOLDOWN_MS` equals the
+   poll interval, so it fires every tick. That was written for a phone that
+   sweeps while a parent watches; it now runs on TV hardware unattended.
+   Needs a backoff, and probably no rediscovery at all for a hub, whose
+   address a parent typed in and can retype.
 
-3. **The rest of the hub GUI**, in page order once (2) lands. Kids and
-   Channels & playlists first. `ai-connection` is the awkward one: the page
-   has to offer model and base URL while explaining that the key stays on the
-   phone.
+4. **Two TVs and a hub introduce races the single-initiator design did not
+   have.** Config still converges — the merge takes no clock and the hub holds
+   one lock across read-merge-write — but `peerBehind` can be computed against
+   a document another TV has already changed, producing pushes that only the
+   next sweep tidies. The hub also serves on a fixed pool of four threads with
+   no backoff anywhere.
 
-4. **Show build version, last sync and role on every device row**, on both
-   faces. Half of it already exists and is thrown away: a phone/TV `/status`
-   already reports `versionCode` and `versionName`, but `DeviceStatus` drops
-   both and no tile shows them — so "pushed, still out of sync" cannot be
-   read as version skew even though the wire already says so. The hub reports
-   no version of its own, and neither face says which peers are parent
-   devices.
+5. **Show build version, last sync and role on every device row**, on both
+   faces. Half exists already: `/status` reports `versionCode`/`versionName`
+   and `DeviceStatus` now parses them, but no tile shows them yet.
 
-5. **"Recently added" vs "new".** Needs an `addedAt` on channels; today the
-   two are conflated and a channel added months ago with a fresh upload
-   reads the same as one added yesterday.
+6. **"Recently added" vs "new".** Needs an `addedAt` on channels; today a
+   channel added months ago with a fresh upload reads like one added
+   yesterday.
 
-6. **"More like this" on the player page.** The suggestion engine already
+7. **"More like this" on the player page.** The suggestion engine already
    produces the rows; the player has nowhere to show them.
 
-7. **A key cleared on one device does not propagate.** Deliberate, and
-   recorded so it is a decision rather than an oversight: a blank incoming key
-   cannot be told apart from a peer that holds none, and treating blank as an
-   instruction would let a hub wipe the key on first contact. Fixing it
-   properly needs absent and empty to travel differently.
+8. **A key cleared on one device does not propagate.** Deliberate: a blank
+   incoming key cannot be told apart from a peer that holds none, and treating
+   blank as an instruction would let a hub wipe the key on first contact.
+   Fixing it properly needs absent and empty to travel differently.
 
-8. **An updatedAt-only merge still writes.** `changedLocally` compares the
+9. **An updatedAt-only merge still writes.** `changedLocally` compares the
    whole document including `updatedAt`, so merging with a peer whose clock is
-   ahead produces a write and a push carrying no information. Found while
-   fixing the merge-suite flake; left alone rather than disturbing the core of
-   a merge whose properties are worth not touching casually.
+   ahead produces a write and a push carrying no information.
 ## Review findings not acted on (backlog, roughly in order)
 
 Kid side:
