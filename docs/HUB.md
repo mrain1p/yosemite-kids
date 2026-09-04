@@ -49,11 +49,19 @@ On GitHub, create a classic personal access token with the single scope
 Then, on the NAS:
 
 ```
-echo '<the token>' | docker login ghcr.io -u <your-github-username> --password-stdin
+read -rs -p "Token: " T && echo "$T" | sudo docker login ghcr.io -u <username> --password-stdin; unset T
 ```
 
-Piping it in keeps the token out of the shell history, which `-p <token>`
-would not. Docker stores it in `~/.docker/config.json` and it survives
+`read -rs` prompts without echoing, so the token reaches neither the shell
+history nor the process list. Piping alone does **not** do that: `echo <token> |`
+is recorded in history exactly as `-p <token>` would be — what `--password-stdin`
+buys you is only that it stays out of `ps`, where any other user on the NAS
+could read it.
+
+**Use the same `sudo` you use for compose.** Docker keeps credentials per user
+in `~/.docker/config.json`. Logging in as yourself and then running
+`sudo docker compose pull` leaves root with no credential, so the pull fails
+`denied` while `docker login` insists you are authenticated. It survives
 reboots, so this is genuinely once.
 
 If `pull` reports `denied` or `unauthorized` later, that login expired or the
