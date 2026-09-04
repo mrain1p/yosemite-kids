@@ -221,6 +221,18 @@ arrival_owner "ProfileLooks[(][^)]*[)][.]ack[(]" "ConfigSync.applyArrived"
 arrival_owner "KidNotices[.]configChange[(]" "ConfigSync.applyArrived"
 arrival_owner "ProfileLooks[.]mergeInto[(]" "ConfigSync.adoptLooks"
 
+# 7. The hub may announce a change; it may never command a device.
+#    It has no credential on a device and must not acquire one: it is the
+#    box on the NAS, the one meant to face the internet eventually. So its
+#    single outbound call is a nudge carrying no data, and the device then
+#    pulls and authenticates as it always does. Anything else here means a
+#    device had to start trusting the hub as an admin.
+outbound=$(grep -rlE "openConnection|HttpClient|Socket[(]" hub/src/main/kotlin | grep -v "/HubNudge[.]kt$" | tr "\n" " " || true)
+if [ -n "$outbound" ]; then
+  guard_fail "the hub makes an outbound call outside HubNudge.kt (in $outbound). The hub announces; it does not command."
+fi
+nudge_url=$(grep -c "sync-now" hub/src/main/kotlin/io/pickwick/hub/HubNudge.kt || true)
+[ "$nudge_url" -ge 1 ] || guard_fail "HubNudge no longer posts to /sync-now. That route is the whole contract."
 # 6. A worker that nothing schedules is dead code that reads as shipped.
 for w in IndexCrawlWorker ConfigSyncWorker; do
   grep -q "$w.schedule(" app/src/main/java/io/pickwick/app/ui/MainActivity.kt ||

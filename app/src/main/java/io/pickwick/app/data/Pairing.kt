@@ -388,7 +388,15 @@ class LanServer(
      * [KidNotices.configChange]; which kid's rules those are is the caller's
      * to resolve, so both configs travel whole.
      */
-    private val onConfigApplied: (before: Whitelist, after: Whitelist) -> Unit = { _, _ -> }
+    private val onConfigApplied: (before: Whitelist, after: Whitelist) -> Unit = { _, _ -> },
+    /**
+     * A peer said "something changed, come and look" (`POST /sync-now`).
+     *
+     * Runs the ordinary reconcile. Kept as a callback rather than calling
+     * [ConfigSync] from here because the server must not block one peer's
+     * request on a sweep across every other peer.
+     */
+    private val onSyncRequested: () -> Unit = {}
 ) {
     @Volatile
     var port: Int = 0
@@ -413,12 +421,20 @@ class LanServer(
     /** Last /pair-request per caller address — one every few seconds is plenty. */
     private val pairRequestAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+    /** Last /sync-now per caller address. See SYNC_NUDGE_MIN_GAP_MS. */
+    private val syncNudgeAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     fun start() {
         if (serverSocket != null) return
         for (candidate in PORT_RANGE) {
             try {
                 serverSocket = ServerSocket(candidate)
                 port = candidate
+                // Published so LanClient can tell peers where to reach us. A
+                // hub cannot work this out for itself: it only ever sees
+                // inbound connections, whose source port is ephemeral and
+                // says nothing about where we listen.
+                boundPort = candidate
                 break
             } catch (_: Exception) { /* port busy — try next */ }
         }
@@ -565,6 +581,37 @@ class LanServer(
         if (contentLength > bodyCap) {
             discardBody()
             respond(413, "too large")
+            return
+        }
+
+        // "Something changed, come and look." Carries no data and grants
+        // nothing: this device then runs the reconcile it would have run on its
+        // own timer, pulling from peers it already trusts, authenticating as it
+        // always does. So the worst a forged nudge achieves is an early sync.
+        //
+        // Unauthenticated by necessity — a hub has no credential on a device
+        // and deliberately never gets one. It is the component most exposed by
+        // design (a NAS, eventually reachable from outside), so it must not be
+        // able to command devices; it may only ask them to check in. That is
+        // why this is a nudge and not the hub pushing config.
+        if (method == "POST" && path == "/sync-now") {
+            val caller = sock.inetAddress?.hostAddress ?: "?"
+            val now = System.currentTimeMillis()
+            val verdict = nudgeVerdict(
+                hasOrigin, contentType, now - (syncNudgeAt[caller] ?: Long.MIN_VALUE / 2)
+            )
+            if (verdict != 200) {
+                discardBody()
+                respond(verdict, if (verdict == 429) "slow down" else "forbidden"); return
+            }
+            syncNudgeAt[caller] = now
+            if (syncNudgeAt.size > 256) syncNudgeAt.clear()
+            discardBody()
+            // Answered before the sweep runs, not after: the caller is telling
+            // us, not waiting on us, and a hub blocking on one asleep TV would
+            // delay the nudge to every other device behind it.
+            respond(200, "ok")
+            onSyncRequested()
             return
         }
 
@@ -883,6 +930,18 @@ class LanServer(
          *  the bind loop and the re-discovery sweep, so they can't drift. */
         val PORT_RANGE = 8765..8775
 
+        /**
+         * The port this device's server actually bound, or 0 before it has.
+         *
+         * Read by [LanClient] to announce our address on every outbound LAN
+         * call. Static rather than reached through the holder in the ui layer,
+         * which data must not depend on — and there is only ever one server
+         * per process, so there is nothing to disambiguate.
+         */
+        @Volatile
+        var boundPort: Int = 0
+            private set
+
         /** Generous for a request line or header, far below anything harmful. */
         private const val MAX_LINE_BYTES = 8 * 1024
         private const val MAX_HEADERS = 50
@@ -905,6 +964,39 @@ class LanServer(
         /** How much of a refused body is read before answering (see discardBody). */
         private const val MAX_DISCARD_BYTES = 256 * 1024
         private const val PAIR_REQUEST_MIN_GAP_MS = 3_000L
+
+        /**
+         * A nudge is cheap to send and costs a full peer sweep to honour, so
+         * the gap is wider than pairing's. Ten seconds still collapses a burst
+         * of edits in the hub GUI into about one sweep, which is the point.
+         */
+        internal const val SYNC_NUDGE_MIN_GAP_MS = 10_000L
+
+        /**
+         * Whether to honour a `POST /sync-now`: 200, 403 or 429.
+         *
+         * Pure, and separate from the route, because this is the whole security
+         * surface of the one unauthenticated write-ish endpoint on the device —
+         * and `LanServer.handle` needs a Context, so nothing about it could
+         * otherwise be asserted. The route is a thin caller.
+         *
+         * @param sinceLastFromCaller ms since this address last nudged us.
+         */
+        internal fun nudgeVerdict(
+            hasOrigin: Boolean,
+            contentType: String,
+            sinceLastFromCaller: Long
+        ): Int = when {
+            // Drive-by defence, as on /pair-request. A page open in a browser
+            // on this LAN must not be able to put every TV in the house into a
+            // sweep on a timer. A browser cannot send application/json
+            // cross-site without a preflight, and always says where it came
+            // from — so requiring both closes it.
+            hasOrigin -> 403
+            !contentType.startsWith("application/json") -> 403
+            sinceLastFromCaller < SYNC_NUDGE_MIN_GAP_MS -> 429
+            else -> 200
+        }
         /** Source ids are YouTube ids or URL-path forms — nowhere near this. */
         private const val MAX_SOURCE_ID_CHARS = 64
 
@@ -1423,6 +1515,21 @@ object LanClient {
         Request.Builder()
             .url("http://$host:$port$path")
             .apply { token?.let { header("X-Token", it) } }
+            // Where to reach us back. A hub records this against our token so
+            // it can push an edit made in its own admin pages, instead of
+            // sitting on it until we next happen to ask. Our address it can
+            // see; the port it cannot — an inbound connection's source port is
+            // ephemeral. Sent on every call, so a DHCP move or a port change
+            // corrects itself on the next sync rather than needing a re-pair.
+            //
+            // A claim, not a credential: it says only where to deliver a
+            // config this peer already trusts us to send, and the recipient
+            // still authenticates every push. Omitted before our own server
+            // has bound, when there would be nowhere to deliver to.
+            .apply {
+                LanServer.boundPort.takeIf { it > 0 }
+                    ?.let { header("X-Device-Port", it.toString()) }
+            }
             .method(method, body?.toRequestBody("application/json".toMediaType()))
             .build()
     ).execute()

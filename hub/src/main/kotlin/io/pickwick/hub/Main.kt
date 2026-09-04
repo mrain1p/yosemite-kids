@@ -29,8 +29,11 @@ fun main() {
         exitProcess(1)
     }
 
-    val store = HubStore(dataDir)
     val tokens = HubTokens(dataDir)
+    // The one thing this hub ever initiates: "my copy moved, come and look."
+    // Not the config itself — see HubNudge for why that limit is deliberate.
+    val nudge = HubNudge(tokens)
+    val store = HubStore(dataDir, onChanged = nudge::changed)
     val admin = tokens.adminToken(System.getenv("PICKWICK_ADMIN_TOKEN"))
     val server = HubServer(store, tokens, port, admin)
 
@@ -52,6 +55,9 @@ fun main() {
         Thread {
             println("stopping")
             server.stop()
+            // Nothing in flight matters — a nudge is pure latency and the
+            // devices' own reconcile covers whatever it would have said.
+            nudge.stop()
         }
     )
 

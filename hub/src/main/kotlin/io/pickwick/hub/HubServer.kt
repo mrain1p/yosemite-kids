@@ -411,7 +411,19 @@ class HubServer(
 
     private fun authorised(ex: HttpExchange): Boolean {
         val token = ex.requestHeaders.getFirst("X-Token")
-        if (tokens.isEnrolled(token)) return true
+        if (tokens.isEnrolled(token)) {
+            // Learn where to call this device back. Here because it is the one
+            // gate every device call passes, and only for calls that proved a
+            // token — an unauthenticated caller must not be able to move an
+            // enrolled device's address and collect its nudges.
+            tokens.noteSeen(
+                token,
+                ex.remoteAddress?.address?.hostAddress,
+                ex.requestHeaders.getFirst("X-Device-Port")?.toIntOrNull() ?: 0,
+                now()
+            )
+            return true
+        }
         respond(ex, 401, "not paired")
         return false
     }

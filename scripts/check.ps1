@@ -239,6 +239,22 @@ foreach ($fn in $arrivalFns) {
     }
 }
 
+# 7. The hub may announce a change; it may never command a device.
+#    It has no credential on a device and must not acquire one: it is the
+#    box on the NAS, the one meant to face the internet eventually. So its
+#    single outbound call is a nudge carrying no data, and the device then
+#    pulls and authenticates as it always does. Anything else here means a
+#    device had to start trusting the hub as an admin.
+$outbound = Get-ChildItem -Path "hub/src/main/kotlin" -Recurse -Filter *.kt |
+    Where-Object { $_.Name -ne "HubNudge.kt" } |
+    Where-Object { (Get-Content $_.FullName -Raw) -match 'openConnection|HttpClient|Socket\(' }
+if ($outbound) {
+    $where = ($outbound | ForEach-Object { $_.Name }) -join ", "
+    Fail-Guard "the hub makes an outbound call outside HubNudge.kt (in $where). The hub announces; it does not command."
+}
+if ((Get-Content "hub/src/main/kotlin/io/pickwick/hub/HubNudge.kt" -Raw) -notmatch "sync-now") {
+    Fail-Guard "HubNudge no longer posts to /sync-now. That route is the whole contract."
+}
 # 6. A worker that nothing schedules is dead code that reads as shipped.
 $mainActivity = Get-Content "app/src/main/java/io/pickwick/app/ui/MainActivity.kt" -Raw
 foreach ($w in @("IndexCrawlWorker", "ConfigSyncWorker")) {

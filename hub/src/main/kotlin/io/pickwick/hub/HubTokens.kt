@@ -20,7 +20,26 @@ class HubTokens(dataDir: File) {
     private val lock = Any()
     private val rng = SecureRandom()
 
-    data class Device(val token: String, val name: String, val enrolledAt: Long)
+    /**
+     * An enrolled device.
+     *
+     * [host] and [port] are learned rather than enrolled: the hub records
+     * them from each authenticated call ([noteSeen]) so it can nudge the
+     * device when its own copy changes. Null until the device has called at
+     * least once from a build that announces itself, so an older device is
+     * simply never nudged rather than nudged at a guess.
+     */
+    data class Device(
+        val token: String,
+        val name: String,
+        val enrolledAt: Long,
+        val host: String? = null,
+        val port: Int = 0,
+        val lastSeenAt: Long = 0L
+    ) {
+        /** Where to reach it, or null when it has never said. */
+        val address: String? get() = if (host != null && port in 1..65535) "$host:$port" else null
+    }
 
     /** A code shown on a device, waiting for a human to approve it here. */
     data class Pending(val code: String, val name: String, val createdAt: Long, val tries: Int)
@@ -57,11 +76,45 @@ class HubTokens(dataDir: File) {
         val arr = read().optJSONArray("devices") ?: return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
             arr.optJSONObject(i)?.let {
-                Device(it.optString("token"), it.optString("name"), it.optLong("enrolledAt"))
+                Device(
+                    it.optString("token"), it.optString("name"), it.optLong("enrolledAt"),
+                    it.optString("host").ifBlank { null },
+                    it.optInt("port"), it.optLong("lastSeenAt")
+                )
             }
         }
     }
 
+    /**
+     * Record where an enrolled device just called from, so the hub can call
+     * it back.
+     *
+     * The address is observed, not claimed — it is the socket's own peer
+     * address. The port cannot be: an inbound connection's source port is
+     * ephemeral and has nothing to do with where the device listens, so the
+     * device states that and the hub takes its word. Believing it costs
+     * nothing, because the only thing the hub ever sends there is a nudge
+     * carrying no data — the worst a lie achieves is that the liar receives
+     * "something changed" and the real device does not.
+     *
+     * Written only when something actually moved. Every sync would otherwise
+     * rewrite devices.json on a fixed schedule for the life of the hub.
+     */
+    fun noteSeen(token: String?, host: String?, port: Int, now: Long) {
+        if (token.isNullOrBlank() || host.isNullOrBlank() || port !in 1..65535) return
+        synchronized(lock) {
+            val root = read()
+            val arr = root.optJSONArray("devices") ?: return
+            for (i in 0 until arr.length()) {
+                val d = arr.optJSONObject(i) ?: continue
+                if (d.optString("token") != token) continue
+                if (d.optString("host") == host && d.optInt("port") == port) return
+                d.put("host", host).put("port", port).put("lastSeenAt", now)
+                write(root)
+                return
+            }
+        }
+    }
     fun isEnrolled(token: String?): Boolean =
         token != null && token.isNotBlank() && devices().any { it.token == token }
 

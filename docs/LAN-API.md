@@ -25,6 +25,7 @@ and, if the device later changes address, by sweeping its own /24
 | `POST /pair-request` | none | JSON `{token, name}`; must be `application/json` and carry **no** `Origin` header | `{"status":"approved"\|"pending"\|"closed"}` | First phone is auto-approved only while the QR is on screen (`PairingWindow`). One request per address every 3 s (429 otherwise). Pending slots: 5, oldest evicted, 10-minute expiry. |
 | `GET /pair-status?me=<token>` | none | — | `{"status":"approved"\|"pending"\|"unknown"}` | Polled by the waiting phone. |
 | `GET /pair-pending` | admin | — | `[{token,name}]` | |
+| `POST /sync-now` | none | `{}` (ignored) | `ok` / `403` / `429` | "My copy moved, come and look." Carries no data and grants nothing — the device then runs its ordinary reconcile. Refuses any `Origin` or non-JSON body, and one per caller per 10 s. |
 | `POST /pair-approve?token=` | admin | — | `approved` | |
 | `POST /pair-deny?token=` | admin | — | `denied` | |
 | `GET /admins` | admin | — | `[{token,name}]` | Raw tokens: all admins are equal, so this exposes nothing an admin couldn't already do. |
@@ -46,6 +47,30 @@ and, if the device later changes address, by sweeping its own /24
 | `POST /play` | admin | JSON `{url,title,channel,thumb,timePercent}` | `playing` / `409 refused` / `400` | "Play this on the TV". Refused when the video is blocked for the kid on screen. |
 | `POST /grant?minutes=1..240[&profile=<8 hex>]` | admin | — | `granted` | Bonus minutes for today; `profile` unvalidated on purpose (may precede the push that introduces the kid). |
 
+## `X-Device-Port`, and why the hub only ever nudges
+
+Every outbound LAN call a device makes carries `X-Device-Port: <port>` — the
+port its own `LanServer` bound. A peer's address can be observed from the
+socket; its *listening* port cannot, because an inbound connection's source
+port is ephemeral. So the device states it and the hub records it against the
+token (`HubTokens.noteSeen`), which is how the hub learns where to call back.
+
+It is a claim, not a credential. The only thing ever sent there is a nudge
+carrying no data, so the worst a lie achieves is that the liar is told
+"something changed" and the real device is not — and the real device's own
+reconcile still catches up on its next tick.
+
+**The hub announces; it never commands.** It could not push config even if it
+wanted to: it holds no token any device would accept, and giving it one would
+mean a device minting an admin credential for the component most exposed by
+design — the box on the NAS, the one intended to be reachable from outside.
+So the hub posts `/sync-now` and the device pulls, merges and authenticates
+exactly as it does on its own timer. The direction of trust is unchanged:
+devices authenticate to the hub, never the reverse.
+
+A consequence worth knowing: a nudge is **pure latency**. Losing one costs
+nothing. That is what makes it safe to send fire-and-forget, and why the hub
+does not retry — `ConfigSyncWorker` is the floor underneath it.
 ## Testing against a real device without breaking pairing
 
 From CLAUDE.md, worth repeating: **never `POST /pair-request` to a device that

@@ -751,70 +751,51 @@ older backlog and stay in their original order.
    passive; the poll gives fresher numbers from a box that is always on.
    Decide that before writing either.
 
-2. **The hub cannot tell anyone anything.** `HubTokens.Device` is
-   `(token, name, enrolledAt)` — no address, no port, no last-seen — and
-   `hub/src/main/kotlin` contains no HTTP client of any kind. So an edit made
-   in the hub's admin GUI is written to its file and nothing else happens;
-   it reaches a device only when that device next asks. A parent editing on
-   their phone gets a push in 1.5 s with two retries (`Settings.pushAll`);
-   the same edit made on the hub waits up to five minutes on an awake device
-   and until next launch on a sleeping one.
-
-   That asymmetry became the important one when the hub grew all six
-   settings pages, and it gets worse with a PWA: an iPhone parent cannot
-   sideload the app, so the hub would be their **only** admin surface — and
-   it is the one surface that cannot deliver. (The GUI is already plain HTML
-   with no external assets, so an iPhone on the LAN can open it today; the
-   missing piece is not the UI.)
-
-   The receiving half already exists and is proven: devices accept
-   `POST /config` from a phone and merge it. So the hub needs only what it
-   lacks — somewhere to send. It can learn addresses passively from
-   `ex.remoteAddress` on every authenticated call; the listening port it
-   cannot infer (an inbound connection's source port is ephemeral), so the
-   device states it. Then the hub pushes on commit exactly as a phone does.
-
-3. **A device is not reachable while Pickwick is closed.** `LanServer` is
+2. **A device is not reachable while Pickwick is closed.** `LanServer` is
    constructed in `MainActivity` and dies with the process, so a sleeping TV
    answers nothing: a parent's phone shows it unreachable, "Play on TV"
-   cannot wake it, and the hub's push (item 2) will miss it. Closing this
-   needs a foreground service, which on Android 14 means a service type and
-   a persistent notification — defensible on a mains-powered TV, a real cost
-   on a phone, so it should be form-factor gated.
+   cannot wake it, and the hub's nudge does not land. Closing this needs a
+   foreground service, which on Android 14 means a service type and a
+   persistent notification — defensible on a mains-powered TV, a real cost on
+   a phone, so it should be form-factor gated.
 
-   Both are what is left after this round, which built the floor underneath
-   them: the config reconcile now runs on a `ConfigSyncWorker` tick as well
-   as in the ViewModel, so a closed device *converges* within WorkManager's
-   15-minute floor even though it is not reachable. The sweep body moved to
-   `data/ConfigSync.kt` (with `kidHere`/`applyArrived`/`adoptLooks`, which
-   three arrival paths now share instead of two), and `LanClient.rediscover`
-   backs off per device — doubling to a six-hour cap, and never sweeping for
-   a hub at all, whose address a parent typed and can retype.
+   This is now the only thing left between a hub edit and a device, because
+   the two layers under it are built. `POST /sync-now` lands a hub edit on an
+   awake device in about a second: the hub records where each device calls
+   from (`HubTokens.noteSeen`, plus the `X-Device-Port` the device states,
+   since an inbound source port says nothing about where it listens) and
+   announces a real fingerprint change. `ConfigSyncWorker` catches a sleeping
+   device within WorkManager's 15-minute floor, with the reconcile lifted to
+   `data/ConfigSync.kt` and `rediscover` backing off per device to a six-hour
+   cap, never sweeping for a hub at all.
 
-4. **Two TVs and a hub introduce races the single-initiator design did not
+   What is missing is the middle: a device that is off right now and will not
+   tick for another ten minutes.
+
+3. **Two TVs and a hub introduce races the single-initiator design did not
    have.** Config still converges — the merge takes no clock and the hub holds
    one lock across read-merge-write — but `peerBehind` can be computed against
    a document another TV has already changed, producing pushes that only the
    next sweep tidies. The hub also serves on a fixed pool of four threads with
    no backoff anywhere.
 
-5. **Show build version, last sync and role on every device row**, on both
+4. **Show build version, last sync and role on every device row**, on both
    faces. Half exists already: `/status` reports `versionCode`/`versionName`
    and `DeviceStatus` now parses them, but no tile shows them yet.
 
-6. **"Recently added" vs "new".** Needs an `addedAt` on channels; today a
+5. **"Recently added" vs "new".** Needs an `addedAt` on channels; today a
    channel added months ago with a fresh upload reads like one added
    yesterday.
 
-7. **"More like this" on the player page.** The suggestion engine already
+6. **"More like this" on the player page.** The suggestion engine already
    produces the rows; the player has nowhere to show them.
 
-8. **A key cleared on one device does not propagate.** Deliberate: a blank
+7. **A key cleared on one device does not propagate.** Deliberate: a blank
    incoming key cannot be told apart from a peer that holds none, and treating
    blank as an instruction would let a hub wipe the key on first contact.
    Fixing it properly needs absent and empty to travel differently.
 
-9. **An updatedAt-only merge still writes.** `changedLocally` compares the
+8. **An updatedAt-only merge still writes.** `changedLocally` compares the
    whole document including `updatedAt`, so merging with a peer whose clock is
    ahead produces a write and a push carrying no information.
 ## Review findings not acted on (backlog, roughly in order)

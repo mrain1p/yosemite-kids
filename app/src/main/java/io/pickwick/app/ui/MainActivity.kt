@@ -158,7 +158,24 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 indexMerger = { sourceId, body ->
                     io.pickwick.app.data.ChannelIndex(appContext).importSourceWithState(sourceId, body)
                 },
-                onConfigApplied = applyConfig
+                onConfigApplied = applyConfig,
+                // A hub (or a co-parent's phone) says its copy moved. Run the
+                // ordinary reconcile now instead of at the next tick — off the
+                // server's own threads, so the caller is not held while this
+                // device sweeps every peer it has.
+                onSyncRequested = {
+                    io.pickwick.app.data.LanPushScope.scope.launch {
+                        io.pickwick.app.data.ConfigSync.reconcile(
+                            configStore, pairingStore,
+                            onConfigApplied = applyConfig,
+                            mergeLooks = { json ->
+                                io.pickwick.app.data.ConfigSync.adoptLooks(
+                                    configStore, pairingStore, json
+                                )
+                            }
+                        )
+                    }
+                }
             ).also { it.start() }
         }
         // "Play this on the TV" from a parent's phone. The device applies its

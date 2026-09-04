@@ -20,7 +20,17 @@ import java.io.File
  * it already lives, on the devices; a config arriving with one has it stripped
  * before it touches this disk, exactly as the app does.
  */
-class HubStore(internal val dataDir: File) {
+class HubStore(
+    internal val dataDir: File,
+    /**
+     * Run when this hub's copy actually moved, so devices can be told.
+     *
+     * Must not block: it is called with the write lock held, and the hub
+     * serves on a fixed pool of four threads. [HubNudge] hands off to its
+     * own worker and returns.
+     */
+    private val onChanged: () -> Unit = {}
+) {
 
     private val file = File(dataDir, "config.json")
 
@@ -108,7 +118,7 @@ class HubStore(internal val dataDir: File) {
         if (changed) {
             println("merged a push from ${from ?: "a peer"} → #$afterHash")
         }
-        Outcome(
+        outcome(
             changed = changed,
             peerBehind = result.peerBehind,
             hash = afterHash,
@@ -153,6 +163,18 @@ class HubStore(internal val dataDir: File) {
     }
 
     /**
+     * Both write paths end here, so "the hub's copy moved" is decided once.
+     *
+     * Not in [commit]: `merge` commits on every sync because `toJson` stamps
+     * `updatedAt` at serialization time, so a hook there would announce a
+     * change on every poll from every device, forever. The fingerprint is
+     * what actually moved or did not.
+     */
+    private fun outcome(changed: Boolean, peerBehind: Boolean, hash: String, syncHash: String): Outcome {
+        if (changed) runCatching { onChanged() }
+        return Outcome(changed = changed, peerBehind = peerBehind, hash = hash, syncHash = syncHash)
+    }
+    /**
      * An edit made on the hub itself, from the admin GUI.
      *
      * Stamped, like any other device's edit. An unstamped change would carry
@@ -182,7 +204,7 @@ class HubStore(internal val dataDir: File) {
         val afterSync = ConfigMerge.syncHash(after.sync)
         val changed = beforeHash != afterHash || beforeSync != afterSync
         if (changed) println("edited on the hub by $who → #$afterHash")
-        Outcome(changed, peerBehind = changed, hash = afterHash, syncHash = afterSync)
+        outcome(changed, peerBehind = changed, hash = afterHash, syncHash = afterSync)
     }
 
     // There is deliberately no adopt()/replace() here.
