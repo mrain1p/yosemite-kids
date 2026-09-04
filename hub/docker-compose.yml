@@ -3,28 +3,41 @@
 # Paths below are Synology's layout. On another NAS,
 # change the left-hand side of the volume line and nothing else.
 #
-# The source has to be on the NAS, because this builds the image rather than
-# pulling one. Put the repo at /volume2/Docker/pickwick, then:
+# Normally the NAS pulls a finished image and never compiles anything:
 #
 #   cd /volume2/Docker/pickwick
+#   docker compose -f hub/docker-compose.yml pull
+#   docker compose -f hub/docker-compose.yml up -d
+#
+# CI builds that image on every push touching hub/ or core/ (see
+# .github/workflows/hub-image.yml). One-time setup on the NAS, because a
+# private repo produces a private package: see docs/HUB.md.
+#
+# Building on the NAS still works and needs no login — keep it for hacking on
+# the hub from the NAS itself, or if GHCR is unreachable:
+#
 #   docker compose -f hub/docker-compose.yml up -d --build
 #
-# The first build takes 10-20 minutes and prints almost nothing for most of
-# it: Gradle downloads its own distribution and then the Kotlin compiler,
-# quietly. It is not stuck. `docker stats` will show it burning CPU. Every
-# build after that is cached and takes seconds.
+# That path compiles Kotlin on the NAS: 10-20 minutes the first time, printing
+# almost nothing while Gradle downloads its distribution and then the compiler.
+# It is not stuck; `docker stats` will show it burning CPU. Later builds are
+# cached and take seconds.
 #
 # Then open http://<nas-ip>:8765/health to confirm it is alive, and approve a
 # device's enrolment code to pair the first one.
 
 services:
   pickwick-hub:
+    # Both keys on purpose, and they do different jobs: `pull` fetches this
+    # image, while `up --build` ignores the registry and builds locally,
+    # tagging the result with the same name. One file, both workflows, and no
+    # second compose file to drift.
+    image: ghcr.io/mrain1p/pickwick-hub:latest
     build:
       # Built from the repo root: the image needs :core as well as :hub, and a
       # context of ./hub could not see it.
       context: ..
       dockerfile: hub/Dockerfile
-    image: pickwick/hub:latest
     container_name: pickwick-hub
     restart: unless-stopped
 

@@ -1,0 +1,89 @@
+# Build the hub image here, so the NAS does not have to.
+#
+# Before this, updating the hub meant getting the source onto the NAS and
+# running `up -d --build` — which compiles Kotlin on a Synology: 10-20 minutes
+# the first time, and a Gradle daemon competing with everything else on the box
+# for RAM. The NAS has no reason to own a toolchain. It runs one jar.
+#
+# The image goes to GHCR under the same account and inherits the repository's
+# visibility, so a private repo gets a private package. That means the NAS has
+# to authenticate once to pull it — see docs/HUB.md.
+name: Hub image
+
+on:
+  push:
+    branches: [main]
+    # Only when something in the image actually changes. :core is in here
+    # because the hub image contains it — the merge rules are shared code, and
+    # a :core change with no :hub change still needs a new image.
+    paths:
+      - "hub/**"
+      - "core/**"
+      - "gradle/**"
+      - "gradlew"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - ".github/workflows/hub-image.yml"
+  # So a rebuild can be forced without an empty commit.
+  workflow_dispatch:
+
+concurrency:
+  # A second push while the first is still building should replace it, not
+  # queue behind it — only the newest image is ever wanted.
+  group: hub-image
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Provided by Actions; `packages: write` above is what makes it work.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Lowercased because GHCR rejects an uppercase path, and a GitHub
+      # username may contain capitals even when the repo name does not.
+      - name: Work out the image name
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pickwick-hub" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # The repo root, matching docker-compose.yml: the image needs :core
+          # as well as :hub, and a context of ./hub could not see it.
+          context: .
+          file: hub/Dockerfile
+          push: true
+          # amd64 only. Every x86 Synology takes this, and building the ARM
+          # variant means running the whole Gradle build a second time under
+          # emulation for a machine that may not exist. If the NAS is ARM, add
+          # linux/arm64 here and expect the job to take several times longer.
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.name.outputs.image }}:latest
+            ${{ steps.name.outputs.image }}:${{ github.sha }}
+          # Keeps the Gradle dependency layer between runs, which is the
+          # expensive half of this build.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Say what to pull
+        run: |
+          echo "### Hub image pushed" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.name.outputs.image }}:latest" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.name.outputs.image }}:${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

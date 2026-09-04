@@ -28,20 +28,57 @@ built that way.
 
 ## Deploying
 
-The image is built from source on the target machine — there is no published
-image. Put the repo somewhere on the host, then:
+CI builds the image on every push that touches `hub/` or `core/`
+(`.github/workflows/hub-image.yml`) and pushes it to GHCR, so the NAS pulls a
+finished jar and never compiles anything:
+
+```
+cd /volume2/Docker/pickwick
+docker compose -f hub/docker-compose.yml pull
+docker compose -f hub/docker-compose.yml up -d
+```
+
+### One-time: let the NAS pull a private image
+
+The package inherits the repository's visibility, so a private repo produces a
+private package and an anonymous `pull` gets **denied**. The NAS needs a
+read-only credential once.
+
+On GitHub, create a classic personal access token with the single scope
+`read:packages` — nothing else; this token only ever reads one package.
+Then, on the NAS:
+
+```
+echo '<the token>' | docker login ghcr.io -u <your-github-username> --password-stdin
+```
+
+Piping it in keeps the token out of the shell history, which `-p <token>`
+would not. Docker stores it in `~/.docker/config.json` and it survives
+reboots, so this is genuinely once.
+
+If `pull` reports `denied` or `unauthorized` later, that login expired or the
+token was revoked — redo the two commands above. The build path below always
+works and needs no login, so a registry problem never blocks a deploy.
+
+### Building on the NAS instead
+
+Still supported, and the fallback when GHCR is unreachable or you are changing
+hub code from the NAS itself. It needs the source on the host:
 
 ```
 cd /volume2/Docker/pickwick
 docker compose -f hub/docker-compose.yml up -d --build
 ```
 
+`--build` ignores the registry entirely and tags the local result with the same
+name, which is why one compose file serves both paths.
+
 **The first build takes 10 to 20 minutes and prints almost nothing.** Gradle
 downloads its own distribution and then the Kotlin compiler, quietly. It is
 not stuck; `docker stats` will show it burning CPU. Every build after that is
 cached and takes seconds.
 
-Then:
+Then, either way:
 
 ```
 docker logs pickwick-hub --tail 20
