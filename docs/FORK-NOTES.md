@@ -734,20 +734,22 @@ included — those are what a later reader would otherwise re-investigate.
 These are decided, not merely noticed. The numbered lists below are the
 older backlog and stay in their original order.
 
-1. **The hub GUI is three pages, not six.** It has Channels, Devices and Hub
-   status. The phone navigates Kids, Channels & playlists, Content screening,
-   Devices, Playback, and Backup & app — so Kids, Content screening, Playback
-   and Backup do not exist on the hub at all, and Channels there is only
-   add/remove: no per-channel notes, time multipliers, playlist picking or
-   per-kid visibility. `SettingsSurface` names the nine outstanding sections,
-   the build prints them on every run, and the hub's own status page lists
-   them for the parent.
+1. **Stats is the last group the hub cannot show.** Shipped hub-side in
+   877170d, with no app change. The hub serves all six of the phone’s
+   pages, and `SettingsSurface` is now keyed on config *fields* rather than
+   section composables — which is what made Playback visible to the guard at
+   all, since that page has no `*Section(` composable. Nine outstanding
+   groups became one.
 
-   Do this by page, in the phone's order, and fix the manifest first: it
-   models sections without recording which page each belongs to, so the hub
-   nav cannot mirror the phone nav until it does. `ai-connection` is the
-   awkward one — the page must offer model and base URL while explaining that
-   the key stays on the phone.
+   Stats stays outstanding for a structural reason, not an unfinished one:
+   the numbers live on each device and travel over `GET /stats`, which the
+   hub never calls because **the hub never initiates**. Every other route it
+   has is inbound. Closing this means either teaching the hub to poll its
+   enrolled devices — giving it an outbound HTTP client and a schedule it
+   has so far deliberately not had — or having devices push a stats digest
+   on their existing sync. The push is the smaller change and keeps the hub
+   passive; the poll gives fresher numbers from a box that is always on.
+   Decide that before writing either.
 
 2. **A TV only syncs while Pickwick is open on it.** The sweep lives in
    `viewModelScope` behind `uiActive`, and the only background worker
