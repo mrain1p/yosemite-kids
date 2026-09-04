@@ -238,6 +238,29 @@ for w in IndexCrawlWorker ConfigSyncWorker; do
   grep -q "$w.schedule(" app/src/main/java/io/pickwick/app/ui/MainActivity.kt ||
     guard_fail "$w is never scheduled from MainActivity, so it never runs."
 done
+# 8. The roadmap must not outlive the code it points at.
+#    docs/ROADMAP.md ends in an Anchors table: each row names code an item
+#    depends on. When an anchor stops resolving, that item was almost
+#    certainly finished and nobody deleted it — which is precisely how the
+#    old roadmap came to claim the hub had three settings pages after six
+#    had shipped. Prose cannot be guarded; a reference to real code can.
+roadmap=docs/ROADMAP.md
+if [ -f "$roadmap" ]; then
+  # Rows look like: | §2A reachability | `symbol or path` | code |
+  while IFS="|" read -r _ item anchor kind _; do
+    # Backticks only, then trim the ends. Stripping every space would mangle
+    # an anchor like "val address: String?" into something that never matches.
+    a=$(printf "%s" "$anchor" | tr -d "\140" | sed "s/^ *//; s/ *$//")
+    k=$(printf "%s" "$kind" | tr -d " ")
+    [ -n "$a" ] || continue
+    case "$k" in
+      path) [ -e "$a" ] || ls "$a" >/dev/null 2>&1 ||
+        guard_fail "ROADMAP.md item$item cites $a, which no longer exists. Is that item done? Delete it and its anchor row." ;;
+      code) grep -rqF "$a" app/src core/src hub/src scripts 2>/dev/null ||
+        guard_fail "ROADMAP.md item$item cites \`$a\`, which is gone from the codebase. Is that item done? Delete it and its anchor row." ;;
+    esac
+  done < <(grep -E "^\| §" "$roadmap" || true)
+fi
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')

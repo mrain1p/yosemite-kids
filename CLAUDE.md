@@ -7,6 +7,9 @@ HTTP server (`data/Pairing.kt`). Sideloaded only — never shipped to a store.
 
 ## This fork — start here
 
+- **What to do next:** `docs/ROADMAP.md` — the only forward-looking doc.
+  `FORK-NOTES.md` is a changelog and the `PLAN-*.md` files are finished
+  history; when they disagree with the roadmap, check the code.
 - **Map first:** `docs/ARCHITECTURE.md` (what lives where, data flow, "where
   to change what"), `docs/LAN-API.md` (every LAN route), `docs/HUB.md`
   (deploying the Docker hub, and the volume-permission trap that will
@@ -25,8 +28,9 @@ HTTP server (`data/Pairing.kt`). Sideloaded only — never shipped to a store.
   Android devices may be plugged into this PC and must not be touched.
 - **Toolchain on this machine:** JDK 17 at `JAVA_HOME`; SDK at
   `%LOCALAPPDATA%\Android\Sdk` (command-line tools only, no Android Studio);
-  `local.properties` carries `sdk.dir`. No release keystore exists here —
-  debug builds only. Python is not installed; use PowerShell/bash for scripts.
+  `local.properties` carries `sdk.dir` and the release-keystore properties,
+  so release builds work here. Python is not installed; use PowerShell/bash
+  for scripts.
 - **Skills:** `.claude/skills/pickwick-{check,emulator,lan-api,release}`.
 - Pure logic goes in companions / `internal fun`s so JVM unit tests can reach
   it without a `Context` (see `PairingStore.prunePending`, `Backup.parse`).
@@ -52,8 +56,9 @@ fails if the key is absent, because that key is the sole trust anchor for
 self-update and Android refuses in-place upgrades across a signature change.
 
 On this machine the keystore lives at
-`~/.pickwick/pickwick-release.keystore` (alias `pickwick`, password alongside
-in `pickwick-release.keystore.password.txt`). **Back both up off-machine** —
+`~/.pickwick/pickwick-fork-release.keystore` (alias `pickwickfork`, password
+alongside in `pickwick-fork-release.keystore.password.txt`; both paths are in
+`local.properties`). **Back both up off-machine** —
 losing them means every installed family must uninstall, which wipes their
 curation.
 

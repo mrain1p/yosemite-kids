@@ -262,6 +262,41 @@ foreach ($w in @("IndexCrawlWorker", "ConfigSyncWorker")) {
         Fail-Guard "$w is never scheduled from MainActivity, so it never runs."
     }
 }
+# 8. The roadmap must not outlive the code it points at.
+#    docs/ROADMAP.md ends in an Anchors table: each row names code an item
+#    depends on. When an anchor stops resolving, that item was almost
+#    certainly finished and nobody deleted it — which is precisely how the
+#    old roadmap came to claim the hub had three settings pages after six
+#    had shipped. Prose cannot be guarded; a reference to real code can.
+if (Test-Path "docs/ROADMAP.md") {
+    $roadmapSrc = Get-Content "docs/ROADMAP.md"
+    $haystack = $null
+    foreach ($line in $roadmapSrc) {
+        if ($line -notmatch '^\|') { continue }
+        $cells = $line.Split("|")
+        if ($cells.Count -lt 4) { continue }
+        $item = $cells[1].Trim()
+        $anchor = $cells[2].Trim().Trim([char]96)
+        $kind = $cells[3].Trim()
+        if (-not $anchor) { continue }
+        if ($kind -ne "code" -and $kind -ne "path") { continue }
+        if ($kind -eq "path") {
+            if (-not (Test-Path $anchor)) {
+                Fail-Guard "ROADMAP.md item $item cites $anchor, which no longer exists. Is that item done? Delete it and its anchor row."
+            }
+        } elseif ($kind -eq "code") {
+            if ($null -eq $haystack) {
+                $haystack = Get-ChildItem -Path "app/src","core/src","hub/src","scripts" -Recurse -File |
+                    ForEach-Object { Get-Content $_.FullName -Raw }
+            }
+            $found = $false
+            foreach ($text in $haystack) { if ($text -and $text.Contains($anchor)) { $found = $true; break } }
+            if (-not $found) {
+                Fail-Guard "ROADMAP.md item $item cites ``$anchor``, which is gone from the codebase. Is that item done? Delete it and its anchor row."
+            }
+        }
+    }
+}
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |
