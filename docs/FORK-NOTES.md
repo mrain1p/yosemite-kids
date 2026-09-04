@@ -729,6 +729,43 @@ a week. Two triggers now:
 Both end in the one table in `docs/UPSTREAM-LOG.md`, deliberate skips
 included — those are what a later reader would otherwise re-investigate.
 
+## Next up, in order
+
+These are decided, not merely noticed. The numbered lists below are the
+older backlog and stay in their original order.
+
+1. **A rotated API key can be silently reverted.** Found while auditing the
+   hub sync mismatch; unrelated to it and worse. The key is the one field
+   merged by "last document I read wins" rather than by stamp:
+   `ConfigStore.mergeIncoming` passes the *disk* copy as the local side, and
+   disk never holds the key, so `apiKey = incomingKey.ifBlank { localKey }`
+   always resolves to whatever the peer sent. A parent rotates the key while
+   a TV is off; the TV wakes, serves its stale key, the phone adopts it,
+   pushes it back, and both ends settle on the old key reporting "in sync".
+   If the rotation was because the key leaked, the app restores the leaked
+   credential. `ConfigStamp` already stamps the whole `AiConfig` as one unit,
+   so the stamp needed to resolve this correctly exists and is simply not
+   being used. A blank key from a secretless peer must not clobber a real
+   one. Test belongs in `core/src/test` — the hub runs the same merge.
+
+2. **The hub has no GUI.** Until it does it is a rendezvous point rather than
+   an administration centre: everything a parent can *do* still has to be
+   done from a phone. Full plan, including how phone/hub parity is turned
+   into a build failure rather than an intention, in `docs/PLAN-hub-gui.md`.
+
+3. **Deploy the self-repairing hub container.** Committed, staged on the NAS,
+   not yet rebuilt there. Nothing depends on it: it matters for a fresh
+   install, or if a volume's permissions change again. See the permissions
+   section of `docs/HUB.md` for what it repairs and why a chown alone did
+   not.
+
+4. **"Recently added" vs "new".** Needs an `addedAt` on channels; today the
+   two are conflated and a channel added months ago with a fresh upload
+   reads the same as one added yesterday.
+
+5. **"More like this" on the player page.** The suggestion engine already
+   produces the rows; the player has nowhere to show them.
+
 ## Review findings not acted on (backlog, roughly in order)
 
 Kid side:
@@ -891,3 +928,59 @@ exactly what a later Docker hub fills, and everything here was kept additive so
 it can.
 
 Closes the multi-parent item in the backlog above.
+
+### Round 14: the hub becomes real (0.11.1-fork)
+
+The Docker hub was designed in round 13 and deployed for the first time here,
+onto a Synology NAS. Deploying it is where the actual lessons were.
+
+**Two failures before it started at all, both invisible from inside the
+container.** `gradlew` had been copied from a Windows checkout, so its shebang
+ended in a carriage return and the build died with `./gradlew: not found` for a
+file plainly present. Then the bind-mounted volume arrived as `d---------+` —
+mode 000 with a NAS ACL — so the owner was correct and the owner was still
+denied, and a `chown` fixed nothing. The hub died on its first write, the
+restart policy repeated it every few seconds, and the log never once printed
+the admin token underneath.
+
+The container repairs both now, and the second fix is the interesting one: the
+first attempt chowned and exec'd, *assuming* a successful chown meant a
+writable directory. It does not. The entrypoint now proves it, by writing a
+file as each candidate identity in turn, and only reaches the JVM once one has
+worked. The hub checks the same precondition itself, because the entrypoint
+only covers the container.
+
+**Then the hub read as permanently out of sync, and was not.** The config
+fingerprint includes the AI API key; the hub strips secrets before writing and
+has no `SecretStore` to put one back, so the hash it advertises can never equal
+a phone's. The Devices tile was the visible half — the expensive half was the
+reconcile taking its merge arm on every sweep since enrolment, fetching and
+re-merging a config that had not changed.
+
+An audit found five comparison sites, not one, and the two that would have been
+missed were the ones that mattered: the reconcile, and a hand-rolled copy of
+the rule inside the push-result message. Fixing only the shared predicate would
+have left the tile saying "in sync" while the note beneath it blamed an old
+version.
+
+The design it produced is not the obvious one. Having the hub advertise
+`secretless: true` and trusting it would let any peer switch off the phone's
+only content-level check on the key — a TV holding a revoked key would then
+read "in sync" while its screening was dead. The flag is recorded on the phone
+at enrolment instead, and a guard stops the hub ever advertising the field. The
+hub therefore needed no change at all.
+
+**Guards added, all from failures that had already happened:** no CRLF in any
+tracked shell script; no `USER` line in the hub's Dockerfile (it would make the
+volume repair impossible); the entrypoint must still test writability; every
+`docs/*.md` path named in source must exist; `includeSecrets` must keep
+defaulting to true; `:hub` must never advertise `secretless`; no peer-hash
+comparison outside `matches()`; the hub's name is one literal.
+
+**The test that should have caught the sync bug already existed and passed
+trivially** — `HubServerTest.theHashInAStatusMatchesTheConfigItServes` uses a
+fixture with no API key, so the one field the hub removes was never in play.
+Its comment even names the symptom it failed to catch.
+
+**A worse bug found on the way, not fixed here:** a rotated API key can be
+silently reverted by a peer still holding the old one. See "Next up" above.
