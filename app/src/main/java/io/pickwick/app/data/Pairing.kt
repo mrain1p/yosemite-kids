@@ -749,6 +749,12 @@ class LanServer(
                     // phone gets to say so instead of guessing.
                     .put("versionCode", io.pickwick.app.BuildConfig.VERSION_CODE)
                     .put("versionName", io.pickwick.app.BuildConfig.VERSION_NAME)
+                    // Whether this device already syncs with a hub of its
+                    // own. A phone brokering hub access for the TVs it
+                    // administers needs to know which ones are already done,
+                    // or it mints a second token on every attempt and leaves
+                    // orphans enrolled on the hub forever.
+                    .put("hub", pairingStore.paired().any { it.secretless })
                     .toString()
             )
             // Disaster recovery: a freshly reinstalled phone starts with an empty
@@ -814,6 +820,51 @@ class LanServer(
                     RemotePlayerControl.playHandler?.invoke(req) == true -> respond(200, "playing")
                     else -> respond(409, "refused")
                 }
+            }
+            // A phone handing this device a hub to sync with.
+            //
+            // The device cannot do this for itself: a TV has no settings UI
+            // at all — its whole parent screen is a QR code — so there is
+            // nowhere to type an address, and a remote is the worst possible
+            // way to enter one. The phone is already paired with both ends,
+            // so it mints a hub token for this device and posts it here.
+            //
+            // Stored as an ordinary peer, which is the entire point: the
+            // reconcile in MainViewModel is gated only on the paired list
+            // being non-empty, never on role or device kind, so a TV that
+            // has one starts syncing with no new sync code anywhere.
+            method == "POST" && path == "/join-hub" -> {
+                val body = readBody()
+                val hub = runCatching { JSONObject(body) }.getOrNull()
+                val host = hub?.optString("host").orEmpty().trim()
+                val hubPort = hub?.optInt("port") ?: 0
+                val hubToken = hub?.optString("token").orEmpty().trim()
+                if (host.isBlank() || hubPort !in 1..65535 || hubToken.isBlank()) {
+                    respond(400, "bad hub")
+                } else {
+                    pairingStore.addPaired(
+                        PairedDevice(
+                            name = PairedDevice.HUB_NAME,
+                            host = host,
+                            port = hubPort,
+                            token = hubToken,
+                            // The hub strips the API key before writing and
+                            // has no keystore to put it back, so it must be
+                            // judged on the keyless fingerprint or this
+                            // device decides it is out of sync forever.
+                            secretless = true
+                        )
+                    )
+                    respond(200, "joined")
+                }
+            }
+            // The other direction, so removing a hub on the phone can undo
+            // this rather than leaving every TV pointed at a box that is no
+            // longer there.
+            method == "POST" && path == "/leave-hub" -> {
+                pairingStore.paired().filter { it.secretless }
+                    .forEach { pairingStore.removePaired(it.key) }
+                respond(200, "left")
             }
             method == "POST" && path == "/grant" -> {
                 val minutes = Regex("minutes=(\\d+)").find(target)?.groupValues?.get(1)?.toIntOrNull()
@@ -892,7 +943,11 @@ object LanClient {
          * always claims to be brand new.
          */
         val syncV: Int? = null,
-        val syncHash: String? = null
+        val syncHash: String? = null,
+        /** The build this peer is running, for a version-skew answer. */
+        val versionName: String? = null,
+        /** Whether this peer already syncs with a hub of its own. */
+        val hasHub: Boolean = false
     )
 
     /** The device's config fingerprint + last-edit time, or null when unreachable. */
@@ -1059,7 +1114,12 @@ object LanClient {
                     json.optLong("updatedAt", 0L),
                     json.optString("token").ifEmpty { null },
                     syncV = if (json.has("syncV")) json.optInt("syncV") else null,
-                    syncHash = json.optString("syncHash").ifEmpty { null }
+                    syncHash = json.optString("syncHash").ifEmpty { null },
+                    // Both already on the wire and both were being dropped.
+                    // The version is how "pushed, still out of sync" gets to
+                    // be answered as version skew instead of guessed at.
+                    versionName = json.optString("versionName").ifEmpty { null },
+                    hasHub = json.optBoolean("hub", false)
                 )
             }
         }.getOrNull()
@@ -1071,6 +1131,34 @@ object LanClient {
                 request(device, "POST", "/config", configJson).use { it.isSuccessful }
             }.getOrDefault(false)
         }
+
+    /**
+     * Hand a device the hub it should sync with.
+     *
+     * Brokered rather than done on the device, because a TV has no settings
+     * UI to type an address into. The token is minted by this phone against
+     * the hub and belongs to that device alone.
+     */
+    suspend fun sendHubDetails(
+        device: PairedDevice,
+        hubHost: String,
+        hubPort: Int,
+        hubToken: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = JSONObject()
+                .put("host", hubHost).put("port", hubPort).put("token", hubToken)
+                .toString()
+            request(device, "POST", "/join-hub", body).use { it.isSuccessful }
+        }.getOrDefault(false)
+    }
+
+    /** Undo the above. Best effort: a TV that is off simply keeps its copy. */
+    suspend fun clearHub(device: PairedDevice): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            request(device, "POST", "/leave-hub", "{}").use { it.isSuccessful }
+        }.getOrDefault(false)
+    }
 
     /** The device's full config JSON (channels, blocks, safe-list, rules), or null. */
     suspend fun fetchConfig(device: PairedDevice): String? = withContext(Dispatchers.IO) {

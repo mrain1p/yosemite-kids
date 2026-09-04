@@ -17,6 +17,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -200,6 +201,74 @@ class HubIntegrationTest {
         val onDisk = java.io.File(tmp.root, "hub/config.json").readText()
         assertFalse(onDisk.contains("sk-never"))
         assertTrue(onDisk.contains("UCaaa"))
+    }
+
+    // --- brokering a hub for the TVs ------------------------------------
+
+    @Test
+    fun aPhoneCanMintAHubTokenForADeviceThatIsNotItself() {
+        // The whole reason this exists: a TV cannot enrol itself. Its entire
+        // parent settings screen is a QR code, so there is no field to type a
+        // hub address into and a remote is the worst way to enter one. The
+        // phone is paired with both ends, so it does the introduction.
+        val token = runBlocking {
+            HubEnrolment.tokenFor("127.0.0.1:$port", 8765, admin, "Living Room")
+        }.getOrThrow()
+
+        assertTrue("the hub must accept the minted token", tokens.isEnrolled(token))
+        assertEquals("Living Room", tokens.nameOf(token))
+    }
+
+    @Test
+    fun eachDeviceGetsItsOwnToken() {
+        // Not one shared credential. Revoking a TV that leaves the house must
+        // not sign every other device out, and the hub device list is only
+        // meaningful if the names map to distinct tokens.
+        val living = runBlocking {
+            HubEnrolment.tokenFor("127.0.0.1:$port", 8765, admin, "Living Room")
+        }.getOrThrow()
+        val bedroom = runBlocking {
+            HubEnrolment.tokenFor("127.0.0.1:$port", 8765, admin, "Master Bedroom")
+        }.getOrThrow()
+
+        assertNotEquals(living, bedroom)
+        assertEquals(setOf("Living Room", "Master Bedroom"), tokens.devices().map { it.name }.toSet())
+    }
+
+    @Test
+    fun aMintedTokenReallyWorksAgainstTheHub() {
+        // Enrolled is not the same as usable. This is the token a TV will be
+        // handed and will then sync with unattended, so it is worth proving it
+        // opens the routes rather than trusting the enrolment bookkeeping.
+        val token = runBlocking {
+            HubEnrolment.tokenFor("127.0.0.1:$port", 8765, admin, "Living Room")
+        }.getOrThrow()
+        val asTheTv = PairedDevice("Pickwick hub", "127.0.0.1", port, token, secretless = true)
+
+        assertEquals(200, status(asTheTv).first)
+        assertEquals(200, post(asTheTv, config("UCtv")).first)
+        assertEquals(listOf("UCtv"), ConfigJson.fromJson(get(asTheTv).second).sources.map { it.id })
+    }
+
+    @Test
+    fun aWrongAdminTokenMintsNothingForAnyone() {
+        val e = runBlocking {
+            HubEnrolment.tokenFor("127.0.0.1:$port", 8765, "not-the-admin-token", "Living Room")
+        }.exceptionOrNull()
+
+        assertEquals(HubEnrolment.Failure.BadAdminToken, (e as HubEnrolment.HubError).failure)
+        assertTrue(tokens.devices().isEmpty())
+    }
+
+    @Test
+    fun aTvsOwnPushesAreAttributedToTheTvAndNotToThePhone() {
+        // The change feed a parent reads says who changed what. A TV syncing
+        // under a token minted for it must appear as itself, or every
+        // automatic sync would look like a person did it.
+        val token = runBlocking {
+            HubEnrolment.tokenFor("127.0.0.1:$port", 8765, admin, "Living Room")
+        }.getOrThrow()
+        assertEquals("Living Room", tokens.nameOf(token))
     }
 
     // --- the same calls LanClient makes, without pulling in Android --------

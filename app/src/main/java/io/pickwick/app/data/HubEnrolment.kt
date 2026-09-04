@@ -88,25 +88,7 @@ object HubEnrolment {
         runCatching {
             val root = base(host, port)
 
-            val code = post(root, "/enrol", JSONObject().put("name", deviceName).toString(), null)
-                .let { (status, body) ->
-                    if (status != 200) throw HubError(Failure.NotAHub)
-                    JSONObject(body).optString("code").takeIf { it.isNotBlank() }
-                        ?: throw HubError(Failure.NotAHub)
-                }
-
-            val token = post(root, "/approve", JSONObject().put("code", code).toString(), adminToken)
-                .let { (status, body) ->
-                    when (status) {
-                        200 -> JSONObject(body).optString("token").takeIf { it.isNotBlank() }
-                            ?: throw HubError(Failure.NotAHub)
-                        401 -> throw HubError(Failure.BadAdminToken)
-                        409 -> throw HubError(
-                            Failure.Refused(JSONObject(body).optString("refused", "UNKNOWN_CODE"))
-                        )
-                        else -> throw HubError(Failure.NotAHub)
-                    }
-                }
+            val token = mint(root, adminToken, deviceName)
 
             // Stored like any other peer. From here the ordinary reconcile
             // takes over — the hub is simply a device that never sleeps.
@@ -126,6 +108,49 @@ object HubEnrolment {
         }.recoverCatching { e ->
             throw if (e is HubError) e else HubError(Failure.Unreachable)
         }
+    }
+
+    /**
+     * Mint a hub token for a device that is not this phone.
+     *
+     * A TV cannot enrol itself: its entire parent settings screen is a QR
+     * code, so there is no field to type a hub address into, and a remote is
+     * the worst imaginable way to enter one. This phone is already paired
+     * with both the TV and the hub, so it does the introduction.
+     *
+     * [deviceName] is what the hub lists the device as, so it should be the
+     * name the parent already calls it — "Living Room", not a token.
+     */
+    suspend fun tokenFor(
+        host: String,
+        port: Int,
+        adminToken: String,
+        deviceName: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching { mint(base(host, port), adminToken, deviceName) }
+            .recoverCatching { e -> throw if (e is HubError) e else HubError(Failure.Unreachable) }
+    }
+
+    /** enrol + approve, shared by [join] and [tokenFor] so they cannot drift. */
+    private fun mint(root: String, adminToken: String, deviceName: String): String {
+        val code = post(root, "/enrol", JSONObject().put("name", deviceName).toString(), null)
+            .let { (status, body) ->
+                if (status != 200) throw HubError(Failure.NotAHub)
+                JSONObject(body).optString("code").takeIf { it.isNotBlank() }
+                    ?: throw HubError(Failure.NotAHub)
+            }
+        return post(root, "/approve", JSONObject().put("code", code).toString(), adminToken)
+            .let { (status, body) ->
+                when (status) {
+                    200 -> JSONObject(body).optString("token").takeIf { it.isNotBlank() }
+                        ?: throw HubError(Failure.NotAHub)
+                    401 -> throw HubError(Failure.BadAdminToken)
+                    409 -> throw HubError(
+                        Failure.Refused(JSONObject(body).optString("refused", "UNKNOWN_CODE"))
+                    )
+                    else -> throw HubError(Failure.NotAHub)
+                }
+            }
     }
 
     private fun post(root: String, path: String, body: String, adminToken: String?): Pair<Int, String> {

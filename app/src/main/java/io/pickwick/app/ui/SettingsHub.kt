@@ -25,16 +25,27 @@ import io.pickwick.app.data.PairingStore
 import kotlinx.coroutines.launch
 
 /**
- * Connecting this phone to a self-hosted hub.
+ * Connecting this household to a self-hosted hub.
  *
  * Optional, and the wording says so: a household that never runs one loses
- * nothing. What it buys is that the TV keeps getting new videos and settings
- * when no phone is home and awake, which is otherwise the app's biggest
- * practical limit.
+ * nothing.
  *
  * Once joined, the hub is stored as an ordinary paired device — so everything
  * that already syncs with a TV syncs with it, and there is no second code path
  * to keep in step.
+ *
+ * This screen will also be where the TVs are introduced to the hub, because a
+ * TV cannot do it for itself: its entire parent settings screen is a QR code,
+ * so there is no field to type an address into and a remote is the worst
+ * imaginable way to enter one. This phone is paired with both ends, so it is
+ * the only thing that can make the introduction.
+ *
+ * The plumbing for that is built and tested — HubEnrolment.tokenFor,
+ * LanClient.sendHubDetails, POST /join-hub — and is deliberately not called
+ * from here yet. An enrolled TV would re-merge every five minutes forever,
+ * because ProfileLooks.ack runs only on an inbound push and its overlay would
+ * never clear, and its kid would stop seeing the "your rules changed" pill for
+ * the same reason. Both are named in "Next up" in docs/FORK-NOTES.md.
  */
 @Composable
 internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
@@ -47,11 +58,39 @@ internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var joined by remember { mutableStateOf(hub != null) }
 
+    fun describe(e: Throwable): String = when ((e as? HubEnrolment.HubError)?.failure) {
+        // Each of these sends a parent somewhere different, so none of them
+        // collapses into "failed".
+        HubEnrolment.Failure.Unreachable ->
+            "Nothing answered at that address. Is the hub running, and is this phone on the same network?"
+        HubEnrolment.Failure.NotAHub ->
+            "Something answered, but it isn't a Pickwick hub. Check the address and port."
+        HubEnrolment.Failure.BadAdminToken ->
+            "That admin token was refused. It's printed in the hub's log when it starts."
+        is HubEnrolment.Failure.Refused ->
+            "The hub refused this attempt. Try again — codes are only good for a few minutes."
+        null -> "Couldn't connect: ${e.message?.take(120)}"
+    }
+
     if (joined) {
         Text("Connected to the hub at ${host.ifBlank { "your server" }}.")
         Text(
             "It appears under Kid devices as \"Pickwick hub\" and syncs like any " +
                 "other device. Remove it there to disconnect.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(6.dp))
+        // Stated, not hidden. The plumbing to connect a TV exists and is
+        // tested (LanClient.sendHubDetails, HubEnrolment.tokenFor,
+        // POST /join-hub), and it is deliberately not wired up yet: a TV that
+        // synced with a hub today would re-merge every five minutes forever,
+        // because ProfileLooks.ack only runs on an inbound push, and its kid
+        // would stop getting the "your rules changed" pill for the same
+        // reason. See "Next up" in docs/FORK-NOTES.md.
+        Text(
+            "Your TVs still get their settings from a phone, not from the hub. " +
+                "Connecting them directly is coming.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -65,13 +104,9 @@ internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
-    // Said plainly, because the obvious assumption is the wrong one. TVs
-    // cannot join a hub yet, so a hub does not keep the television fed while
-    // the house is empty — and a parent who believed otherwise would stop
-    // opening the app expecting it to have happened by itself.
     Text(
-        "TVs don't use the hub yet — they still get their settings from a " +
-            "phone. This keeps parents in step with each other.",
+        "TVs still get their settings from a phone. Connecting them straight " +
+            "to the hub is coming.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -102,7 +137,10 @@ internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(Modifier.height(4.dp))
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         CompactButton(
             enabled = !busy && host.isNotBlank() && admin.isNotBlank(),
             onClick = {
@@ -110,31 +148,19 @@ internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
                     busy = true
                     message = "Connecting…"
                     val name = android.os.Build.MODEL ?: "A phone"
-                    HubEnrolment.join(host, 8765, admin.trim(), name).fold(
+                    val token = admin.trim()
+                    HubEnrolment.join(host, 8765, token, name).fold(
                         onSuccess = { device ->
                             pairingStore.addPaired(device)
                             // A phone that administers anything is a parent
                             // device, the same rule the QR flow applies.
                             pairingStore.setRole(PairingStore.Role.PARENT)
                             joined = true
+                            admin = ""
                             message = null
                             onJoined()
                         },
-                        onFailure = { e ->
-                            // Each of these sends a parent somewhere different,
-                            // so none of them collapses into "failed".
-                            message = when ((e as? HubEnrolment.HubError)?.failure) {
-                                HubEnrolment.Failure.Unreachable ->
-                                    "Nothing answered at that address. Is the hub running, and is this phone on the same network?"
-                                HubEnrolment.Failure.NotAHub ->
-                                    "Something answered, but it isn't a Pickwick hub. Check the address and port."
-                                HubEnrolment.Failure.BadAdminToken ->
-                                    "That admin token was refused. It's printed in the hub's log when it starts."
-                                is HubEnrolment.Failure.Refused ->
-                                    "The hub refused this attempt. Try again — codes are only good for a few minutes."
-                                null -> "Couldn't connect: ${e.message?.take(120)}"
-                            }
-                        }
+                        onFailure = { e -> message = describe(e) }
                     )
                     busy = false
                 }
@@ -143,6 +169,10 @@ internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
         if (busy) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp)
     }
     message?.let {
-        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

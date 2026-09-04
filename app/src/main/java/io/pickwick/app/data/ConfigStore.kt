@@ -96,6 +96,34 @@ class ConfigStore internal constructor(
         return looks?.overlay(out) ?: out
     }
 
+    /**
+     * The same read, without the kid's un-adopted restyle laid over it.
+     *
+     * That overlay is a local rendering: it exists so a kid sees their new
+     * avatar on this screen immediately, and the phone adopts it properly
+     * through /looks. It is not part of the family document, and this file
+     * already says so about the merge — mergeIncoming reads the raw bytes
+     * because "merging from it would read a clock tick and a kid's private
+     * choice as parent edits".
+     *
+     * The same reasoning applies on the way out and was not applied: a
+     * config sent to a peer carrying the overlay puts a kid's un-adopted
+     * choice into the family config, where the stamps are equal on both
+     * sides and the merge breaks the tie on JSON string ordering.
+     *
+     * The API key is still included, because load() overlays it from
+     * SecretStore and that is the only way a paired TV ever receives one —
+     * the copy on disk never has it.
+     */
+    fun loadForPeers(): Whitelist {
+        val text = synchronized(FILE_LOCK) { if (file.exists()) file.readText() else null }
+        val parsed = text?.let {
+            runCatching { withSecrets(ConfigJson.fromJson(it)) }.getOrNull()
+        }
+        val base = parsed ?: lastGood ?: Whitelist(emptyList(), emptySet())
+        return registered(scrubLapsedPasses(base))
+    }
+
 
     /**
      * A kid's own restyle, chosen on this device and not yet adopted by the
@@ -406,7 +434,13 @@ class ConfigStore internal constructor(
         false
     }
 
-    fun rawJson(): String = ConfigJson.toJson(load())
+    /**
+     * What every peer receives — a push, and the answer to GET /config.
+     *
+     * Deliberately [loadForPeers] rather than [load]: a kid's un-adopted
+     * restyle is a local rendering and must not travel.
+     */
+    fun rawJson(): String = ConfigJson.toJson(loadForPeers())
 
     /** When this device's config last changed (locally or via push). */
     fun updatedAt(): Long = runCatching {
