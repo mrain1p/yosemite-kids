@@ -95,36 +95,13 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         // (deleted on the phone, picker not used since) and suffixFor would
         // auto-register an orphan namespace, so it's validated against the
         // config it came with.
-        fun kidHere(f: Whitelist): String? =
-            if (f.profiles.isEmpty()) null
-            else f.deviceProfiles[pairingStore.deviceToken()]
-                ?: activeProfiles.activeId()?.takeIf { f.profile(it) != null }
-        /**
-         * What must happen whenever a config lands, however it arrived.
-         *
-         * Two paths reach this: a peer pushing to our LAN server, and this
-         * device merging during its own sweep. It used to hang off the
-         * first only, which was invisible while phones were the only
-         * things that swept — a device that merged on its own never
-         * cleared its kid's pending restyle, so its hash stayed different
-         * from the peer's forever and it re-merged every five minutes,
-         * and its kid never saw the pill that says a rule moved.
-         *
-         * One lambda, both callers, so they cannot drift.
-         */
+        // Both of these used to be written out here, with a comment saying
+        // "one lambda, both callers, so they cannot drift". The background
+        // sync worker is a third caller and has no Activity, so the bodies
+        // moved to ConfigSync and these are the local names for them.
+        fun kidHere(f: Whitelist): String? = ConfigSync.kidHere(appContext, f)
         val applyConfig: (Whitelist, Whitelist) -> Unit = { before, after ->
-            // The phone adopted (or overrode) a look this device's kid
-            // chose: the pending copy has done its job.
-            io.pickwick.app.data.ProfileLooks(appContext).ack(after)
-            // The pill is the only thing that says a rule moved; otherwise
-            // the kid finds out by hitting it. Judged on this device's own
-            // kid, so a change to their sibling's rules stays quiet here.
-            val kid = kidHere(after)
-            val fresh = after.limitsFor(kid)
-            KidNotices.configChange(
-                before.limitsFor(kid), fresh,
-                SessionGuard(appContext, profileNs.suffixFor(kid)).remainingTodayMin(fresh)
-            )?.let { KidNotices.post(it) }
+            ConfigSync.applyArrived(appContext, before, after)
         }
 
         // Every device runs the LAN server now, not just TVs: a kid's phone or
@@ -232,6 +209,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         // The channel-index crawl runs whether or not the app is open — the
         // worker itself no-ops on any device that isn't the master.
         io.pickwick.app.data.IndexCrawlWorker.schedule(applicationContext)
+        // And the config reconcile, for the same reason: a rule changed on a
+        // phone or in the hub's admin pages has to reach this device even when
+        // nobody opens it. Scheduled from here because a device that has never
+        // been opened has nothing to sync anyway.
+        io.pickwick.app.data.ConfigSyncWorker.schedule(applicationContext)
         setContent {
                 // The family config drives who exists and whether this device is
                 // dedicated; reloaded whenever a push lands or settings close.
@@ -360,20 +342,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         exportWatchState = { WatchSync.exportJson(appContext) },
                         mergeWatchState = { WatchSync.mergeJson(appContext, it) },
                         mergeLooks = { json ->
-                            // update{} rather than load-then-save: the read and
-                            // the write must be one locked step. A co-parent's
-                            // push landing in between would look to the stamper
-                            // like this device adding whatever it brought, which
-                            // clears that unit's tombstone and can resurrect a
-                            // channel a parent deleted.
-                            var adopted = false
-                            configStore.update(who = pairingStore.myName(), by = pairingStore.by()) { c ->
-                                io.pickwick.app.data.ProfileLooks.mergeInto(c, json)
-                                    ?.also { adopted = true } ?: c
-                            }
-                            // The header avatar on this phone follows too.
-                            if (adopted) ConfigEvents.onConfigChanged?.invoke()
-                            adopted
+                            ConfigSync.adoptLooks(configStore, pairingStore, json)
                         },
                         exportVerdicts = {
                             io.pickwick.app.data.ScreeningStore(appContext)

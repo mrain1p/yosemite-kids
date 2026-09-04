@@ -209,6 +209,43 @@ foreach ($pg in $phonePages) {
 $todo = ([regex]::Matches($manifest, 'Where\.BOTH, false')).Count
 if ($todo -gt 0) { Write-Host "   settings groups still to reach the hub: $todo" }
 
+# 4. The reconcile stays runnable without a UI.
+#    It was lifted out of MainViewModel so a background worker could run it;
+#    reaching back into ViewModel state would quietly re-strand it there and
+#    nothing would fail until a TV stopped syncing while closed.
+$syncPath = "app/src/main/java/io/pickwick/app/data/ConfigSync.kt"
+$syncSrc = Get-Content $syncPath -Raw
+if ($syncSrc -match 'androidx\.lifecycle|viewModelScope|_state\.value') {
+    Fail-Guard "ConfigSync.kt reaches into the ViewModel. Take a callback instead (see onSweeping)."
+}
+
+# 5. One copy of what happens when a config arrives.
+#    Three paths land a config now — an inbound push, this device's own
+#    sweep, and the background worker. These bodies lived in MainActivity
+#    under a comment reading "one lambda, both callers, so they cannot
+#    drift"; a third caller is exactly when that stops being true.
+$arrivalFns = @(
+    @{ Name = "ProfileLooks(..).ack("; Pattern = 'ProfileLooks\([^)]*\)\.ack\(' },
+    @{ Name = "KidNotices.configChange("; Pattern = 'KidNotices\.configChange\(' },
+    @{ Name = "ProfileLooks.mergeInto("; Pattern = 'ProfileLooks\.mergeInto\(' }
+)
+foreach ($fn in $arrivalFns) {
+    $offenders = Get-ChildItem -Path "app/src/main/java" -Recurse -Filter *.kt |
+        Where-Object { $_.Name -ne "ConfigSync.kt" -and $_.Name -ne "ProfileLooks.kt" } |
+        Where-Object { (Get-Content $_.FullName -Raw) -match $fn.Pattern }
+    if ($offenders) {
+        $where = ($offenders | ForEach-Object { $_.Name }) -join ", "
+        Fail-Guard "$($fn.Name) is called outside ConfigSync.kt (in $where). Call ConfigSync.applyArrived/adoptLooks so the arrival paths cannot drift."
+    }
+}
+
+# 6. A worker that nothing schedules is dead code that reads as shipped.
+$mainActivity = Get-Content "app/src/main/java/io/pickwick/app/ui/MainActivity.kt" -Raw
+foreach ($w in @("IndexCrawlWorker", "ConfigSyncWorker")) {
+    if ($mainActivity -notmatch ([regex]::Escape("$w.schedule("))) {
+        Fail-Guard "$w is never scheduled from MainActivity, so it never runs."
+    }
+}
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |

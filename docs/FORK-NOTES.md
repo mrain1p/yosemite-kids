@@ -751,21 +751,45 @@ older backlog and stay in their original order.
    passive; the poll gives fresher numbers from a box that is always on.
    Decide that before writing either.
 
-2. **A TV only syncs while Pickwick is open on it.** The sweep lives in
-   `viewModelScope` behind `uiActive`, and the only background worker
-   (`IndexCrawlWorker`) makes no LAN calls and exits early on a non-master
-   device. So a hub-connected TV is current the moment a kid opens it, and
-   never while it is asleep or on another app. Closing that needs a real
-   background tick — a WorkManager job or a foreground-service beat — which
-   is the thing the hub was originally justified on.
+2. **The hub cannot tell anyone anything.** `HubTokens.Device` is
+   `(token, name, enrolledAt)` — no address, no port, no last-seen — and
+   `hub/src/main/kotlin` contains no HTTP client of any kind. So an edit made
+   in the hub's admin GUI is written to its file and nothing else happens;
+   it reaches a device only when that device next asks. A parent editing on
+   their phone gets a push in 1.5 s with two retries (`Settings.pushAll`);
+   the same edit made on the hub waits up to five minutes on an awake device
+   and until next launch on a sleeping one.
 
-3. **A TV that loses its hub sweeps the whole subnet every five minutes.**
-   When a peer is unreachable `LanClient.rediscover` walks 1..254 across
-   `PORT_RANGE` behind a 48-way semaphore, and `SWEEP_COOLDOWN_MS` equals the
-   poll interval, so it fires every tick. That was written for a phone that
-   sweeps while a parent watches; it now runs on TV hardware unattended.
-   Needs a backoff, and probably no rediscovery at all for a hub, whose
-   address a parent typed in and can retype.
+   That asymmetry became the important one when the hub grew all six
+   settings pages, and it gets worse with a PWA: an iPhone parent cannot
+   sideload the app, so the hub would be their **only** admin surface — and
+   it is the one surface that cannot deliver. (The GUI is already plain HTML
+   with no external assets, so an iPhone on the LAN can open it today; the
+   missing piece is not the UI.)
+
+   The receiving half already exists and is proven: devices accept
+   `POST /config` from a phone and merge it. So the hub needs only what it
+   lacks — somewhere to send. It can learn addresses passively from
+   `ex.remoteAddress` on every authenticated call; the listening port it
+   cannot infer (an inbound connection's source port is ephemeral), so the
+   device states it. Then the hub pushes on commit exactly as a phone does.
+
+3. **A device is not reachable while Pickwick is closed.** `LanServer` is
+   constructed in `MainActivity` and dies with the process, so a sleeping TV
+   answers nothing: a parent's phone shows it unreachable, "Play on TV"
+   cannot wake it, and the hub's push (item 2) will miss it. Closing this
+   needs a foreground service, which on Android 14 means a service type and
+   a persistent notification — defensible on a mains-powered TV, a real cost
+   on a phone, so it should be form-factor gated.
+
+   Both are what is left after this round, which built the floor underneath
+   them: the config reconcile now runs on a `ConfigSyncWorker` tick as well
+   as in the ViewModel, so a closed device *converges* within WorkManager's
+   15-minute floor even though it is not reachable. The sweep body moved to
+   `data/ConfigSync.kt` (with `kidHere`/`applyArrived`/`adoptLooks`, which
+   three arrival paths now share instead of two), and `LanClient.rediscover`
+   backs off per device — doubling to a six-hour cap, and never sweeping for
+   a hub at all, whose address a parent typed and can retype.
 
 4. **Two TVs and a hub introduce races the single-initiator design did not
    have.** Config still converges — the merge takes no clock and the hub holds

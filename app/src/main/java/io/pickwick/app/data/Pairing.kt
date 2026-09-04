@@ -928,6 +928,49 @@ class LanServer(
     }
 }
 
+/**
+ * How long to wait before sweeping the subnet for a device again.
+ *
+ * A flat five minutes was written for a phone sweeping while a parent watched
+ * a settings screen. The same code now runs from a periodic worker on a TV
+ * nobody is looking at, where a device that is simply switched off would cost
+ * a full /24 × port-range scan on every tick, for as long as it stays off —
+ * unattended, on living-room hardware, forever.
+ *
+ * Doubling per consecutive miss keeps the first few attempts prompt (a TV
+ * rebooting, a router restarting) and lets a genuine absence go quiet.
+ *
+ * Backing off is close to free, because the common recovery never needs a
+ * sweep at all: a device that comes back on the address it left answers
+ * `fullStatus` and is found without one. A sweep is only for a device that
+ * MOVED while it was away, which is the rare case.
+ *
+ * Kept pure, and out of [LanClient], so a JVM unit test can state the rule
+ * without a Context or a network.
+ */
+internal object SweepBackoff {
+    /** The first wait, and the one a device that was just found gets again. */
+    internal const val BASE_MS = 5 * 60_000L
+
+    /**
+     * Four sweeps a day for a device that has been off for a week. Long
+     * enough to be negligible, short enough that a TV moved to a new subnet
+     * and left off overnight is still found the next day without anyone
+     * opening settings.
+     */
+    internal const val MAX_MS = 6 * 60 * 60_000L
+
+    /** [BASE_MS] doubled once per consecutive miss, capped at [MAX_MS]. */
+    fun cooldownMs(misses: Int): Long {
+        if (misses <= 0) return BASE_MS
+        // Shift rather than pow, and clamp the shift itself: 1L shl 64 is a
+        // no-op in the JVM (the count is taken mod 64), so a device missed
+        // often enough would silently drop back to five minutes.
+        val doubled = BASE_MS shl misses.coerceAtMost(20)
+        return if (doubled <= 0L || doubled > MAX_MS) MAX_MS else doubled
+    }
+}
+
 /** Phone side: pushes to paired TVs. */
 object LanClient {
 
@@ -972,13 +1015,19 @@ object LanClient {
      * LAN every minute while a TV is legitimately powered down.
      */
     suspend fun rediscover(device: PairedDevice): PairedDevice? = withContext(Dispatchers.IO) {
+        // A hub is never swept for. Its address was typed in by a parent
+        // rather than discovered, it is normally a server with a DHCP
+        // reservation or a static lease, and scanning the subnet to guess at
+        // something a human can retype is not a trade worth making on TV
+        // hardware. If a hub really moved, it gets re-entered.
+        if (device.name == PairedDevice.HUB_NAME) return@withContext null
         val now = System.currentTimeMillis()
         // Per device, not global: one cooldown for the whole list meant a
         // powered-off TV's fruitless sweep locked the kid's tablet — sitting
         // right there at a new address — out of re-discovery for five minutes.
         val key = device.key
         val last = lastSweepAt[key] ?: 0L
-        if (now - last < SWEEP_COOLDOWN_MS) return@withContext null
+        if (now - last < SweepBackoff.cooldownMs(sweepMisses[key] ?: 0)) return@withContext null
         lastSweepAt[key] = now
         val prefixes = localV4Prefixes()
         if (prefixes.isEmpty()) return@withContext null
@@ -1004,12 +1053,17 @@ object LanClient {
             device.id != null -> candidates.firstOrNull { it.second == device.id }
             candidates.size == 1 -> candidates.single()
             else -> null
-        } ?: return@withContext null
+        } ?: run {
+            // Nothing here. Wait longer before the next scan — see SweepBackoff.
+            sweepMisses[key] = (sweepMisses[key] ?: 0) + 1
+            return@withContext null
+        }
 
         val (hostPort, identity) = match
         // Found: the next failure may sweep straight away — a TV that moves
         // twice in an evening (reboot, router restart) is not an attack.
         lastSweepAt.remove(key)
+        sweepMisses.remove(key)
         device.copy(host = hostPort.first, port = hostPort.second, id = identity ?: device.id)
     }
 
@@ -1077,7 +1131,8 @@ object LanClient {
         .build()
 
     private val lastSweepAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private const val SWEEP_COOLDOWN_MS = 5 * 60_000L
+    /** Consecutive fruitless sweeps per device; the backoff's only input. */
+    private val sweepMisses = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private const val CONNECT_PROBE_MS = 400
 
     /**

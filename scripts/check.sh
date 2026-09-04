@@ -12,6 +12,11 @@ cd "$(dirname "$0")/.."
 echo "== 0/5 source invariants"
 guard_fail() { echo "guard FAILED: $1" >&2; exit 1; }
 
+# A literal double quote, for the guards that have to look for one inside a
+# pattern. Written once here because escaping it inline in this file has been
+# got wrong more than once.
+q='"'
+
 # The merge must read no clock: that is what makes idempotence and
 # associativity structural rather than test artifacts.
 if grep -qE "currentTimeMillis|Instant\.now|System\.nanoTime" \
@@ -21,7 +26,7 @@ fi
 
 # Every config write goes through commit(), which stashes the API key and
 # strips it from the bytes. Two write paths means the next one added forgets.
-writers=$(grep -c "writeAtomically(" app/src/main/java/io/pickwick/app/data/ConfigStore.kt)
+writers=$(grep -c "writeAtomically(" app/src/main/java/io/pickwick/app/data/ConfigStore.kt || true)
 if [ "$writers" -gt 2 ]; then
   guard_fail "ConfigStore.kt calls writeAtomically outside commit(). Every write goes through commit."
 fi
@@ -69,13 +74,25 @@ if [ ! -f hub/src/test/kotlin/io/pickwick/hub/HubServerTest.kt ]; then
   guard_fail "HubServerTest.kt is missing — it pins the /status wire contract with :app."
 fi
 
+# This script must not stop early on its own success.
+#
+# `grep` exits 1 when it matches nothing, and under `set -euo pipefail` that
+# ends the script — inside a command substitution, silently, with the shell
+# reporting failure from a guard that actually PASSED. Every guard below the
+# offending line then never runs. That is not hypothetical: it happened here,
+# and the whole back half of this file was dead for as long as the tree was
+# clean. Neither CI nor check.ps1 runs this script, so nothing noticed.
+trap_lines=$(grep -nE "=\\\$\\(.*grep" "$0" | grep -v "|| true" | cut -d: -f1 | tr "\n" " " || true)
+if [ -n "$trap_lines" ]; then
+  guard_fail "check.sh line(s) $trap_lines capture grep without '|| true'. No match exits 1 and pipefail ends the gate on the clean case."
+fi
 # Shell scripts must reach a container with LF endings. A CRLF script has a
 # shebang ending in a carriage return, which the kernel cannot resolve, and
 # the error it produces is "not found" for a file that is plainly present.
 # That cost half an hour on gradlew during the hub's first container build.
 # git reports the working-tree ending directly, so this needs no escapes of
 # its own to look for.
-crlf=$(git ls-files --eol -- '*.sh' gradlew | grep -E 'w/(crlf|mixed)' | awk '{printf "%s ", $NF}')
+crlf=$(git ls-files --eol -- '*.sh' gradlew | grep -E 'w/(crlf|mixed)' | awk '{printf "%s ", $NF}' || true)
 if [ -n "$crlf" ]; then
   guard_fail "CRLF line endings in: $crlf — a container cannot run these. See .gitattributes."
 fi
@@ -133,7 +150,7 @@ fi
 
 # The hub's name is load-bearing twice over: the settings screen finds the
 # hub by it, and pre-flag entries are migrated by it. Two copies drift.
-hubname=$(grep -rc '"Pickwick hub"' app/src/main/java core/src/main/kotlin 2>/dev/null | grep -v ":0$" | wc -l)
+hubname=$(grep -rc '"Pickwick hub"' app/src/main/java core/src/main/kotlin 2>/dev/null | grep -v ":0$" | wc -l || true)
 if [ "$hubname" -ne 1 ]; then
   guard_fail "the literal \"Pickwick hub\" must appear only in PairedDevice.HUB_NAME (found in $hubname files)."
 fi
@@ -177,9 +194,38 @@ for upper in $(grep -oE "^    [A-Z]+[(]" "$manifest" | tr -d " ([" ); do
 done
 
 # Named, not counted: what is still missing should be readable.
-todo=$(grep -oE "Where[.]BOTH, false" "$manifest" | wc -l)
+todo=$(grep -oE "Where[.]BOTH, false" "$manifest" | wc -l || true)
 [ "$todo" -eq 0 ] || echo "   settings groups still to reach the hub: $todo"
 
+# 4. The reconcile stays runnable without a UI.
+#    It was lifted out of MainViewModel so a background worker could run it;
+#    reaching back into ViewModel state would quietly re-strand it there and
+#    nothing would fail until a TV stopped syncing while closed.
+sync=app/src/main/java/io/pickwick/app/data/ConfigSync.kt
+if grep -qE "androidx[.]lifecycle|viewModelScope|_state[.]value" "$sync"; then
+  guard_fail "ConfigSync.kt reaches into the ViewModel. Take a callback instead (see onSweeping)."
+fi
+
+# 5. One copy of what happens when a config arrives.
+#    Three paths land a config now — an inbound push, this device's own
+#    sweep, and the background worker. These bodies lived in MainActivity
+#    under a comment reading "one lambda, both callers, so they cannot
+#    drift"; a third caller is exactly when that stops being true.
+arrival_owner() {   # $1 = extended-regex, $2 = what to call instead
+  # One line on purpose: the lint at the top of this file reads a single
+  # line at a time, so an `|| true` wrapped onto the next one looks missing.
+  hits=$(grep -rlE "$1" app/src/main/java --include=*.kt | grep -vE "/(ConfigSync|ProfileLooks)[.]kt$" | tr "\n" " " || true)
+  [ -z "$hits" ] || guard_fail "$1 is called outside ConfigSync.kt (in $hits). Call $2 so the arrival paths cannot drift."
+}
+arrival_owner "ProfileLooks[(][^)]*[)][.]ack[(]" "ConfigSync.applyArrived"
+arrival_owner "KidNotices[.]configChange[(]" "ConfigSync.applyArrived"
+arrival_owner "ProfileLooks[.]mergeInto[(]" "ConfigSync.adoptLooks"
+
+# 6. A worker that nothing schedules is dead code that reads as shipped.
+for w in IndexCrawlWorker ConfigSyncWorker; do
+  grep -q "$w.schedule(" app/src/main/java/io/pickwick/app/ui/MainActivity.kt ||
+    guard_fail "$w is never scheduled from MainActivity, so it never runs."
+done
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
