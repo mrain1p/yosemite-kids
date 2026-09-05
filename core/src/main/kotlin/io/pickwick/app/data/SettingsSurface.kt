@@ -29,9 +29,10 @@ enum class Page(val title: String) {
     KIDS("Kids"),
     CHANNELS("Channels & playlists"),
     SCREENING("Content screening"),
-    DEVICES("Devices"),
     PLAYBACK("Playback"),
-    BACKUP("Backup & app")
+    LISTING("How videos are listed"),
+    DEVICES("Devices & sync"),
+    BACKUP("App, hub & backup")
 }
 
 enum class Where {
@@ -100,7 +101,7 @@ object SettingsSurface {
             listOf("sources"), Where.BOTH, true,
             "The curation itself. Includes each channel's time multiplier, its " +
                 "screening note, and which kids can see it."),
-        SettingsSection("kid-shelves", "Kid's shelves", Page.CHANNELS, "",
+        SettingsSection("kid-shelves", "How videos are listed", Page.LISTING, "",
             listOf("showVideoAge", "pageSize", "channelLayout", "channelOrder"),
             Where.BOTH, true,
             "How the kid's home is laid out. Inline on the phone with no " +

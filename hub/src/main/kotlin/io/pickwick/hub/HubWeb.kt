@@ -42,9 +42,10 @@ object HubWeb {
         HubPage("kids", "Kids"),
         HubPage("channels", "Channels & playlists"),
         HubPage("screening", "Content screening"),
-        HubPage("devices", "Devices"),
         HubPage("playback", "Playback"),
-        HubPage("backup", "Backup & app")
+        HubPage("listing", "How videos are listed"),
+        HubPage("devices", "Devices & sync"),
+        HubPage("backup", "App, hub & backup")
     )
 
     /**
@@ -267,8 +268,9 @@ object HubWeb {
         Page.KIDS -> "kids"
         Page.CHANNELS -> "channels"
         Page.SCREENING -> "screening"
-        Page.DEVICES -> "devices"
         Page.PLAYBACK -> "playback"
+        Page.LISTING -> "listing"
+        Page.DEVICES -> "devices"
         Page.BACKUP -> "backup"
     }
 }

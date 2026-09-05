@@ -350,6 +350,17 @@ $psNums = ((Get-Content "scripts/check.ps1" |
 if ($shNums -ne $psNums) {
     Fail-Guard "check.sh declares guards [$shNums] and check.ps1 declares [$psNums]. They are mirrors; add it to both."
 }
+# 11. Every page the hub serves must have something to render.
+#     index.html dispatches through a PAGES map and falls back to Kids for
+#     an unknown id, so a page added to HubWeb.pages without a renderer
+#     shows a tab with the WRONG PAGE UNDER IT rather than an error. Guard 3
+#     only proves the page exists on both sides; this proves it was built.
+$hubHtml = Get-Content "hub/src/main/resources/web/index.html" -Raw
+foreach ($id in $hubPages) {
+    if ($hubHtml -notmatch "(^|[ ,{])$id`: page") {
+        Fail-Guard "the hub serves a page called $id with no renderer in index.html PAGES - it would silently show the Kids page."
+    }
+}
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
 $misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |

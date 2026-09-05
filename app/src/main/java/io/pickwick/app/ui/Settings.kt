@@ -453,6 +453,7 @@ private fun PairStatus(step: PairStep, approved: Int) {
     )
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun AdminScreen(
     configStore: ConfigStore,
@@ -771,13 +772,15 @@ private fun AdminScreen(
         SubPage(title = p.title, onBack = { page = null }) {
             when (p) {
                 HubPage.Kids -> {
-                    SectionTitle("Kids")
+                    // The app bar already carries this page name.
+                    Spacer(Modifier.height(12.dp))
                     SettingsCard {
                         KidsSection(profiles, onOpen = { kid, isNew -> openKid = kid to isNew })
                     }
                 }
                 HubPage.Channels -> {
-                    SectionTitle("Channels & playlists")
+                    // The app bar already carries this page name.
+                    Spacer(Modifier.height(12.dp))
                     SettingsCard {
                         ChannelsSection(entries, newIds, yt, resolvedNames, profiles, onChanged = { entries = it })
                     }
@@ -788,7 +791,11 @@ private fun AdminScreen(
                             newIds = newIds + e.id
                         }
                     }
-                    SectionTitle("Kid's shelves")
+                }
+                HubPage.Listing -> {
+                    // No SectionTitle: the app bar already carries this page name,
+                    // and repeating it verbatim two lines down reads as a bug.
+                    Spacer(Modifier.height(12.dp))
                     SettingsCard {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Show when a video came out", modifier = Modifier.weight(1f))
@@ -850,7 +857,9 @@ private fun AdminScreen(
                         )
                         SettingsDivider()
                         Text("Channel row order", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Flow, not Row: four chips overflow a phone width and the
+                        // last one collapsed to a column of single letters.
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(
                                 CHANNEL_ORDER_WATCHED to "Most watched",
                                 CHANNEL_ORDER_ALPHA to "A to Z",
@@ -999,7 +1008,8 @@ private fun AdminScreen(
                     SettingsCard { LocalVideosSection(profiles) }
                 }
                 HubPage.Playback -> {
-                    SectionTitle("Playback")
+                    // The app bar already carries this page name.
+                    Spacer(Modifier.height(12.dp))
                     SettingsCard {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Skip sponsors & intros", modifier = Modifier.weight(1f))
@@ -1200,31 +1210,53 @@ private fun AdminScreen(
                 }
             }
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
+
+        // The daily errand, at the root.
+        //
+        // Granting ten minutes or pausing a kid meant opening their page and
+        // finding two controls among sixteen — every day, for the two things a
+        // parent does most. The card carries the same state the kid's page
+        // shows and the same two actions, so the detail page is for the rules
+        // rather than for the routine.
+        profiles.forEach { kid ->
+            KidErrandCard(
+                kid = kid,
+                // The family pause counts too: a kid shown as watching while
+                // "pause everyone" is on would be a lie, and the card's whole
+                // job is being the honest at-a-glance state.
+                familyPausedUntil = limits.pausedUntilMillis,
+                onOpen = { page = HubPage.Kids },
+                onPauseChanged = { until ->
+                    profiles = profiles.map {
+                        if (it.id == kid.id) {
+                            it.copy(limits = it.limits.copy(pausedUntilMillis = until))
+                        } else it
+                    }
+                }
+            )
+            Spacer(Modifier.height(10.dp))
+        }
+
+        Spacer(Modifier.height(6.dp))
+        SectionTitle("Kids & content")
         SettingsCard(padded = false) {
             val kidsLine = profiles.joinToString(", ") { it.name }.ifEmpty { "No kids yet" }
             HubRow(PickwickIcons.People, "Kids", kidsLine) { page = HubPage.Kids }
             SettingsDivider()
             HubRow(
                 PickwickIcons.Channels, "Channels & playlists",
-                // Names the shelf settings, because a parent looking for "show
-                // release dates" or "how many videos per page" goes here first
-                // and used to find neither — they were filed under Playback.
-                "${entries.size} source${if (entries.size == 1) "" else "s"} · how videos are listed"
+                "${entries.size} source${if (entries.size == 1) "" else "s"}"
             ) { page = HubPage.Channels }
             SettingsDivider()
             HubRow(
                 PickwickIcons.Shield, "Content screening",
                 if (ai.enabled) "AI screening on · review queue, discover" else "AI screening off"
             ) { page = HubPage.Screening }
-            SettingsDivider()
-            HubRow(
-                // "Pairing" first, because that is what a parent setting up
-                // for the first time is hunting for, and nothing else on this
-                // screen hints at where it lives.
-                PickwickIcons.Devices, "Devices", "Pairing, downloads, search index"
-            ) { page = HubPage.Devices }
-            SettingsDivider()
+        }
+
+        SectionTitle("App & devices")
+        SettingsCard(padded = false) {
             HubRow(
                 // Kept short enough to fit: the row is one line with an
                 // ellipsis, so a longer list reads as a truncated sentence and
@@ -1233,7 +1265,23 @@ private fun AdminScreen(
             ) { page = HubPage.Playback }
             SettingsDivider()
             HubRow(
-                PickwickIcons.Save, "Backup & app", "Import, export, updates"
+                // Its own row rather than a clause on Channels. These four are
+                // about how videos are shown, not which sources are allowed,
+                // and a parent hunting "show release dates" was reading a
+                // subtitle rather than seeing a destination.
+                PickwickIcons.Playlist, "How videos are listed",
+                "Order, layout, video age, page size"
+            ) { page = HubPage.Listing }
+            SettingsDivider()
+            HubRow(
+                // "Pairing" first, because that is what a parent setting up
+                // for the first time is hunting for, and nothing else on this
+                // screen hints at where it lives.
+                PickwickIcons.Devices, "Devices & sync", "Pairing, downloads, search index"
+            ) { page = HubPage.Devices }
+            SettingsDivider()
+            HubRow(
+                PickwickIcons.Save, "App, hub & backup", "Import, export, updates"
             ) { page = HubPage.Backup }
         }
 
@@ -1259,9 +1307,10 @@ private enum class HubPage(val title: String) {
     Kids("Kids"),
     Channels("Channels & playlists"),
     Screening("Content screening"),
-    Devices("Devices"),
     Playback("Playback"),
-    Backup("Backup & app")
+    Listing("How videos are listed"),
+    Devices("Devices & sync"),
+    Backup("App, hub & backup")
 }
 
 /** One page of the hub: back + title, then the content in a scroll. */
@@ -1418,6 +1467,132 @@ private fun SuggestionExplainer() {
 @Composable
 internal fun SettingsDivider() {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+/**
+ * One kid, at the top of settings: who they are, how long they have left, and
+ * the two buttons a parent actually presses.
+ *
+ * Granting minutes and pausing were on the kid's detail page, among sixteen
+ * other controls — the two most frequent actions in the app, filed with the
+ * rules that are set once a year. This is [SettingsSurface]'s `grant-time` and
+ * the per-kid pause, lifted to where the errand happens.
+ *
+ * Reads through [Whitelist.limitsFor] semantics rather than the kid's own
+ * limits: "pause everyone" and this kid's own pause both apply, and whichever
+ * runs later wins. A card that showed "watching" during a family pause would
+ * be worse than no card.
+ */
+@Composable
+private fun KidErrandCard(
+    kid: io.pickwick.app.data.Profile,
+    familyPausedUntil: Long?,
+    onOpen: () -> Unit,
+    onPauseChanged: (Long?) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val now = System.currentTimeMillis()
+    val pausedUntil = maxOf(kid.limits.pausedUntilMillis ?: 0L, familyPausedUntil ?: 0L)
+    val paused = pausedUntil > now
+    // Only this kid's own pause is the card's to lift. A family pause is
+    // released on the root's own switch, so the button says so rather than
+    // silently doing half of what it appears to.
+    val ownPauseOnly = (familyPausedUntil ?: 0L) <= now
+
+    val remaining = remember(kid.id, kid.limits, familyPausedUntil) {
+        runCatching {
+            io.pickwick.app.data.SessionGuard(
+                context.applicationContext,
+                io.pickwick.app.data.ProfileNamespace(context).suffixFor(kid.id)
+            )
+                .remainingTodayMin(kid.limits)
+        }.getOrNull()
+    }
+
+    SettingsCard {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
+        ) {
+            ProfileAvatar(kid, size = 40)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(kid.name, fontWeight = FontWeight.SemiBold)
+                Text(
+                    when {
+                        paused -> "Paused"
+                        remaining == null -> "No time limit"
+                        remaining <= 0 -> "Out of time today"
+                        else -> "$remaining min left today"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (paused || (remaining != null && remaining <= 0)) {
+                        MaterialTheme.colorScheme.error
+                    } else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                PickwickIcons.ChevronRight, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        // How much of today is left, as a bar. The same arithmetic
+        // remainingTodayMin does, so the bar and the label can never disagree —
+        // recomputing "used" independently is how they drift.
+        val dailyTotal = kid.limits.sessionMinutes?.let { per ->
+            val sessions = maxOf(
+                kid.limits.weekdaySessions ?: 0, kid.limits.weekendSessions ?: 0
+            )
+            if (sessions > 0) per * sessions else null
+        }
+        if (dailyTotal != null && remaining != null && !paused) {
+            Spacer(Modifier.height(10.dp))
+            LinearProgressIndicator(
+                progress = { (remaining.toFloat() / dailyTotal).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(5.dp),
+                color = if (remaining <= 5) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                drawStopIndicator = {}
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${(dailyTotal - remaining).coerceAtLeast(0)} of $dailyTotal min used today",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Filled for the one a parent came to press, outlined for the other:
+            // two identical text links made the common action hunt for itself.
+            Button(
+                onClick = onOpen,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.height(36.dp).tvFocusHighlight()
+            ) { Text("Add time") }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = {
+                    // Midnight tonight, matching the rest of the app's pauses:
+                    // an unbounded pause is one a parent forgets they set.
+                    onPauseChanged(if (paused) null else endOfToday())
+                },
+                enabled = !paused || ownPauseOnly,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.height(36.dp).tvFocusHighlight()
+            ) { Text(if (paused) "Resume" else "Pause") }
+            if (paused && !ownPauseOnly) {
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Everyone is paused",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
 }
 
 @Composable

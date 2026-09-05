@@ -313,6 +313,16 @@ ps_guards=$(grep -oE "^# [0-9]+[.]" scripts/check.ps1 | tr -d " #." | sort -n | 
 if [ "$sh_guards" != "$ps_guards" ]; then
   guard_fail "check.sh declares guards [$sh_guards] and check.ps1 declares [$ps_guards]. They are mirrors; add it to both."
 fi
+# 11. Every page the hub serves must have something to render.
+#     index.html dispatches through a PAGES map and falls back to Kids for
+#     an unknown id, so a page added to HubWeb.pages without a renderer
+#     shows a tab with the WRONG PAGE UNDER IT rather than an error. Guard 3
+#     only proves the page exists on both sides; this proves it was built.
+hubhtml=hub/src/main/resources/web/index.html
+for id in $(grep -hoE "HubPage[(]$q[^$q]+$q" "$hubweb" | sed -E "s/HubPage[(]$q//; s/$q//" | sort -u); do
+  grep -qE "(^|[ ,{])$id: page" "$hubhtml" ||
+    guard_fail "the hub serves a page called $id with no renderer in index.html PAGES — it would silently show the Kids page."
+done
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
 misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')

@@ -462,7 +462,12 @@
     b.appendChild(bul);
     out.appendChild(b);
 
-    var shelf = card("Kid's shelves", "How the kid's home screen is laid out.");
+    return out;
+  }
+
+  function pageListing() {
+    var out = document.createDocumentFragment();
+    var shelf = card("How videos are listed", "How the kid's home screen is laid out.");
     shelf.appendChild(toggleRow("Show when a video came out", null, cfg().showVideoAge, function (v) {
       return patch({ showVideoAge: v });
     }));
@@ -707,7 +712,8 @@
 
   var PAGES = {
     kids: pageKids, channels: pageChannels, screening: pageScreening,
-    devices: pageDevices, playback: pagePlayback, backup: pageBackup
+    playback: pagePlayback, listing: pageListing,
+    devices: pageDevices, backup: pageBackup
   };
 
   function renderTabs() {

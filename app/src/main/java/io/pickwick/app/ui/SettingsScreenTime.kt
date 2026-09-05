@@ -819,7 +819,9 @@ internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChange
     }
 }
 
-private fun endOfToday(): Long = java.util.Calendar.getInstance().apply {
+/** Midnight tonight. Internal so the root card and this page cannot drift
+ *  about what "pause" means — an unbounded pause is one a parent forgets. */
+internal fun endOfToday(): Long = java.util.Calendar.getInstance().apply {
     add(java.util.Calendar.DAY_OF_YEAR, 1)
     set(java.util.Calendar.HOUR_OF_DAY, 0)
     set(java.util.Calendar.MINUTE, 0)
