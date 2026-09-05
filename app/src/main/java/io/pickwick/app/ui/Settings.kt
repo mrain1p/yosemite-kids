@@ -766,19 +766,19 @@ private fun AdminScreen(
     // The root is a short list; each row opens its own page (stock Android
     // settings shape). Everything below the header used to be one scroll of
     // eighteen sections, and "where is X" was the first support question.
-    var page by remember { mutableStateOf<HubPage?>(null) }
+    var page by remember { mutableStateOf<SettingsPage?>(null) }
     page?.let { p ->
         BackHandler { page = null }
         SubPage(title = p.title, onBack = { page = null }) {
             when (p) {
-                HubPage.Kids -> {
+                SettingsPage.Kids -> {
                     // The app bar already carries this page name.
                     Spacer(Modifier.height(12.dp))
                     SettingsCard {
                         KidsSection(profiles, onOpen = { kid, isNew -> openKid = kid to isNew })
                     }
                 }
-                HubPage.Channels -> {
+                SettingsPage.Channels -> {
                     // The app bar already carries this page name.
                     Spacer(Modifier.height(12.dp))
                     SettingsCard {
@@ -792,7 +792,7 @@ private fun AdminScreen(
                         }
                     }
                 }
-                HubPage.Listing -> {
+                SettingsPage.Listing -> {
                     // No SectionTitle: the app bar already carries this page name,
                     // and repeating it verbatim two lines down reads as a bug.
                     Spacer(Modifier.height(12.dp))
@@ -883,7 +883,7 @@ private fun AdminScreen(
                         )
                     }
                 }
-                HubPage.Screening -> {
+                SettingsPage.Screening -> {
                     // The connection is its own section, above both features
                     // that use it. It used to live inside the screening switch,
                     // so a parent who only wanted AI channel discovery had to
@@ -919,7 +919,7 @@ private fun AdminScreen(
                         }
                     }
                 }
-                HubPage.Devices -> {
+                SettingsPage.Devices -> {
                     SectionTitle("Hub (optional)")
                     SettingsCard { HubSection(pairingStore) { configEpoch++ } }
                     SectionTitle("Kid devices")
@@ -1007,7 +1007,7 @@ private fun AdminScreen(
                     SectionTitle("Videos from this phone")
                     SettingsCard { LocalVideosSection(profiles) }
                 }
-                HubPage.Playback -> {
+                SettingsPage.Playback -> {
                     // The app bar already carries this page name.
                     Spacer(Modifier.height(12.dp))
                     SettingsCard {
@@ -1106,7 +1106,7 @@ private fun AdminScreen(
                         }
                     }
                 }
-                HubPage.Backup -> {
+                SettingsPage.Backup -> {
                     SectionTitle("App")
                     SettingsCard { UpdateSection(onUpdateFound = {}) }
                     SectionTitle("Import, export & backup")
@@ -1150,22 +1150,9 @@ private fun AdminScreen(
                     "Parent settings",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
                 )
-                // The build, where a parent looks first: sideloaded TVs and
-                // phones drift apart, and "which one is this?" needs no adb.
-                Text(
-                    "Pickwick ${io.pickwick.app.BuildConfig.VERSION_NAME} " +
-                        "(${io.pickwick.app.BuildConfig.VERSION_CODE})",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
             TextButton(modifier = Modifier.tvFocusHighlight(), onClick = ::close) { Text("Done") }
         }
-        Text(
-            "Changes apply as you make them and reach the kids' devices on their own.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
         // "Your change lost." Found here rather than raised: a background
         // sweep does not get to interrupt a parent, and this is the first
         // place they look after one. One banner per unit, dismissible, and
@@ -1226,7 +1213,7 @@ private fun AdminScreen(
                 // "pause everyone" is on would be a lie, and the card's whole
                 // job is being the honest at-a-glance state.
                 familyPausedUntil = limits.pausedUntilMillis,
-                onOpen = { page = HubPage.Kids },
+                onOpen = { page = SettingsPage.Kids },
                 onPauseChanged = { until ->
                     profiles = profiles.map {
                         if (it.id == kid.id) {
@@ -1239,30 +1226,43 @@ private fun AdminScreen(
         }
 
         Spacer(Modifier.height(6.dp))
+        // Every row's second line is live state, not a list of what is inside.
+        // "Autoplay, quality, listening" told a parent what the page contains;
+        // "Autoplay on · up to 1080p" tells them what it currently says, which
+        // is the question they opened settings to answer.
+        val pairedCount = remember(configEpoch) { pairingStore.paired().size }
         SectionTitle("Kids & content")
         SettingsCard(padded = false) {
-            val kidsLine = profiles.joinToString(", ") { it.name }.ifEmpty { "No kids yet" }
-            HubRow(PickwickIcons.People, "Kids", kidsLine) { page = HubPage.Kids }
+            val kidsLine = profiles.joinToString(", ") { it.name }
+                .ifEmpty { "No kids yet" }
+                .let { if (profiles.isEmpty()) it else "$it · profiles, rules, bonus time" }
+            HubRow(PickwickIcons.People, "Kids", kidsLine) { page = SettingsPage.Kids }
             SettingsDivider()
             HubRow(
                 PickwickIcons.Channels, "Channels & playlists",
-                "${entries.size} source${if (entries.size == 1) "" else "s"}"
-            ) { page = HubPage.Channels }
+                buildString {
+                    append("${entries.size} source${if (entries.size == 1) "" else "s"}")
+                    // Only when there is something new — a "0 with new videos"
+                    // is noise on every visit for the sake of the rare visit.
+                    if (newIds.isNotEmpty()) append(" · ${newIds.size} with new videos")
+                }
+            ) { page = SettingsPage.Channels }
             SettingsDivider()
             HubRow(
                 PickwickIcons.Shield, "Content screening",
-                if (ai.enabled) "AI screening on · review queue, discover" else "AI screening off"
-            ) { page = HubPage.Screening }
+                if (ai.enabled) "On · review queue, discover" else "Off"
+            ) { page = SettingsPage.Screening }
         }
 
         SectionTitle("App & devices")
         SettingsCard(padded = false) {
             HubRow(
-                // Kept short enough to fit: the row is one line with an
-                // ellipsis, so a longer list reads as a truncated sentence and
-                // names fewer things than a shorter one does.
-                PickwickIcons.PlayArrow, "Playback", "Autoplay, quality, listening"
-            ) { page = HubPage.Playback }
+                PickwickIcons.PlayArrow, "Playback",
+                listOfNotNull(
+                    if (autoplayNext) "Autoplay on" else "Autoplay off",
+                    qualityPhone?.takeIf { it > 0 }?.let { "up to ${it}p" }
+                ).joinToString(" · ")
+            ) { page = SettingsPage.Playback }
             SettingsDivider()
             HubRow(
                 // Its own row rather than a clause on Channels. These four are
@@ -1270,22 +1270,42 @@ private fun AdminScreen(
                 // and a parent hunting "show release dates" was reading a
                 // subtitle rather than seeing a destination.
                 PickwickIcons.Playlist, "How videos are listed",
-                "Order, layout, video age, page size"
-            ) { page = HubPage.Listing }
+                listOfNotNull(
+                    if (showVideoAge) "Dates on" else null,
+                    when (channelLayout) {
+                        CHANNEL_LAYOUT_POPULAR -> "popular first"
+                        else -> "newest first"
+                    },
+                    when (channelOrder) {
+                        CHANNEL_ORDER_ALPHA -> "A to Z"
+                        CHANNEL_ORDER_RANDOM -> "random"
+                        CHANNEL_ORDER_LATEST -> "latest video"
+                        else -> "most watched"
+                    }
+                ).joinToString(" · ")
+            ) { page = SettingsPage.Listing }
             SettingsDivider()
             HubRow(
                 // "Pairing" first, because that is what a parent setting up
                 // for the first time is hunting for, and nothing else on this
                 // screen hints at where it lives.
-                PickwickIcons.Devices, "Devices & sync", "Pairing, downloads, search index"
-            ) { page = HubPage.Devices }
+                PickwickIcons.Devices, "Devices & sync",
+                // Count only. Whether any of them is REACHABLE needs a LAN
+                // sweep, and the settings screen must not block on the network
+                // to open — "1 offline" waits until something already knows.
+                pairedCount.let {
+                    if (it == 0) "Nothing paired yet"
+                    else "$it paired · downloads, search index"
+                }
+            ) { page = SettingsPage.Devices }
             SettingsDivider()
             HubRow(
-                PickwickIcons.Save, "App, hub & backup", "Import, export, updates"
-            ) { page = HubPage.Backup }
+                PickwickIcons.Save, "App, hub & backup",
+                "${io.pickwick.app.BuildConfig.VERSION_NAME} · import, export"
+            ) { page = SettingsPage.Backup }
         }
 
-        SectionTitle("Pause everyone")
+        SectionTitle("Everyone at once")
         SettingsCard {
             Text(
                 "Bonus minutes and a single kid's pause are on that kid's page. This " +
@@ -1298,12 +1318,33 @@ private fun AdminScreen(
                 onChanged = { until -> limits = limits.copy(pausedUntilMillis = until) }
             )
         }
+
+        // The build and the "changes apply as you make them" line, as a footer.
+        // Both were the second and third things on the screen, above the kid a
+        // parent came to act on — diagnostics and reassurance, in the slot the
+        // errand should have had.
+        Spacer(Modifier.height(20.dp))
+        Text(
+            "Pickwick ${io.pickwick.app.BuildConfig.VERSION_NAME} " +
+                "(${io.pickwick.app.BuildConfig.VERSION_CODE})  ·  changes apply as you " +
+                "make them and reach the kids' devices on their own.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
         Spacer(Modifier.height(24.dp))
     }
 }
 
-/** The six pages behind the settings root. */
-private enum class HubPage(val title: String) {
+/**
+ * The pages behind the settings root.
+ *
+ * Not "HubPage": three unrelated things in this repo were called hub — the
+ * Docker service, its web GUI's own HubPage, and this. Naming the settings
+ * nav after the settings screen removes the collision that made "the hub page"
+ * ambiguous in every conversation about it.
+ */
+private enum class SettingsPage(val title: String) {
     Kids("Kids"),
     Channels("Channels & playlists"),
     Screening("Content screening"),
@@ -1600,8 +1641,8 @@ internal fun SectionTitle(text: String) {
     Spacer(Modifier.height(20.dp))
     Text(
         text,
-        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 4.dp)
     )
     Spacer(Modifier.height(8.dp))
