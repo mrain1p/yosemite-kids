@@ -904,7 +904,14 @@ private fun AdminScreen(
             yt = yt,
             profiles = profiles,
             onBack = { openAddFromYouTube = false },
-            onChanged = { entries = it }
+            onChanged = { updated ->
+                // What the search added is "New" on the channel list, the
+                // same as a directory add — the tag is the session's, not
+                // the config's, so it is marked here.
+                val before = entries.mapTo(mutableSetOf()) { it.id }
+                newIds = newIds + updated.map { it.id }.filter { it !in before }
+                entries = updated
+            }
         )
         return
     }

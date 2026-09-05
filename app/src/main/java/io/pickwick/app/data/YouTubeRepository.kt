@@ -306,7 +306,9 @@ class YouTubeRepository {
         val name: String,
         val url: String,
         val avatarUrl: String?,
-        val subscriberCount: Long
+        val subscriberCount: Long,
+        /** The listing's one-line blurb ("science for kids"); null when YouTube shows none. */
+        val description: String?
     )
 
     /** Parent-facing channel search for the admin UI (no IDs, no URLs to paste). */
@@ -323,7 +325,8 @@ class YouTubeRepository {
                         name = it.name,
                         url = it.url,
                         avatarUrl = it.thumbnails.pick(160),
-                        subscriberCount = it.subscriberCount
+                        subscriberCount = it.subscriberCount,
+                        description = it.description?.trim()?.takeIf { d -> d.isNotEmpty() }
                     )
                 }
         }

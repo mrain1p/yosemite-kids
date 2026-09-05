@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,15 +20,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import io.pickwick.app.data.Profile
 import io.pickwick.app.data.SourceKind
 import io.pickwick.app.data.TIME_MULTIPLIERS
 import io.pickwick.app.data.WhitelistEntry
 import io.pickwick.app.data.WhitelistParser
 import io.pickwick.app.data.YouTubeRepository
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /*
@@ -727,7 +732,7 @@ internal fun AddSourceSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
-            SheetRow(Icons.Filled.Search, "Search YouTube", "Find a channel by name", onSearch)
+            SheetRow(Icons.Filled.Search, "Search YouTube", "Find a channel or playlist by name", onSearch)
             SheetRow(
                 Icons.Filled.Edit, "Paste a channel or playlist link",
                 "Any YouTube link, playlists included", onPaste
@@ -812,9 +817,58 @@ internal fun PasteLinkDialog(onDismiss: () -> Unit, onAdd: (WhitelistEntry) -> U
 }
 
 /**
- * Search YouTube by name (raw-ytsearch.png). Channels only: the extractor's
- * channel search is the one search the parent UI has, so a playlist still
- * comes in by link.
+ * One hit from a YouTube search, either kind, in the shape the row needs.
+ *
+ * [entry] comes from [WhitelistParser] on the result's URL — the same parse a
+ * pasted link goes through — so an add from here is byte-identical to a paste
+ * and the "already added" check compares like with like.
+ */
+internal data class YouTubeHit(
+    val entry: WhitelistEntry,
+    val name: String,
+    val url: String,
+    /** "Channel · 1.2M subscribers · science for kids" / "Playlist · 84 videos · by …". */
+    val meta: String
+)
+
+/**
+ * What the meta line says for one hit. The extractor gives a subscriber count
+ * of 0 (or -1) when YouTube hides it, and a blank description when there is
+ * none; each piece appears only when it is real.
+ */
+internal fun channelHitMeta(subscribers: Long, description: String?): String =
+    listOfNotNull(
+        "Channel",
+        subscribers.takeIf { it > 0 }?.let { "${formatCount(it)} subscribers" },
+        description?.trim()?.takeIf { it.isNotEmpty() }
+    ).joinToString(" · ")
+
+internal fun playlistHitMeta(videoCount: Long, uploaderName: String?): String =
+    listOfNotNull(
+        "Playlist",
+        videoCount.takeIf { it > 0 }?.let { "$it video${if (it == 1L) "" else "s"}" },
+        uploaderName?.trim()?.takeIf { it.isNotEmpty() }?.let { "by $it" }
+    ).joinToString(" · ")
+
+/** The count line: "8 results · 2 already added". */
+internal fun hitCountLine(shown: Int, alreadyAdded: Int): String = buildString {
+    append("$shown result${if (shown == 1) "" else "s"}")
+    if (alreadyAdded > 0) append(" · $alreadyAdded already added")
+}
+
+internal fun isAdded(hit: YouTubeHit, entries: List<WhitelistEntry>): Boolean =
+    entries.any { it.id == hit.entry.id || it.url == hit.entry.url }
+
+/**
+ * Search YouTube by name (raw-ytsearch.png): a field, All / Channels /
+ * Playlists, the count line, then one card per hit with its two actions —
+ * inspect it in the YouTube app, or add it.
+ *
+ * One query runs both of the extractor's searches at once, so a parent who
+ * types "Operation Ouch" sees the channel and its full-episode playlist in
+ * the same list; the tabs narrow what is shown without searching again.
+ * The search fires on its own once typing pauses, and on the keyboard's
+ * Search key — there is no button in the design.
  */
 @Composable
 internal fun AddFromYouTubePage(
@@ -827,116 +881,194 @@ internal fun AddFromYouTubePage(
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
+    var filter by remember { mutableStateOf<SourceFilter>(SourceFilter.All) }
     var searching by remember { mutableStateOf(false) }
-    var results by remember { mutableStateOf<List<YouTubeRepository.ChannelResult>?>(null) }
+    // null until the first search returns; the query it answered, so a
+    // stale list is never shown under a newer query.
+    var hits by remember { mutableStateOf<List<YouTubeHit>?>(null) }
+    var searchedFor by remember { mutableStateOf("") }
+    var failed by remember { mutableStateOf(false) }
     val add = rememberSourceAdder(entries, profiles, onChanged)
     BackHandler(onBack = onBack)
 
-    fun search() {
-        if (query.isBlank() || searching) return
+    fun search(text: String) {
+        val q = text.trim()
+        if (q.isEmpty() || q == searchedFor && !failed) return
         scope.launch {
             searching = true
-            results = runCatching { yt.searchChannels(query.trim()) }.getOrDefault(emptyList())
-            searching = false
+            failed = false
+            searchedFor = q
+            // Each search is a network round trip through the extractor; run
+            // them together so the page answers in the time of one.
+            val found = runCatching {
+                coroutineScope {
+                    val channels = async { yt.searchChannels(q) }
+                    val playlists = async { yt.searchPlaylists(q) }
+                    channels.await().mapNotNull { r ->
+                        WhitelistParser.parse(r.url).sources.firstOrNull()?.let { e ->
+                            YouTubeHit(
+                                entry = e.copy(label = r.name),
+                                name = r.name, url = r.url,
+                                meta = channelHitMeta(r.subscriberCount, r.description)
+                            )
+                        }
+                    } + playlists.await().mapNotNull { r ->
+                        WhitelistParser.parse(r.url).sources.firstOrNull()?.let { e ->
+                            YouTubeHit(
+                                entry = e.copy(label = r.name),
+                                name = r.name, url = r.url,
+                                meta = playlistHitMeta(r.videoCount, r.uploaderName)
+                            )
+                        }
+                    }
+                }
+            }
+            // Only the newest query's answer lands: a slow first search must
+            // not overwrite the results of the one typed after it.
+            if (searchedFor == q) {
+                found.onSuccess { hits = it.distinctBy { h -> h.entry.id } }
+                    .onFailure { failed = true }
+                searching = false
+            }
         }
+    }
+
+    // Type-ahead: a pause after the last keystroke runs the search.
+    LaunchedEffect(query) {
+        if (query.trim().isEmpty()) { hits = null; searchedFor = ""; failed = false; return@LaunchedEffect }
+        delay(600)
+        search(query)
     }
 
     SubPage(title = "Add from YouTube", onBack = onBack) {
         Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("Channel name") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                singleLine = true,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            Button(
-                modifier = Modifier.tvFocusHighlight(),
-                enabled = !searching && query.isNotBlank(),
-                onClick = { search() }
-            ) { Text(if (searching) "…" else "Search") }
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text("Channel or playlist name") },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            trailingIcon = if (searching) ({
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(18.dp)
+                )
+            }) else null,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { search(query) }),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(4.dp))
+
+        // The same quiet row of words as the channel list's tabs.
+        val tabs = listOf(
+            SourceFilter.All to "All",
+            SourceFilter.Channels to "Channels",
+            SourceFilter.Playlists to "Playlists"
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            tabs.forEach { (f, label) ->
+                val on = filter == f
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (on) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .tvFocusHighlight()
+                        .clickable { filter = f }
+                        .padding(horizontal = 6.dp, vertical = 8.dp)
+                )
+            }
         }
-        Spacer(Modifier.height(8.dp))
-        val found = results
-        if (found != null) {
-            val already = found.count { r -> entries.any { it.url == r.url || r.url.endsWith(it.id) } }
-            Text(
-                buildString {
-                    append("${found.size} result${if (found.size == 1) "" else "s"}")
-                    if (already > 0) append(" · $already already added")
-                },
+        SettingsDivider()
+
+        val all = hits
+        val visible = all?.filter { h ->
+            when (filter) {
+                SourceFilter.Channels -> h.entry.kind == SourceKind.CHANNEL
+                SourceFilter.Playlists -> h.entry.kind == SourceKind.PLAYLIST
+                else -> true
+            }
+        }
+        when {
+            failed -> Text(
+                "Couldn't reach YouTube. Check the connection and try again.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 12.dp)
+            )
+            visible == null -> Text(
+                "Type a name to search YouTube. Anything you add lands tagged NEW, " +
+                    "with your per-kid switches and screening applying as usual.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 12.dp)
             )
-            Spacer(Modifier.height(8.dp))
-        }
-        found?.forEach { r ->
-            val alreadyAdded = entries.any { it.url == r.url || r.url.endsWith(it.id) }
-            SettingsCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(
-                        model = r.avatarUrl,
-                        contentDescription = null,
-                        modifier = Modifier.size(40.dp).clip(CircleShape)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            r.name, fontWeight = FontWeight.SemiBold,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            buildString {
-                                append("Channel")
-                                if (r.subscriberCount > 0)
-                                    append(" · ${formatCount(r.subscriberCount)} subscribers")
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        modifier = Modifier.tvFocusHighlight(),
-                        onClick = {
-                            runCatching {
-                                context.startActivity(
-                                    android.content.Intent(
-                                        android.content.Intent.ACTION_VIEW,
-                                        android.net.Uri.parse(r.url)
-                                    )
+            visible.isEmpty() -> Text(
+                if (all.isEmpty()) "Nothing found. Try the exact name, or paste a link from the + menu."
+                else "No ${if (filter == SourceFilter.Channels) "channels" else "playlists"} in these results.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 12.dp)
+            )
+            else -> {
+                Text(
+                    hitCountLine(visible.size, visible.count { isAdded(it, entries) }),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).wrapContentHeight()
+                )
+                visible.forEach { hit ->
+                    val alreadyAdded = isAdded(hit, entries)
+                    SettingsCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SourceAvatar(hit.name, size = 40)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    hit.name, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    hit.meta,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
-                    ) { Text("Open in YouTube") }
-                    Button(
-                        modifier = Modifier.tvFocusHighlight(),
-                        enabled = !alreadyAdded,
-                        onClick = {
-                            val id = r.url.substringAfterLast('/')
-                            add(WhitelistEntry(id, r.url, r.name, SourceKind.CHANNEL))
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                modifier = Modifier.tvFocusHighlight(),
+                                onClick = {
+                                    runCatching {
+                                        context.startActivity(
+                                            android.content.Intent(
+                                                android.content.Intent.ACTION_VIEW,
+                                                android.net.Uri.parse(hit.url)
+                                            )
+                                        )
+                                    }
+                                }
+                            ) { Text("Open in YouTube") }
+                            Button(
+                                modifier = Modifier.tvFocusHighlight(),
+                                enabled = !alreadyAdded,
+                                onClick = { add(hit.entry) }
+                            ) { Text(if (alreadyAdded) "Added ✓" else "Add to Pickwick") }
                         }
-                    ) { Text(if (alreadyAdded) "Added ✓" else "Add to Pickwick") }
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
-            Spacer(Modifier.height(8.dp))
         }
-        if (found != null && found.isEmpty()) Text(
-            "Nothing found. Try the channel's exact name, or paste its link from the + menu.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Searches find channels. To add a playlist, paste its link from the + menu.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
