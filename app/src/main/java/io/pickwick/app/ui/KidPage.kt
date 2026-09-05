@@ -5,15 +5,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -25,18 +28,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.pickwick.app.data.PROFILE_AVATARS
 import io.pickwick.app.data.PROFILE_COLORS
 import io.pickwick.app.data.PairingStore
 import io.pickwick.app.data.Profile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * One kid, one page: who they are, their rules, and today's levers. It
@@ -107,6 +115,8 @@ internal fun KidPage(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        // A kid who isn't on any device yet has no day to sum up.
+        if (!isNew) KidOverview(built)
         SectionTitle("Profile")
         SettingsCard {
         OutlinedTextField(
@@ -223,5 +233,172 @@ internal fun KidPage(
                 onClick = { confirmRemove = true }
             ) { Text("Remove ${built.name}") }
         }
+    }
+}
+
+/**
+ * The top of the page (raw-kid.png): the kid's face, the same one-line
+ * summary their row on Kids shows, a Today/Week choice, and a card with
+ * how much was watched and where. The controls that were the whole page
+ * before sit under it, unchanged.
+ */
+@Composable
+private fun KidOverview(profile: Profile) {
+    var range by remember { mutableStateOf(StatsRange.WEEK) }
+    val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    // Prefs, files and a JSON parse per cached feed — off-main, and the card
+    // shows a placeholder for the beat it takes.
+    val loaded by produceState<KidStatsLoaded?>(null, profile.id, range) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { loadKidStats(context, profile.id, range) }.getOrNull()
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        ProfileAvatar(profile, size = 68)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            kidSummary(profile),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        StatsRange.values().forEach { r ->
+            RangeTab(r.label, selected = r == range, onClick = { range = r })
+        }
+    }
+    Spacer(Modifier.height(4.dp))
+
+    SettingsCard(padded = false) {
+        val data = loaded
+        Column(Modifier.padding(16.dp)) {
+            if (data == null) {
+                Text(
+                    "Adding it up…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Row {
+                    Text(
+                        formatWatchTime(data.stats.minutes),
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.alignByBaseline()
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "${data.stats.videos} video" + if (data.stats.videos == 1) "" else "s",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.alignByBaseline()
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    when (range) {
+                        StatsRange.WEEK -> weekSummary(data.stats)
+                        // Today has no days to count, so its line is the one
+                        // the TV is enforcing right now.
+                        StatsRange.TODAY -> data.today.state + (
+                            data.today.budgetTodayMin?.let { " · ${data.today.watchedTodayMin} of $it min" }
+                                ?: " · no daily limit"
+                            )
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        SettingsDivider()
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "Most watched",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            val channels = data?.stats?.channels.orEmpty()
+            if (data != null && channels.isEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Nothing watched ${if (range == StatsRange.TODAY) "today" else "this week"} yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            val max = (channels.maxOfOrNull { it.second } ?: 1).coerceAtLeast(1)
+            channels.forEach { (name, count) ->
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        name,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        count.toString(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(count.toFloat() / max)
+                            .fillMaxHeight()
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
+        }
+    }
+    // The two numbers have different reach, and a parent comparing them to
+    // the TV's own stats page would otherwise think one of them is wrong.
+    Text(
+        "Minutes are what this device played; videos count every synced device.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 6.dp)
+    )
+}
+
+/** One of the Today / Week words: the chosen one is teal with a line under it. */
+@Composable
+private fun RangeTab(label: String, selected: Boolean, onClick: () -> Unit) {
+    val tint = if (selected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.onSurfaceVariant
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .tvFocusHighlight()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = tint
+        )
+        Spacer(Modifier.height(4.dp))
+        Box(
+            Modifier
+                .width(28.dp)
+                .height(2.dp)
+                .background(if (selected) tint else Color.Transparent)
+        )
     }
 }
