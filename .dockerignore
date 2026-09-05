@@ -1,0 +1,20 @@
+# The hub image builds from the repo root (hub/docker-compose.yml: context ..)
+# because it needs :core as well as :hub. Everything else stays out of the
+# build context. On the NAS that folder also holds data/, the family's config
+# and tokens, owned by the hub's uid and unreadable by the user running the
+# build; with it in the context the build died on "can't stat data" before
+# compiling anything. On a dev machine the context would otherwise carry .git,
+# app/build and the APKs to the daemon for nothing. Guard 13 in scripts/check.*
+# holds the shape: a bare * first, then one line per Dockerfile COPY source.
+*
+!gradlew
+!gradlew.bat
+!settings.gradle.kts
+!build.gradle.kts
+!gradle
+!core/build.gradle.kts
+!core/src
+!hub/build.gradle.kts
+!hub/src
+!hub/docker-entrypoint.sh
+!hub/Dockerfile

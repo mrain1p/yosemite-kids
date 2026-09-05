@@ -399,6 +399,26 @@ if ($lastInit -eq 0 -or $lastProp -eq 0 -or $lastInit -le $lastProp) {
     Fail-Guard "MainViewModel.kt: the init block (line $lastInit) must come after the last property declaration (line $lastProp) - it starts work that reads them from other threads."
 }
 
+# 13. The hub's build context is an allow-list. hub/docker-compose.yml builds
+#     from the repo root, which on the NAS also holds data/ — the family's
+#     config and tokens, owned by the hub's uid and unreadable by the user
+#     running the build: the build died on it before compiling anything.
+#     .dockerignore must start by excluding everything and let in only what
+#     the Dockerfile copies, one line per COPY source.
+$diFirst = Get-Content .dockerignore -ErrorAction SilentlyContinue | Where-Object { $_ -notmatch '^\s*(#|$)' } | Select-Object -First 1
+if ($diFirst -ne '*') {
+    Fail-Guard ".dockerignore must begin with a bare '*' (exclude everything) - the hub build context would otherwise include data/ and .git."
+}
+$diAllowed = Get-Content .dockerignore | Where-Object { $_ -like '!*' } | ForEach-Object { $_.TrimStart('!').TrimEnd('/') }
+foreach ($copyLine in (Get-Content hub/Dockerfile | Where-Object { $_ -cmatch '^COPY ' -and $_ -notmatch '--from=' })) {
+    $parts = ($copyLine -replace '^COPY +', '') -split ' +'
+    foreach ($src in $parts[0..($parts.Count - 2)]) {
+        if ($diAllowed -notcontains $src.TrimEnd('/')) {
+            Fail-Guard "hub/Dockerfile copies '$src' but .dockerignore does not allow it (add '!$src') - the image build would fail with 'not found'."
+        }
+    }
+}
+
 Write-Host "== 1/5 compile (assembleDebug)" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q assembleDebug
 if ($LASTEXITCODE -ne 0) { Write-Host "compile FAILED" -ForegroundColor Red; exit 1 }

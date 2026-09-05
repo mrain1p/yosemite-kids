@@ -38,6 +38,28 @@ docker compose -f hub/docker-compose.yml pull
 docker compose -f hub/docker-compose.yml up -d
 ```
 
+### Getting the source onto the NAS
+
+The NAS has no `git`. Make a clean archive of the committed tree on the PC,
+copy it with the classic scp protocol, and unpack it beside `data/`.
+Windows OpenSSH 9 runs `scp` over SFTP by default, and Synology ships with
+the SFTP service off: the symptom is "Connection closed" right after the
+password, and `-O` is the fix.
+
+```
+git archive --format=tar.gz -o ~/yosemite-kids-src.tar.gz HEAD     # on the PC
+scp -O ~/yosemite-kids-src.tar.gz <user>@<nas>:/volume2/Docker/yosemite-kids/
+cd /volume2/Docker/yosemite-kids && tar xzf yosemite-kids-src.tar.gz && rm yosemite-kids-src.tar.gz
+```
+
+Unpack over an old tree only when the layout is unchanged; after the package
+rename the old `io/pickwick` sources had to be moved out first, or Gradle
+would have compiled both. The repo-root `.dockerignore` allow-lists only what
+the Dockerfile copies, so `data/` (owned by the hub's uid, unreadable by the
+user running the build) never enters the build context. Without it the build
+stopped at `can't stat '.../data'` before compiling anything; `sudo` on the
+build is the workaround for a tree that predates the file.
+
 ### One-time: let the NAS pull a private image
 
 The package inherits the repository's visibility, so a private repo produces a

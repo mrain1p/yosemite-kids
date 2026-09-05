@@ -355,6 +355,21 @@ if [ -z "$last_init" ] || [ -z "$last_prop" ] || [ "$last_init" -le "$last_prop"
   guard_fail "MainViewModel.kt: the init block (line ${last_init:-none}) must come after the last property declaration (line ${last_prop:-none}) — it starts work that reads them from other threads."
 fi
 
+# 13. The hub's build context is an allow-list. hub/docker-compose.yml builds
+#     from the repo root, which on the NAS also holds data/ — the family's
+#     config and tokens, owned by the hub's uid and unreadable by the user
+#     running the build: the build died on it before compiling anything.
+#     .dockerignore must start by excluding everything and let in only what
+#     the Dockerfile copies, one line per COPY source.
+first=$(grep -vE '^\s*(#|$)' .dockerignore 2>/dev/null | head -1 || true)
+if [ "$first" != "*" ]; then
+  guard_fail ".dockerignore must begin with a bare '*' (exclude everything) — the hub build context would otherwise include data/ and .git."
+fi
+for src in $(grep -E '^COPY ' hub/Dockerfile | grep -v -- '--from=' | sed -E 's/^COPY +//' | awk '{NF--; print}' | tr ' ' '\n' | sort -u); do
+  grep -qxF "!${src%/}" .dockerignore || grep -qxF "!${src%/}/" .dockerignore ||
+    guard_fail "hub/Dockerfile copies '$src' but .dockerignore does not allow it (add '!$src') — the image build would fail with 'not found'."
+done
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/5 compile (assembleDebug)"
