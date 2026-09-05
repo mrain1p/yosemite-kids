@@ -729,6 +729,32 @@ a week. Two triggers now:
 Both end in the one table in `docs/UPSTREAM-LOG.md`, deliberate skips
 included — those are what a later reader would otherwise re-investigate.
 
+### The rename, and the launch crash it uncovered (1.0.x)
+
+- **Pickwick became Yosemite Kids, front to back.** Package id
+  `io.yosemitekids.app` / `io.yosemitekids.hub`, pairing scheme
+  `yosemitekids://`, `YOSEMITE_KIDS_*` properties, the `yosemite-kids-hub`
+  image and container, versionCode reset to 1. The text pass is
+  `scripts/rename.js`; the placement map and everything the pass could not
+  reach (banner PNGs, resource names, thread and cookie names, the
+  suggestion-worker host it must not touch) are in `docs/RENAME.md`.
+  Backups written by the old build still restore (`kind: pickwick-backup`
+  is accepted forever), because moving a family over *is* a restore.
+- **A launch crash that predates the rename.** The emulator check of the
+  renamed build died with `orderChannels(sort = null)`. `MainViewModel`'s
+  working `init` block sat above some thirty property declarations while
+  starting work that reads them on IO; Kotlin runs initialisers and init
+  blocks in textual order, so `channelOrder` was read before it was set (a
+  race the starved emulator hit two launches in three) and the kid's chip
+  choices loaded in `init` were reset by their own declarations running
+  afterwards (every time). The block now sits below the last property;
+  **guard 12** fails the gate if it drifts up again.
+- **Verified on the phone emulator** (headless, debug build): three forced
+  cold starts (`am start -S -W`) of the fixed build, none died, the seeded
+  config was read each time, and the launcher lists the app as Yosemite Kids
+  beside the old Pickwick install. 1.0.0 was handed out before this was
+  found and never installed anywhere; 1.0.1 is the first build that starts.
+
 ## Next up, in order
 
 These are decided, not merely noticed. The numbered lists below are the
@@ -843,10 +869,17 @@ nothing; the change would only have complicated master election.
 
 ## Before the first release of the fork
 
-- Change `UPDATE_MANIFEST_URL`, `DIRECTORY_URL`, `SUGGEST_WORKER_URL` in
-  `app/build.gradle.kts` to this fork's repo/worker, or installs will
-  self-update back onto upstream builds. Set your own `version.json`.
-- Create and back up a release keystore (see `.claude/skills/yosemite-kids-release`).
+- Self-update is off: `UPDATE_MANIFEST_URL` bakes in blank until a public
+  releases repo exists. Then set `YOSEMITE_KIDS_UPDATE_URL` to that repo's raw
+  `version.json` and write that file last, once the APK it names is up. The
+  directory and suggestion URLs still point at upstream's community
+  directory on purpose (roadmap §1); nothing can pull an install back onto
+  an upstream build now that the package id and signing key differ.
+- The download links in `docs/SETUP.md` name this repo's
+  `releases/latest/download/yosemite-kids.apk`; they resolve only once the
+  repo is public and a release exists. Until then, hand the APK over.
+- Back up the release keystore and its password file off-machine (they
+  exist; `CLAUDE.md` says where). Losing them strands every install.
 - Test on a real Google TV: D-pad on the end card / error card / blocked card
   (cursor-driven, no focusables), held-seek pacing, and that the overlay's
   fade does not cost frames on a Chromecast. Test listen mode on a phone with

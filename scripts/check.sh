@@ -340,6 +340,21 @@ if [ -n "$misnamed" ]; then
   guard_fail "these test files will never run: $misnamed — rename to *Test.kt"
 fi
 
+# 12. MainViewModel's working init block sits below every property.
+#     It launches work that reads those properties from other threads, and
+#     Kotlin runs property initialisers and init blocks in textual order: a
+#     declaration below the init re-runs after it (the kid's chip choices
+#     init had just loaded reset to null, every time), and a property the IO
+#     thread reads before its initialiser has run is null (orderChannels got
+#     sort = null and the app died at launch). Move the block, never the
+#     property.
+vm=app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt
+last_init=$(grep -n '^    init {' "$vm" | tail -1 | cut -d: -f1 || true)
+last_prop=$(grep -nE '^    (private |internal |public )?(override )?(lateinit )?(var|val) ' "$vm" | tail -1 | cut -d: -f1 || true)
+if [ -z "$last_init" ] || [ -z "$last_prop" ] || [ "$last_init" -le "$last_prop" ]; then
+  guard_fail "MainViewModel.kt: the init block (line ${last_init:-none}) must come after the last property declaration (line ${last_prop:-none}) — it starts work that reads them from other threads."
+fi
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/5 compile (assembleDebug)"

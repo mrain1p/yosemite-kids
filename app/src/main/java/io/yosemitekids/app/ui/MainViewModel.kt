@@ -156,71 +156,6 @@ class MainViewModel(
     private fun visibleDownloadUrls(): Set<String> =
         visibleDownloads().map { it.url }.toSet()
 
-    init {
-        // The kid's chips, before the first publish so the rows come up in
-        // their order rather than snapping to it a beat later.
-        kidPrefs?.let { p ->
-            kidChannelSort = p.channelSort()
-            kidHomeFilter = p.homeFilter()
-            kidChannelFilter = p.channelFilter()
-        }
-        viewModelScope.launch {
-            // All five sets are file reads — off-main like everything else
-            // here; the home rows render immediately, badges land a beat later.
-            val (saved, dl) = withContext(Dispatchers.IO) {
-                Triple(watchlistStore.urls(), watchLaterStore.urls(), queueStore.urls()) to
-                    (downloadStore?.pendingUrls().orEmpty() to visibleDownloadUrls())
-            }
-            val recent = withContext(Dispatchers.IO) { searchHistory?.recent().orEmpty() }
-            _state.value = _state.value.copy(
-                watchlisted = saved.first,
-                watchLater = saved.second,
-                queued = saved.third,
-                downloadPending = dl.first,
-                // Sideloaded local files count as "downloaded": one set drives
-                // the ✅ badges, the home tile and the offline auto-open alike.
-                downloaded = dl.second,
-                recentSearches = recent
-            )
-            // Car trip / flight: no network but saved videos — open the offline shelf.
-            if (isOffline() && dl.second.isNotEmpty()) openDownloads()
-        }
-        refresh()
-        syncWatchState()
-        syncConfigState()
-        // Requests stranded mid-check by an app death resume where they left off.
-        kickDownloadChecker()
-        // Approvals, finished downloads and local-library edits update the
-        // badges (and the Downloads screen, if it's open) as they happen —
-        // LocalLibrary rides the same change signal since it feeds the same shelf.
-        viewModelScope.launch {
-            DownloadEvents.changes.collect { refreshDownloadState() }
-        }
-        // A parent's phone just granted time or changed the rules. Keyed
-        // per-kid ViewModels all hear it; only the home actually on screen
-        // says so, or the kid gets a pill from their sibling's screen.
-        viewModelScope.launch {
-            io.yosemitekids.app.data.KidNotices.messages.collect {
-                if (uiActive) showNotice(it.text)
-            }
-        }
-        // A TV can sit on the home screen for hours — poll for whitelist edits.
-        viewModelScope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(5 * 60 * 1000L)
-                // Keyed per-kid ViewModels outlive a profile switch in the
-                // activity's store; only the one on screen gets to poll.
-                if (!uiActive) continue
-                refreshIfIdle()
-                syncWatchState()
-                syncConfigState()
-                syncIndex()
-            }
-        }
-        // The deep crawl lives in IndexCrawlWorker (WorkManager) — it runs even
-        // with the app closed, so no in-app loop here.
-    }
-
     /** Set by the hosting composition; false while another kid's home is up. */
     @Volatile
     var uiActive = true
@@ -1804,6 +1739,78 @@ class MainViewModel(
     }
 
     private var noticeJob: kotlinx.coroutines.Job? = null
+
+    // Last, below every property, on purpose: this block starts work that
+    // reads the properties above from other threads (publishChannels sorts
+    // on IO). Kotlin runs initialisers and init blocks in textual order, so
+    // an init placed higher had two bugs: the kid's chip choices it loaded
+    // were reset by their own declarations running after it, and the IO
+    // thread read channelOrder before its initialiser ran, got null, and
+    // the app died at launch. Guard 12 in scripts/check.* keeps it here.
+    init {
+        // The kid's chips, before the first publish so the rows come up in
+        // their order rather than snapping to it a beat later.
+        kidPrefs?.let { p ->
+            kidChannelSort = p.channelSort()
+            kidHomeFilter = p.homeFilter()
+            kidChannelFilter = p.channelFilter()
+        }
+        viewModelScope.launch {
+            // All five sets are file reads — off-main like everything else
+            // here; the home rows render immediately, badges land a beat later.
+            val (saved, dl) = withContext(Dispatchers.IO) {
+                Triple(watchlistStore.urls(), watchLaterStore.urls(), queueStore.urls()) to
+                    (downloadStore?.pendingUrls().orEmpty() to visibleDownloadUrls())
+            }
+            val recent = withContext(Dispatchers.IO) { searchHistory?.recent().orEmpty() }
+            _state.value = _state.value.copy(
+                watchlisted = saved.first,
+                watchLater = saved.second,
+                queued = saved.third,
+                downloadPending = dl.first,
+                // Sideloaded local files count as "downloaded": one set drives
+                // the ✅ badges, the home tile and the offline auto-open alike.
+                downloaded = dl.second,
+                recentSearches = recent
+            )
+            // Car trip / flight: no network but saved videos — open the offline shelf.
+            if (isOffline() && dl.second.isNotEmpty()) openDownloads()
+        }
+        refresh()
+        syncWatchState()
+        syncConfigState()
+        // Requests stranded mid-check by an app death resume where they left off.
+        kickDownloadChecker()
+        // Approvals, finished downloads and local-library edits update the
+        // badges (and the Downloads screen, if it's open) as they happen —
+        // LocalLibrary rides the same change signal since it feeds the same shelf.
+        viewModelScope.launch {
+            DownloadEvents.changes.collect { refreshDownloadState() }
+        }
+        // A parent's phone just granted time or changed the rules. Keyed
+        // per-kid ViewModels all hear it; only the home actually on screen
+        // says so, or the kid gets a pill from their sibling's screen.
+        viewModelScope.launch {
+            io.yosemitekids.app.data.KidNotices.messages.collect {
+                if (uiActive) showNotice(it.text)
+            }
+        }
+        // A TV can sit on the home screen for hours — poll for whitelist edits.
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(5 * 60 * 1000L)
+                // Keyed per-kid ViewModels outlive a profile switch in the
+                // activity's store; only the one on screen gets to poll.
+                if (!uiActive) continue
+                refreshIfIdle()
+                syncWatchState()
+                syncConfigState()
+                syncIndex()
+            }
+        }
+        // The deep crawl lives in IndexCrawlWorker (WorkManager) — it runs even
+        // with the app closed, so no in-app loop here.
+    }
 
     /** Shows the kid one transient line, replacing any previous one. */
     /** A screen's own transient line (voice search unavailable, and the like). */

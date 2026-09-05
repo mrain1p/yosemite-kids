@@ -34,8 +34,10 @@ android {
         // Nothing installed under io.yosemitekids.app carries an older code
         // that this would have to beat. The "-fork" suffix goes with it: the
         // provenance is in the README's attribution line, not the version.
-        versionCode = 1
-        versionName = "1.0.0"
+        // 1.0.0 never shipped: it died at launch (MainViewModel init order);
+        // 1.0.1 is the first build that starts.
+        versionCode = 2
+        versionName = "1.0.1"
 
         // Every outbound URL the app talks to, overridable per build so a fork
         // never phones upstream by accident. Set in local.properties or the

@@ -381,6 +381,24 @@ if ($misnamed) {
     Fail-Guard "these test files will never run: $($misnamed.Name -join ', ') — rename to *Test.kt"
 }
 
+# 12. MainViewModel's working init block sits below every property.
+#     It launches work that reads those properties from other threads, and
+#     Kotlin runs property initialisers and init blocks in textual order: a
+#     declaration below the init re-runs after it (the kid's chip choices
+#     init had just loaded reset to null, every time), and a property the IO
+#     thread reads before its initialiser has run is null (orderChannels got
+#     sort = null and the app died at launch). Move the block, never the
+#     property.
+$vmLines = Get-Content "app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt"
+$lastInit = 0; $lastProp = 0
+for ($i = 0; $i -lt $vmLines.Count; $i++) {
+    if ($vmLines[$i] -cmatch '^    init \{') { $lastInit = $i + 1 }
+    if ($vmLines[$i] -cmatch '^    (private |internal |public )?(override )?(lateinit )?(var|val) ') { $lastProp = $i + 1 }
+}
+if ($lastInit -eq 0 -or $lastProp -eq 0 -or $lastInit -le $lastProp) {
+    Fail-Guard "MainViewModel.kt: the init block (line $lastInit) must come after the last property declaration (line $lastProp) - it starts work that reads them from other threads."
+}
+
 Write-Host "== 1/5 compile (assembleDebug)" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q assembleDebug
 if ($LASTEXITCODE -ne 0) { Write-Host "compile FAILED" -ForegroundColor Red; exit 1 }
