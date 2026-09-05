@@ -33,3 +33,13 @@ upstream's builds.
 6. Run `scripts/check.ps1` first; never release with a red check.
 
 Ask the user before steps 4-5: they publish.
+
+## The gh default-repo trap
+
+This checkout has two remotes, `origin` (the fork) and `upstream`
+(itcon-pty-au/pickwick), and no default set for `gh`. Without `-R`, the
+`gh release` commands resolved to upstream: `gh release create` failed with
+a misleading "workflow scope may be required" (it was a 403 on a repo we
+cannot push to) and `gh release view` said "release not found" for a release
+that existed. Pass `-R mrain1p/yosemite-kids` on every `gh release` call, or
+`gh api repos/mrain1p/yosemite-kids/...`, which is explicit by construction.
