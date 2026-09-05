@@ -110,6 +110,15 @@ class Updater(private val context: Context) {
 
     companion object {
         /**
+         * The first build whose APK carried the manifest URL, so the first
+         * that can offer an update from its own settings screen. A device
+         * reporting an older code has no update check at all and has to be
+         * sideloaded once by hand; the Devices page says so rather than
+         * sending a parent to look for a button that build does not have.
+         */
+        const val FIRST_SELF_UPDATING_VERSION_CODE = 4
+
+        /**
          * Whether this build can check for updates at all.
          *
          * `UPDATE_MANIFEST_URL` is a build property that defaults to blank, so

@@ -231,6 +231,15 @@ internal class DeviceFleet(private val pairingStore: PairingStore) {
         }
 
     val hub: PairedDevice? get() = devices.firstOrNull { it.secretless }
+
+    /** Has any device said anything yet, in either direction? Before that, counts are not news. */
+    fun anyAnswered(): Boolean = devices.any { d ->
+        syncStates[d.key].let { it is DeviceSync.Reachable || it is DeviceSync.Offline }
+    }
+
+    /** Devices whose last answer named an older build than this phone. */
+    fun behindCount(myVersionCode: Int = BuildConfig.VERSION_CODE): Int =
+        devices.count { d -> lastAnswer[d.key]?.behind(myVersionCode) == true }
     val kidDevices: List<PairedDevice> get() = devices.filterNot { it.secretless }
 
     /** Re-reads one device's sync state, returning it for the caller to judge. */
@@ -304,9 +313,13 @@ internal fun otherParents(
     return byToken.values.toList()
 }
 
-/** "0.12.1-fork (47)", or null when the device has never said. */
-internal fun DeviceSync.Reachable.versionText(): String? =
-    listOfNotNull(versionName, versionCode?.let { "($it)" }).joinToString(" ").ifBlank { null }
+/**
+ * "1.0.3", or null when the device has never said. The versionCode is what
+ * [behind] compares, but it is not shown: every release bumps both numbers,
+ * so the name already tells a parent which build this is, and "(4)" beside
+ * it only ever prompted the question of what it was.
+ */
+internal fun DeviceSync.Reachable.versionText(): String? = versionName?.ifBlank { null }
 
 /**
  * Older than this phone, by versionCode — the one number that compares. A
@@ -317,8 +330,8 @@ internal fun DeviceSync.Reachable.behind(myVersionCode: Int = BuildConfig.VERSIO
     versionCode != null && versionCode < myVersionCode
 
 /**
- * One device's line under its name — "In sync · 0.12.1-fork (47)", "Offline ·
- * seen 20m ago · 0.12.2-fork (49)", "Checking…" — and whether it wants amber.
+ * One device's line under its name — "In sync · 1.0.3", "Offline ·
+ * seen 20m ago · 1.0.2", "Checking…" — and whether it wants amber.
  *
  * Pure: the caller has already judged [inSync] through `matches()`, and
  * [last] is the device's most recent answer, which outlives an Offline —
@@ -419,7 +432,13 @@ internal fun PhoneDevicesSection(
 
     val behind = fleet.behind()
     if (behind.isNotEmpty()) {
-        UpdateBanner(behind.size)
+        // A build older than the first self-updating one has no "Check for
+        // updates" to be sent to; name those, so the parent sideloads once
+        // instead of hunting for a button that build does not have.
+        val cannotSelfUpdate = behind
+            .filter { d -> (fleet.lastAnswer[d.key]?.versionCode ?: Int.MAX_VALUE) < Updater.FIRST_SELF_UPDATING_VERSION_CODE }
+            .map { it.name }
+        UpdateBanner(behind.size, cannotSelfUpdate)
         Spacer(Modifier.height(12.dp))
     }
 
@@ -549,7 +568,7 @@ internal fun PhoneDevicesSection(
  * press that button for them. The banner says where the install is instead.
  */
 @Composable
-private fun UpdateBanner(count: Int) {
+private fun UpdateBanner(count: Int, cannotSelfUpdate: List<String>) {
     Surface(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
         color = StatusAmber.copy(alpha = 0.12f),
@@ -563,8 +582,18 @@ private fun UpdateBanner(count: Int) {
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             Text(
-                "This phone has ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}). " +
-                    "Each device offers the install on its own settings screen.",
+                "This phone has ${BuildConfig.VERSION_NAME}. " + when {
+                    cannotSelfUpdate.isEmpty() ->
+                        "Each device offers the install on its own settings screen."
+                    cannotSelfUpdate.size == 1 ->
+                        "${cannotSelfUpdate.single()} is on a build with no update check: " +
+                            "install ${BuildConfig.VERSION_NAME} on it by hand once, and every " +
+                            "later version arrives on its own."
+                    else ->
+                        "${cannotSelfUpdate.joinToString(", ")} are on builds with no update " +
+                            "check: install ${BuildConfig.VERSION_NAME} on them by hand once, " +
+                            "and every later version arrives on its own."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

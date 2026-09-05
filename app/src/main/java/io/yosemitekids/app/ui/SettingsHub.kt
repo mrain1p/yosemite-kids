@@ -171,41 +171,10 @@ internal fun HubSection(
             )
         }
 
+        // No name field here: the hub's page ends in the same "This entry"
+        // card every device gets, and that card's Name row renames it. Two
+        // editors for one name on one screen read as two different names.
         SettingsCard(padded = false) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Called",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                // The label sits above the field, so the field carries none of
-                // its own. Written through on every keystroke, like this
-                // phone's own name; a blank is never saved, since a device row
-                // with no name is unfindable.
-                var name by remember(hub.key) { mutableStateOf(hub.name) }
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = {
-                        name = it
-                        val trimmed = it.trim()
-                        if (trimmed.isNotEmpty() && trimmed != hub.name) {
-                            pairingStore.renamePaired(hub.key, trimmed)
-                            fleet.reload()
-                            onFleetChanged()
-                        }
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                // Both true on this phone: the row on Devices & sync prints
-                // the paired name, and a merge from the hub is logged under it.
-                Text(
-                    "The name it shows under Devices & sync and beside the changes it makes.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            SettingsDivider()
             // The address, and whether anything is answering there right now.
             // "Connected" is the fleet's word, not a stored flag: a hub that
             // was joined and then switched off says Offline.

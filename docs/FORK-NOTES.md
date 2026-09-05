@@ -7,8 +7,10 @@ and harden the phone↔device backend underneath it. Upstream's model — explic
 allow-list, no cloud, parent's phone as the only admin — is unchanged.
 
 Everything below was built and unit-tested on the JVM and exercised on the
-Android 14 emulator (phone). It has **not yet** been run on a Google TV or a
-real phone; see "Before the first release".
+Android 14 emulator (phone). Since 2026-09-05 it also runs on a real fleet: a
+Samsung phone, a Google TV Streamer and the Docker hub on a Synology NAS,
+which is where the sync-convergence and Settings findings recorded below
+came from.
 
 ## What changed
 
@@ -770,6 +772,13 @@ included — those are what a later reader would otherwise re-investigate.
   now says to pull. A TV paired while Settings was open never appeared in
   the list until Settings was reopened; the fleet now reloads on any
   pairing change.
+- **Settings after the first real fleet (1.0.4).** The root's Devices tile
+  read "0 of 2 in sync" before any device had answered; it now checks on
+  open, says "Checking…" until something answers, and reports "N behind on
+  updates" once everything is in sync. The updates banner names devices on
+  builds with no update check (below 1.0.3) and says to sideload once. The
+  hub's page had two editors for its name; one remains. Version codes are
+  no longer shown beside version names.
 
 ## Next up, in order
 

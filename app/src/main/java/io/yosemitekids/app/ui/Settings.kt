@@ -388,8 +388,7 @@ internal fun PairingPanel(configStore: ConfigStore, tv: Boolean = false) {
             Spacer(Modifier.height(10.dp))
             Text(
                 "${android.os.Build.MODEL ?: "This device"}  ·  Yosemite Kids " +
-                    "${io.yosemitekids.app.BuildConfig.VERSION_NAME} " +
-                    "(${io.yosemitekids.app.BuildConfig.VERSION_CODE})",
+                    io.yosemitekids.app.BuildConfig.VERSION_NAME,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -1605,11 +1604,25 @@ private fun AdminScreen(
         val inSyncNow = fleet.inSyncCount(
             { d -> expectedHash(d, currentHash, currentSecretlessHash) }, localSyncHash
         )
+        // A fleet that has not answered yet is not "0 of 2 in sync" — that
+        // read as two broken devices every time Settings opened. Start the
+        // same check Devices & sync runs on open (LAN calls off-main; the
+        // root still renders instantly from whatever the holder has) and say
+        // "Checking…" until something has answered.
+        LaunchedEffect(fleet.devices) { if (!fleet.anyAnswered()) fleet.checkAll() }
+        val answeredNow = fleet.anyAnswered()
+        val behindNow = fleet.behindCount()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             RootStatusTile(
                 "Devices",
-                if (pairedNow == 0) "Nothing paired" else "$inSyncNow of $pairedNow in sync",
-                warn = pairedNow > 0 && inSyncNow < pairedNow,
+                when {
+                    pairedNow == 0 -> "Nothing paired"
+                    !answeredNow -> "Checking…"
+                    inSyncNow < pairedNow -> "$inSyncNow of $pairedNow in sync"
+                    behindNow > 0 -> "$behindNow behind on updates"
+                    else -> "$inSyncNow of $pairedNow in sync"
+                },
+                warn = pairedNow > 0 && answeredNow && (inSyncNow < pairedNow || behindNow > 0),
                 modifier = Modifier.weight(1f)
             ) { page = SettingsPage.Devices }
             RootStatusTile(
@@ -1719,8 +1732,7 @@ private fun AdminScreen(
         // errand should have had.
         Spacer(Modifier.height(20.dp))
         Text(
-            "Yosemite Kids ${io.yosemitekids.app.BuildConfig.VERSION_NAME} " +
-                "(${io.yosemitekids.app.BuildConfig.VERSION_CODE})  ·  changes apply as you " +
+            "Yosemite Kids ${io.yosemitekids.app.BuildConfig.VERSION_NAME}  ·  changes apply as you " +
                 "make them and reach the kids' devices on their own.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

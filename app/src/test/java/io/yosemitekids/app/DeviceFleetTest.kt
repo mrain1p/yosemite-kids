@@ -23,14 +23,14 @@ class DeviceFleetTest {
     @Test
     fun inSyncCarriesTheVersionAndNothingElse() {
         val (line, amber) = deviceStatusLine(answer(), answer(), now, inSync = true, myVersionCode = 49, now = now)
-        assertEquals("In sync · 0.12.2-fork (49)", line)
+        assertEquals("In sync · 0.12.2-fork", line)
         assertFalse(amber)
     }
 
     @Test
     fun outOfSyncIsAmber() {
         val (line, amber) = deviceStatusLine(answer(), answer(), now, inSync = false, myVersionCode = 49, now = now)
-        assertEquals("Out of sync · 0.12.2-fork (49)", line)
+        assertEquals("Out of sync · 0.12.2-fork", line)
         assertTrue(amber)
     }
 
@@ -41,7 +41,7 @@ class DeviceFleetTest {
         val (line, amber) = deviceStatusLine(
             DeviceSync.Offline, answer(), now - 20 * 60_000L, inSync = false, myVersionCode = 49, now = now
         )
-        assertEquals("Offline · seen 20m ago · 0.12.2-fork (49)", line)
+        assertEquals("Offline · seen 20m ago · 0.12.2-fork", line)
         assertTrue(amber)
     }
 
@@ -63,7 +63,7 @@ class DeviceFleetTest {
         val old = answer("0.12.1-fork", 47)
         assertTrue(old.behind(myVersionCode = 49))
         val (line, _) = deviceStatusLine(old, old, now, inSync = true, myVersionCode = 49, now = now)
-        assertEquals("In sync · 0.12.1-fork (47) · update available", line)
+        assertEquals("In sync · 0.12.1-fork · update available", line)
     }
 
     @Test

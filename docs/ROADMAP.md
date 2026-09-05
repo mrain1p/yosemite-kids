@@ -116,7 +116,13 @@ hub already records `host`/`port`/`lastSeenAt` on every authenticated call and
 `HubWeb` simply does not render them, and `Device.address` has no caller at all.
 On the phone, `/status` serves `versionCode` and `versionName` but `DeviceStatus`
 parses only the name and `DeviceSync.Reachable` carries neither. Answers the first
-question anyone asks about a sideloaded fleet. *Small.*
+question anyone asks about a sideloaded fleet. *Small.* The rows show the
+version now; what is left is **starting the update from the phone**: a
+`POST /check-updates` route that makes a TV fetch `version.json`, download
+the APK and show its installer prompt, which the parent confirms with the
+remote. Nothing can press that button over the LAN, but bringing the prompt
+up saves a walk through the TV's settings. Works from the first build that
+carries the route on the TV. *Small-medium.*
 
 **H. The crawl in the container; retire master election.** Decided
 2026-09-05, next after the sync bug below. Today the search index is built
@@ -133,6 +139,15 @@ else", so the boundary stays enforced; the hub serving per-channel index files
 in the format devices already exchange over `/index`, devices pulling from the
 hub instead of the master; then, as a separate decision, screening in the
 container, which means the API key living on the NAS. *Medium-large.*
+
+The fallback rule, decided 2026-09-05: a hub that is paired and answering
+holds the master slot, and the phone's crawl worker already goes quiet when
+the token is not its own. A master that has not answered in a day is
+vacant, so with no hub, or a hub that is off for a while, a parent phone
+claims it through the existing election; when the hub returns it reclaims,
+which needs one line in the merge's master rule ("a hub outranks a phone")
+in place of today's tie-break by token order. The same vacancy rule cures
+the dead-master case the rename exposed.
 
 **I. The Settings form re-stamps what it did not change.** Found with the
 convergence bug (fixed 2026-09-05, see `FORK-NOTES.md`) and left open: a
