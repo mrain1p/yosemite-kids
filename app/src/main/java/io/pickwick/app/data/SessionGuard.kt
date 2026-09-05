@@ -363,6 +363,29 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
      * config, so the who's-watching tiles don't depend on this profile having
      * been active since the last rules push). Null when no budget is set.
      */
+    /**
+     * Today's allowance in minutes: sessions × length, plus any bonus granted
+     * today. Null when no limit is set.
+     *
+     * Public so the settings root can draw "used of budget" from the same
+     * numbers [remainingTodayMin] enforces. The root card once derived "used"
+     * as total − remaining with a total that ignored the bonus, and read
+     * "110 min left today" over "0 of 90 min used" the moment a parent granted
+     * twenty minutes.
+     */
+    fun dailyBudgetMin(l: Limits): Int? {
+        rolloverIfNewDay()
+        val perSession = l.sessionMinutes ?: return null
+        val count = (if (isWeekend()) l.weekendSessions else l.weekdaySessions) ?: return null
+        return ((perSession * count * 60_000L + prefs.getLong("bonusMs", 0)) / 60_000L).toInt()
+    }
+
+    /** Minutes watched today on this device, bonus or not. */
+    fun watchedTodayMin(): Int {
+        rolloverIfNewDay()
+        return (prefs.getLong("dailyWatchedMs", 0) / 60_000L).toInt()
+    }
+
     fun remainingTodayMin(l: Limits): Int? {
         rolloverIfNewDay()
         if (isPaused(l)) return 0

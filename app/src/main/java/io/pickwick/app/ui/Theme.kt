@@ -292,6 +292,15 @@ val UpdateDot = Color(0xFFFF5252)
 val StatusOkGreen = Color(0xFF81C784)
 val StatusFailRed = Color(0xFFE57373)
 
+/**
+ * "Needs you": the review banner and a device behind on updates. Amber rather
+ * than the brand teal — teal is reserved for things a parent can press, so a
+ * warning in teal reads as a button and a button in amber reads as a warning.
+ */
+val WarningAmber = Color(0xFFE0B77E)
+val WarningAmberSurface = Color(0xFF221D14)
+val WarningAmberBorder = Color(0xFF5A4A30)
+
 /** "Needs a look, not an alarm": a device offline or behind on updates, the
  *  banner that counts them. Warm rather than red, because a TV that is
  *  switched off is the normal state of a TV. */

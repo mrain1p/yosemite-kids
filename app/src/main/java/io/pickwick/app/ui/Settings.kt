@@ -594,6 +594,11 @@ private fun AdminScreen(
     // while one was open, and Back from "Blocked videos" landed on the root —
     // and Stats, opened from a device's page, returns here too.
     var page by remember { mutableStateOf<SettingsPage?>(null) }
+    // Where Back goes when a page was reached from another page rather than
+    // from the root. Channels links to Listing at its foot; without this,
+    // Back from Listing skipped Channels entirely. One level is all the
+    // design needs — nothing links deeper than that.
+    var pageFrom by remember { mutableStateOf<SettingsPage?>(null) }
     // The fleet, and the pages Devices & sync pushes: one device, a
     // co-parent, this phone, the hub, "add a device". The fleet holds the
     // last sweep's answers so the list renders from them instantly — the LAN
@@ -1091,13 +1096,13 @@ private fun AdminScreen(
     // settings shape). Everything below the header used to be one scroll of
     // eighteen sections, and "where is X" was the first support question.
     page?.let { p ->
-        BackHandler { page = null }
+        BackHandler { page = pageFrom; pageFrom = null }
         // Declared outside the Channels branch because the app bar's "+" (in
         // the actions slot, above the branch) is what opens it.
         var addSheet by remember { mutableStateOf(false) }
         SubPage(
             title = p.title,
-            onBack = { page = null },
+            onBack = { page = pageFrom; pageFrom = null },
             actions = if (p == SettingsPage.Channels) ({
                 ChannelsActions(channelList, onAdd = { addSheet = true })
             }) else null
@@ -1151,7 +1156,7 @@ private fun AdminScreen(
                             ValueRow(
                                 title = "How videos are listed",
                                 summary = "Row order, page layout, dates, page size",
-                                onClick = { page = SettingsPage.Listing }
+                                onClick = { pageFrom = SettingsPage.Channels; page = SettingsPage.Listing }
                             )
                         }
                     }
@@ -1568,7 +1573,7 @@ private fun AdminScreen(
                 // "pause everyone" is on would be a lie, and the card's whole
                 // job is being the honest at-a-glance state.
                 familyPausedUntil = limits.pausedUntilMillis,
-                onOpen = { page = SettingsPage.Kids },
+                onOpen = { openKid = kid to false },
                 onPauseChanged = { until ->
                     profiles = profiles.map {
                         if (it.id == kid.id) {
@@ -1580,6 +1585,35 @@ private fun AdminScreen(
             Spacer(Modifier.height(10.dp))
         }
 
+        // "Waiting for your OK": the held-back queue, surfaced at the root.
+        // Conditional on being non-empty — an always-on banner reading "0 held"
+        // is exactly the kind of noise this redesign removes elsewhere.
+        if (ai.enabled && heldForReview > 0) {
+            ReviewBanner(heldForReview) { openReview = true }
+            Spacer(Modifier.height(10.dp))
+        }
+
+        // Two status tiles: warnings that were two levels deep. Devices reads
+        // what the last sweep left in the fleet holder — never a network call,
+        // the root has to open instantly.
+        val pairedNow = fleet.devices.size
+        val inSyncNow = fleet.inSyncCount(
+            { d -> expectedHash(d, currentHash, currentSecretlessHash) }, localSyncHash
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RootStatusTile(
+                "Devices",
+                if (pairedNow == 0) "Nothing paired" else "$inSyncNow of $pairedNow in sync",
+                warn = pairedNow > 0 && inSyncNow < pairedNow,
+                modifier = Modifier.weight(1f)
+            ) { page = SettingsPage.Devices }
+            RootStatusTile(
+                "AI screening",
+                if (ai.enabled) "On" else "Off",
+                warn = false,
+                modifier = Modifier.weight(1f)
+            ) { page = SettingsPage.Screening }
+        }
         Spacer(Modifier.height(6.dp))
         // Every row's second line is live state, not a list of what is inside.
         // "Autoplay, quality, listening" told a parent what the page contains;
@@ -1880,18 +1914,23 @@ internal fun SettingsDivider() {
 }
 
 /**
- * One kid, at the top of settings: who they are, how long they have left, and
+ * One kid, at the top of settings: who they are, how much of today is left, and
  * the two buttons a parent actually presses.
  *
- * Granting minutes and pausing were on the kid's detail page, among sixteen
- * other controls — the two most frequent actions in the app, filed with the
- * rules that are set once a year. This is [SettingsSurface]'s `grant-time` and
- * the per-kid pause, lifted to where the errand happens.
+ * Granting minutes and pausing were on the kid's detail page among sixteen other
+ * controls — the two most frequent actions in the app, filed with rules set once
+ * a year. This is the errand, lifted to where it happens; the detail page keeps
+ * the rules.
  *
- * Reads through [Whitelist.limitsFor] semantics rather than the kid's own
- * limits: "pause everyone" and this kid's own pause both apply, and whichever
- * runs later wins. A card that showed "watching" during a family pause would
- * be worse than no card.
+ * Every number here comes from [SessionGuard]: budget (sessions × length + the
+ * day's bonus), watched, and remaining as their difference. The card once
+ * derived "used" as total − remaining with a total that ignored bonus minutes,
+ * and read "110 min left today" over "0 of 90 min used" the moment a parent
+ * granted twenty — the verifier caught it on the emulator.
+ *
+ * Both pauses apply: the family's "everyone at once" and this kid's own, later
+ * wins. A card that said "watching" during a family pause would be worse than no
+ * card, and a Resume that only lifted half of it would be worse than that.
  */
 @Composable
 private fun KidErrandCard(
@@ -1904,20 +1943,25 @@ private fun KidErrandCard(
     val now = System.currentTimeMillis()
     val pausedUntil = maxOf(kid.limits.pausedUntilMillis ?: 0L, familyPausedUntil ?: 0L)
     val paused = pausedUntil > now
-    // Only this kid's own pause is the card's to lift. A family pause is
-    // released on the root's own switch, so the button says so rather than
-    // silently doing half of what it appears to.
+    // Only this kid's own pause is the card's to lift; the family one is
+    // released on the root's own switch.
     val ownPauseOnly = (familyPausedUntil ?: 0L) <= now
 
-    val remaining = remember(kid.id, kid.limits, familyPausedUntil) {
-        runCatching {
-            io.pickwick.app.data.SessionGuard(
-                context.applicationContext,
-                io.pickwick.app.data.ProfileNamespace(context).suffixFor(kid.id)
-            )
-                .remainingTodayMin(kid.limits)
-        }.getOrNull()
+    val guard = remember(kid.id) {
+        io.pickwick.app.data.SessionGuard(
+            context.applicationContext,
+            io.pickwick.app.data.ProfileNamespace(context).suffixFor(kid.id)
+        )
     }
+    // Keyed on the pause too: a grant or a resume must redraw the bar now, not
+    // on the next visit.
+    val budget = remember(kid.id, kid.limits, familyPausedUntil) {
+        runCatching { guard.dailyBudgetMin(kid.limits) }.getOrNull()
+    }
+    val watched = remember(kid.id, kid.limits, familyPausedUntil) {
+        runCatching { guard.watchedTodayMin() }.getOrDefault(0)
+    }
+    val remaining = budget?.let { (it - watched).coerceAtLeast(0) }
 
     SettingsCard {
         Row(
@@ -1928,79 +1972,148 @@ private fun KidErrandCard(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(kid.name, fontWeight = FontWeight.SemiBold)
-                Text(
-                    when {
-                        paused -> "Paused"
-                        remaining == null -> "No time limit"
-                        remaining <= 0 -> "Out of time today"
-                        else -> "$remaining min left today"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (paused || (remaining != null && remaining <= 0)) {
-                        MaterialTheme.colorScheme.error
-                    } else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                val (line, tone) = when {
+                    paused -> "Paused until midnight" to MaterialTheme.colorScheme.error
+                    budget == null -> "No time limit set" to MaterialTheme.colorScheme.onSurfaceVariant
+                    remaining == 0 -> "Out of time today" to MaterialTheme.colorScheme.error
+                    else -> (kid.age?.let { "Age $it" } ?: "Screen time on") to
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Text(line, style = MaterialTheme.typography.bodySmall, color = tone)
             }
             Icon(
                 PickwickIcons.ChevronRight, contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        // How much of today is left, as a bar. The same arithmetic
-        // remainingTodayMin does, so the bar and the label can never disagree —
-        // recomputing "used" independently is how they drift.
-        val dailyTotal = kid.limits.sessionMinutes?.let { per ->
-            val sessions = maxOf(
-                kid.limits.weekdaySessions ?: 0, kid.limits.weekendSessions ?: 0
-            )
-            if (sessions > 0) per * sessions else null
-        }
-        if (dailyTotal != null && remaining != null && !paused) {
+
+        if (budget != null && remaining != null && !paused) {
             Spacer(Modifier.height(10.dp))
+            // The design's one line: time left on the left in the accent, used
+            // on the right in grey. Stacking them read as two unrelated facts.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "$remaining min left today",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (remaining <= 5) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "$watched of $budget min used",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(6.dp))
             LinearProgressIndicator(
-                progress = { (remaining.toFloat() / dailyTotal).coerceIn(0f, 1f) },
+                progress = { (remaining.toFloat() / budget).coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth().height(5.dp),
                 color = if (remaining <= 5) MaterialTheme.colorScheme.error
                 else MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 drawStopIndicator = {}
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "${(dailyTotal - remaining).coerceAtLeast(0)} of $dailyTotal min used today",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
 
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Filled for the one a parent came to press, outlined for the other:
-            // two identical text links made the common action hunt for itself.
+            // Full width, split evenly, as designed: on a phone two compact chips
+            // left a stretch of empty card where the primary action should be.
             Button(
                 onClick = onOpen,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                modifier = Modifier.height(36.dp).tvFocusHighlight()
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.weight(1f).height(40.dp).tvFocusHighlight()
             ) { Text("Add time") }
             Spacer(Modifier.width(8.dp))
             OutlinedButton(
                 onClick = {
-                    // Midnight tonight, matching the rest of the app's pauses:
-                    // an unbounded pause is one a parent forgets they set.
+                    // Midnight tonight, like every other pause in the app: an
+                    // unbounded pause is one a parent forgets they set.
                     onPauseChanged(if (paused) null else endOfToday())
                 },
                 enabled = !paused || ownPauseOnly,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                modifier = Modifier.height(36.dp).tvFocusHighlight()
-            ) { Text(if (paused) "Resume" else "Pause") }
-            if (paused && !ownPauseOnly) {
-                Spacer(Modifier.width(10.dp))
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.weight(1f).height(40.dp).tvFocusHighlight()
+            ) { Text(if (paused) "Resume" else "Pause today") }
+        }
+        if (paused && !ownPauseOnly) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Everyone is paused — resume from the switch at the bottom.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/** The amber "needs you" card at the root, pushing to the review queue. */
+@Composable
+private fun ReviewBanner(count: Int, onOpen: () -> Unit) {
+    Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+        color = WarningAmberSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, WarningAmberBorder),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).tvFocusHighlight()
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Surface(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                color = WarningAmberBorder
+            ) {
                 Text(
-                    "Everyone is paused",
+                    count.toString(),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = WarningAmber,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Waiting for your OK", fontWeight = FontWeight.SemiBold, color = WarningAmber)
+                Text(
+                    "Videos the AI held back until you decide",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Icon(PickwickIcons.ChevronRight, contentDescription = null, tint = WarningAmber)
+        }
+    }
+}
+
+/** One of the two root status tiles: a label over a state, amber when it needs a look. */
+@Composable
+private fun RootStatusTile(
+    label: String,
+    state: String,
+    warn: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    OutlinedCard(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+        modifier = modifier.clickable(onClick = onClick).tvFocusHighlight()
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                state,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (warn) WarningAmber else MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }

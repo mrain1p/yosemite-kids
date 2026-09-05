@@ -161,7 +161,7 @@ private fun LanClient.DeviceStatus.matches(expectedHash: String, localSyncHash: 
  * TV holding a revoked key would then read "in sync" while its screening was
  * dead.
  */
-private fun expectedHash(device: PairedDevice, localHash: String, localSecretlessHash: String): String =
+internal fun expectedHash(device: PairedDevice, localHash: String, localSecretlessHash: String): String =
     if (device.secretless) localSecretlessHash else localHash
 
 /**
@@ -217,6 +217,18 @@ internal class DeviceFleet(private val pairingStore: PairingStore) {
     fun close() = scope.cancel()
 
     fun reload() { devices = pairingStore.paired() }
+
+    /**
+     * How many paired devices agree with this phone right now, for the root's
+     * status tile. Reads what the last sweep left behind and never touches the
+     * network: the settings root has to open instantly, and "4 of 5 in sync"
+     * from a minute ago is a better tile than a spinner.
+     */
+    fun inSyncCount(expectedHashFor: (PairedDevice) -> String, localSyncHash: String): Int =
+        devices.count { d ->
+            (syncStates[d.key] as? DeviceSync.Reachable)
+                ?.matches(expectedHashFor(d), localSyncHash) == true
+        }
 
     val hub: PairedDevice? get() = devices.firstOrNull { it.secretless }
     val kidDevices: List<PairedDevice> get() = devices.filterNot { it.secretless }

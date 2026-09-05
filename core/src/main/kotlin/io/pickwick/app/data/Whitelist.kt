@@ -447,7 +447,7 @@ object WhitelistExporter {
         append("# Pickwick whitelist")
         exportedOn?.let { append(" — exported ").append(it) }
         append('\n')
-        append("# Open this file with Settings → \"Import, export & backup\" → \"Import from file\",\n")
+        append("# Open this file with Settings → \"App, hub & backup\" → \"Import from file\",\n")
         append("# or paste entries one by one under \"Channels & playlists\".\n\n")
 
         w.sources.forEach { e ->

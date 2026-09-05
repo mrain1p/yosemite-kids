@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
  * Optional, and the wording says so: a household that never runs one loses
  * nothing.
  *
- * Once joined, the hub is stored as an ordinary paired device â€” so everything
+ * Once joined, the hub is stored as an ordinary paired device — so everything
  * that already syncs with a TV syncs with it, and there is no second code path
  * to keep in step.
  *
@@ -48,19 +48,19 @@ import kotlinx.coroutines.launch
  * to type an address into and a remote is the worst imaginable way to enter
  * one. This phone is paired with both ends, so it is the only thing that can
  * make the introduction. Once a TV holds the hub as a peer, the reconcile in
- * MainViewModel picks it up untouched â€” that loop is gated only on the paired
+ * MainViewModel picks it up untouched — that loop is gated only on the paired
  * list being non-empty, never on role or device kind.
  *
  * What that buys, precisely: a TV reconciles when Pickwick opens on it and
  * while a kid is looking at it. It does NOT reconcile while the TV is asleep or
- * on another app â€” the sweep lives in viewModelScope behind `uiActive`, and
+ * on another app — the sweep lives in viewModelScope behind `uiActive`, and
  * there is no background worker. So the promise here is "current the moment a
  * kid opens it, without a parent's phone being nearby", and it is worded that
  * way on purpose: this feature was described as "always up to date" twice
  * before anybody checked whether a TV could sync at all.
  *
- * Renders its own card. Joined, it is the hub card from raw-backup.png â€” name,
- * address with a live "Connected", the admin-token field for TVs added since â€”
+ * Renders its own card. Joined, it is the hub card from raw-backup.png — name,
+ * address with a live "Connected", the admin-token field for TVs added since —
  * and the same card serves the hub's own device page, so there is one hub form
  * and not two that drift. Not yet joined, it is the address-and-token form.
  *
@@ -76,7 +76,7 @@ internal fun HubSection(
     onFleetChanged: () -> Unit,
     /**
      * Offer "Remove" beside "Connect my TVs". Off on the hub's own device
-     * page, which already ends in a Disconnect row â€” the same action twice on
+     * page, which already ends in a Disconnect row — the same action twice on
      * one screen reads as two different things.
      */
     removable: Boolean = false
@@ -99,7 +99,7 @@ internal fun HubSection(
      * nobody can tell apart.
      *
      * Returns how many were newly connected and how many could not be reached,
-     * because "3 of 4" is actionable and "done" is not â€” the missing one is a
+     * because "3 of 4" is actionable and "done" is not — the missing one is a
      * TV that is switched off, and the parent needs to know to come back.
      */
     suspend fun connectDevices(hubHost: String, hubPort: Int, adminToken: String): Pair<Int, Int> {
@@ -135,7 +135,7 @@ internal fun HubSection(
         HubEnrolment.Failure.BadAdminToken ->
             "That admin token was refused. It's printed in the hub's log when it starts."
         is HubEnrolment.Failure.Refused ->
-            "The hub refused this attempt. Try again â€” codes are only good for a few minutes."
+            "The hub refused this attempt. Try again — codes are only good for a few minutes."
         null -> "Couldn't connect: ${e.message?.take(120)}"
     }
 
@@ -212,7 +212,7 @@ internal fun HubSection(
             val (state, tone) = when (fleet.syncStates[hub.key]) {
                 is DeviceSync.Reachable -> "Connected" to StatusOkGreen
                 is DeviceSync.Offline -> "Offline" to StatusAmber
-                is DeviceSync.Checking, null -> "Checkingâ€¦" to MaterialTheme.colorScheme.onSurfaceVariant
+                is DeviceSync.Checking, null -> "Checking…" to MaterialTheme.colorScheme.onSurfaceVariant
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -252,19 +252,19 @@ internal fun HubSection(
                         onClick = {
                             scope.launch {
                                 busy = true
-                                message = "Connecting your TVsâ€¦"
+                                message = "Connecting your TVs…"
                                 val (added, missed) = connectDevices(hub.host, hub.port, admin.trim())
                                 admin = ""
                                 message = when {
                                     added == 0 && missed == 0 -> "Every device is already using the hub."
                                     missed == 0 -> "Connected $added ${if (added == 1) "device" else "devices"}."
-                                    else -> "Connected $added. $missed couldn't be reached â€” " +
+                                    else -> "Connected $added. $missed couldn't be reached — " +
                                         "switch them on and try again."
                                 }
                                 busy = false
                             }
                         }
-                    ) { Text(if (busy) "Connectingâ€¦" else "Connect my TVs") }
+                    ) { Text(if (busy) "Connecting…" else "Connect my TVs") }
                     if (busy) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp)
                     if (removable) OutlinedButton(
                         enabled = !busy,
@@ -289,14 +289,14 @@ internal fun HubSection(
 
     SettingsCard {
         Text(
-            "A hub is a small server you run yourself â€” on a NAS, a Pi, any machine " +
+            "A hub is a small server you run yourself — on a NAS, a Pi, any machine " +
                 "that stays on. It holds the same settings your devices do, so two " +
                 "parents stay in step without both being home.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         // Precise on purpose. A TV reconciles when Pickwick opens on it, not while
-        // it is asleep â€” there is no background sync â€” and this screen promised the
+        // it is asleep — there is no background sync — and this screen promised the
         // latter twice before anybody checked.
         Text(
             "Your TVs are connected to it too, automatically. They pick up new " +
@@ -341,7 +341,7 @@ internal fun HubSection(
                 onClick = {
                     scope.launch {
                         busy = true
-                        message = "Connectingâ€¦"
+                        message = "Connecting…"
                         val name = android.os.Build.MODEL ?: "A phone"
                         val token = admin.trim()
                         HubEnrolment.join(host, HubEnrolment.DEFAULT_PORT, token, name).fold(
@@ -355,7 +355,7 @@ internal fun HubSection(
                                 // as a separate step it would be the step nobody
                                 // did, and the hub would sit there doing half of
                                 // what the screen above it promises.
-                                message = "Connecting your TVsâ€¦"
+                                message = "Connecting your TVs…"
                                 val (added, missed) =
                                     connectDevices(device.host, device.port, token)
                                 admin = ""
@@ -377,7 +377,7 @@ internal fun HubSection(
                         busy = false
                     }
                 }
-            ) { Text(if (busy) "Connectingâ€¦" else "Connect") }
+            ) { Text(if (busy) "Connecting…" else "Connect") }
             if (busy) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp)
         }
         message?.let {

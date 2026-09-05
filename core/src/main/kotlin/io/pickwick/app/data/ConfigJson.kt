@@ -430,7 +430,13 @@ object ConfigJson {
             val ao = root.optJSONObject("ai") ?: JSONObject()
             val ai = AiConfig(
                 enabled = ao.optBoolean("enabled", false),
-                baseUrl = ao.optString("baseUrl").ifEmpty { AiConfig().baseUrl },
+                // Absent and blank are different answers. A config written before
+                // the ai block existed has no key, and gets the default so the form
+                // has a provider to show. A config that SAYS "" chose nothing — and
+                // rewriting that to OpenRouter meant the settings autosave then
+                // persisted a provider the parent never picked, the first time the
+                // screening page was so much as opened.
+                baseUrl = if (ao.has("baseUrl")) ao.optString("baseUrl") else AiConfig().baseUrl,
                 model = ao.optString("model"),
                 apiKey = ao.optString("apiKey"),
                 rules = ao.optString("rules"),

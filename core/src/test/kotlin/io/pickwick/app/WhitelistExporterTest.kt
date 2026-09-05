@@ -78,7 +78,9 @@ class WhitelistExporterTest {
     @Test
     fun headerPointsAtTheImportFlowThatExists() {
         val text = WhitelistExporter.toText(original, "3 Aug 2026")
-        assertTrue(text.contains("Import, export & backup"))
+        // The page a parent has to find: renamed with the settings redesign,
+        // and the exported file is the one place the old name outlived it.
+        assertTrue(text.contains("App, hub & backup"))
         assertTrue(text.contains("Import from file"))
         assertTrue(text.contains("Channels & playlists"))
     }
