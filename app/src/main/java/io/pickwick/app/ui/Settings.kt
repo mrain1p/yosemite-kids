@@ -752,6 +752,17 @@ private fun AdminScreen(
     // sub-page returns TO. Declared below the returns it was forgotten while
     // one was open, and Back from "Blocked videos" landed on the root.
     var page by remember { mutableStateOf<SettingsPage?>(null) }
+    // The channel list's search, tab, sort and selection, and the pages it
+    // pushes (one source, the YouTube search, the directory). Up here for the
+    // same reason again: a row opens a source page, and Back must land on the
+    // same search with the same tab.
+    val channelList = remember { ChannelListState() }
+    var openSource by remember { mutableStateOf<String?>(null) }
+    var openAddFromYouTube by remember { mutableStateOf(false) }
+    var openSuggested by remember { mutableStateOf(false) }
+    // A fresh visit starts on "All", unsearched, not selecting — the state
+    // survives a push to a source page, not a trip back to the root.
+    LaunchedEffect(page) { if (page != SettingsPage.Channels) channelList.reset() }
     // Whether the AI connection actually answers, for the row that leads to
     // it. Nothing on disk records this — the one real signal is the /models
     // call the form makes — so the row makes the same call, only while the
@@ -869,13 +880,64 @@ private fun AdminScreen(
         return
     }
 
+    // Pushed from Channels & playlists. A source that has since been removed
+    // (a Pull replaced the config underneath) just falls through to the list.
+    openSource?.let { id -> entries.firstOrNull { it.id == id } }?.let { entry ->
+        SourcePage(
+            entry = entry,
+            name = entry.label ?: resolvedNames[entry.url] ?: entry.id,
+            isNew = entry.id in newIds,
+            yt = yt,
+            profiles = profiles,
+            onBack = { openSource = null },
+            onChanged = { e -> entries = entries.map { if (it.id == e.id) e else it } },
+            onRemove = {
+                entries = entries.filter { it.id != entry.id }
+                openSource = null
+            }
+        )
+        return
+    }
+    if (openAddFromYouTube) {
+        AddFromYouTubePage(
+            entries = entries,
+            yt = yt,
+            profiles = profiles,
+            onBack = { openAddFromYouTube = false },
+            onChanged = { entries = it }
+        )
+        return
+    }
+    if (openSuggested) {
+        BackHandler { openSuggested = false }
+        SubPage(title = "Suggested channels", onBack = { openSuggested = false }) {
+            Spacer(Modifier.height(12.dp))
+            SettingsCard {
+                DirectorySection(entries) { e ->
+                    entries = (entries + e).distinctBy { it.id }
+                    newIds = newIds + e.id
+                }
+            }
+        }
+        return
+    }
+
     // --- Hub -------------------------------------------------------------------
     // The root is a short list; each row opens its own page (stock Android
     // settings shape). Everything below the header used to be one scroll of
     // eighteen sections, and "where is X" was the first support question.
     page?.let { p ->
         BackHandler { page = null }
-        SubPage(title = p.title, onBack = { page = null }) {
+        // Declared outside the Channels branch because the app bar's "+" (in
+        // the actions slot, above the branch) is what opens it.
+        var addSheet by remember { mutableStateOf(false) }
+        SubPage(
+            title = p.title,
+            onBack = { page = null },
+            actions = if (p == SettingsPage.Channels) ({
+                ChannelsActions(channelList, onAdd = { addSheet = true })
+            }) else null
+        ) {
             when (p) {
                 SettingsPage.Kids -> {
                     // The app bar already carries this page name.
@@ -900,18 +962,45 @@ private fun AdminScreen(
                     )
                 }
                 SettingsPage.Channels -> {
-                    // The app bar already carries this page name.
+                    // Built to raw-channels.png: search, tabs, count and sort,
+                    // one row per source. The controls each row used to carry
+                    // are on the source's page; adding is behind "+".
+                    var pasteOpen by remember { mutableStateOf(false) }
+                    val add = rememberSourceAdder(entries, profiles, onChanged = { entries = it })
+                    // Back leaves select mode before it leaves the page.
+                    if (channelList.selecting) BackHandler { channelList.stopSelecting() }
                     Spacer(Modifier.height(12.dp))
-                    SettingsCard {
-                        ChannelsSection(entries, newIds, yt, resolvedNames, profiles, onChanged = { entries = it })
-                    }
-                    SectionTitle("Suggested channels")
-                    SettingsCard {
-                        DirectorySection(entries) { e ->
-                            entries = (entries + e).distinctBy { it.id }
-                            newIds = newIds + e.id
+                    ChannelsSection(
+                        entries = entries,
+                        newIds = newIds,
+                        resolvedNames = resolvedNames,
+                        profiles = profiles,
+                        state = channelList,
+                        onOpen = { openSource = it.id },
+                        onRemove = { ids -> entries = entries.filter { it.id !in ids } }
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    // The shelf defaults moved to their own page; this is the
+                    // way there for a parent who still looks for them here.
+                    SettingsCard(padded = false) {
+                        Box(Modifier.padding(horizontal = 16.dp)) {
+                            ValueRow(
+                                title = "How videos are listed",
+                                summary = "Row order, page layout, dates, page size",
+                                onClick = { page = SettingsPage.Listing }
+                            )
                         }
                     }
+                    if (addSheet) AddSourceSheet(
+                        onDismiss = { addSheet = false },
+                        onSearch = { addSheet = false; openAddFromYouTube = true },
+                        onPaste = { addSheet = false; pasteOpen = true },
+                        onSuggested = { addSheet = false; openSuggested = true }
+                    )
+                    if (pasteOpen) PasteLinkDialog(
+                        onDismiss = { pasteOpen = false },
+                        onAdd = { pasteOpen = false; add(it) }
+                    )
                 }
                 SettingsPage.Listing -> {
                     // No SectionTitle: the app bar already carries this page name,
@@ -1474,9 +1563,20 @@ private enum class SettingsPage(val title: String) {
     Backup("App, hub & backup")
 }
 
-/** One page of the hub: back + title, then the content in a scroll. */
+/**
+ * One page of the hub: back + title, then the content in a scroll.
+ *
+ * [actions] sit at the title's right edge, the way an app bar carries them —
+ * "Select" and "+" on Channels & playlists (raw-channels.png). Most pages
+ * have none.
+ */
 @Composable
-internal fun SubPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+internal fun SubPage(
+    title: String,
+    onBack: () -> Unit,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
     Column(
         Modifier
             .fillMaxSize()
@@ -1488,8 +1588,11 @@ internal fun SubPage(title: String, onBack: () -> Unit, content: @Composable Col
             Text(
                 title,
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = 8.dp)
             )
+            if (actions != null) actions()
         }
         content()
         Spacer(Modifier.height(24.dp))
