@@ -122,6 +122,30 @@ On the phone, `/status` serves `versionCode` and `versionName` but `DeviceStatus
 parses only the name and `DeviceSync.Reachable` carries neither. Answers the first
 question anyone asks about a sideloaded fleet. *Small.*
 
+**H. The crawl in the container; retire master election.** Decided
+2026-09-05, next after the sync bug below. Today the search index is built
+only by whichever device holds `masterDeviceToken`, and that crawl advances
+only while that phone has the app open; the hub, the one machine in the
+house that is never in a pocket or asleep, holds settings and nothing else.
+`PLAN-hub.md` called this its highest day-to-day-value item and nothing
+tracked it. It also dissolves a migration hazard found today: a master token
+that no live device holds (the old package's phone, after the rename) is
+never vacated, so nobody ever crawls again. Pieces: NewPipeExtractor in
+`:hub` (plain Java, runs in the JVM container as is); guard 7 rewritten from
+"no outbound connection" to "YouTube and the devices' `/sync-now`, nothing
+else", so the boundary stays enforced; the hub serving per-channel index files
+in the format devices already exchange over `/index`, devices pulling from the
+hub instead of the master; then, as a separate decision, screening in the
+container, which means the API key living on the NAS. *Medium-large.*
+
+**I. Phone-to-hub pushes do not converge.** Found 2026-09-05 on the first
+real fleet: six pushes from one phone produced merged hashes alternating
+between two values, the phone's own log recorded a "changed screening"
+edit nobody made, and the card blamed "an older version" on a hub built
+from the same commit. Under investigation; blocks everything above, since
+settings never settle. Fix ships with a `:core` convergence test and a
+round trip in `HubIntegrationTest`.
+
 ---
 
 ## 3. Known-wrong docs
@@ -169,10 +193,8 @@ either way.
 - **Skeleton tiles, sleep timer, kid-scale search** were each marked "not done"
   and are partly built; a verifier overturned all three, so re-read before
   trusting either verdict.
-- **`PLAN-hub.md` has live commitments nobody tracks** — notably moving the crawl
-  into the container and retiring master election, which that plan calls its
-  highest day-to-day value item and which is the real fix for "new videos don't
-  show up". Same for three items in `OPEN-QUESTIONS.md`.
+- **`PLAN-hub.md` has live commitments nobody tracks** — the crawl in the
+  container is now §2H above; three items in `OPEN-QUESTIONS.md` still are.
 - **`PLAN-round3/4/5.md` are finished history** and can be archived.
 
 ---
@@ -205,6 +227,7 @@ fires: confirm the work is done, then delete the item and its row.
 | §2A reachability | `LanServerHolder.server = LanServer(` | code |
 | §2C key in backup | `app/src/main/res/xml/backup_rules.xml` | path |
 | §2G device rows | `val address: String?` | code |
+| §2H crawl in the container | `config.masterDeviceToken != me` | code |
 | §4 stats on hub | `outstandingOnHub` | code |
 | §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |
 | §1 update off | `UPDATE_MANIFEST_URL` | code |
