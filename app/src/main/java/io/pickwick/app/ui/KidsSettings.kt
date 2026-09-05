@@ -3,18 +3,22 @@ package io.pickwick.app.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -25,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.pickwick.app.data.Limits
@@ -42,18 +47,16 @@ import io.pickwick.app.data.Profile
  * opens the page on a fresh profile. There is always at least one kid — the
  * admin form makes a "Kid" out of a kid-less config on load — so nothing here
  * has to explain a profile-free mode any more.
+ *
+ * Rendered inside an unpadded [SettingsCard]: one row per kid, a divider,
+ * then "+ Add a kid" as a row of the same card rather than a button below it.
+ * See docs/design/parent-settings/screens/raw-kids.png.
  */
 @Composable
 fun KidsSection(
     profiles: List<Profile>,
     onOpen: (profile: Profile, isNew: Boolean) -> Unit
 ) {
-    Text(
-        "Tap a kid for their profile, screen-time rules and today's extras.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-
     profiles.forEach { profile ->
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -61,57 +64,83 @@ fun KidsSection(
                 .fillMaxWidth()
                 .tvFocusHighlight()
                 .clickable { onOpen(profile, false) }
-                .padding(vertical = 8.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             ProfileAvatar(profile, size = 40)
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(profile.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    listOfNotNull(
-                        profile.age?.let { "age $it" },
-                        if (profile.pin != null) "\uD83D\uDD12 code set" else null,
-                        rulesSummary(profile.limits)
-                    ).joinToString(" \u00B7 ").ifEmpty { "no age set" },
+                    profile.name, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    kidSummary(profile),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Text(
-                "\u203A", style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                PickwickIcons.ChevronRight, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        SettingsDivider()
     }
 
-    Button(
-        modifier = Modifier.tvFocusHighlight(),
-        onClick = {
-            onOpen(
-                Profile(
-                    id = Profile.newId(),
-                    name = "",
-                    colorArgb = PROFILE_COLORS[profiles.size % PROFILE_COLORS.size],
-                    avatar = PROFILE_AVATARS[profiles.size % PROFILE_AVATARS.size]
-                ),
-                true
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .tvFocusHighlight()
+            .clickable {
+                onOpen(
+                    Profile(
+                        id = Profile.newId(),
+                        name = "",
+                        colorArgb = PROFILE_COLORS[profiles.size % PROFILE_COLORS.size],
+                        avatar = PROFILE_AVATARS[profiles.size % PROFILE_AVATARS.size]
+                    ),
+                    true
+                )
+            }
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        // Centred under the avatars above, so the column of icons reads as one.
+        Box(Modifier.width(40.dp), contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Filled.Add, contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
             )
         }
-    ) { Text("Add a kid") }
+        Spacer(Modifier.width(12.dp))
+        Text("Add a kid", color = MaterialTheme.colorScheme.primary)
+    }
 }
 
-/** One-line hint of what's set, so the list answers "who has rules?" at a glance. */
-private fun rulesSummary(l: Limits): String? {
-    val parts = buildList {
-        l.sessionMinutes?.let { add("$it min sessions") }
-        if (l.windows.isNotEmpty()) {
-            add("${l.windows.size} blocked time${if (l.windows.size == 1) "" else "s"}")
-        }
-        l.minVideoMinutes?.let { add("no videos under $it min") }
-        if ((l.pausedUntilMillis ?: 0L) > System.currentTimeMillis()) add("paused today")
-    }
-    return parts.joinToString(", ").ifEmpty { null }
-}
+/** The screen-time rules a kid's page can set, each one either set or not. */
+internal const val KID_RULE_COUNT = 5
+
+/**
+ * How many of the five per-kid rules are set. Blocked windows and the pause
+ * are not rules in this sense — a window is a schedule, the pause is today's
+ * state — so the count stays "N of 5" whatever else the kid has.
+ */
+internal fun rulesSet(l: Limits): Int = listOf(
+    l.sessionMinutes, l.weekdaySessions, l.weekendSessions, l.breakMinutes, l.minVideoMinutes
+).count { it != null }
+
+/**
+ * "Age 7 · 2 of 5 rules set · no profile code" — the three things a parent
+ * checks a kid's row for, always all three, so the rows line up and a missing
+ * one reads as a gap to fill rather than as nothing to say.
+ */
+internal fun kidSummary(p: Profile): String = listOf(
+    p.age?.let { "Age $it" } ?: "No age set",
+    "${rulesSet(p.limits)} of $KID_RULE_COUNT rules set",
+    if (p.pin != null) "profile code set" else "no profile code"
+).joinToString(" \u00B7 ")
 
 // ---------------------------------------------------------------------------
 // Reusable per-kid widgets

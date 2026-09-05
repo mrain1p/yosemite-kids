@@ -880,9 +880,24 @@ private fun AdminScreen(
                 SettingsPage.Kids -> {
                     // The app bar already carries this page name.
                     Spacer(Modifier.height(12.dp))
-                    SettingsCard {
+                    // Unpadded: the rows run edge to edge with dividers
+                    // between them, and "Add a kid" is the last row of the
+                    // same card (raw-kids.png), not a button under it.
+                    SettingsCard(padded = false) {
                         KidsSection(profiles, onOpen = { kid, isNew -> openKid = kid to isNew })
                     }
+                    Spacer(Modifier.height(12.dp))
+                    // Where the pause is, because that is the question a
+                    // parent opens this page to ask and the answer is "not
+                    // here": a single kid's pause is on their page, and the
+                    // family pause is on the settings home.
+                    Text(
+                        "A kid's page holds their profile, screen-time rules and " +
+                            "today's extras. The pause that stops everyone is on the " +
+                            "settings home.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 SettingsPage.Channels -> {
                     // The app bar already carries this page name.
