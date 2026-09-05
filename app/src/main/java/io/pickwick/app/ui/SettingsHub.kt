@@ -114,8 +114,8 @@ internal fun HubSection(pairingStore: PairingStore, onJoined: () -> Unit) {
     if (joined) {
         Text("Connected to the hub at ${host.ifBlank { "your server" }}.")
         Text(
-            "It appears under Kid devices as \"Pickwick hub\" and syncs like any " +
-                "other device. Remove it there to disconnect.",
+            "It has a row on Devices & sync and syncs like any other device. " +
+                "Disconnect from its page there.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

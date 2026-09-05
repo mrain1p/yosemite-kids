@@ -396,7 +396,14 @@ class LanServer(
      * [ConfigSync] from here because the server must not block one peer's
      * request on a sweep across every other peer.
      */
-    private val onSyncRequested: () -> Unit = {}
+    private val onSyncRequested: () -> Unit = {},
+    /**
+     * What this device is — "tv", "tablet" or "phone" — for the badge on the
+     * admin phone's device list. A phone cannot see a peer's Build, and
+     * the form factor is the one fact about a device that never changes, so
+     * it is served here rather than guessed at from a name.
+     */
+    private val deviceKind: () -> String? = { null }
 ) {
     @Volatile
     var port: Int = 0
@@ -802,6 +809,7 @@ class LanServer(
                     // or it mints a second token on every attempt and leaves
                     // orphans enrolled on the hub forever.
                     .put("hub", pairingStore.paired().any { it.secretless })
+                    .apply { deviceKind()?.let { put("kind", it) } }
                     .toString()
             )
             // Disaster recovery: a freshly reinstalled phone starts with an empty
@@ -1063,6 +1071,32 @@ internal object SweepBackoff {
     }
 }
 
+/**
+ * The form factor a device reports on `/status` (`kind`).
+ *
+ * Three answers, deliberately coarse: a TV is what leanback mode says it is,
+ * and the tablet/phone line is the 600dp one Android itself draws. Anything
+ * finer would be a guess, and the list this feeds shows no badge sooner
+ * than a wrong one.
+ */
+object DeviceKind {
+    const val TV = "tv"
+    const val TABLET = "tablet"
+    const val PHONE = "phone"
+
+    fun of(context: android.content.Context): String {
+        val cfg = context.resources.configuration
+        val tv = (context.getSystemService(android.content.Context.UI_MODE_SERVICE)
+            as? android.app.UiModeManager)?.currentModeType ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+        return when {
+            tv -> TV
+            cfg.smallestScreenWidthDp >= 600 -> TABLET
+            else -> PHONE
+        }
+    }
+}
+
 /** Phone side: pushes to paired TVs. */
 object LanClient {
 
@@ -1081,8 +1115,12 @@ object LanClient {
         val syncHash: String? = null,
         /** The build this peer is running, for a version-skew answer. */
         val versionName: String? = null,
+        /** Its versionCode, for "behind on updates" — comparable where versionName is not. */
+        val versionCode: Int? = null,
         /** Whether this peer already syncs with a hub of its own. */
-        val hasHub: Boolean = false
+        val hasHub: Boolean = false,
+        /** "tv", "tablet" or "phone", or null for a build that predates the key. */
+        val kind: String? = null
     )
 
     /** The device's config fingerprint + last-edit time, or null when unreachable. */
@@ -1266,7 +1304,9 @@ object LanClient {
                     // The version is how "pushed, still out of sync" gets to
                     // be answered as version skew instead of guessed at.
                     versionName = json.optString("versionName").ifEmpty { null },
-                    hasHub = json.optBoolean("hub", false)
+                    versionCode = if (json.has("versionCode")) json.optInt("versionCode") else null,
+                    hasHub = json.optBoolean("hub", false),
+                    kind = json.optString("kind").ifEmpty { null }
                 )
             }
         }.getOrNull()

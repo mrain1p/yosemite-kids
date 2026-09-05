@@ -292,6 +292,11 @@ val UpdateDot = Color(0xFFFF5252)
 val StatusOkGreen = Color(0xFF81C784)
 val StatusFailRed = Color(0xFFE57373)
 
+/** "Needs a look, not an alarm": a device offline or behind on updates, the
+ *  banner that counts them. Warm rather than red, because a TV that is
+ *  switched off is the normal state of a TV. */
+val StatusAmber = Color(0xFFE0B360)
+
 /** The home screen's non-channel tiles — the phone grid and the TV row draw
  *  the same tiles, so their identity colors get one spelling here. */
 val SurpriseTileCyan = Color(0xFF00ACC1)

@@ -31,7 +31,7 @@ and, if the device later changes address, by sweeping its own /24
 | `GET /admins` | admin | — | `[{token,name}]` | Raw tokens: all admins are equal, so this exposes nothing an admin couldn't already do. |
 | `POST /admin-revoke?token=` | admin | — | `revoked` | Never yourself. |
 | `POST /admin-leave` | admin | — | `left` / `409 last admin` | The calling phone drops its own approval (Unpair). |
-| `GET /status` | admin | — | `{hash, updatedAt, token, versionCode, versionName}` | `hash` = config fingerprint; equal hashes = in sync. |
+| `GET /status` | admin | — | `{hash, updatedAt, token, versionCode, versionName, kind}` | `hash` = config fingerprint; equal hashes = in sync. `kind` is `tv`, `tablet` or `phone` (absent on the hub and on older builds); the admin phone badges devices by it. |
 | `GET /config` | admin | — | full config JSON, **including** the AI key | Disaster recovery for a reinstalled phone. |
 | `POST /config` | admin | full config JSON | `saved` / `400 bad config` | Validated by `ConfigStore.fromJson`; key stripped before it hits disk; fires `onConfigApplied` (kid notices). |
 | `GET /stats[?profile=<8 hex>]` | admin | — | see `Stats.build` | Per-kid when `profile` is given; else the kid on screen. |

@@ -583,6 +583,29 @@ private fun AdminScreen(
     var digestOpen by remember { mutableStateOf(false) }
     var activityOpen by remember { mutableStateOf(false) }
 
+    // The root-page selection lives up here, above every early return: it is
+    // what a sub-page returns TO. Declared below the returns it was forgotten
+    // while one was open, and Back from "Blocked videos" landed on the root —
+    // and Stats, opened from a device's page, returns here too.
+    var page by remember { mutableStateOf<SettingsPage?>(null) }
+    // The fleet, and the pages Devices & sync pushes: one device, a
+    // co-parent, this phone, the hub, "add a device". The fleet holds the
+    // last sweep's answers so the list renders from them instantly — the LAN
+    // fills in behind it — and it must outlive a trip to a device's page,
+    // or every return would flash "Checking…" down the whole list.
+    val fleet = remember { DeviceFleet(pairingStore) }
+    DisposableEffect(fleet) { onDispose { fleet.close() } }
+    var openDevice by remember { mutableStateOf<String?>(null) }
+    var openParent by remember { mutableStateOf<String?>(null) }
+    var openThisPhone by remember { mutableStateOf(false) }
+    var openHub by remember { mutableStateOf(false) }
+    var openAddDevice by remember { mutableStateOf(false) }
+    // An unpaired device or a removed co-parent has no page to stay on.
+    LaunchedEffect(fleet.devices, fleet.adminsByDevice) {
+        if (openDevice != null && fleet.devices.none { it.key == openDevice }) openDevice = null
+        if (openParent != null && fleet.otherParents().none { it.token == openParent }) openParent = null
+    }
+
     // Pushes chase each other: the newest cancels the one in flight, so a
     // retry never delivers a config the parent has since edited past.
     val pushJob = remember {
@@ -748,10 +771,6 @@ private fun AdminScreen(
     var openReview by remember { mutableStateOf(false) }
     var openBlocked by remember { mutableStateOf(false) }
     var openAiConnection by remember { mutableStateOf(false) }
-    // The root-page selection lives up here for the same reason: it is what a
-    // sub-page returns TO. Declared below the returns it was forgotten while
-    // one was open, and Back from "Blocked videos" landed on the root.
-    var page by remember { mutableStateOf<SettingsPage?>(null) }
     // The channel list's search, tab, sort and selection, and the pages it
     // pushes (one source, the YouTube search, the directory). Up here for the
     // same reason again: a row opens a source page, and Back must land on the
@@ -865,6 +884,126 @@ private fun AdminScreen(
                     show = ReviewHalf.BLOCKED
                 )
             }
+        }
+        return
+    }
+
+    // Pushed from Devices & sync. Not SettingsPages either: "This phone" on
+    // a NAS is meaningless, and guard 3 would make the hub serve it.
+    val openedDevice = openDevice?.let { key -> fleet.devices.firstOrNull { it.key == key } }
+    if (openedDevice != null) {
+        BackHandler { openDevice = null }
+        SubPage(title = openedDevice.name, onBack = { openDevice = null }) {
+            DevicePage(
+                fleet = fleet,
+                device = openedDevice,
+                pairingStore = pairingStore,
+                configStore = configStore,
+                profiles = profiles,
+                deviceProfiles = deviceProfiles,
+                // The form's fingerprint, not the file's: between an edit and
+                // its auto-save, "in sync ✓" measured against disk would be a
+                // lie for a beat.
+                localHash = currentHash,
+                localSecretlessHash = currentSecretlessHash,
+                localSyncHash = localSyncHash,
+                // Push must deliver what the parent is LOOKING AT.
+                saveCurrent = {
+                    val config = buildCurrentConfig()
+                    val saved = configStore.save(
+                        config, base = baseline,
+                        who = pairingStore.myName(), by = pairingStore.by()
+                    )
+                    baseline = saved?.config ?: config
+                    saved?.json ?: ConfigJson.toJson(config)
+                },
+                onAssign = { token, profileId ->
+                    deviceProfiles =
+                        if (profileId == null) deviceProfiles - token
+                        else deviceProfiles + (token to profileId)
+                },
+                masterToken = masterToken,
+                onMakeMaster = { token -> masterToken = token },
+                onOpenStats = { statsDevice = it },
+                onConfigReplaced = { configEpoch++ },
+                onFleetChanged = { configEpoch++ }
+            )
+        }
+        return
+    }
+    val openedParent = openParent?.let { t -> fleet.otherParents().firstOrNull { it.token == t } }
+    if (openedParent != null) {
+        BackHandler { openParent = null }
+        SubPage(title = openedParent.name, onBack = { openParent = null }) {
+            ParentPage(
+                fleet = fleet,
+                parent = openedParent,
+                masterToken = masterToken,
+                onMakeMaster = { token -> masterToken = token }
+            )
+        }
+        return
+    }
+    if (openThisPhone) {
+        BackHandler { openThisPhone = false }
+        SubPage(title = "This phone", onBack = { openThisPhone = false }) {
+            // This phone's name in the change log. Build.MODEL is no help when
+            // both parents carry the same handset, and "Dad's phone" is
+            // exactly what a co-parent needs to read.
+            SettingsCard {
+                var myName by remember { mutableStateOf(pairingStore.myName()) }
+                OutlinedTextField(
+                    value = myName,
+                    onValueChange = { myName = it; pairingStore.setMyName(it) },
+                    singleLine = true,
+                    label = { Text("Called") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    "Shown beside the changes this phone makes, so the other " +
+                        "parent can tell who did what.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                // A phone can be a kid's own device too — dedicate it and it
+                // never asks who's watching.
+                WatchingAsRow(
+                    "This phone:", fleet.myToken, profiles, deviceProfiles,
+                    onAssign = { token, profileId ->
+                        deviceProfiles =
+                            if (profileId == null) deviceProfiles - token
+                            else deviceProfiles + (token to profileId)
+                    }
+                )
+            }
+            // Search index: who's the master, and how far each channel's
+            // crawl has got. Read-only — the master does the work.
+            SectionTitle("Search index")
+            SettingsCard { SearchIndexSection(entries, masterToken, pairingStore) }
+            SectionTitle("Offline downloads")
+            SettingsCard { DownloadsSection() }
+            SectionTitle("Videos from this phone")
+            SettingsCard { LocalVideosSection(profiles) }
+        }
+        return
+    }
+    // Before "Add a device", which opens it: Back from here lands on that page.
+    if (openHub) {
+        BackHandler { openHub = false }
+        SubPage(title = "A hub you run", onBack = { openHub = false }) {
+            SettingsCard { HubSection(pairingStore) { fleet.reload(); configEpoch++ } }
+        }
+        return
+    }
+    if (openAddDevice) {
+        BackHandler { openAddDevice = false }
+        SubPage(title = "Add a device", onBack = { openAddDevice = false }) {
+            AddDevicePage(
+                fleet = fleet,
+                pairingStore = pairingStore,
+                onOpenHub = { openHub = true },
+                onBecameKidDevice = onBecameKidDevice
+            )
         }
         return
     }
@@ -1157,92 +1296,57 @@ private fun AdminScreen(
                     }
                 }
                 SettingsPage.Devices -> {
-                    SectionTitle("Hub (optional)")
-                    SettingsCard { HubSection(pairingStore) { configEpoch++ } }
-                    SectionTitle("Kid devices")
-                    SettingsCard {
-                        PhoneDevicesSection(
-                            pairingStore, configStore,
-                            onBecameKidDevice = onBecameKidDevice,
-                            profiles = profiles,
-                            deviceProfiles = deviceProfiles,
-                            // The form's fingerprint, not the file's: between an
-                            // edit and its auto-save, "in sync ✓" measured against
-                            // disk would be a lie for a beat.
-                            localHash = currentHash,
-                            localSecretlessHash = currentSecretlessHash,
-                            // Re-read after every save, since that is when the
-                            // stamper mints it. Keyed on the saved baseline
-                            // rather than the live form: the form does not
-                            // carry bookkeeping and never changes it.
-                            localSyncHash = localSyncHash,
-                            onSyncNow = onSyncNow,
-                            // Push must deliver what the parent is LOOKING AT.
-                            saveCurrent = {
-                                val config = buildCurrentConfig()
-                                val saved = configStore.save(
-                                    config, base = baseline,
-                                    who = pairingStore.myName(), by = pairingStore.by()
-                                )
-                                baseline = saved?.config ?: config
-                                saved?.json ?: ConfigJson.toJson(config)
-                            },
-                            onAssign = { token, profileId ->
-                                deviceProfiles =
-                                    if (profileId == null) deviceProfiles - token
-                                    else deviceProfiles + (token to profileId)
-                            },
-                            masterToken = masterToken,
-                            onMakeMaster = { token -> masterToken = token },
-                            onOpenStats = { statsDevice = it },
-                            onConfigReplaced = { configEpoch++ }
-                        )
-                        // Per-device Stats answers "what's happening today"; this
-                        // answers "how did the week go" across every device.
-                        CompactButton(onClick = { digestOpen = true }) { Text("Weekly digest") }
+                    // Rebuilt to raw-devices.png: the fleet as rows — hub and
+                    // this phone among them — with the actions one tap in.
+                    // The four cards about the device in hand (its name, the
+                    // search index, downloads, local videos) sit behind this
+                    // phone's own row; the hub's setup card behind the hub's.
+                    PhoneDevicesSection(
+                        fleet = fleet,
+                        pairingStore = pairingStore,
+                        // The form's fingerprint, not the file's: between an
+                        // edit and its auto-save, "In sync" measured against
+                        // disk would be a lie for a beat.
+                        localHash = currentHash,
+                        localSecretlessHash = currentSecretlessHash,
+                        // Re-read after every save, since that is when the
+                        // stamper mints it. Keyed on the saved baseline
+                        // rather than the live form: the form does not
+                        // carry bookkeeping and never changes it.
+                        localSyncHash = localSyncHash,
+                        masterToken = masterToken,
+                        onSyncNow = onSyncNow,
+                        onOpenDevice = { openDevice = it.key },
+                        onOpenThisPhone = { openThisPhone = true },
+                        onOpenParent = { openParent = it.token },
+                        onOpenHub = { openHub = true },
+                        onAddDevice = { openAddDevice = true }
+                    )
+                    SectionTitle("Activity")
+                    SettingsCard(padded = false) {
+                        Column(Modifier.padding(horizontal = 16.dp)) {
+                            Spacer(Modifier.height(10.dp))
+                            VersionLine(configStore, refreshKey = currentHash)
+                            // Per-device Stats answers "what's happening
+                            // today"; this answers "how did the week go"
+                            // across every device.
+                            ValueRow(
+                                "Weekly digest", "How the week went, across every device",
+                                onClick = { digestOpen = true }
+                            )
+                            SettingsDivider()
+                            // Who changed what. Nothing like this existed, so
+                            // "why did the TV change?" and "did my edit stick?"
+                            // were simply unanswerable — a parent's only
+                            // recourse was comparing two screens by eye.
+                            ValueRow(
+                                "Recent changes",
+                                latestChangeLine(baseline.sync.log)
+                                    ?: "No settings changes recorded yet.",
+                                onClick = { activityOpen = true }
+                            )
+                        }
                     }
-                    // Who changed what. Nothing like this existed, so "why did
-                    // the TV change?" and "did my edit stick?" were simply
-                    // unanswerable — a parent's only recourse was comparing two
-                    // screens by eye.
-                    SectionTitle("Recent changes")
-                    SettingsCard {
-                        val latest = latestChangeLine(baseline.sync.log)
-                        Text(
-                            latest ?: "No settings changes recorded yet.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        CompactButton(onClick = { activityOpen = true }) { Text("See all changes") }
-                    }
-                    // This phone's name in that log. Build.MODEL is no help when
-                    // both parents carry the same handset, and "Dad's phone" is
-                    // exactly what a co-parent needs to read.
-                    SectionTitle("This phone")
-                    SettingsCard {
-                        var myName by remember { mutableStateOf(pairingStore.myName()) }
-                        OutlinedTextField(
-                            value = myName,
-                            onValueChange = { myName = it; pairingStore.setMyName(it) },
-                            singleLine = true,
-                            label = { Text("Called") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Text(
-                            "Shown beside the changes this phone makes, so the other " +
-                                "parent can tell who did what.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    // Search index: who's the master, and how far each channel's
-                    // crawl has got. Read-only — the master does the work.
-                    SectionTitle("Search index")
-                    SettingsCard { SearchIndexSection(entries, masterToken, pairingStore) }
-                    SectionTitle("Offline downloads")
-                    SettingsCard { DownloadsSection() }
-                    SectionTitle("Videos from this phone")
-                    SettingsCard { LocalVideosSection(profiles) }
                 }
                 SettingsPage.Playback -> {
                     // Rebuilt to raw-playback.png. Four switches in one card

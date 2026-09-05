@@ -178,7 +178,7 @@ Settings.kt SettingsFlow
   ├─ gate: biometric → PIN (PBKDF2 in SettingsStore)
   └─ AdminScreen: sections in order — Kids, Screen time, Listening, Screen time
      today (grants/pause), Playback, Offline downloads, Videos from this phone,
-     Kid devices, Search index, AI screening, Waiting for your OK, Discover with
+     Devices & sync (the fleet, one page per device), AI screening, Waiting for your OK, Discover with
      AI, Suggested channels, Channels & playlists, Import/export/backup, App
      Save & close → ConfigStore.save → LanClient.pushConfig to every device
 ```

@@ -175,7 +175,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             }
                         )
                     }
-                }
+                },
+                deviceKind = { io.pickwick.app.data.DeviceKind.of(appContext) }
             ).also { it.start() }
         }
         // "Play this on the TV" from a parent's phone. The device applies its
