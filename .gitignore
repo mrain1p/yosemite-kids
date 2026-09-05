@@ -15,3 +15,6 @@ local.properties
 # Family data for the emulator seed (built by scripts/seed-from-whitelist.sh)
 scripts/seed-config.real.json
 .kotlin/
+
+# Design handoff bundles — the extracted contents live in docs/design/
+*App Design*.zip

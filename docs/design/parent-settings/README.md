@@ -21,7 +21,10 @@ section composables in `ui/Settings*.kt`. Reuse the real stores (`ConfigStore`,
 `Backup`) — the prototype's data is seeded fixtures standing in for them.
 
 Open the file directly in a browser (`support.js` must sit beside it). Click any row to
-push; the header chevron pops.
+push; the header chevron pops. `screens/contact-sheet.png` shows all 14 screens side by
+side for the visual direction; each still is the top of its screen, so longer pages
+continue below the fold — read the prototype for the rest, plus sheets, dialogs and
+transitions.
 
 ## Fidelity
 **High fidelity.** Colours, type, spacing, radii, hit targets, pressed states and copy are
@@ -332,6 +335,8 @@ whether it was kept, moved, merged or removed — is rendered in the prototype i
 (option **2b**, right of the phone). Nothing was cut except Support Pickwick.
 
 ## Files in this bundle
+- `screens/contact-sheet.png` — all 14 screens side by side, labelled (start here)
+- `screens/raw-*.png` — the same screens individually, 344dp wide
 - `Pickwick Settings.dc.html` — the prototype (open in a browser)
 - `support.js` — runtime the prototype needs; keep beside it
 - `README.md` — this document
