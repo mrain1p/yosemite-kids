@@ -582,6 +582,12 @@ private fun AdminScreen(
     var statsDevice by remember { mutableStateOf<PairedDevice?>(null) }
     var digestOpen by remember { mutableStateOf(false) }
     var activityOpen by remember { mutableStateOf(false) }
+    // The review queue and the blocked list, pushed from Screening — and from
+    // the digest's Screening card, which is why they live above the digest's
+    // early return: a flag declared below it is a fresh `false` by the time
+    // the digest has closed, and the tap would land back on the root.
+    var openReview by remember { mutableStateOf(false) }
+    var openBlocked by remember { mutableStateOf(false) }
 
     // The root-page selection lives up here, above every early return: it is
     // what a sub-page returns TO. Declared below the returns it was forgotten
@@ -622,7 +628,14 @@ private fun AdminScreen(
         return
     }
     if (digestOpen) {
-        WeeklyDigestScreen(pairingStore, configStore) { digestOpen = false }
+        WeeklyDigestScreen(
+            pairingStore, configStore,
+            // The digest closes under the queue rather than stacking: Back
+            // from the queue then lands on the page the digest was opened from.
+            onOpenReview = { digestOpen = false; openReview = true },
+            onOpenBlocked = { digestOpen = false; openBlocked = true },
+            onBack = { digestOpen = false }
+        )
         return
     }
 
@@ -765,11 +778,10 @@ private fun AdminScreen(
     // The kid page takes over the screen while open (profile, rules, today).
     // It edits the form's profile list directly; the auto-apply above does
     // the rest, so a pause tapped there is on the TV a moment later.
-    // Sub-pages pushed from Screening. Declared ABOVE the early returns below:
+    // Sub-pages pushed from Screening (openReview and openBlocked sit further
+    // up, beside the digest). Declared ABOVE the early returns below:
     // everything after openKid leaves composition when a sub-page opens, so a
     // remember there is discarded and a count would flash 0 on the way back.
-    var openReview by remember { mutableStateOf(false) }
-    var openBlocked by remember { mutableStateOf(false) }
     var openAiConnection by remember { mutableStateOf(false) }
     // The channel list's search, tab, sort and selection, and the pages it
     // pushes (one source, the YouTube search, the directory). Up here for the

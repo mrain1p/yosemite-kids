@@ -69,8 +69,9 @@ fun SyncActivityScreen(
     }
 }
 
+/** One change as a sentence and its age — here and on the digest's "Changes this week". */
 @Composable
-private fun ChangeRow(c: ConfigMerge.Change) {
+internal fun ChangeRow(c: ConfigMerge.Change) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Text(
             // "Dad's phone changed Emma's rules" reads as one sentence, which

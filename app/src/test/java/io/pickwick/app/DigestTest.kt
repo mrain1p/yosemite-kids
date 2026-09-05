@@ -3,6 +3,8 @@ package io.pickwick.app
 import io.pickwick.app.data.Digest
 import io.pickwick.app.data.DigestStore
 import io.pickwick.app.data.Stats
+import io.pickwick.app.ui.digestWeekLine
+import io.pickwick.app.ui.weekComparison
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -62,6 +64,58 @@ class DigestTest {
         assertEquals("20260805" to 10, weekly.days[3])
         assertEquals("20260808" to 25, weekly.days.last())
         assertEquals(75, weekly.totalMin)
+    }
+
+    @Test
+    fun `last week is null until the archive reaches past the window`() {
+        // Every row inside the window: the device may be six days old.
+        val young = Digest.assemble(
+            payload(watchedToday = 5, history = listOf("20260803" to 40)),
+            baselines = emptyList(),
+            todayKey = "20260808"
+        )
+        assertNull(young.lastWeekMin)
+        assertNull(weekComparison(young.totalMin, young.lastWeekMin))
+
+        // One row older than the window proves the archive was running, so
+        // last week's absent days are real zeros — even a whole week of them.
+        val quietLastWeek = Digest.assemble(
+            payload(watchedToday = 5, history = listOf("20260701" to 40)),
+            baselines = emptyList(),
+            todayKey = "20260808"
+        )
+        assertEquals(0, quietLastWeek.lastWeekMin)
+
+        // Prior window is 20260726..20260801; 20260725 and 20260802 stay out.
+        val weekly = Digest.assemble(
+            payload(
+                watchedToday = 30,
+                history = listOf(
+                    "20260725" to 99, "20260726" to 10, "20260801" to 20,
+                    "20260802" to 60
+                )
+            ),
+            baselines = emptyList(),
+            todayKey = "20260808"
+        )
+        assertEquals(30, weekly.lastWeekMin)
+        assertEquals(90, weekly.totalMin)
+        assertEquals(2, weekly.daysWatched)
+        assertEquals("1h 0m more than last week", weekComparison(weekly.totalMin, weekly.lastWeekMin))
+        assertEquals("20m less than last week", weekComparison(10, 30))
+        assertEquals("same as last week", weekComparison(30, 30))
+        assertEquals(
+            "Watched on 2 of 7 days · 12 min a day · 1h 0m more than last week",
+            digestWeekLine(weekly)
+        )
+        assertTrue(Digest.summaryFacts(null, weekly).contains("Last week: 30 min"))
+    }
+
+    @Test
+    fun `week of label names the window's first day`() {
+        assertEquals("Week of 2 Aug", Digest.weekOfLabel("20260808"))
+        assertEquals("Week of 29 Aug", Digest.weekOfLabel("20260904"))
+        assertEquals("This week", Digest.weekOfLabel("garbage"))
     }
 
     @Test

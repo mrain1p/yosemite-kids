@@ -117,10 +117,28 @@ object Digest {
          */
         val channelsSinceDay: String?,
         /** AI holds/blocks whose screening time falls inside the window. */
-        val blocked: List<Stats.AiFlagged>
-    )
+        val blocked: List<Stats.AiFlagged>,
+        /**
+         * Minutes over the seven days before the window — "1h 12m more than
+         * last week". Null when the archive holds nothing older than the
+         * window: a device that young has no last week to compare against,
+         * and a zero would claim the kid watched nothing, which is a different
+         * statement. Absent days inside a covered week are genuinely zero
+         * (SessionGuard archives only days with minutes).
+         */
+        val lastWeekMin: Int? = null
+    ) {
+        /** Days in the window with at least a minute played. */
+        val daysWatched: Int get() = days.count { it.second > 0 }
+    }
 
     private fun format() = SimpleDateFormat("yyyyMMdd", Locale.US)
+
+    /** "Week of 29 Aug" — the window's first day, for the page's heading. */
+    fun weekOfLabel(todayKey: String): String = runCatching {
+        val first = format().parse(weekDayKeys(todayKey).first())!!
+        "Week of " + SimpleDateFormat("d MMM", Locale.US).format(first)
+    }.getOrDefault("This week")
 
     /** todayKey and the 6 days before it, oldest first. */
     fun weekDayKeys(todayKey: String): List<String> {
@@ -132,10 +150,12 @@ object Digest {
         }
     }
 
-    fun dayAfter(dayKey: String): String {
+    fun dayAfter(dayKey: String): String = shiftDay(dayKey, 1)
+
+    private fun shiftDay(dayKey: String, days: Int): String {
         val fmt = format()
         val cal = Calendar.getInstance().apply { time = fmt.parse(dayKey)!! }
-        cal.add(Calendar.DAY_OF_YEAR, 1)
+        cal.add(Calendar.DAY_OF_YEAR, days)
         return fmt.format(cal.time)
     }
 
@@ -184,6 +204,13 @@ object Digest {
         val sinceDay = baseline?.let { dayAfter(it.day) }
             ?.takeIf { topChannels.isNotEmpty() }
 
+        // Last week is only a number when the archive demonstrably reaches
+        // past this window; otherwise "0 min last week" and "no last week"
+        // would be indistinguishable, and the comparison would read as a binge.
+        val priorKeys = weekDayKeys(shiftDay(keys.first(), -1))
+        val lastWeekMin = if (byDay.keys.any { it < keys.first() })
+            priorKeys.sumOf { byDay[it] ?: 0 } else null
+
         val startMs = weekStartMs(todayKey)
         return Weekly(
             days = days,
@@ -192,7 +219,8 @@ object Digest {
             channelsSinceDay = sinceDay,
             blocked = payload.aiFlagged
                 .filter { it.at >= startMs }
-                .sortedByDescending { it.at }
+                .sortedByDescending { it.at },
+            lastWeekMin = lastWeekMin
         )
     }
 
@@ -207,6 +235,7 @@ object Digest {
         append(weekly.days.joinToString(", ") { (day, min) -> "$day=$min" })
         append('\n')
         append("Total: ${weekly.totalMin} min\n")
+        weekly.lastWeekMin?.let { append("Last week: $it min\n") }
         if (weekly.topChannels.isNotEmpty()) {
             append("Top channels: ")
             append(weekly.topChannels.take(5).joinToString(", ") { (n, m) -> "$n ($m min)" })
