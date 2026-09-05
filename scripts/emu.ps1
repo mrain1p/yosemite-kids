@@ -1,4 +1,4 @@
-# Pickwick emulator loop. Usage: .\scripts\emu.ps1 <verb> [args]
+# Yosemite Kids emulator loop. Usage: .\scripts\emu.ps1 <verb> [args]
 #   boot [headless] | tv | stop | install | seed [--real] | launch | shot <name>
 #   tap X Y | key KEYCODE | text "..." | back | home | rotate | logcat | forward
 #   dpad left|right|up|down|ok|back | hold-ok | wait-stream
@@ -14,8 +14,8 @@ $root = Split-Path -Parent $PSScriptRoot
 $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA "Android\Sdk" }
 $adb = Join-Path $sdk "platform-tools\adb.exe"
 $emu = Join-Path $sdk "emulator\emulator.exe"
-$serial = if ($env:PICKWICK_SERIAL) { $env:PICKWICK_SERIAL } else { "emulator-5554" }
-$pkg = "io.pickwick.app"
+$serial = if ($env:YOSEMITE_KIDS_SERIAL) { $env:YOSEMITE_KIDS_SERIAL } else { "emulator-5554" }
+$pkg = "io.yosemitekids.app"
 function Adb { & $adb -s $serial @args }
 
 function Wait-Boot {
@@ -40,11 +40,11 @@ switch ($Verb) {
         Wait-Boot
     }
     "tv" {
-        # Second console port so the phone can stay up; use PICKWICK_SERIAL=emulator-5556 for the other verbs.
+        # Second console port so the phone can stay up; use YOSEMITE_KIDS_SERIAL=emulator-5556 for the other verbs.
         $serial = "emulator-5556"
         Start-Process -FilePath $emu -ArgumentList "-avd pickwick_tv -port 5556 -no-snapshot-load -no-boot-anim -gpu auto -netdelay none -netspeed full -dns-server 8.8.8.8,1.1.1.1" -WindowStyle Normal
         Wait-Boot
-        Write-Host 'Drive it with: $env:PICKWICK_SERIAL="emulator-5556"; .\scripts\emu.ps1 install / seed / launch / dpad ...'
+        Write-Host 'Drive it with: $env:YOSEMITE_KIDS_SERIAL="emulator-5556"; .\scripts\emu.ps1 install / seed / launch / dpad ...'
     }
     "stop" { Adb emu kill }
     "install" {
@@ -70,8 +70,8 @@ switch ($Verb) {
         $out = Join-Path $dir "$name.png"
         # Not `exec-out ... > $out`: PowerShell's redirect re-encodes the bytes
         # as text (BOM + mangled high bytes) and the PNG is unreadable.
-        Adb shell screencap -p /sdcard/pickwick-shot.png | Out-Null
-        Adb pull /sdcard/pickwick-shot.png $out | Out-Null
+        Adb shell screencap -p /sdcard/yosemite-kids-shot.png | Out-Null
+        Adb pull /sdcard/yosemite-kids-shot.png $out | Out-Null
         Write-Host $out
     }
     "tap" { Adb shell input tap $A $B }
@@ -95,7 +95,7 @@ switch ($Verb) {
         Adb logcat -c
         for ($i = 0; $i -lt 14; $i++) {
             Start-Sleep -Seconds 5
-            $log = (Adb logcat -d -s Pickwick:*) -join "`n"
+            $log = (Adb logcat -d -s YosemiteKids:*) -join "`n"
             if ($log -match "chunked clen|stream\[|playback failed") { Write-Host "stream event after $(($i+1)*5)s"; break }
         }
     }
@@ -105,7 +105,7 @@ switch ($Verb) {
         $next = if ($cur.Trim() -eq "1") { 0 } else { 1 }
         Adb shell settings put system user_rotation $next
     }
-    "logcat" { Adb logcat -d -s Pickwick:* AndroidRuntime:E | Select-Object -Last 200 }
+    "logcat" { Adb logcat -d -s YosemiteKids:* AndroidRuntime:E | Select-Object -Last 200 }
     "forward" { Adb forward tcp:8765 tcp:8765; Write-Host "host 127.0.0.1:8765 -> emulator LanServer" }
     default {
         Write-Host "verbs: boot tv stop install seed [--real] launch shot <name> tap X Y key KEYCODE text '...' back home dpad <dir> [n] hold-ok wait-stream rotate logcat forward"

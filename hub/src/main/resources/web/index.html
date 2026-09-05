@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pickwick hub</title>
+<title>Yosemite Kids hub</title>
 <!--
   Everything is inline and nothing is fetched from the internet. A NAS often
   has no outbound access at all, and a page that half-loads because a CDN is
@@ -99,10 +99,10 @@
 <body>
 
 <section id="login" class="card" hidden>
-  <h2>Pickwick hub</h2>
+  <h2>Yosemite Kids hub</h2>
   <p class="hint">
     Enter the admin token. It is printed in the container log when the hub
-    starts &mdash; <code>docker logs pickwick-hub</code>.
+    starts &mdash; <code>docker logs yosemite-kids-hub</code>.
   </p>
   <input id="token" type="password" autocomplete="current-password" placeholder="Admin token">
   <p></p>
@@ -112,7 +112,7 @@
 
 <div id="app" hidden>
   <header>
-    <h1>Pickwick hub</h1>
+    <h1>Yosemite Kids hub</h1>
     <span class="saved" id="saved">Saved</span>
     <span class="spacer"></span>
     <button class="quiet" id="signout">Sign out</button>
@@ -501,7 +501,7 @@
     var ai = cfg().ai || {};
 
     var conn = card("AI connection",
-      "Where Pickwick talks to an AI, and which model. Screening and channel discovery each switch on separately.");
+      "Where Yosemite Kids talks to an AI, and which model. Screening and channel discovery each switch on separately.");
     conn.appendChild(el("p", "note",
       "The API key is set on a phone, not here. The hub strips secrets before writing and has no keystore, so a key typed here could not survive a restart."));
     var grid = el("div", "grid");

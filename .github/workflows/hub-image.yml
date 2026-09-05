@@ -57,7 +57,7 @@ jobs:
       # username may contain capitals even when the repo name does not.
       - name: Work out the image name
         id: name
-        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pickwick-hub" >> "$GITHUB_OUTPUT"
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/yosemite-kids-hub" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6

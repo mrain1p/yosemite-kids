@@ -62,13 +62,13 @@ skips review. Responds
    ```
 
    `deploy` prints the worker URL, e.g.
-   `https://pickwick-suggest.<your-subdomain>.workers.dev`.
+   `https://yosemite-kids-suggest.<your-subdomain>.workers.dev`.
 
 5. **Connect the form**: in `site/suggest.html`, fill in the two constants at
    the top of the script block —
 
    ```js
-   var WORKER_URL = 'https://pickwick-suggest.<your-subdomain>.workers.dev';
+   var WORKER_URL = 'https://yosemite-kids-suggest.<your-subdomain>.workers.dev';
    var TURNSTILE_SITE_KEY = '<site key from step 2>';
    ```
 

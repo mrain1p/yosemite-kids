@@ -150,7 +150,7 @@ Walked every settings page and the pairing flow on a device. What it found:
   across two devices.** It is now numbered, and it says what the TV will show
   at each stage, so a parent knows the phone is not the thing to watch.
 - **There is deliberately no in-app QR scanner, and that is right.** The QR is a
-  `pickwick://pair` deep link, so the phone's ordinary camera opens it and the
+  `yosemitekids://pair` deep link, so the phone's ordinary camera opens it and the
   app needs no camera permission at all. The old copy left a parent hunting for
   a scan button that should not exist; the new copy says to use the normal
   camera.

@@ -40,9 +40,9 @@ COPY --from=build /src/hub/build/install/hub ./
 # owned by the host and shadows the chown below, leaving the hub unable to
 # write; the entrypoint starts as root purely to repair that, then drops to
 # this user before the JVM is exec'd. See docker-entrypoint.sh.
-RUN useradd --system --uid 10001 pickwick \
+RUN useradd --system --uid 10001 yosemitekids \
     && mkdir -p /data \
-    && chown -R pickwick:pickwick /data
+    && chown -R yosemitekids:yosemitekids /data
 
 # The entrypoint drops privileges with setpriv. If a future base image stops
 # shipping util-linux, fail here — at build time, visibly — rather than at
@@ -53,12 +53,12 @@ RUN command -v setpriv >/dev/null || (echo 'setpriv missing from base image' >&2
 # Same CR strip as gradlew, for the same reason: this file is routinely copied
 # from a Windows checkout, and a shebang of "#!/bin/sh\r" fails with "not
 # found" for a script that is plainly right there.
-COPY hub/docker-entrypoint.sh /usr/local/bin/pickwick-entrypoint
-RUN sed -i 's/\r$//' /usr/local/bin/pickwick-entrypoint \
-    && chmod +x /usr/local/bin/pickwick-entrypoint
+COPY hub/docker-entrypoint.sh /usr/local/bin/yosemite-kids-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/yosemite-kids-entrypoint \
+    && chmod +x /usr/local/bin/yosemite-kids-entrypoint
 
-ENV PICKWICK_DATA=/data
-ENV PICKWICK_PORT=8765
+ENV YOSEMITE_KIDS_DATA=/data
+ENV YOSEMITE_KIDS_PORT=8765
 VOLUME ["/data"]
 EXPOSE 8765
 
@@ -68,6 +68,6 @@ EXPOSE 8765
 # restarts it forever. This needs no package and checks the thing that matters,
 # that the port is actually accepting.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \
-    CMD ["/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/${PICKWICK_PORT} && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q 200"]
+    CMD ["/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/${YOSEMITE_KIDS_PORT} && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q 200"]
 
-ENTRYPOINT ["/usr/local/bin/pickwick-entrypoint", "./bin/hub"]
+ENTRYPOINT ["/usr/local/bin/yosemite-kids-entrypoint", "./bin/hub"]

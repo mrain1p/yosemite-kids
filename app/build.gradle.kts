@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Release signing. PICKWICK_KEYSTORE (local.properties or the environment)
+// Release signing. YOSEMITE_KIDS_KEYSTORE (local.properties or the environment)
 // must point at the real release keystore; release builds fail without it.
 // There is deliberately no debug-key fallback: the release key is the sole
 // trust anchor for self-update, and Android refuses an in-place upgrade across
@@ -20,23 +20,27 @@ val signingProps = Properties().apply {
 fun signingProp(name: String): String? =
     (signingProps.getProperty(name) ?: System.getenv(name))?.takeIf { it.isNotBlank() }
 
-val releaseKeystore: String? = signingProp("PICKWICK_KEYSTORE")
+val releaseKeystore: String? = signingProp("YOSEMITE_KIDS_KEYSTORE")
 
 android {
-    namespace = "io.pickwick.app"
+    namespace = "io.yosemitekids.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "io.pickwick.app"
+        applicationId = "io.yosemitekids.app"
         minSdk = 26 // adaptive icons; every realistic target device is far above this
         targetSdk = 34
-        versionCode = 53
-        versionName = "0.12.6-fork"
+        // A new package id is a new app to Android, so the count starts over.
+        // Nothing installed under io.yosemitekids.app carries an older code
+        // that this would have to beat. The "-fork" suffix goes with it: the
+        // provenance is in the README's attribution line, not the version.
+        versionCode = 1
+        versionName = "1.0.0"
 
         // Every outbound URL the app talks to, overridable per build so a fork
         // never phones upstream by accident. Set in local.properties or the
-        // environment: PICKWICK_UPDATE_URL, PICKWICK_DIRECTORY_URL,
-        // PICKWICK_SUGGEST_URL.
+        // environment: YOSEMITE_KIDS_UPDATE_URL, YOSEMITE_KIDS_DIRECTORY_URL,
+        // YOSEMITE_KIDS_SUGGEST_URL.
         //
         // Self-update manifest: JSON with versionCode/versionName/apkUrl.
         // Blank = the update check is off (Updater.check returns null). The
@@ -46,7 +50,7 @@ android {
         buildConfigField(
             "String",
             "UPDATE_MANIFEST_URL",
-            "\"${signingProp("PICKWICK_UPDATE_URL") ?: ""}\""
+            "\"${signingProp("YOSEMITE_KIDS_UPDATE_URL") ?: ""}\""
         )
 
         // Community channel directory — same JSON the pickwick.tv browse page
@@ -60,7 +64,7 @@ android {
         buildConfigField(
             "String",
             "DIRECTORY_URL",
-            "\"${signingProp("PICKWICK_DIRECTORY_URL")
+            "\"${signingProp("YOSEMITE_KIDS_DIRECTORY_URL")
                 ?: "https://raw.githubusercontent.com/itcon-pty-au/pickwick/main/site/directory/"}\""
         )
 
@@ -70,7 +74,7 @@ android {
         buildConfigField(
             "String",
             "SUGGEST_WORKER_URL",
-            "\"${signingProp("PICKWICK_SUGGEST_URL") ?: "https://pickwick-suggest.pickwick.workers.dev/"}\""
+            "\"${signingProp("YOSEMITE_KIDS_SUGGEST_URL") ?: "https://pickwick-suggest.pickwick.workers.dev/"}\""
         )
 
         // Crawl-cursor trust stamp: a persisted NewPipe Page is only readable
@@ -88,9 +92,9 @@ android {
         if (releaseKeystore != null) {
             create("release") {
                 storeFile = file(releaseKeystore)
-                storePassword = signingProp("PICKWICK_KEYSTORE_PASSWORD")
-                keyAlias = signingProp("PICKWICK_KEY_ALIAS")
-                keyPassword = signingProp("PICKWICK_KEY_PASSWORD")
+                storePassword = signingProp("YOSEMITE_KIDS_KEYSTORE_PASSWORD")
+                keyAlias = signingProp("YOSEMITE_KIDS_KEY_ALIAS")
+                keyPassword = signingProp("YOSEMITE_KIDS_KEY_PASSWORD")
             }
         }
     }
@@ -132,22 +136,22 @@ android {
     }
 
     // Parents see this filename in download bars and release assets. Kept
-    // constant (no version suffix) so releases/latest/download/pickwick.apk
+    // constant (no version suffix) so releases/latest/download/yosemite-kids.apk
     // never goes stale — the version lives in the release tag.
     applicationVariants.all {
         if (buildType.name == "release") {
             outputs.all {
                 (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl)
-                    .outputFileName = "pickwick.apk"
+                    .outputFileName = "yosemite-kids.apk"
             }
             // A sideloading copy next to it, named by version, so "which
             // build is this file?" is answered without aapt: a phone's
             // Downloads folder ends up holding several of these.
-            val versioned = "pickwick-$versionName.apk"
+            val versioned = "yosemite-kids-$versionName.apk"
             assembleProvider.get().doLast {
                 val dir = layout.buildDirectory.dir("outputs/apk/release").get().asFile
-                dir.resolve("pickwick.apk").copyTo(dir.resolve(versioned), overwrite = true)
-                println("release APK: ${dir.resolve("pickwick.apk")} (copy: $versioned)")
+                dir.resolve("yosemite-kids.apk").copyTo(dir.resolve(versioned), overwrite = true)
+                println("release APK: ${dir.resolve("yosemite-kids.apk")} (copy: $versioned)")
             }
         }
     }
@@ -165,8 +169,8 @@ gradle.taskGraph.whenReady {
     }
     if (wantsRelease && releaseKeystore == null) {
         error(
-            "Release builds need the real signing key: set PICKWICK_KEYSTORE " +
-                "(plus _PASSWORD, PICKWICK_KEY_ALIAS, PICKWICK_KEY_PASSWORD) in " +
+            "Release builds need the real signing key: set YOSEMITE_KIDS_KEYSTORE " +
+                "(plus _PASSWORD, YOSEMITE_KIDS_KEY_ALIAS, YOSEMITE_KIDS_KEY_PASSWORD) in " +
                 "local.properties or the environment."
         )
     }

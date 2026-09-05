@@ -3,21 +3,20 @@
 # schedule in extractor-smoke.yml) so PR checks never fail on throttling.
 name: Build
 
-# Skips commits that touch nothing the build can see — the site under site/ is
-# published by deploy-pages.yml, and prose has no bearing on whether the app
-# compiles. Everything else, including gradle and manifest files, still runs.
+# Skips commits that touch nothing the build can see — site/ is a static copy
+# of upstream's website that nothing here builds or publishes, and prose has no
+# bearing on whether the app compiles. Everything else, including gradle and
+# manifest files, still runs.
 on:
   push:
     branches: [main]
     paths-ignore:
       - "site/**"
       - "**.md"
-      - ".github/workflows/deploy-pages.yml"
   pull_request:
     paths-ignore:
       - "site/**"
       - "**.md"
-      - ".github/workflows/deploy-pages.yml"
 
 permissions:
   contents: read
@@ -65,10 +64,10 @@ jobs:
       - name: Unit tests (non-network)
         run: |
           args=()
-          for f in app/src/test/java/io/pickwick/app/*Test.kt; do
+          for f in app/src/test/java/io/yosemitekids/app/*Test.kt; do
             name=$(basename "$f" .kt)
             case "$name" in ExtractorSmokeTest|SingleChannelProbeTest) continue ;; esac
-            args+=(--tests "io.pickwick.app.$name")
+            args+=(--tests "io.yosemitekids.app.$name")
           done
           ./gradlew :app:testDebugUnitTest "${args[@]}"
 

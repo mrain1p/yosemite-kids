@@ -1,0 +1,94 @@
+package io.yosemitekids.app
+
+import io.yosemitekids.app.data.Limits
+import io.yosemitekids.app.data.SourceKind
+import io.yosemitekids.app.data.TimeWindow
+import io.yosemitekids.app.data.Whitelist
+import io.yosemitekids.app.data.WhitelistEntry
+import io.yosemitekids.app.data.WhitelistExporter
+import io.yosemitekids.app.data.WhitelistParser
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class WhitelistExporterTest {
+
+    private val original = Whitelist(
+        sources = listOf(
+            WhitelistEntry(
+                "UC4a-Gbdw7vOaccHmFo40b9g",
+                "https://www.youtube.com/channel/UC4a-Gbdw7vOaccHmFo40b9g",
+                "Khan Academy", SourceKind.CHANNEL
+            ),
+            WhitelistEntry(
+                "user/crashcoursekids",
+                "https://www.youtube.com/user/crashcoursekids",
+                null, SourceKind.CHANNEL
+            ),
+            WhitelistEntry(
+                "c/TEDEd", "https://www.youtube.com/c/TEDEd", "TED-Ed", SourceKind.CHANNEL
+            ),
+            WhitelistEntry(
+                "@veritasium", "https://www.youtube.com/@veritasium", null, SourceKind.CHANNEL
+            ),
+            WhitelistEntry(
+                "PL8dPuuaLjXtNlUrzyH5r6jN9ulIgZBpdo",
+                "https://www.youtube.com/playlist?list=PL8dPuuaLjXtNlUrzyH5r6jN9ulIgZBpdo",
+                "Awesome Nature", SourceKind.PLAYLIST
+            )
+        ),
+        blockedVideoIds = setOf("dQw4w9WgXcQ", "oHg5SJYRHA0"),
+        limits = Limits(
+            sessionMinutes = 30,
+            windows = listOf(
+                TimeWindow(id = "bedtime", label = "Bedtime", startMin = 19 * 60 + 30, endMin = 7 * 60)
+            )
+        )
+    )
+
+    @Test
+    fun exportRoundTripsThroughTheParser() {
+        val reparsed = WhitelistParser.parse(WhitelistExporter.toText(original, "3 Aug 2026"))
+
+        assertEquals(original.sources, reparsed.sources)
+        assertEquals(original.blockedVideoIds, reparsed.blockedVideoIds)
+        // Screen-time rules are comments only — never re-imported from a file.
+        assertEquals(Limits(), reparsed.limits)
+    }
+
+    @Test
+    fun labelsCannotBreakTheLineFormat() {
+        val tricky = Whitelist(
+            sources = listOf(
+                WhitelistEntry(
+                    "UC4a-Gbdw7vOaccHmFo40b9g",
+                    "https://www.youtube.com/channel/UC4a-Gbdw7vOaccHmFo40b9g",
+                    "Kids | #1 Science", SourceKind.CHANNEL
+                )
+            ),
+            blockedVideoIds = emptySet()
+        )
+        val reparsed = WhitelistParser.parse(WhitelistExporter.toText(tricky))
+
+        assertEquals(1, reparsed.sources.size)
+        assertEquals("UC4a-Gbdw7vOaccHmFo40b9g", reparsed.sources[0].id)
+        assertEquals("Kids  1 Science", reparsed.sources[0].label)
+    }
+
+    @Test
+    fun headerPointsAtTheImportFlowThatExists() {
+        val text = WhitelistExporter.toText(original, "3 Aug 2026")
+        // The page a parent has to find: renamed with the settings redesign,
+        // and the exported file is the one place the old name outlived it.
+        assertTrue(text.contains("App, hub & backup"))
+        assertTrue(text.contains("Import from file"))
+        assertTrue(text.contains("Channels & playlists"))
+    }
+
+    @Test
+    fun limitsAppearAsCommentsForHumans() {
+        val text = WhitelistExporter.toText(original)
+        assertTrue(text.contains("#   time per session: 30 min"))
+        assertTrue(text.contains("#   bedtime: 19:30–7:00 (every day)"))
+    }
+}

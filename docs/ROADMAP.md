@@ -1,4 +1,4 @@
-# Pickwick fork — what to do next
+# Yosemite Kids fork — what to do next
 
 **This is the only forward-looking document.** `FORK-NOTES.md` is a changelog:
 it records what happened. The `PLAN-*.md` files are finished history from single
@@ -20,22 +20,17 @@ untrue, including one that had been stale since the round that closed it.
 
 Not a feature. This is the only item here that is about losing everything.
 
-- **58 fork commits live only on this disk.** `git remote -v` returns two
-  remotes and both are upstream's URL (`itcon-pty-au/pickwick`). `git branch -vv`
-  reports `main [origin/main: ahead 58, behind 4]`. There is no fork repository
-  anywhere. Every round of work in this file's history is one disk failure from
-  gone.
-- **The release keystore is the sole trust anchor**, and `CLAUDE.md:54-56` names
-  a file that does not exist (`pickwick-release.keystore`; the real one is
-  `~/.pickwick/pickwick-fork-release.keystore`, alias `pickwickfork`). Those
-  lines were inherited verbatim from upstream and describe upstream's machine.
-  Anyone following the "back both up off-machine" instruction literally backs up
-  nothing. Losing that key means **every installed family must uninstall**, which
-  wipes their curation.
+- **The fork has a repository** — `github.com/mrain1p/yosemite-kids`, private,
+  since 2026-09-04; `origin` points there and CI runs the guards, the tests and
+  the hub image on every push. Before that, 58 fork commits lived only on this
+  disk.
+- **The release keystore is the sole trust anchor** and is still backed up
+  nowhere but this disk (`~/.pickwick/pickwick-fork-release.keystore`, alias
+  `pickwickfork`; `CLAUDE.md` now names the right file). Losing that key means
+  **every installed family must uninstall**, which wipes their curation.
 
-**Do:** create the fork repo, push, and back up the keystore off-machine. Fix
-`CLAUDE.md:28` and `:54-56` in the same pass — a session reading line 28 today
-concludes it cannot cut a release at all.
+**Do:** back up the keystore and its password file off-machine — a password
+manager attachment or an encrypted drive, never the repo.
 
 ---
 
@@ -46,8 +41,8 @@ in isolation, which is why the pre-release checklist in `FORK-NOTES.md` reads as
 four independent one-line edits and is not.
 
 1. **A fork repo exists** (see §0). Everything else needs somewhere to publish.
-2. **Repoint the outbound URLs.** `PICKWICK_UPDATE_URL`, `PICKWICK_DIRECTORY_URL`,
-   `PICKWICK_SUGGEST_URL` in `app/build.gradle.kts`. `SUGGEST_WORKER_URL` is an
+2. **Repoint the outbound URLs.** `YOSEMITE_KIDS_UPDATE_URL`, `YOSEMITE_KIDS_DIRECTORY_URL`,
+   `YOSEMITE_KIDS_SUGGEST_URL` in `app/build.gradle.kts`. `SUGGEST_WORKER_URL` is an
    outbound **POST** to upstream's worker — worth knowing before a family runs it.
 3. **`version.json` is the last step, not the first.** It still reads
    `versionCode 28 / 0.7.8` and points at upstream's release asset — untouched
@@ -61,10 +56,13 @@ four independent one-line edits and is not.
   (`Updater.kt:36-37` bails on blank). Good news — families cannot be pushed onto
   upstream builds. Bad news — **the entire upstream-tracking routine has zero
   payoff today**, because an adopted extractor bump cannot reach anyone.
-- **The fork shares upstream's `applicationId` with a different signing key.** Any
-  family on an upstream install must uninstall — wiping curation, pairing and
-  history — and cannot go back. Large, structural, no cheap fix; decide it
-  deliberately rather than discovering it during a release.
+- **The package id changed with the name** (`io.yosemitekids.app`, versionCode
+  reset to 1 in 1.0.0). To Android that is a different app: an upstream install
+  keeps working beside it and nothing has to be uninstalled — but nothing
+  migrates either. A family moving over takes a full backup in the old app,
+  restores it in the new one, re-pairs the TVs (the pairing scheme is now
+  `yosemitekids://`), then removes the old app so two LAN servers do not
+  answer on the same TV.
 
 **Also unproven: this fork has never run on a Google TV or a real phone.** Every
 "verified" note in `FORK-NOTES.md` is an emulator run, and the Chromecast
@@ -76,7 +74,7 @@ record it — right now the standing claim is the honest one.
 
 ## 2. Highest value for a family, ranked
 
-**A. A device is not reachable while Pickwick is closed.** `LanServer` is built
+**A. A device is not reachable while Yosemite Kids is closed.** `LanServer` is built
 in `MainActivity` and dies with the process. A sleeping TV reads as unreachable
 on the parent's phone, "Play on TV" cannot wake it, and the hub's nudge does not
 land. Both layers underneath are built (`POST /sync-now` for awake devices,
@@ -208,6 +206,6 @@ fires: confirm the work is done, then delete the item and its row.
 | §2C key in backup | `app/src/main/res/xml/backup_rules.xml` | path |
 | §2G device rows | `val address: String?` | code |
 | §4 stats on hub | `outstandingOnHub` | code |
-| §4 guard 7 | `hub/src/main/kotlin/io/pickwick/hub/HubNudge.kt` | path |
+| §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |
 | §1 update off | `UPDATE_MANIFEST_URL` | code |
 | §1 version.json | `version.json` | path |

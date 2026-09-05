@@ -59,7 +59,7 @@ every section, with an id, a title, and where it is expected to appear —
 
 Three guards in `scripts/check.ps1` and `scripts/check.sh`:
 
-1. Every `internal fun *Section(` under `app/src/main/java/io/pickwick/app/ui/Settings*.kt`
+1. Every `internal fun *Section(` under `app/src/main/java/io/yosemitekids/app/ui/Settings*.kt`
    has an entry in the manifest. Adding a phone section without a decision
    about the hub fails the build.
 2. Every manifest entry marked `BOTH` is implemented in the hub GUI — matched
@@ -71,7 +71,7 @@ The manifest is therefore not documentation. It is the thing that must be
 edited to make the build pass, and editing it is the moment the "does this
 belong on the hub?" decision gets made.
 
-A skill, `pickwick-settings-parity`, carries the judgement a script cannot: how
+A skill, `yosemite-kids-settings-parity`, carries the judgement a script cannot: how
 to decide `PHONE` vs `HUB` vs `BOTH` for a new section. See "Where they
 diverge" for the reasoning it encodes.
 

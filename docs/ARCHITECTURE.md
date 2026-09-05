@@ -1,4 +1,4 @@
-# Pickwick — architecture map
+# Yosemite Kids — architecture map
 
 A reading guide for the codebase: what lives where, how data flows, and where
 to make which kind of change. Line-level detail is in the code comments; this
@@ -19,8 +19,8 @@ the community channel directory.
 ## Source layout
 
 ```
-app/src/main/java/io/pickwick/app/
-├── PickwickApp.kt            Application: OkHttp/NewPipe wiring, Coil image loader
+app/src/main/java/io/yosemitekids/app/
+├── YosemiteKidsApp.kt            Application: OkHttp/NewPipe wiring, Coil image loader
 ├── data/                     Everything that isn't a screen
 │   ├── Whitelist.kt          Domain model: WhitelistEntry, Source, Limits, TimeWindow,
 │   │                         Profile visibility, AiConfig. Whitelist = the family config.
@@ -68,7 +68,7 @@ app/src/main/java/io/pickwick/app/
     ├── MainViewModel.kt      Home/channel/list state, refresh, LAN sync loops,
     │                         hold-menu actions, "Play on TV"
     ├── HomeState.kt          Screen sealed interface + UiState
-    ├── PickwickScreen.kt     Screen container: transitions, titles, back, errors
+    ├── YosemiteScreen.kt     Screen container: transitions, titles, back, errors
     ├── HomeScreens.kt        Phone grid + TV rows, header (time chip, banner)
     ├── VideoGrid.kt          Poster grid, hold menu, queue list, watched shelf
     ├── Tiles.kt              Shared tile pieces: PosterImage, pressScale, chips
@@ -116,7 +116,7 @@ MainActivity.onCreate
   ├─ LanServer.start()   (every device)
   ├─ resolveActive()     dedicated kid | single kid | remembered pick | picker
   ├─ WhosWatchingScreen  (2+ kids on a shared device)
-  └─ PickwickScreen(vm)  keyed per kid: MainViewModel over that kid's stores
+  └─ YosemiteScreen(vm)  keyed per kid: MainViewModel over that kid's stores
         ├─ Phone: bottom tabs Home / Channels / Favorites / Search
         │    Home = PhoneHome: greeting header (TimeChip / BlockedBanner),
         │           Keep watching, channel chips + Show all, "New for you"
@@ -220,14 +220,14 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Change the player controls | `PlayerActivity.kt` → `PlayerControlsOverlay` (phone + TV), `onKeyDown` (TV) |
 | Change what happens when a video ends | `PlayerActivity.showEndCard` / `EndCardOverlay` |
 | Change the portrait player (what sits under the video) | `PlayerActivity.PortraitPlayerScaffold`; the slot's chrome is `PlayerControlsOverlay(compact = true)` |
-| Change an icon, the type scale, a chip or the channel art | `ui/Icons.kt` (the drawn Material Symbols), `Theme.kt` (`PickwickTypography`, `relativeAge`), `ui/Components.kt` (`PwChip`, `ChannelArt`, `NewPill`, `HeaderIconButton`, `metaLine`) — emoji are content (avatars, cards), never chrome |
+| Change an icon, the type scale, a chip or the channel art | `ui/Icons.kt` (the drawn Material Symbols), `Theme.kt` (`YosemiteTypography`, `relativeAge`), `ui/Components.kt` (`YosemiteChip`, `ChannelArt`, `NewPill`, `HeaderIconButton`, `metaLine`) — emoji are content (avatars, cards), never chrome |
 | Change playback quality (Auto or a ceiling) | `NetworkQuality.kt` `QualityTargets` (`userMaxHeight`, `effectiveMaxHeight`), `Whitelist.qualityTv/qualityPhone`, the Playback settings page, `PlayerActivity.setQuality` |
 | Change how many videos a grid shows before "Show more" | `Whitelist.pageSize` → `UiState.pageSize` → `VideoGrid(pageSize = …)` |
 | Change the kid's sort/filter chips or their defaults | `HomeState.orderChannels` / `filterVideos` (pure), `KidPrefs` (per-kid persistence), `MainViewModel.setChannelSort` / `setHomeFilter` / `setChannelFilter`; chips in `HomeScreens.kt` (`ChannelSortChips`, `VideoFilterChips`, TV `CycleChip`) |
 | Change the You tab | `YouScreen.kt`, `MainViewModel.youShelves` / `openYou` |
 | Change what "More like what you watch" suggests | `HomeState.suggestionsFor` / `titleKeywords` (pure — `SuggestionsTest` covers it), fed by `MainViewModel.suggestionsRow`, switched by `Whitelist.suggestSimilar` |
 | Change the profile hub or the look editor | `ProfileHub.kt`; the sync-back is `data/ProfileLooks.kt` + `GET /looks` + `MainViewModel.syncConfigState` (`mergeLooks`) + `MainActivity.onChangeLook` |
-| Change what rows sit above a channel's grid | `PlaylistShelves.kt` (`playlistShelves`, `newForYouRow`, `playlistRow`), assembled in `PickwickScreen` (`header`); the data is `MainViewModel.loadPlaylistShelves` / `loadPlaylistRow` |
+| Change what rows sit above a channel's grid | `PlaylistShelves.kt` (`playlistShelves`, `newForYouRow`, `playlistRow`), assembled in `YosemiteScreen` (`header`); the data is `MainViewModel.loadPlaylistShelves` / `loadPlaylistRow` |
 | Let the parent pick a channel's playlists | `SettingsChannels.kt` (`PinnedPlaylistsDialog`, from the source's own page) → `WhitelistEntry.playlistIds` |
 | Change when the phone shrinks to PiP, or what the window does | `PlayerActivity.pipEligible` / `enterPip` / `onPictureInPictureModeChanged` |
 | Add a screen-time rule | `Whitelist.Limits` + `ConfigStore` (de)serializers + `SessionGuard` + settings section |
@@ -251,7 +251,7 @@ Two parents used to lose each other's edits: a device receiving a push replaced
 its whole config, so whoever pushed second discarded everything the other had
 changed, silently and unattributably. The fix is a **sectioned merge**, peer to
 peer, needing no server. `docs/PLAN-sync.md` has the design;
-`.claude/skills/pickwick-sync` has the invariants to obey before touching any
+`.claude/skills/yosemite-kids-sync` has the invariants to obey before touching any
 of it.
 
 The shape:
@@ -276,7 +276,7 @@ The shape:
 | --- | --- |
 | Change how two configs are reconciled | `ConfigMerge.merge` (pure; `ConfigMergeTest` is the matrix) |
 | Change what a save records | `ConfigStamp.stamped` (`ConfigStampTest`) |
-| Add a field that two parents could edit independently | The checklist in `.claude/skills/pickwick-sync`, section 4 |
+| Add a field that two parents could edit independently | The checklist in `.claude/skills/yosemite-kids-sync`, section 4 |
 | Change what the sweep does about a peer | `data/SyncDecision.kt` (`SyncDecisionTest`) |
 | Change what a parent is told after a collision | `data/SyncNotices.kt` and the banner at the top of `AdminScreen` |
 | Change the activity feed | `ui/SyncActivityScreen.kt` (`ChangeFeedTest`) |

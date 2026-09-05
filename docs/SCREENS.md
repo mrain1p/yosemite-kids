@@ -2,7 +2,7 @@
 
 Every kid-facing screen, what state feeds it, where the code is, and how to
 reach it on the emulator (`scripts/emu.ps1`; phone serial `emulator-5554`,
-TV `emulator-5556` via `$env:PICKWICK_SERIAL`). Seed first: `seed` (three
+TV `emulator-5556` via `$env:YOSEMITE_KIDS_SERIAL`). Seed first: `seed` (three
 channels, 15-minute session) or `seed --real` (the family's whitelist).
 
 | Screen | `Screen` value | State it reads | Composable | Reach it |
@@ -11,7 +11,7 @@ channels, 15-minute session) or `seed --real` (the family's whitelist).
 | Home (phone) | `Home` | `channels`, `keepWatching`, `feed`, `channelAvatars`, `remainingMs`, `blockReason`, `allHeld` | `HomeScreens.kt` `PhoneHome` | `launch` |
 | Home (TV) | `Home` | same + `recentHistory` (Watched lately row) | `HomeScreens.kt` `TvHomeRows`, `PlaylistShelves.kt` `ShelfVideoTile` | TV AVD, `launch`; focus starts on the top video row |
 | Channels tab | `Channels` | `channels`, `newBadges`, `queued`, `watchLater`, `downloaded` | `HomeScreens.kt` `ChannelsScreen` | tap the Channels tab / "Show all" |
-| Channel page | `ChannelVideos(source)` | `videos` (ordered by `channelLayout`), `channelWatched`, `watchedTileAt` (History tile first), `channelPlaylists` (the Playlists strip, always), `playlistShelves` (the first three playlists as rows, pinned first), `channelFilter` (sort chips under "All videos"), `held`, `loadingMore` | `PickwickScreen.kt` → `VideoGrid` (+ `header` from `PlaylistShelves.kt`) | tap a channel chip; hold a poster for the menu; a playlist chip opens the playlist, Back returns (`goBack`); TV: Up from the grid reaches the Home / You chips |
+| Channel page | `ChannelVideos(source)` | `videos` (ordered by `channelLayout`), `channelWatched`, `watchedTileAt` (History tile first), `channelPlaylists` (the Playlists strip, always), `playlistShelves` (the first three playlists as rows, pinned first), `channelFilter` (sort chips under "All videos"), `held`, `loadingMore` | `YosemiteScreen.kt` → `VideoGrid` (+ `header` from `PlaylistShelves.kt`) | tap a channel chip; hold a poster for the menu; a playlist chip opens the playlist, Back returns (`goBack`); TV: Up from the grid reaches the Home / You chips |
 | Channel history | `WatchedVideos(source)` | `channelWatched` | same grid | tap the History tile on a channel page |
 | Global history | `History` | `videos` = `historyItems(...)` | same grid | You → History row → See all (TV: the History tile) |
 | You | `You` | `youShelves` (Favorites / Watch later / Up next / History, always present; Downloads when any), `remainingMs` | `YouScreen.kt` | the You tab (phone, right-most) / the You chip or Explore tile (TV); a chip jumps to its row, "See all" unfolds the row into a grid in place |

@@ -1,4 +1,4 @@
-# Developing Pickwick (this fork)
+# Developing Yosemite Kids (this fork)
 
 ## Toolchain
 
@@ -21,8 +21,8 @@
 - Release signing: the fork's own keystore lives **outside the repo** at
   `~/.pickwick/pickwick-fork-release.keystore` (alias `pickwickfork`; the
   password sits beside it in `pickwick-fork-release.keystore.password.txt`).
-  `local.properties` (git-ignored) carries `PICKWICK_KEYSTORE`,
-  `PICKWICK_KEYSTORE_PASSWORD`, `PICKWICK_KEY_ALIAS`, `PICKWICK_KEY_PASSWORD`.
+  `local.properties` (git-ignored) carries `YOSEMITE_KIDS_KEYSTORE`,
+  `YOSEMITE_KIDS_KEYSTORE_PASSWORD`, `YOSEMITE_KIDS_KEY_ALIAS`, `YOSEMITE_KIDS_KEY_PASSWORD`.
   **Back both files up off this machine**: Android refuses to upgrade an app
   across a signature change, so losing the key means every family device must
   uninstall (wiping its curation) to take the next build. `assembleRelease`
@@ -35,9 +35,9 @@
 | YouTube (`youtube.com`, `googlevideo.com`) | browsing and playback | the whitelist |
 | SponsorBlock (`sponsor.ajay.app`) | while playing, hashed video-id prefix only | parent setting *Skip sponsors* |
 | The AI endpoint the parent configured | screening, if enabled | parent settings |
-| `PICKWICK_UPDATE_URL` (`version.json`) | once per app process, for the update dot | build property — **blank in this fork** = no check |
-| `PICKWICK_DIRECTORY_URL` (upstream's community directory, read-only) | only when a parent opens *Suggested channels* | build property |
-| `PICKWICK_SUGGEST_URL` (upstream's Cloudflare worker) | only when a parent presses *Submit list to directory* | build property |
+| `YOSEMITE_KIDS_UPDATE_URL` (`version.json`) | once per app process, for the update dot | build property — **blank in this fork** = no check |
+| `YOSEMITE_KIDS_DIRECTORY_URL` (upstream's community directory, read-only) | only when a parent opens *Suggested channels* | build property |
+| `YOSEMITE_KIDS_SUGGEST_URL` (upstream's Cloudflare worker) | only when a parent presses *Submit list to directory* | build property |
 
 Set the properties in `local.properties` or the environment before
 `assembleRelease`. Point the update URL at your own fork's raw `version.json`
@@ -95,10 +95,10 @@ A debug build allows `run-as`, so a config can be dropped straight into the
 app's files directory:
 
 ```powershell
-adb shell run-as io.pickwick.app mkdir -p files
+adb shell run-as io.yosemitekids.app mkdir -p files
 adb push scripts\seed-config.json /data/local/tmp/config.json
-adb shell run-as io.pickwick.app cp /data/local/tmp/config.json files/config.json
-adb shell am force-stop io.pickwick.app
+adb shell run-as io.yosemitekids.app cp /data/local/tmp/config.json files/config.json
+adb shell am force-stop io.yosemitekids.app
 ```
 
 `scripts/seed-config.json` is a small family: three channels (TED-Ed, SciShow Kids, Sesame Street), one
@@ -131,7 +131,7 @@ open backlog.
 
 ## Claude Code skills
 
-`.claude/skills/` carries repeatable workflows: `pickwick-check` (build+test),
-`pickwick-emulator` (boot/install/drive/screenshot), `pickwick-lan-api`
-(protocol reference, safe probing), `pickwick-release` (version bump, APK,
-version.json). Invoke with `/pickwick-check` etc.
+`.claude/skills/` carries repeatable workflows: `yosemite-kids-check` (build+test),
+`yosemite-kids-emulator` (boot/install/drive/screenshot), `yosemite-kids-lan-api`
+(protocol reference, safe probing), `yosemite-kids-release` (version bump, APK,
+version.json). Invoke with `/yosemite-kids-check` etc.

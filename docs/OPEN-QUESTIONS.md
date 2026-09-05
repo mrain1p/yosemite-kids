@@ -101,7 +101,7 @@ the app is on Home.
 **So the real staleness cause is that the app must be running.** There is
 no background content job; the only WorkManager task is the master-only
 index crawl. A TV that has been off shows a stale home until someone opens
-Pickwick and leaves it on Home long enough for the sweep.
+Yosemite Kids and leaves it on Home long enough for the sweep.
 
 **Cheapest fix:** a periodic background warm on the device itself, via
 WorkManager. No new component. The hub is the answer to a different

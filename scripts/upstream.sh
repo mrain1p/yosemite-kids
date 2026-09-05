@@ -45,6 +45,10 @@ echo "upstream/main ($upstream_head): $count new commit(s) since $(git rev-parse
     short=$(git rev-parse --short "$c")
     subject=$(git log -1 --format=%s "$c" | sed 's/|/\\|/g')
     files=$(git diff-tree --no-commit-id --name-only -r "$c")
+    # Upstream still lives under io/pickwick with the old file names; translate
+    # its paths into this tree's before asking whether they overlap, or the
+    # flag below silently goes blind to every renamed file.
+    files=$(echo "$files" | sed -E 's#/io/pickwick/#/io/yosemitekids/#; s#/PickwickApp[.]kt$#/YosemiteKidsApp.kt#; s#/PickwickScreen[.]kt$#/YosemiteScreen.kt#; s#^[.]claude/skills/pickwick-#.claude/skills/yosemite-kids-#')
     nfiles=$(echo "$files" | grep -c . || true)
     risky=$(comm -12 <(echo "$files" | sort -u) <(echo "$fork_files") | tr '\n' ' ')
     if [ -n "$risky" ]; then flag="⚠️ $risky"; else flag="no"; fi

@@ -1,4 +1,4 @@
-# Pickwick — working notes for Claude
+# Yosemite Kids — working notes for Claude
 
 A parent-curated YouTube front-end for Google TV and phones. Kotlin + Jetpack
 Compose, Media3/ExoPlayer for playback, NewPipeExtractor for extraction. No
@@ -16,14 +16,14 @@ HTTP server (`data/Pairing.kt`). Sideloaded only — never shipped to a store.
   otherwise cost you an evening), `docs/FORK-NOTES.md`
   (what this fork changed, why, and the backlog), `docs/DEV.md` (toolchain).
 - **Check before you claim anything works:** `scripts/check.ps1` (or
-  `/pickwick-check`) — compile + offline unit tests + worker tests. Never edit
+  `/yosemite-kids-check`) — compile + offline unit tests + worker tests. Never edit
   Kotlin while Gradle is running.
-- **Upstream first, every round:** `/pickwick-upstream` (or
+- **Upstream first, every round:** `/yosemite-kids-upstream` (or
   `scripts/upstream.ps1`) at the start of any round of work, and whenever
   extraction breaks. Cherry-pick what is clean, port what touches fork files,
   log the decision in `docs/UPSTREAM-LOG.md`. The user wants anything
   upstream ships that fits the fork adopted or adapted, not just noted.
-- **See it:** the emulator loop in `scripts/emu.ps1` (or `/pickwick-emulator`):
+- **See it:** the emulator loop in `scripts/emu.ps1` (or `/yosemite-kids-emulator`):
   boot → install → seed → launch → shot. Always `adb -s emulator-5554`; other
   Android devices may be plugged into this PC and must not be touched.
 - **Toolchain on this machine:** JDK 17 at `JAVA_HOME`; SDK at
@@ -31,7 +31,7 @@ HTTP server (`data/Pairing.kt`). Sideloaded only — never shipped to a store.
   `local.properties` carries `sdk.dir` and the release-keystore properties,
   so release builds work here. Python is not installed; use PowerShell/bash
   for scripts.
-- **Skills:** `.claude/skills/pickwick-{check,emulator,lan-api,release}`.
+- **Skills:** `.claude/skills/yosemite-kids-{check,emulator,lan-api,release}`.
 - Pure logic goes in companions / `internal fun`s so JVM unit tests can reach
   it without a `Context` (see `PairingStore.prunePending`, `Backup.parse`).
 
@@ -44,13 +44,13 @@ performance requirement, not a preference.
 gradlew assembleRelease
 ```
 
-APK lands at `app/build/outputs/apk/release/pickwick.apk` (renamed in Gradle;
-keep the asset name constant so `releases/latest/download/pickwick.apk` — the
+APK lands at `app/build/outputs/apk/release/yosemite-kids.apk` (renamed in Gradle;
+keep the asset name constant so `releases/latest/download/yosemite-kids.apk` — the
 Downloader-code URL — never goes stale), with a versioned copy beside it,
-`pickwick-<versionName>.apk`, which is the one to hand out for sideloading
+`yosemite-kids-<versionName>.apk`, which is the one to hand out for sideloading
 (the release asset keeps the constant name). Release builds are signed with the
-**real release keystore** — `PICKWICK_KEYSTORE` (plus `_PASSWORD`,
-`PICKWICK_KEY_ALIAS`, `PICKWICK_KEY_PASSWORD`) in `local.properties` or the
+**real release keystore** — `YOSEMITE_KIDS_KEYSTORE` (plus `_PASSWORD`,
+`YOSEMITE_KIDS_KEY_ALIAS`, `YOSEMITE_KIDS_KEY_PASSWORD`) in `local.properties` or the
 environment. There is deliberately no debug-key fallback: release packaging
 fails if the key is absent, because that key is the sole trust anchor for
 self-update and Android refuses in-place upgrades across a signature change.
@@ -82,7 +82,7 @@ device-local setting that does **not** survive a reinstall, so re-run it every
 time:
 
 ```
-adb shell cmd package compile -m speed -f io.pickwick.app
+adb shell cmd package compile -m speed -f io.yosemitekids.app
 ```
 
 If a change is supposed to make startup faster or slower, measure it rather than
@@ -90,7 +90,7 @@ asserting it. `-S` forces a genuine cold start; without it you will silently
 measure a warm launch and get `TotalTime: 0`:
 
 ```
-adb shell am start -S -W -n io.pickwick.app/.ui.MainActivity
+adb shell am start -S -W -n io.yosemitekids.app/.ui.MainActivity
 ```
 
 Take three samples and read `TotalTime` (milliseconds to first frame). Watch
@@ -180,7 +180,7 @@ In order of preference:
    (both, they are mirrored), when the property is about code *shape* and no
    assertion can state it. Fail with a message saying what to do instead.
 3. **A skill**, when the property is a judgement a future session has to make
-   rather than a check a script can run. See `.claude/skills/pickwick-sync`.
+   rather than a check a script can run. See `.claude/skills/yosemite-kids-sync`.
 
 The same applies to a mistake made twice: that is the signal to build a check,
 not to try harder. Two changes in one session looked correct in review and did

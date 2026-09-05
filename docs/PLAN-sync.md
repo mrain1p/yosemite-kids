@@ -4,7 +4,7 @@ Produced by an 18-agent design pass: six readers mapped the current code (242 ci
 
 ## The decision
 
-**What lands.** One new root key in `config.json` — `sync` — carrying per-unit edit stamps, permanent tombstones, a namespace floor and a 30-line change log. One new pure file, `app/src/main/java/io/pickwick/app/data/ConfigMerge.kt`, that merges two config *documents* (JSON in, JSON out, sub-objects moved whole — never through `Whitelist`, so `saveRaw`'s guarantee that a newer build's unknown fields survive is preserved). `ConfigStore.saveRaw` stays a whole-file replace for the two callers that genuinely mean replace (backup restore, the parent-confirmed **Replace**); a new `ConfigStore.mergeIncoming` takes over `POST /config` and holds `FILE_LOCK` across read-merge-write. `MainViewModel.syncConfigState`'s dead third branch ("differs but its copy is newer — leaving for Push/Pull") becomes fetch-merge-write-push-back, which is what makes the TV work as a rendezvous between two parents.
+**What lands.** One new root key in `config.json` — `sync` — carrying per-unit edit stamps, permanent tombstones, a namespace floor and a 30-line change log. One new pure file, `app/src/main/java/io/yosemitekids/app/data/ConfigMerge.kt`, that merges two config *documents* (JSON in, JSON out, sub-objects moved whole — never through `Whitelist`, so `saveRaw`'s guarantee that a newer build's unknown fields survive is preserved). `ConfigStore.saveRaw` stays a whole-file replace for the two callers that genuinely mean replace (backup restore, the parent-confirmed **Replace**); a new `ConfigStore.mergeIncoming` takes over `POST /config` and holds `FILE_LOCK` across read-merge-write. `MainViewModel.syncConfigState`'s dead third branch ("differs but its copy is newer — leaving for Push/Pull") becomes fetch-merge-write-push-back, which is what makes the TV work as a rendezvous between two parents.
 
 **`ConfigStore.fingerprint` is not touched. Not one byte.** Hashing tombstones is a trap: an upgraded phone would compute a hash an un-upgraded TV can never produce (its `fromJson` ignores `sync`), so after the first channel deletion the pair mismatches *forever* and the reconcile stops pushing to it. Instead `GET /status` gains two additive keys, `syncV` and `syncHash`, and two fork peers count as in-sync only when **both** `hash` and `syncHash` match. A legacy peer is compared on `hash` alone — exactly today. That protects the ~15 fingerprint-equality assertions across `ConfigStoreJsonTest`/`ProfileConfigTest`/`TimeWindowsTest`/`ChannelNoteTest`/`ProfileLooksTest` and avoids a fleet-wide spurious re-push at upgrade.
 
@@ -123,7 +123,7 @@ Units without a safe state are scalar/group units that cannot be tombstoned — 
 
 ## Model changes
 
-`Whitelist` gains exactly one field, at `app/src/main/java/io/pickwick/app/data/Whitelist.kt:299` (after `showVideoAge`):
+`Whitelist` gains exactly one field, at `app/src/main/java/io/yosemitekids/app/data/Whitelist.kt:299` (after `showVideoAge`):
 
 ```kotlin
 /**
@@ -320,7 +320,7 @@ The smallest thing that pays for itself with no format change at all, and it unb
 
 (g) Exclude `SingleChannelProbeTest` from the offline gate in `scripts/check.ps1`, `scripts/check.sh` and `.github/workflows/build.yml`. It hits live YouTube unguarded (no `Assume`, no `runCatching`) and only `ExtractorSmokeTest` is currently excluded, so every later merge-test run can go red for a bot wall.
 
-**Files:** `app/src/main/java/io/pickwick/app/data/ConfigStore.kt`, `app/src/main/java/io/pickwick/app/data/ConfigMerge.kt`, `app/src/main/java/io/pickwick/app/data/Profiles.kt`, `app/src/main/java/io/pickwick/app/data/Pairing.kt`, `app/src/main/java/io/pickwick/app/ui/Settings.kt`, `app/src/main/java/io/pickwick/app/ui/SettingsDevices.kt`, `app/src/main/java/io/pickwick/app/ui/MainViewModel.kt`, `app/src/test/java/io/pickwick/app/ConfigStoreFileTest.kt`, `app/src/test/java/io/pickwick/app/ConfigDiffTest.kt`, `scripts/check.ps1`, `scripts/check.sh`, `.github/workflows/build.yml`
+**Files:** `app/src/main/java/io/yosemitekids/app/data/ConfigStore.kt`, `app/src/main/java/io/yosemitekids/app/data/ConfigMerge.kt`, `app/src/main/java/io/yosemitekids/app/data/Profiles.kt`, `app/src/main/java/io/yosemitekids/app/data/Pairing.kt`, `app/src/main/java/io/yosemitekids/app/ui/Settings.kt`, `app/src/main/java/io/yosemitekids/app/ui/SettingsDevices.kt`, `app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt`, `app/src/test/java/io/yosemitekids/app/ConfigStoreFileTest.kt`, `app/src/test/java/io/yosemitekids/app/ConfigDiffTest.kt`, `scripts/check.ps1`, `scripts/check.sh`, `.github/workflows/build.yml`
 
 **Tests:** ConfigStoreFileTest.aFileBackedStoreRoundTripsSaveAndLoad; ConfigStoreFileTest.anUnparseableFileDoesNotLoadAsAnEmptyConfig; ConfigStoreFileTest.aDegradedStoreRefusesToMintAKid; ConfigStoreFileTest.twoPhonesMigratingTheSameKidlessConfigProduceOneKid; ConfigDiffTest.describeNamesAddsRemovesAndEdits; ConfigDiffTest.describeIsEmptyForIdenticalConfigs; ConfigDiffTest.describeNeverRendersTheApiKeyOrBaseUrl
 
@@ -352,7 +352,7 @@ The format lands and starts travelling. **Nothing merges yet**, so this mileston
 
 (k) Devices list: thread `localSyncHash` alongside `localHash`; the in-sync label and the Push/Pull button gate use both, and Push stays available for a peer with no `syncV` regardless of hash equality. Without this, a fork TV holding a tombstone this phone has never seen shows a green "in sync ✓" and hides both buttons, leaving the parent no control at all.
 
-**Files:** `app/src/main/java/io/pickwick/app/data/ConfigMerge.kt`, `app/src/main/java/io/pickwick/app/data/ConfigStore.kt`, `app/src/main/java/io/pickwick/app/data/Whitelist.kt`, `app/src/main/java/io/pickwick/app/data/Profiles.kt`, `app/src/main/java/io/pickwick/app/data/Pairing.kt`, `app/src/main/java/io/pickwick/app/ui/Settings.kt`, `app/src/main/java/io/pickwick/app/ui/SettingsDevices.kt`, `app/src/main/java/io/pickwick/app/ui/SettingsScreenTime.kt`, `app/src/main/java/io/pickwick/app/ui/SyncActivityScreen.kt`, `app/src/main/java/io/pickwick/app/ui/MainActivity.kt`, `app/src/main/java/io/pickwick/app/ui/MainViewModel.kt`, `app/src/test/java/io/pickwick/app/ConfigStampTest.kt`, `app/src/test/java/io/pickwick/app/ConfigSyncFormatTest.kt`, `app/src/test/java/io/pickwick/app/ConfigSecretsTest.kt`
+**Files:** `app/src/main/java/io/yosemitekids/app/data/ConfigMerge.kt`, `app/src/main/java/io/yosemitekids/app/data/ConfigStore.kt`, `app/src/main/java/io/yosemitekids/app/data/Whitelist.kt`, `app/src/main/java/io/yosemitekids/app/data/Profiles.kt`, `app/src/main/java/io/yosemitekids/app/data/Pairing.kt`, `app/src/main/java/io/yosemitekids/app/ui/Settings.kt`, `app/src/main/java/io/yosemitekids/app/ui/SettingsDevices.kt`, `app/src/main/java/io/yosemitekids/app/ui/SettingsScreenTime.kt`, `app/src/main/java/io/yosemitekids/app/ui/SyncActivityScreen.kt`, `app/src/main/java/io/yosemitekids/app/ui/MainActivity.kt`, `app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt`, `app/src/test/java/io/yosemitekids/app/ConfigStampTest.kt`, `app/src/test/java/io/yosemitekids/app/ConfigSyncFormatTest.kt`, `app/src/test/java/io/yosemitekids/app/ConfigSecretsTest.kt`
 
 **Tests:** ConfigSyncFormatTest.fingerprintIgnoresTheSyncBlobEntirely; ConfigSyncFormatTest.aConfigWithNoSyncWritesNoSyncKey; ConfigSyncFormatTest.syncSurvivesTheJsonRoundTripAndStripSecrets; ConfigSyncFormatTest.aMalformedSyncBlobStillLoadsEveryChannel; ConfigSyncFormatTest.anUnknownSyncVersionReadsAsNoSyncBlock; ConfigSyncFormatTest.syncHashIgnoresKeyInsertionOrder; ConfigSyncFormatTest.syncHashIgnoresTheLogButNotTombstones; ConfigStampTest.onlyWhatChangedIsStamped; ConfigStampTest.stampNeverGoesBackwardsFromDocAt; ConfigStampTest.aRemovalWritesATombstoneAndDropsTheStamp; ConfigStampTest.aReAddKeepsItsTombstoneAndOutstampsIt; ConfigStampTest.stampedDoesNotTombstoneWhatItNeverSaw; ConfigStampTest.aBurstCoalescesIntoOneLogLine; ConfigStampTest.twoDevicesWithTheSameModelNameDoNotCoalesce; ConfigStampTest.aFutureDocAtRecordsAClockNoticeAndStillMintsHigher; ConfigStampTest.scrubbingAnEntrysLastKidHidesItRatherThanWideningIt; ConfigStampTest.settingsScrubAndMergeScrubAgreeOnTheSameInput; ConfigSecretsTest.aSyncLogNeverCarriesTheApiKeyThroughExport
 
@@ -374,7 +374,7 @@ The bug the feature exists for is fixed on the receiving side: two parents pushi
 
 (f) `rawJson()` stops laundering: return the stored bytes with `ai.apiKey` put back when `aiInUse`, plus the same two read-time transforms `load()` applies, done surgically on the `JSONObject` (drop lapsed `passUntil`/`pausedUntil`/`breakPassUntil`, splice the `ProfileLooks` overlay into `profiles[]`). Both transforms are required or `/status`'s hash and `/config`'s body stop describing the same document, and a kid's restyle on a TV makes that TV permanently, unclearably out of sync with any peer that cannot use `/looks`.
 
-**Files:** `app/src/main/java/io/pickwick/app/data/ConfigMerge.kt`, `app/src/main/java/io/pickwick/app/data/ConfigStore.kt`, `app/src/main/java/io/pickwick/app/data/Pairing.kt`, `app/src/main/java/io/pickwick/app/data/Backup.kt`, `app/src/main/java/io/pickwick/app/ui/MainActivity.kt`, `app/src/test/java/io/pickwick/app/ConfigMergeTest.kt`, `app/src/test/java/io/pickwick/app/ConfigMergeCompatTest.kt`, `app/src/test/java/io/pickwick/app/ConfigMergeConcurrencyTest.kt`, `app/src/test/java/io/pickwick/app/KidNoticesTest.kt`
+**Files:** `app/src/main/java/io/yosemitekids/app/data/ConfigMerge.kt`, `app/src/main/java/io/yosemitekids/app/data/ConfigStore.kt`, `app/src/main/java/io/yosemitekids/app/data/Pairing.kt`, `app/src/main/java/io/yosemitekids/app/data/Backup.kt`, `app/src/main/java/io/yosemitekids/app/ui/MainActivity.kt`, `app/src/test/java/io/yosemitekids/app/ConfigMergeTest.kt`, `app/src/test/java/io/yosemitekids/app/ConfigMergeCompatTest.kt`, `app/src/test/java/io/yosemitekids/app/ConfigMergeConcurrencyTest.kt`, `app/src/test/java/io/yosemitekids/app/KidNoticesTest.kt`
 
 **Tests:** ConfigMergeTest (the full matrix below); ConfigMergeCompatTest (the full matrix below); ConfigMergeConcurrencyTest.twoThreadsLandingDisjointPushesLoseNothing; ConfigMergeConcurrencyTest.aMergeUnderAnUnlockedUpdateDoesNotResurrectATombstone; KidNoticesTest.aStampOnlyChangeSaysNothing
 
@@ -396,7 +396,7 @@ The dead third branch ("differs but its copy is newer — leaving for Push/Pull"
 
 (f) A "no paired device has answered in N days" line on the Devices page. Parent phones never pair with each other (only `TvSettingsScreen` and `KidDeviceScreen` render a QR), so a kid device that is on and reachable *is* the rendezvous, and a household whose TV is unplugged for a fortnight gets no reconciliation at all. Say so rather than showing stale green tiles.
 
-**Files:** `app/src/main/java/io/pickwick/app/ui/MainViewModel.kt`, `app/src/main/java/io/pickwick/app/ui/SettingsDevices.kt`, `app/src/main/java/io/pickwick/app/data/Pairing.kt`, `app/src/test/java/io/pickwick/app/SyncDecisionTest.kt`
+**Files:** `app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt`, `app/src/main/java/io/yosemitekids/app/ui/SettingsDevices.kt`, `app/src/main/java/io/yosemitekids/app/data/Pairing.kt`, `app/src/test/java/io/yosemitekids/app/SyncDecisionTest.kt`
 
 **Tests:** SyncDecisionTest.equalHashesAndSyncHashesDoNothing; SyncDecisionTest.aPeerWithoutSyncVIsNeverAMergeSource; SyncDecisionTest.aPeerWithoutSyncVStillGetsAWholeConfigPushWhenOlder; SyncDecisionTest.contentEqualButBlobsDifferMergesOnceAndThenSettles; SyncDecisionTest.aSecondDeviceIsComparedAgainstThePostMergeHash
 
@@ -418,7 +418,7 @@ The only user-visible surfaces. Every one is either something the parent pressed
 
 (f) Kid devices render none of it.
 
-**Files:** `app/src/main/java/io/pickwick/app/data/SyncNotices.kt`, `app/src/main/java/io/pickwick/app/data/ConfigMerge.kt`, `app/src/main/java/io/pickwick/app/ui/Settings.kt`, `app/src/main/java/io/pickwick/app/ui/SettingsDevices.kt`, `app/src/main/java/io/pickwick/app/ui/SyncActivityScreen.kt`, `app/src/test/java/io/pickwick/app/ConfigCollisionTest.kt`
+**Files:** `app/src/main/java/io/yosemitekids/app/data/SyncNotices.kt`, `app/src/main/java/io/yosemitekids/app/data/ConfigMerge.kt`, `app/src/main/java/io/yosemitekids/app/ui/Settings.kt`, `app/src/main/java/io/yosemitekids/app/ui/SettingsDevices.kt`, `app/src/main/java/io/yosemitekids/app/ui/SyncActivityScreen.kt`, `app/src/test/java/io/yosemitekids/app/ConfigCollisionTest.kt`
 
 **Tests:** ConfigCollisionTest.aCollisionIsRecordedOnlyWhenTheLocalSideLost; ConfigCollisionTest.anEditOlderThanThirtySixHoursIsNotSurfaced; ConfigCollisionTest.freshnessUsesTheLocalMintNotTheStampGap; ConfigCollisionTest.theAuthorComesFromTheIncomingLogNotThePeerName; ConfigCollisionTest.anAiCollisionRecordsNoValue; ConfigCollisionTest.previewReturnsOnlyTheLogLinesTheLocalSideLacks; ConfigCollisionTest.previewFallsBackToAStructuralDiffAgainstALegacyPeer
 
@@ -432,13 +432,13 @@ The only user-visible surfaces. Every one is either something the parent pressed
 
 (c) `docs/FORK-NOTES.md`: closes backlog item 10; records the two honest caveats (deletes do not cross a legacy hop, and a household needs one reachable kid device as the rendezvous because parent phones never pair with each other).
 
-(d) `.claude/skills/pickwick-sync/SKILL.md` — see the skill outline.
+(d) `.claude/skills/yosemite-kids-sync/SKILL.md` — see the skill outline.
 
-(e) `docs/UPSTREAM-LOG.md`: record the port-cost decision. `ConfigStore.kt`, `Pairing.kt`, `MainViewModel.kt` and `Settings.kt` are the four heaviest fork-modified files and every upstream commit touching them is a hand port; putting ~450 lines in a new `ConfigMerge.kt` keeps the diff in those four small (a route body, a `when` arm, a save signature, a `.copy`), but the tax is permanent and should be visible to whoever runs the weekly `/pickwick-upstream`.
+(e) `docs/UPSTREAM-LOG.md`: record the port-cost decision. `ConfigStore.kt`, `Pairing.kt`, `MainViewModel.kt` and `Settings.kt` are the four heaviest fork-modified files and every upstream commit touching them is a hand port; putting ~450 lines in a new `ConfigMerge.kt` keeps the diff in those four small (a route body, a `when` arm, a save signature, a `.copy`), but the tax is permanent and should be visible to whoever runs the weekly `/yosemite-kids-upstream`.
 
-(f) Bump `versionCode` 39 → 40 and `versionName` to `0.10.0-fork` in `app/build.gradle.kts`, run `/pickwick-upstream` as release step 0, `scripts/check.ps1`, then the normal release flow. Note in the release entry that `version.json` still points at upstream v0.7.8 / versionCode 28 and `UPDATE_MANIFEST_URL` defaults to empty, so self-update is inert — repointing it is a prerequisite for treating a half-upgraded fleet as temporary rather than permanent, and there is no downgrade path if a format decision proves wrong.
+(f) Bump `versionCode` 39 → 40 and `versionName` to `0.10.0-fork` in `app/build.gradle.kts`, run `/yosemite-kids-upstream` as release step 0, `scripts/check.ps1`, then the normal release flow. Note in the release entry that `version.json` still points at upstream v0.7.8 / versionCode 28 and `UPDATE_MANIFEST_URL` defaults to empty, so self-update is inert — repointing it is a prerequisite for treating a half-upgraded fleet as temporary rather than permanent, and there is no downgrade path if a format decision proves wrong.
 
-**Files:** `docs/LAN-API.md`, `docs/ARCHITECTURE.md`, `docs/FORK-NOTES.md`, `docs/UPSTREAM-LOG.md`, `.claude/skills/pickwick-sync/SKILL.md`, `app/build.gradle.kts`, `version.json`
+**Files:** `docs/LAN-API.md`, `docs/ARCHITECTURE.md`, `docs/FORK-NOTES.md`, `docs/UPSTREAM-LOG.md`, `.claude/skills/yosemite-kids-sync/SKILL.md`, `app/build.gradle.kts`, `version.json`
 
 **Tests:** scripts/check.ps1 (full); manual: two-device emulator + Chromecast pass through scripts/emu.ps1
 
@@ -531,9 +531,9 @@ Every scenario below must have a test. 66 in total.
 
 ## The skill
 
-**`.claude/skills/pickwick-sync/SKILL.md`** — *Config sync invariants: read before touching ConfigStore, ConfigMerge, Whitelist, or the /config and /status routes.*
+**`.claude/skills/yosemite-kids-sync/SKILL.md`** — *Config sync invariants: read before touching ConfigStore, ConfigMerge, Whitelist, or the /config and /status routes.*
 
-**Frontmatter description** (this is what makes it trigger): "Rules and invariants for Pickwick's sectioned config merge — the `sync` blob, tombstones, stamps, and the peer-to-peer reconcile. Use whenever changing `ConfigStore`, `ConfigMerge`, `Whitelist`, `Settings.buildCurrentConfig`, the `GET /status` or `POST /config` routes, `Backup`, or anything that writes `config.json`."
+**Frontmatter description** (this is what makes it trigger): "Rules and invariants for Yosemite Kids' sectioned config merge — the `sync` blob, tombstones, stamps, and the peer-to-peer reconcile. Use whenever changing `ConfigStore`, `ConfigMerge`, `Whitelist`, `Settings.buildCurrentConfig`, the `GET /status` or `POST /config` routes, `Backup`, or anything that writes `config.json`."
 
 **Section 1 — The two clocks, and why one of them is a lie.** `toJson` stamps `updatedAt = System.currentTimeMillis()` at *serialization* time (ConfigStore.kt:316), and `rawJson() = toJson(load())`. So a document's `updatedAt` on the wire is the moment it was handed over, never the moment a parent edited it. Never derive an ordering, a staleness test or a tombstone from it. The edit clock is `sync.at[unit]`, minted once per save in `ConfigMerge.stamped`.
 
@@ -558,7 +558,7 @@ Every scenario below must have a test. 66 in total.
 
 **Section 7 — Where the rendezvous is.** Parent phones never pair with each other; only `TvSettingsScreen` and `KidDeviceScreen` render a QR. Two parents' edits meet on a kid device that is powered on and on the LAN. A household whose TV is unplugged for a fortnight gets no reconciliation at all, which is why `COLLISION_FRESH_MS` is sized against evenings and tombstones are permanent. This is the seam a later Docker hub fills; anything the hub needs must stay strictly additive to what is described here.
 
-**Section 8 — Run before claiming anything works.** `scripts/check.ps1` (or `/pickwick-check`), and for anything touching the wire, the two-device loop in `scripts/emu.ps1`. Never `POST /pair-request` while testing.
+**Section 8 — Run before claiming anything works.** `scripts/check.ps1` (or `/yosemite-kids-check`), and for anything touching the wire, the two-device loop in `scripts/emu.ps1`. Never `POST /pair-request` while testing.
 
 ## Open questions
 

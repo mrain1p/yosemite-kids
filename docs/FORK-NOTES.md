@@ -47,7 +47,7 @@ real phone; see "Before the first release".
   be reset on every stream swap).
 - Notice pills slide in/out instead of appearing.
 
-### Home (`ui/HomeScreens.kt`, `PickwickScreen.kt`, `VideoGrid.kt`, `Tiles.kt`)
+### Home (`ui/HomeScreens.kt`, `YosemiteScreen.kt`, `VideoGrid.kt`, `Tiles.kt`)
 
 - **Screen time on the home screen:** a *⏳ N min left* chip under the header,
   and a **banner** (*It's bedtime — you can watch again at 7:00 🌙*) whenever a
@@ -124,14 +124,14 @@ real phone; see "Before the first release".
   <channel>** (three tappable posters). Screen time applies as ever.
 - **Hers**: "Hi, Emma! 👋" greeting; the profile colour tints buttons, chips
   and banners (`kidColorScheme`).
-- Every outbound URL is a build property (`PICKWICK_UPDATE_URL`,
-  `PICKWICK_DIRECTORY_URL`, `PICKWICK_SUGGEST_URL`); the update check is
+- Every outbound URL is a build property (`YOSEMITE_KIDS_UPDATE_URL`,
+  `YOSEMITE_KIDS_DIRECTORY_URL`, `YOSEMITE_KIDS_SUGGEST_URL`); the update check is
   **off** until you point it at your own fork. Version 0.8.0-fork (29).
 
 ### Harness
 
 `docs/ARCHITECTURE.md`, `docs/LAN-API.md`, `docs/DEV.md`; `scripts/check.*`,
-`scripts/emu.ps1`, `scripts/seed-config.json`; `.claude/skills/pickwick-*`;
+`scripts/emu.ps1`, `scripts/seed-config.json`; `.claude/skills/yosemite-kids-*`;
 CI runs every offline test class plus the worker tests; new tests
 `BackupBundleTest`, `PendingRequestExpiryTest`, `RemainingLabelTest`,
 `worker/test/helpers.test.mjs`.
@@ -196,7 +196,7 @@ frame) — a real phone is far faster.
   13, so anything on Android 9–12 — Fire TV Sticks, older phones — died on
   the first fetch. Core library desugaring is now on, as in the NewPipe
   app. The version shows in Settings and on the error card
-  (`Pickwick 0.8.2-fork (31)`), so "which build is this TV on?" has an
+  (`Yosemite Kids 0.8.2-fork (31)`), so "which build is this TV on?" has an
   answer without adb.
 - **TV banner**: the manifest's `android:banner` pointed at the square
   adaptive icon, which Fire TV and Google TV stretch into their 16:9 app
@@ -206,7 +206,7 @@ frame) — a real phone is far faster.
   graphic and TV banner) with plain JDK 17 — no Python, no design tool —
   so a logo change is one command.
 - **Upstream tracking**: `scripts/upstream.sh` / `.ps1` and the
-  `/pickwick-upstream` skill keep `docs/UPSTREAM-LOG.md`; upstream's AI
+  `/yosemite-kids-upstream` skill keep `docs/UPSTREAM-LOG.md`; upstream's AI
   screener fix (fd5952e) is cherry-picked, its kid-page change (1ae4cf1) is
   logged "port by hand". Version **0.8.1-fork (30)** — upstream's 0.8.0 took
   code 29, so the fork had to step past it.
@@ -287,7 +287,7 @@ challenged by two skeptical verifiers) turned up these, all fixed:
   and re-armed the countdown — swallowed while a card is up.
 - "Play on TV" from the phone while the TV sat on its launcher: Android
   10+ drops the activity start silently and the phone was told "playing" —
-  the device now refuses when no Pickwick activity is started
+  the device now refuses when no Yosemite Kids activity is started
   (`AppVisibility`), so the phone shows the honest failure.
 - The SponsorBlock lookup was a child of the resolve job, which kept the
   job "active" for as long as that server took and made the listen-mode
@@ -481,10 +481,10 @@ and are gone.
   extended` (megabytes of dex). Emoji remain only where they are content:
   the kid's avatar, the end card, the blocked cards, the hold menu's
   rows. Tabs, chips, section titles, the hub and the time chip use icons.
-- **One type scale** (`PickwickTypography`): page titles 22 sp, sections
+- **One type scale** (`YosemiteTypography`): page titles 22 sp, sections
   17, tile titles 15, body 15, captions 13. "Hi, Emma" is a title line,
   not a display face. Applied to both activities.
-- **Tonal chips** (`PwChip`): a filled pill, the kid's colour when
+- **Tonal chips** (`YosemiteChip`): a filled pill, the kid's colour when
   selected, an 18 dp icon, 36 dp tall, no outline. Every sort, filter and
   shelf chip on phone and TV, and the player's action chips.
 - **Rounded-square channel art** (`ChannelArt`): circles cropped the
@@ -715,16 +715,16 @@ this ships on.
 
 ### Upstream tracking became a routine
 
-`scripts/upstream.ps1` and the `pickwick-upstream` skill already existed. What
+`scripts/upstream.ps1` and the `yosemite-kids-upstream` skill already existed. What
 was missing was anything that made them *run*: a fork only finds out that
 upstream fixed extraction when a family's playback has already been broken for
 a week. Two triggers now:
 
-- A weekly scheduled task (`pickwick-upstream-check`, Mondays) runs the script,
+- A weekly scheduled task (`yosemite-kids-upstream-check`, Mondays) runs the script,
   triages anything new into `docs/UPSTREAM-LOG.md`, and says whether an APK
   rebuild is warranted. Local commits only — it never pushes and never touches
   an attached device.
-- Step 0 of `pickwick-release` is the same check, so no release is cut blind.
+- Step 0 of `yosemite-kids-release` is the same check, so no release is cut blind.
 
 Both end in the one table in `docs/UPSTREAM-LOG.md`, deliberate skips
 included — those are what a later reader would otherwise re-investigate.
@@ -751,7 +751,7 @@ older backlog and stay in their original order.
    passive; the poll gives fresher numbers from a box that is always on.
    Decide that before writing either.
 
-2. **A device is not reachable while Pickwick is closed.** `LanServer` is
+2. **A device is not reachable while Yosemite Kids is closed.** `LanServer` is
    constructed in `MainActivity` and dies with the process, so a sleeping TV
    answers nothing: a parent's phone shows it unreachable, "Play on TV"
    cannot wake it, and the hub's nudge does not land. Closing this needs a
@@ -846,7 +846,7 @@ nothing; the change would only have complicated master election.
 - Change `UPDATE_MANIFEST_URL`, `DIRECTORY_URL`, `SUGGEST_WORKER_URL` in
   `app/build.gradle.kts` to this fork's repo/worker, or installs will
   self-update back onto upstream builds. Set your own `version.json`.
-- Create and back up a release keystore (see `.claude/skills/pickwick-release`).
+- Create and back up a release keystore (see `.claude/skills/yosemite-kids-release`).
 - Test on a real Google TV: D-pad on the end card / error card / blocked card
   (cursor-driven, no focusables), held-seek pacing, and that the overlay's
   fade does not cost frames on a Chromecast. Test listen mode on a phone with
@@ -916,7 +916,7 @@ its whole config, so whoever pushed second discarded everything the other had
 done — with nothing to look at afterwards and no way to tell it had happened.
 
 The fix is a sectioned merge, peer to peer, with no server involved. Design and
-reasoning in `docs/PLAN-sync.md`, invariants in `.claude/skills/pickwick-sync`,
+reasoning in `docs/PLAN-sync.md`, invariants in `.claude/skills/yosemite-kids-sync`,
 routes in `docs/LAN-API.md`. What is worth knowing here is what the work
 turned up.
 

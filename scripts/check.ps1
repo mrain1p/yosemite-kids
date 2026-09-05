@@ -1,4 +1,4 @@
-﻿# Pickwick pre-commit check: compile, offline unit tests, worker tests.
+﻿# Yosemite Kids pre-commit check: compile, offline unit tests, worker tests.
 # Usage: .\scripts\check.ps1 [-Quick]
 param([switch]$Quick)
 
@@ -25,7 +25,7 @@ function Fail-Guard($message) {
 # associativity structural rather than artifacts that hold only while a test
 # freezes the clock, and it is why a TV with a bad RTC cannot drop a parent's
 # active pause into the shared document.
-$mergeSrc = Get-Content "core\src\main\kotlin\io\pickwick\app\data\ConfigMerge.kt" -Raw
+$mergeSrc = Get-Content "core\src\main\kotlin\io\yosemitekids\app\data\ConfigMerge.kt" -Raw
 if ($mergeSrc -match "currentTimeMillis|Instant\.now|System\.nanoTime") {
     Fail-Guard "ConfigMerge.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."
 }
@@ -33,7 +33,7 @@ if ($mergeSrc -match "currentTimeMillis|Instant\.now|System\.nanoTime") {
 # Every config write must pass through commit(), which stashes the API key in
 # SecretStore and strips it from the bytes. Two write paths means the next one
 # added forgets.
-$storeLines = Get-Content "app\src\main\java\io\pickwick\app\data\ConfigStore.kt"
+$storeLines = Get-Content "app\src\main\java\io\yosemitekids\app\data\ConfigStore.kt"
 $writers = ($storeLines | Select-String -Pattern "writeAtomically\(" -SimpleMatch).Count
 if ($writers -gt 2) {
     Fail-Guard "ConfigStore.kt calls writeAtomically outside commit(). Every write goes through commit."
@@ -42,7 +42,7 @@ if ($writers -gt 2) {
 # buildCurrentConfig must copy the baseline, never construct a Whitelist: a
 # positional constructor silently defaults out any field the form does not
 # name, which would erase the sync blob from every save and every push.
-$settingsSrc = Get-Content "app\src\main\java\io\pickwick\app\ui\Settings.kt" -Raw
+$settingsSrc = Get-Content "app\src\main\java\io\yosemitekids\app\ui\Settings.kt" -Raw
 if ($settingsSrc -match "return Whitelist\(") {
     Fail-Guard "Settings.kt constructs a Whitelist. Use baseline.copy(...) so new fields are inherited."
 }
@@ -50,7 +50,7 @@ if ($settingsSrc -match "return Whitelist\(") {
 # :core is the code the Android app and the Docker hub both run. The moment it
 # imports Android the hub cannot build it — and that failure would surface in
 # the hub's build, a long way from the edit that caused it.
-$androidInCore = Select-String -Path "core\src\main\kotlin\io\pickwick\app\data\*.kt" `
+$androidInCore = Select-String -Path "core\src\main\kotlin\io\yosemitekids\app\data\*.kt" `
     -Pattern '^import (android|androidx)\.' -List | ForEach-Object { $_.Path }
 if ($androidInCore) {
     Fail-Guard ":core imports Android ($androidInCore). It must stay plain JVM so the hub can use it."
@@ -66,7 +66,7 @@ if (Select-String -Path "core\build.gradle.kts" -Pattern 'com\.android|kotlin-an
 # the merge works *on Android* — and the hub, the other consumer of the exact
 # same code, would be running it with nothing covering it.
 foreach ($t in @("ConfigMergeTest", "ConfigStampTest", "ConfigSyncFormatTest", "SyncDecisionTest")) {
-    if (-not (Test-Path "core\src\test\kotlin\io\pickwick\app\$t.kt")) {
+    if (-not (Test-Path "core\src\test\kotlin\io\yosemitekids\app\$t.kt")) {
         Fail-Guard "$t.kt must live in core\src\test — there it covers the hub too, in :app it does not."
     }
 }
@@ -81,7 +81,7 @@ if (Select-String -Path "hub\build.gradle.kts" -Pattern 'project\(":app"\)' -Qui
 # The hub answers /status with the keys LanClient.fullStatus parses. The hub
 # cannot depend on :app to check that, so the contract lives in a test — and
 # this makes sure the test is still there to check it.
-if (-not (Test-Path "hub\src\test\kotlin\io\pickwick\hub\HubServerTest.kt")) {
+if (-not (Test-Path "hub\src\test\kotlin\io\yosemitekids\hub\HubServerTest.kt")) {
     Fail-Guard "HubServerTest.kt is missing — it pins the /status wire contract with :app."
 }
 
@@ -130,7 +130,7 @@ foreach ($d in $docRefs) {
 # fingerprint change and nothing else, so a key edit that stopped moving the
 # default fingerprint would never be saved at all — the key lost on the phone
 # itself, not merely unpropagated.
-if (-not (Select-String -Path core/src/main/kotlin/io/pickwick/app/data/ConfigJson.kt -Pattern 'includeSecrets: Boolean = true' -SimpleMatch -Quiet)) {
+if (-not (Select-String -Path core/src/main/kotlin/io/yosemitekids/app/data/ConfigJson.kt -Pattern 'includeSecrets: Boolean = true' -SimpleMatch -Quiet)) {
     Fail-Guard "ConfigJson.fingerprint must keep includeSecrets defaulting to true. Only a secretless peer passes false."
 }
 
@@ -149,16 +149,16 @@ if (@(Get-ChildItem -Recurse -File hub/src/main | Select-String -Pattern 'secret
 # One comparison rule, in matches(). A hand-rolled copy in the push-result
 # message was missed when the secretless case was added, so the tile said
 # "in sync" while the note underneath blamed an old version.
-if (Select-String -Path app/src/main/java/io/pickwick/app/ui/SettingsDevices.kt -Pattern '[.]hash == local' -Quiet) {
+if (Select-String -Path app/src/main/java/io/yosemitekids/app/ui/SettingsDevices.kt -Pattern '[.]hash == local' -Quiet) {
     Fail-Guard "SettingsDevices.kt compares a peer hash outside matches(). Route it through matches(expectedHash(...), ...)."
 }
 
 # The hub's name is load-bearing twice over: the settings screen finds the
 # hub by it, and pre-flag entries are migrated by it. Two copies drift.
 $hubName = @(Get-ChildItem -Recurse -File app/src/main/java, core/src/main/kotlin |
-    Select-String -Pattern '"Pickwick hub"' -SimpleMatch | ForEach-Object { $_.Path } | Sort-Object -Unique)
+    Select-String -Pattern '"Yosemite Kids hub"' -SimpleMatch | ForEach-Object { $_.Path } | Sort-Object -Unique)
 if ($hubName.Count -ne 1) {
-    Fail-Guard "the literal `"Pickwick hub`" must appear only in PairedDevice.HUB_NAME (found in $($hubName.Count) files)."
+    Fail-Guard "the literal `"Yosemite Kids hub`" must appear only in PairedDevice.HUB_NAME (found in $($hubName.Count) files)."
 }
 
 # And nothing decides "is this the hub" by that name. A parent can rename the
@@ -179,9 +179,9 @@ if ($hubByName.Count -ne 0) {
 # directions. Keyed on FIELDS rather than composables: the Playback page has
 # no section composable at all, so a composable-counting guard was blind to a
 # whole page.
-$manifest = Get-Content core/src/main/kotlin/io/pickwick/app/data/SettingsSurface.kt -Raw
-$settingsSrc = Get-Content app/src/main/java/io/pickwick/app/ui/Settings.kt -Raw
-$hubWeb = Get-Content hub/src/main/kotlin/io/pickwick/hub/HubWeb.kt -Raw
+$manifest = Get-Content core/src/main/kotlin/io/yosemitekids/app/data/SettingsSurface.kt -Raw
+$settingsSrc = Get-Content app/src/main/java/io/yosemitekids/app/ui/Settings.kt -Raw
+$hubWeb = Get-Content hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt -Raw
 
 # 1. Every field the settings form writes is claimed by some group.
 $build = [regex]::Match($settingsSrc, 'fun buildCurrentConfig[\s\S]*?\n    \}').Value
@@ -193,7 +193,7 @@ foreach ($f in $written) {
 }
 
 # 2. Every settings composable is declared, both spellings, every ui file.
-$composables = @(Get-ChildItem app/src/main/java/io/pickwick/app/ui/*.kt |
+$composables = @(Get-ChildItem app/src/main/java/io/yosemitekids/app/ui/*.kt |
     Select-String -Pattern 'fun ([A-Za-z]+Section)\(' -AllMatches |
     ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
 foreach ($fn in $composables) {
@@ -225,7 +225,7 @@ if ($todo -gt 0) { Write-Host "   settings groups still to reach the hub: $todo"
 #    It was lifted out of MainViewModel so a background worker could run it;
 #    reaching back into ViewModel state would quietly re-strand it there and
 #    nothing would fail until a TV stopped syncing while closed.
-$syncPath = "app/src/main/java/io/pickwick/app/data/ConfigSync.kt"
+$syncPath = "app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt"
 $syncSrc = Get-Content $syncPath -Raw
 if ($syncSrc -match 'androidx\.lifecycle|viewModelScope|_state\.value') {
     Fail-Guard "ConfigSync.kt reaches into the ViewModel. Take a callback instead (see onSweeping)."
@@ -264,11 +264,11 @@ if ($outbound) {
     $where = ($outbound | ForEach-Object { $_.Name }) -join ", "
     Fail-Guard "the hub makes an outbound call outside HubNudge.kt (in $where). The hub announces; it does not command."
 }
-if ((Get-Content "hub/src/main/kotlin/io/pickwick/hub/HubNudge.kt" -Raw) -notmatch "sync-now") {
+if ((Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt" -Raw) -notmatch "sync-now") {
     Fail-Guard "HubNudge no longer posts to /sync-now. That route is the whole contract."
 }
 # 6. A worker that nothing schedules is dead code that reads as shipped.
-$mainActivity = Get-Content "app/src/main/java/io/pickwick/app/ui/MainActivity.kt" -Raw
+$mainActivity = Get-Content "app/src/main/java/io/yosemitekids/app/ui/MainActivity.kt" -Raw
 foreach ($w in @("IndexCrawlWorker", "ConfigSyncWorker", "ContentWarmWorker")) {
     if ($mainActivity -notmatch ([regex]::Escape("$w.schedule("))) {
         Fail-Guard "$w is never scheduled from MainActivity, so it never runs."
@@ -318,7 +318,7 @@ if (Test-Path "docs/ROADMAP.md") {
 #    NOT encrypted — it is the worse of the two to ship.
 $backupXml = "app/src/main/res/xml/backup_rules.xml"
 $extractXml = "app/src/main/res/xml/data_extraction_rules.xml"
-$secretStoreSrc = Get-Content "app/src/main/java/io/pickwick/app/data/SecretStore.kt" -Raw
+$secretStoreSrc = Get-Content "app/src/main/java/io/yosemitekids/app/data/SecretStore.kt" -Raw
 # Guard the guard: it hardcodes the store names, so a rename must fail here
 # rather than silently disarming the check below.
 if ($secretStoreSrc -notmatch 'FILE = "secrets"') {
@@ -375,7 +375,7 @@ foreach ($id in $hubPages) {
 }
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
-$misnamed = Get-ChildItem app\src\test\java\io\pickwick\app, core\src\test\kotlin\io\pickwick\app -File |
+$misnamed = Get-ChildItem app\src\test\java\io\yosemitekids\app, core\src\test\kotlin\io\yosemitekids\app -File |
     Where-Object { $_.Name -notlike "*Test.kt" }
 if ($misnamed) {
     Fail-Guard "these test files will never run: $($misnamed.Name -join ', ') — rename to *Test.kt"
@@ -402,9 +402,9 @@ Write-Host "== 4/5 app unit tests (offline)" -ForegroundColor Cyan
 # Assume, so a bot wall fails this gate for reasons unrelated to the change
 # being checked — the same reason ExtractorSmokeTest has always been out.
 $live = @("ExtractorSmokeTest", "SingleChannelProbeTest")
-$tests = Get-ChildItem app\src\test\java\io\pickwick\app -Filter *Test.kt |
+$tests = Get-ChildItem app\src\test\java\io\yosemitekids\app -Filter *Test.kt |
     Where-Object { $live -notcontains $_.BaseName } |
-    ForEach-Object { "--tests"; "io.pickwick.app.$($_.BaseName)" }
+    ForEach-Object { "--tests"; "io.yosemitekids.app.$($_.BaseName)" }
 & .\gradlew.bat --no-daemon -q :app:testDebugUnitTest @tests
 if ($LASTEXITCODE -ne 0) { Write-Host "unit tests FAILED — see app\build\reports\tests\testDebugUnitTest\index.html" -ForegroundColor Red; exit 1 }
 

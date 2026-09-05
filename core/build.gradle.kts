@@ -2,13 +2,13 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
 }
 
-// The rules two Pickwicks have to agree on, in one place.
+// The rules two Yosemite Kids have to agree on, in one place.
 //
 // The config merge, the stamper and the sync decision are pure Kotlin — no
 // Android, no disk, no clock — so the phone, the TV and the Docker hub can all
 // run the *same* implementation rather than three that drift. A second
 // implementation of tombstone causality is exactly the failure
-// `.claude/skills/pickwick-sync` warns about, and its symptom is a family
+// `.claude/skills/yosemite-kids-sync` warns about, and its symptom is a family
 // losing a channel.
 //
 // Plain JVM on purpose: adding the Android plugin here would stop the hub

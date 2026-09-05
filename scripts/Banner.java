@@ -5,7 +5,7 @@ import java.io.File;
 import javax.imageio.ImageIO;
 
 /**
- * Renders Pickwick's launcher banner (Android TV / Fire TV, 320x180 at xhdpi)
+ * Renders Yosemite Kids' launcher banner (Android TV / Fire TV, 320x180 at xhdpi)
  * at every density, plus store-listing assets (docs/store). No Python needed — JDK 17 runs
  * single-file sources: java -Djava.awt.headless=true scripts/Banner.java app/src/main/res docs/store
  */
@@ -73,7 +73,7 @@ public class Banner {
         g.setColor(TEAL);
         g.fillRect(0, 0, w, h);
         double tile = h * 0.56;
-        String text = "Pickwick";
+        String text = "Yosemite Kids";
         double gap = h * 0.10;
         // Fit the wordmark: shrink until mark + gap + text sits inside 84% of the width.
         float size = (float) (h * 0.30);
@@ -125,7 +125,7 @@ public class Banner {
         FontMetrics fm = g.getFontMetrics();
         double tx = x + tile + w * 0.05;
         double base = y + tile * 0.62;
-        g.drawString("Pickwick", (float) tx, (float) base);
+        g.drawString("Yosemite Kids", (float) tx, (float) base);
         String tagline = "Only the channels you chose.";
         float ts = (float) (h * 0.065);
         Font small = font(ts).deriveFont(Font.PLAIN);

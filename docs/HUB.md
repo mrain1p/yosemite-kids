@@ -14,7 +14,7 @@ to type an address — so the phone introduces them: joining a hub also mints a
 token for every TV that phone administers and hands it over. From then on the
 TV reconciles with the hub directly, using the same code path a phone does.
 
-The limit: a TV reconciles when Pickwick opens on it and while a kid is
+The limit: a TV reconciles when Yosemite Kids opens on it and while a kid is
 looking at it, **not** while it is asleep or on another app. The sweep lives
 in the ViewModel behind a foreground check and there is no background worker.
 So the hub means "current the moment a kid opens it, without a parent being
@@ -22,7 +22,7 @@ home" — not "always up to date". Making the latter true needs a background
 tick, which is in "Next up" in `docs/FORK-NOTES.md`.
 
 Nothing in the app's main source set knows the hub exists. It enrols as an
-ordinary `PairedDevice` named `Pickwick hub`, and every sync path that already
+ordinary `PairedDevice` named `Yosemite Kids hub`, and every sync path that already
 worked with a TV works with it unchanged. See `docs/PLAN-hub.md` for why it is
 built that way.
 
@@ -33,7 +33,7 @@ CI builds the image on every push that touches `hub/` or `core/`
 finished jar and never compiles anything:
 
 ```
-cd /volume2/Docker/pickwick
+cd /volume2/Docker/yosemite-kids
 docker compose -f hub/docker-compose.yml pull
 docker compose -f hub/docker-compose.yml up -d
 ```
@@ -74,7 +74,7 @@ Still supported, and the fallback when GHCR is unreachable or you are changing
 hub code from the NAS itself. It needs the source on the host:
 
 ```
-cd /volume2/Docker/pickwick
+cd /volume2/Docker/yosemite-kids
 docker compose -f hub/docker-compose.yml up -d --build
 ```
 
@@ -89,14 +89,14 @@ cached and takes seconds.
 Then, either way:
 
 ```
-docker logs pickwick-hub --tail 20
+docker logs yosemite-kids-hub --tail 20
 ```
 
 A healthy start looks like this:
 
 ```
 Data volume /data is writable as uid 10001.
-Pickwick hub listening on 8765, data in /data
+Yosemite Kids hub listening on 8765, data in /data
 Devices enrolled: 0
 Admin token: <24 hex characters>
 Nothing paired yet. Approve a device code to pair the first one.
@@ -137,13 +137,13 @@ Notes on the session:
 
 ## The port
 
-The hub publishes 8765. Both the `ports` line and `PICKWICK_PORT` in
+The hub publishes 8765. Both the `ports` line and `YOSEMITE_KIDS_PORT` in
 `docker-compose.yml` read the same variable, so they cannot drift — publishing
 one port while the process listens on another gives a container that is
 running, healthy and unreachable, and the health check does not catch it
 because it runs inside the container.
 
-To move it, put `PICKWICK_PORT=9000` in a `.env` beside the compose file. Then
+To move it, put `YOSEMITE_KIDS_PORT=9000` in a `.env` beside the compose file. Then
 use that port when connecting a phone, because the app assumes 8765.
 
 It no longer uses host networking. The hub is a plain server that devices dial
@@ -157,7 +157,7 @@ On the phone: Settings, then Devices, then the hub section. Enter the address
 marked a parent device, and the hub appears under Kid devices like any other.
 
 To pin the token instead of reading it from the log each time, set
-`PICKWICK_ADMIN_TOKEN` in `docker-compose.yml`.
+`YOSEMITE_KIDS_ADMIN_TOKEN` in `docker-compose.yml`.
 
 ## Permissions — read this if the container restarts in a loop
 
@@ -173,7 +173,7 @@ On a Synology shared folder this bites in a way that looks impossible. The
 folder shows as:
 
 ```
-d---------+ 2 10001 10001 4096 /volume2/Docker/pickwick/data
+d---------+ 2 10001 10001 4096 /volume2/Docker/yosemite-kids/data
 ```
 
 Mode `000`, with a `+` marking an ACL. The owner is correct and the owner is
@@ -188,8 +188,8 @@ only hands over to the JVM once one of them worked. If you are on an older
 image, do it by hand:
 
 ```
-sudo chmod 770 /volume2/Docker/pickwick/data
-sudo docker restart pickwick-hub
+sudo chmod 770 /volume2/Docker/yosemite-kids/data
+sudo docker restart yosemite-kids-hub
 ```
 
 If the mode reverts to `d---------+`, the share's ACL is re-imposing it. Then
@@ -199,7 +199,7 @@ runs as an account the ACL already permits — `id -u` gives you the number.
 Note that pinning a uid the ACL does not name will not help; running as the
 folder's owner is not enough when the mode is 000.
 
-As a last resort, `PICKWICK_ALLOW_ROOT=1` runs the hub as root. It works
+As a last resort, `YOSEMITE_KIDS_ALLOW_ROOT=1` runs the hub as root. It works
 everywhere. It is not the fix, and the container says so in the log.
 
 ## Why the container starts as root

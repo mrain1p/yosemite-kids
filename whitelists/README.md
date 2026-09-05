@@ -1,6 +1,6 @@
 # Community whitelists
 
-Curated, themed channel lists shared by Pickwick families. These predate the
+Curated, themed channel lists shared by Yosemite Kids families. These predate the
 app's in-app **Suggested channels** directory (also at
 [pickwick.tv/directory.html](https://pickwick.tv/directory.html)), which is
 now the maintained, actively-curated place to discover channels — start

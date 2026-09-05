@@ -1,15 +1,15 @@
-# Setting up Pickwick, step by step
+# Setting up Yosemite Kids, step by step
 
 This guide assumes **no technical background**. It takes about 20 minutes:
 ten for the TV, five for your phone, five to pair them and add channels.
 
-> **Pickwick is in beta.** The setup below is the well-trodden path, but some
+> **Yosemite Kids is in beta.** The setup below is the well-trodden path, but some
 > newer features are still being confirmed across different phones, tablets and
 > TVs — expect the occasional rough edge. Your channels and settings are stored
 > on the devices themselves, not in the cloud, so keep in mind that uninstalling
 > the app throws them away.
 
-Pickwick isn't in any app store (see the README for why), so you install it
+Yosemite Kids isn't in any app store (see the README for why), so you install it
 by "sideloading" — which just means installing an app from a file instead of
 from a store. Millions of people do this; the only catch is that Android makes
 you flip a permission switch first.
@@ -23,7 +23,7 @@ you flip a permission switch first.
 
 ---
 
-## Part 1 — Install Pickwick on the TV
+## Part 1 — Install Yosemite Kids on the TV
 
 You'll use the free **Downloader** app — no computer needed.
 
@@ -43,10 +43,10 @@ Now the install itself:
 
 3. Open Downloader. The first time, it asks for permission to access
    files — allow it.
-4. In Downloader's URL box, type the Pickwick code:
+4. In Downloader's URL box, type the address of the newest build:
 
    ```
-   1037466
+   github.com/mrain1p/yosemite-kids/releases/latest/download/yosemite-kids.apk
    ```
 
    The download starts straight away and asks to install.
@@ -54,47 +54,43 @@ Now the install itself:
    install unknown apps from this source"*, step 2 was missed — press
    **Settings** right on that message, turn Downloader **on**, go back, and
    the install screen returns.)
-6. Done — Pickwick appears in your TV's app row. You can uninstall
-   Downloader now if you like; Pickwick updates itself from inside the app
-   from here on.
-
-If the code ever doesn't work, the newest release is always at
-`github.com/itcon-pty-au/pickwick/releases/latest/download/pickwick.apk` —
-typing that full address in Downloader does the same thing.
+6. Done — Yosemite Kids appears in your TV's app row. Keep Downloader: a
+   newer build is installed the same way, over the top, and keeps everything
+   you set up.
 
 ---
 
-## Part 2 — Install Pickwick on the parent's phone
+## Part 2 — Install Yosemite Kids on the parent's phone
 
 You'll see two security prompts along the way — both are the standard
 Android ritual for *any* app installed outside a store, not something wrong.
 
 1. On the phone, open this address in Chrome — the download starts
    immediately:
-   **github.com/itcon-pty-au/pickwick/releases/latest/download/pickwick.apk**
+   **github.com/mrain1p/yosemite-kids/releases/latest/download/yosemite-kids.apk**
 2. Chrome warns the file "might be harmful" (prompt one — it says this for
    every APK): tap **Download anyway**.
 3. Open the downloaded file (notification shade, or Files → Downloads).
 4. Android asks to allow Chrome (or Files) to install unknown apps (prompt
    two): allow it, then press **Install**.
-5. Open Pickwick. It looks empty — that's right, nothing is allowed yet.
+5. Open Yosemite Kids. It looks empty — that's right, nothing is allowed yet.
 
-If a kid has their own phone or tablet, install Pickwick on it the same way.
+If a kid has their own phone or tablet, install Yosemite Kids on it the same way.
 
 ---
 
 ## Part 3 — Pair the phone with the TV
 
-1. On the **TV**: open Pickwick and press the **⚙ settings** icon (top
+1. On the **TV**: open Yosemite Kids and press the **⚙ settings** icon (top
    right). A **QR code** appears.
 2. On the **phone**: open the normal camera app and point it at the QR
-   code. Tap the link that pops up — Pickwick opens and asks
+   code. Tap the link that pops up — Yosemite Kids opens and asks
    *"Pair with …?"* — confirm.
 3. That's it. The **first phone to pair becomes the admin** automatically.
    (Any phone that scans later needs your approval on the first phone, so a
    visitor photographing your TV gains nothing.)
 
-Everything from here is done on the phone, in **Pickwick → ⚙ →** (it asks
+Everything from here is done on the phone, in **Yosemite Kids → ⚙ →** (it asks
 for your fingerprint, or a parent PIN you set on first use).
 
 ---
@@ -151,7 +147,7 @@ Do these in order; each pushes to the TV automatically when you press
      in with a Google account, click **Create API key**, copy it. Gemini has
      a free tier, so this is the only option that may cost nothing.
 
-   Whichever you pick, paste the key into the **API key** field in Pickwick
+   Whichever you pick, paste the key into the **API key** field in Yosemite Kids
    right after tapping that provider's button — the key never leaves your
    phone and TV except to talk directly to that provider.
 6. Press **Save & close** — the phone pushes everything to the TV and shows
@@ -175,7 +171,7 @@ numbers = provably in sync.
 
 ## If something doesn't work
 
-- **TV shows "offline" on the phone** — open Pickwick on the TV (the
+- **TV shows "offline" on the phone** — open Yosemite Kids on the TV (the
   pairing service runs while the app is open) and check both devices are on
   the same Wi-Fi, then try again.
 - **Channels look thin right after changing AI rules or kids' ages** — the
@@ -183,5 +179,5 @@ numbers = provably in sync.
   AI clears them (minutes, not hours).
 - **A kid's videos stopped resolving app-wide** — usually a YouTube-side
   change; check the
-  [open issues](https://github.com/itcon-pty-au/pickwick/issues) — a fix
-  release typically follows within days, delivered via Check for updates.
+  [open issues](https://github.com/mrain1p/yosemite-kids/issues) — a fix
+  build typically follows within days, installed the same way as the first.

@@ -1,5 +1,5 @@
 /**
- * Pickwick mail-slot for the website — stateless, two routes, not a backend.
+ * Yosemite Kids mail-slot for the website — stateless, two routes, not a backend.
  *
  * POST /         channel suggestions from site/suggest.html
  *   { url, ages[], topics[], note, lang, website, turnstile }
@@ -515,7 +515,7 @@ function parseSuggestionUrl(raw) {
 async function probeChannel(channel) {
   try {
     const r = await fetch(channel.url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PickwickDirectory/1.0)' },
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; YosemiteDirectory/1.0)' },
       redirect: 'follow',
     });
     if (r.status === 404) return { status: 'missing' };
@@ -543,7 +543,7 @@ async function probePlaylist(channel) {
   try {
     const r = await fetch(
       `https://www.youtube.com/feeds/videos.xml?playlist_id=${channel.playlistId}`,
-      { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PickwickDirectory/1.0)' } }
+      { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; YosemiteDirectory/1.0)' } }
     );
     if (r.status === 404) return { status: 'missing' };
     if (!r.ok) return { status: 'unverified' };
@@ -586,7 +586,7 @@ function github(env) {
       headers: {
         Authorization: `Bearer ${env.GITHUB_TOKEN}`,
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'pickwick-suggest-worker',
+        'User-Agent': 'yosemite-kids-suggest-worker',
         ...init.headers,
       },
     });

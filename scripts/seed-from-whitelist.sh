@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Turn a Pickwick whitelist.txt (Settings → export) into a config.json the
+# Turn a Yosemite Kids whitelist.txt (Settings → export) into a config.json the
 # emulator can be seeded with: scripts/emu.ps1 seed --real
 #
 # Usage: scripts/seed-from-whitelist.sh <whitelist.txt> [out.json]

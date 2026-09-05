@@ -14,7 +14,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "pickwick"
+rootProject.name = "yosemitekids"
 include(":app")
 include(":core")
 include(":hub")

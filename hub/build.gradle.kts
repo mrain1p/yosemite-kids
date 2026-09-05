@@ -23,7 +23,7 @@ kotlin {
 }
 
 application {
-    mainClass.set("io.pickwick.hub.MainKt")
+    mainClass.set("io.yosemitekids.hub.MainKt")
 }
 
 dependencies {

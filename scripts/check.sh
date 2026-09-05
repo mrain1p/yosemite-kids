@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pickwick pre-commit check: compile, offline unit tests, worker tests.
+# Yosemite Kids pre-commit check: compile, offline unit tests, worker tests.
 # Usage: scripts/check.sh [--quick|--guards]
 #
 #   --quick   step 0 + compile
@@ -30,13 +30,13 @@ q='"'
 # The merge must read no clock: that is what makes idempotence and
 # associativity structural rather than test artifacts.
 if grep -qE "currentTimeMillis|Instant\.now|System\.nanoTime" \
-    core/src/main/kotlin/io/pickwick/app/data/ConfigMerge.kt; then
+    core/src/main/kotlin/io/yosemitekids/app/data/ConfigMerge.kt; then
   guard_fail "ConfigMerge.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."
 fi
 
 # Every config write goes through commit(), which stashes the API key and
 # strips it from the bytes. Two write paths means the next one added forgets.
-writers=$(grep -c "writeAtomically(" app/src/main/java/io/pickwick/app/data/ConfigStore.kt || true)
+writers=$(grep -c "writeAtomically(" app/src/main/java/io/yosemitekids/app/data/ConfigStore.kt || true)
 if [ "$writers" -gt 2 ]; then
   guard_fail "ConfigStore.kt calls writeAtomically outside commit(). Every write goes through commit."
 fi
@@ -44,7 +44,7 @@ fi
 # buildCurrentConfig must copy the baseline: a positional constructor silently
 # defaults out any field the form does not name, erasing the sync blob from
 # every save and every push.
-if grep -q "return Whitelist(" app/src/main/java/io/pickwick/app/ui/Settings.kt; then
+if grep -q "return Whitelist(" app/src/main/java/io/yosemitekids/app/ui/Settings.kt; then
   guard_fail "Settings.kt constructs a Whitelist. Use baseline.copy(...) so new fields are inherited."
 fi
 
@@ -66,7 +66,7 @@ fi
 # they prove the merge works *on Android* — and the hub, which is the other
 # consumer, would be running that logic with nothing covering it.
 for t in ConfigMergeTest ConfigStampTest ConfigSyncFormatTest SyncDecisionTest; do
-  [ -f "core/src/test/kotlin/io/pickwick/app/$t.kt" ] || \
+  [ -f "core/src/test/kotlin/io/yosemitekids/app/$t.kt" ] || \
     guard_fail "$t.kt must live in core/src/test — there it covers the hub too, in :app it does not."
 done
 
@@ -80,7 +80,7 @@ fi
 # The hub answers /status with the keys LanClient.fullStatus parses. The hub
 # cannot depend on :app to check that, so the contract lives in a test — and
 # this makes sure the test is still there to check it.
-if [ ! -f hub/src/test/kotlin/io/pickwick/hub/HubServerTest.kt ]; then
+if [ ! -f hub/src/test/kotlin/io/yosemitekids/hub/HubServerTest.kt ]; then
   guard_fail "HubServerTest.kt is missing — it pins the /status wire contract with :app."
 fi
 
@@ -138,7 +138,7 @@ done
 # fingerprint change and nothing else, so a key edit that stopped moving the
 # default fingerprint would never be saved at all — the key lost on the phone
 # itself, not merely unpropagated.
-if ! grep -q 'includeSecrets: Boolean = true' core/src/main/kotlin/io/pickwick/app/data/ConfigJson.kt; then
+if ! grep -q 'includeSecrets: Boolean = true' core/src/main/kotlin/io/yosemitekids/app/data/ConfigJson.kt; then
   guard_fail "ConfigJson.fingerprint must keep includeSecrets defaulting to true. Only a secretless peer passes false."
 fi
 
@@ -154,15 +154,15 @@ fi
 # One comparison rule, in matches(). A hand-rolled copy in the push-result
 # message was missed when the secretless case was added, so the tile said
 # "in sync" while the note underneath blamed an old version.
-if grep -qE '[.]hash == local' app/src/main/java/io/pickwick/app/ui/SettingsDevices.kt; then
+if grep -qE '[.]hash == local' app/src/main/java/io/yosemitekids/app/ui/SettingsDevices.kt; then
   guard_fail "SettingsDevices.kt compares a peer hash outside matches(). Route it through matches(expectedHash(...), ...)."
 fi
 
 # The hub's name is load-bearing twice over: the settings screen finds the
 # hub by it, and pre-flag entries are migrated by it. Two copies drift.
-hubname=$(grep -rc '"Pickwick hub"' app/src/main/java core/src/main/kotlin 2>/dev/null | grep -v ":0$" | wc -l || true)
+hubname=$(grep -rc '"Yosemite Kids hub"' app/src/main/java core/src/main/kotlin 2>/dev/null | grep -v ":0$" | wc -l || true)
 if [ "$hubname" -ne 1 ]; then
-  guard_fail "the literal \"Pickwick hub\" must appear only in PairedDevice.HUB_NAME (found in $hubname files)."
+  guard_fail "the literal \"Yosemite Kids hub\" must appear only in PairedDevice.HUB_NAME (found in $hubname files)."
 fi
 
 # And nothing decides "is this the hub" by that name. A parent can rename the
@@ -185,9 +185,9 @@ fi
 # page has no section composable at all, and neither does the "Kid's shelves"
 # card. An entire page was invisible to it. Every field buildCurrentConfig
 # writes has to appear in the manifest, which no amount of inlining hides.
-manifest=core/src/main/kotlin/io/pickwick/app/data/SettingsSurface.kt
-settings=app/src/main/java/io/pickwick/app/ui/Settings.kt
-hubweb=hub/src/main/kotlin/io/pickwick/hub/HubWeb.kt
+manifest=core/src/main/kotlin/io/yosemitekids/app/data/SettingsSurface.kt
+settings=app/src/main/java/io/yosemitekids/app/ui/Settings.kt
+hubweb=hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt
 
 # 1. Every field the settings form writes is claimed by some group.
 for f in $(awk "/fun buildCurrentConfig/,/^    }$/" "$settings" | grep -oE "^ *[a-zA-Z]+ = " | sed -E "s/ *//; s/ = //" | sort -u); do
@@ -197,7 +197,7 @@ done
 # 2. Every settings composable is declared. Both spellings, every file in the
 #    ui package — KidsSection is a bare `fun` in KidsSettings.kt and was
 #    missed by an earlier glob that only looked at Settings*.kt.
-for fn in $(grep -hoE "fun [A-Za-z]+Section[(]" app/src/main/java/io/pickwick/app/ui/*.kt | sed -E "s/fun //; s/[(]//" | sort -u); do
+for fn in $(grep -hoE "fun [A-Za-z]+Section[(]" app/src/main/java/io/yosemitekids/app/ui/*.kt | sed -E "s/fun //; s/[(]//" | sort -u); do
   grep -q "$q$fn$q" "$manifest" || guard_fail "$fn is not in SettingsSurface. Add it and say whether it belongs on the hub."
 done
 
@@ -221,7 +221,7 @@ todo=$(grep -oE "Where[.]BOTH, false" "$manifest" | wc -l || true)
 #    It was lifted out of MainViewModel so a background worker could run it;
 #    reaching back into ViewModel state would quietly re-strand it there and
 #    nothing would fail until a TV stopped syncing while closed.
-sync=app/src/main/java/io/pickwick/app/data/ConfigSync.kt
+sync=app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt
 if grep -qE "androidx[.]lifecycle|viewModelScope|_state[.]value" "$sync"; then
   guard_fail "ConfigSync.kt reaches into the ViewModel. Take a callback instead (see onSweeping)."
 fi
@@ -251,11 +251,11 @@ outbound=$(grep -rlE "openConnection|HttpClient|Socket[(]" hub/src/main/kotlin |
 if [ -n "$outbound" ]; then
   guard_fail "the hub makes an outbound call outside HubNudge.kt (in $outbound). The hub announces; it does not command."
 fi
-nudge_url=$(grep -c "sync-now" hub/src/main/kotlin/io/pickwick/hub/HubNudge.kt || true)
+nudge_url=$(grep -c "sync-now" hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt || true)
 [ "$nudge_url" -ge 1 ] || guard_fail "HubNudge no longer posts to /sync-now. That route is the whole contract."
 # 6. A worker that nothing schedules is dead code that reads as shipped.
 for w in IndexCrawlWorker ConfigSyncWorker ContentWarmWorker; do
-  grep -q "$w.schedule(" app/src/main/java/io/pickwick/app/ui/MainActivity.kt ||
+  grep -q "$w.schedule(" app/src/main/java/io/yosemitekids/app/ui/MainActivity.kt ||
     guard_fail "$w is never scheduled from MainActivity, so it never runs."
 done
 # 8. The roadmap must not outlive the code it points at.
@@ -290,7 +290,7 @@ fi
 #    NOT encrypted — it is the worse of the two to ship.
 backup_xml=app/src/main/res/xml/backup_rules.xml
 extract_xml=app/src/main/res/xml/data_extraction_rules.xml
-secretstore=app/src/main/java/io/pickwick/app/data/SecretStore.kt
+secretstore=app/src/main/java/io/yosemitekids/app/data/SecretStore.kt
 # Guard the guard: it hardcodes the store names, so a rename must fail here
 # rather than silently disarming the check below.
 grep -q "FILE = ${q}secrets${q}" "$secretstore" ||
@@ -335,7 +335,7 @@ for id in $(grep -hoE "HubPage[(]$q[^$q]+$q" "$hubweb" | sed -E "s/HubPage[(]$q/
 done
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
-misnamed=$(find app/src/test/java/io/pickwick/app core/src/test/kotlin/io/pickwick/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
+misnamed=$(find app/src/test/java/io/yosemitekids/app core/src/test/kotlin/io/yosemitekids/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
 if [ -n "$misnamed" ]; then
   guard_fail "these test files will never run: $misnamed — rename to *Test.kt"
 fi
@@ -357,10 +357,10 @@ echo "== 4/5 app unit tests (offline)"
 # Every test class except the live-YouTube canaries. Both reach real YouTube
 # unguarded, so a bot wall fails this gate for unrelated reasons.
 args=()
-for f in app/src/test/java/io/pickwick/app/*Test.kt; do
+for f in app/src/test/java/io/yosemitekids/app/*Test.kt; do
   name=$(basename "$f" .kt)
   case "$name" in ExtractorSmokeTest|SingleChannelProbeTest) continue ;; esac
-  args+=(--tests "io.pickwick.app.$name")
+  args+=(--tests "io.yosemitekids.app.$name")
 done
 ./gradlew --no-daemon -q :app:testDebugUnitTest "${args[@]}"
 

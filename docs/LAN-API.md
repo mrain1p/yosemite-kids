@@ -1,8 +1,8 @@
-# Pickwick LAN API
+# Yosemite Kids LAN API
 
 Every device runs `LanServer` (`data/Pairing.kt`) on the first free port in
 **8765–8775**, plain HTTP on the home network. A phone finds a device by
-scanning the QR its settings screen shows (`pickwick://pair?name=…&host=…&port=…`)
+scanning the QR its settings screen shows (`yosemitekids://pair?name=…&host=…&port=…`)
 and, if the device later changes address, by sweeping its own /24
 (`LanClient.rediscover`).
 
@@ -83,7 +83,7 @@ curl -s -H "X-Token: <approved token>" "http://<tv-ip>:8765/status"
 ```
 
 The approved token is the *phone's* `device_token` in its `pairing.xml`; on a
-debug build read it with `adb shell run-as io.pickwick.app cat shared_prefs/pairing.xml`.
+debug build read it with `adb shell run-as io.yosemitekids.app cat shared_prefs/pairing.xml`.
 
 ## Adding a route
 

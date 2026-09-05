@@ -28,7 +28,7 @@ family finds the floating window annoying. Either way the TV is untouched.
   `onUserLeaveHint` → PiP with the video's aspect ratio, hide the overlay
   in PiP via `onPictureInPictureModeChanged`, keep `SessionGuard` ticking),
   `AndroidManifest.xml` (`android:supportsPictureInPicture="true"`,
-  `configChanges` for the PiP resize), `ui/PickwickScreen.kt` (nothing —
+  `configChanges` for the PiP resize), `ui/YosemiteScreen.kt` (nothing —
   the app keeps running under the window).
 - Tests: emulator screenshot of the PiP window over the home; the
   countdown/end card while in PiP (should auto-expand or skip the card);
@@ -59,8 +59,8 @@ return. TV keeps full-screen always.
   the same to run on old Android). Any device on Android 9–12 was affected:
   Fire TV Stick (Fire OS 7/8), older phones.
 - The version is now visible: **Settings → top line** and on the error
-  card's grown-ups line, e.g. `Pickwick 0.8.2-fork (31)`. Every build bumps
-  both `versionCode` and `versionName` (see `/pickwick-release`).
+  card's grown-ups line, e.g. `Yosemite Kids 0.8.2-fork (31)`. Every build bumps
+  both `versionCode` and `versionName` (see `/yosemite-kids-release`).
 
 ## 4. Order of work
 

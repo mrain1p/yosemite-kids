@@ -15,10 +15,10 @@ set -e
 # version proves it instead: every candidate identity is tested by actually
 # writing a file, and the JVM is only reached once one of them worked.
 
-DATA="${PICKWICK_DATA:-/data}"
+DATA="${YOSEMITE_KIDS_DATA:-/data}"
 DEFAULT_UID=10001
 DEFAULT_GID=10001
-PROBE="$DATA/.pickwick-write-test"
+PROBE="$DATA/.yosemite-kids-write-test"
 
 # Can this identity create a file in the volume? Nothing else is a real answer.
 can_write() {
@@ -40,7 +40,7 @@ diagnose() {
     echo "or give it to a real account and let this container adopt that uid:" >&2
     echo "    sudo chown -R <you>:users <the host folder>" >&2
     echo >&2
-    echo "Set PICKWICK_ALLOW_ROOT=1 in docker-compose.yml to run as root" >&2
+    echo "Set YOSEMITE_KIDS_ALLOW_ROOT=1 in docker-compose.yml to run as root" >&2
     echo "instead. That works everywhere and is the last resort, not the fix." >&2
 }
 
@@ -98,9 +98,9 @@ else
 fi
 
 if [ -z "$target_uid" ]; then
-    if [ "${PICKWICK_ALLOW_ROOT:-}" = "1" ]; then
+    if [ "${YOSEMITE_KIDS_ALLOW_ROOT:-}" = "1" ]; then
         echo "WARNING: running the hub as root. $DATA denied every unprivileged" >&2
-        echo "identity, and PICKWICK_ALLOW_ROOT=1 is set. Fix the host folder's" >&2
+        echo "identity, and YOSEMITE_KIDS_ALLOW_ROOT=1 is set. Fix the host folder's" >&2
         echo "permissions and remove that setting when you can." >&2
         exec "$@"
     fi

@@ -33,7 +33,7 @@ jobs:
 
       - name: Run extractor smoke tests against live YouTube
         id: test
-        run: ./gradlew :app:testDebugUnitTest --tests "io.pickwick.app.ExtractorSmokeTest"
+        run: ./gradlew :app:testDebugUnitTest --tests "io.yosemitekids.app.ExtractorSmokeTest"
 
       - name: Upload test report
         if: failure()

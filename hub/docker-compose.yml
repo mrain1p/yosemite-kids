@@ -1,11 +1,11 @@
-# Pickwick hub — an always-on peer for the family config.
+# Yosemite Kids hub — an always-on peer for the family config.
 #
 # Paths below are Synology's layout. On another NAS,
 # change the left-hand side of the volume line and nothing else.
 #
 # Normally the NAS pulls a finished image and never compiles anything:
 #
-#   cd /volume2/Docker/pickwick
+#   cd /volume2/Docker/yosemite-kids
 #   docker compose -f hub/docker-compose.yml pull
 #   docker compose -f hub/docker-compose.yml up -d
 #
@@ -27,18 +27,18 @@
 # device's enrolment code to pair the first one.
 
 services:
-  pickwick-hub:
+  yosemite-kids-hub:
     # Both keys on purpose, and they do different jobs: `pull` fetches this
     # image, while `up --build` ignores the registry and builds locally,
     # tagging the result with the same name. One file, both workflows, and no
     # second compose file to drift.
-    image: ghcr.io/mrain1p/pickwick-hub:latest
+    image: ghcr.io/mrain1p/yosemite-kids-hub:latest
     build:
       # Built from the repo root: the image needs :core as well as :hub, and a
       # context of ./hub could not see it.
       context: ..
       dockerfile: hub/Dockerfile
-    container_name: pickwick-hub
+    container_name: yosemite-kids-hub
     restart: unless-stopped
 
     # One published port, not host networking.
@@ -53,23 +53,23 @@ services:
     # running, and unreachable, which is a genuinely nasty half hour: the
     # health check passes because it runs inside the container.
     #
-    # To move it, set PICKWICK_PORT in a .env file beside this one, or export
+    # To move it, set YOSEMITE_KIDS_PORT in a .env file beside this one, or export
     # it before running compose. Then use the new port when you connect a
     # phone, because the app defaults to 8765.
     ports:
-      - "${PICKWICK_PORT:-8765}:${PICKWICK_PORT:-8765}"
+      - "${YOSEMITE_KIDS_PORT:-8765}:${YOSEMITE_KIDS_PORT:-8765}"
 
     volumes:
       # config.json and devices.json. Deliberately a subfolder, not the folder
       # holding the source: the data is the family's whole setup and wants
       # backing up, while the source is disposable and gets replaced on every
       # update.
-      - /volume2/Docker/pickwick/data:/data
+      - /volume2/Docker/yosemite-kids/data:/data
 
     environment:
-      - PICKWICK_DATA=/data
+      - YOSEMITE_KIDS_DATA=/data
       # The same variable the ports line above uses, so the two cannot drift.
-      - PICKWICK_PORT=${PICKWICK_PORT:-8765}
+      - YOSEMITE_KIDS_PORT=${YOSEMITE_KIDS_PORT:-8765}
       # Only affects log timestamps; the merge itself never reads a clock.
       - TZ=America/New_York
       # A config file and a few dozen devices. Left to itself the JVM sizes its

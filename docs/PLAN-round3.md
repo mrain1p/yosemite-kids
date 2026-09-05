@@ -14,7 +14,7 @@ row becomes its own target: tap → that channel's page; the poster and title
 still play. Same on the Keep watching cards and the TV tile.
 
 - Files: `ui/Tiles.kt` (`VideoCard` gets `onOpenChannel`), `ui/VideoGrid.kt`,
-  `ui/HomeScreens.kt`, `ui/PickwickScreen.kt` (wire `vm.openChannelByName`).
+  `ui/HomeScreens.kt`, `ui/YosemiteScreen.kt` (wire `vm.openChannelByName`).
 - Test: emulator tap on a card's channel row lands on the channel page.
 - Size: S.
 
@@ -34,7 +34,7 @@ end of the first page and disappear from the grid. Change to:
 - Files: `ui/MainViewModel.kt` (`publishChannel` / `splitWatched` no longer
   removes; new `openHistory()`), `ui/HomeState.kt` (`Screen.History`),
   `ui/VideoGrid.kt` (`HistoryTile` replaces `WatchedShelfTile`),
-  `ui/PickwickScreen.kt` (chip + title), TV rows get a History row.
+  `ui/YosemiteScreen.kt` (chip + title), TV rows get a History row.
 - Test: unit test for the history join (pure function over history map +
   cache lists); emulator: channel page shows History tile first, watched
   video still listed; Favorites → History lists both channels' videos.
@@ -74,7 +74,7 @@ Implementation:
   / `VideoCache.kt` (column + memo), new `data/ChannelPlaylists.kt`,
   `Whitelist.kt` + `ConfigStore.kt` (`channelLayout` setting, in the
   fingerprint), `ui/Settings.kt` (Playback section), `ui/MainViewModel.kt`,
-  `ui/PickwickScreen.kt` / `HomeScreens.kt` (playlist rows), tests.
+  `ui/YosemiteScreen.kt` / `HomeScreens.kt` (playlist rows), tests.
 - Test: `VideoCacheTest` round-trips the new column and reads old rows;
   `ChannelLayoutTest` sorts by popularity with nulls last; emulator with
   the real 50-channel list as the seed; `ExtractorSmokeTest` gains a
@@ -97,7 +97,7 @@ with the phone without losing the remote ergonomics:
 - Voice search on TV: the Google TV keyboard's own mic already feeds the
   field; nothing to add.
 - Files: `ui/HomeScreens.kt` (`TvHomeRows`), `ui/Tiles.kt` (TV variant of
-  `VideoCard`), `ui/PlayerActivity.kt` (toolbar item), `ui/PickwickScreen.kt`.
+  `VideoCard`), `ui/PlayerActivity.kt` (toolbar item), `ui/YosemiteScreen.kt`.
 - Test: an **Android TV AVD** (`pickwick_tv`, 1080p) added to `scripts/emu.ps1`
   with D-pad helpers; screenshots of home, channel page, player overlay, end
   card driven by key events. This is the first time the fork's TV layout will
@@ -117,7 +117,7 @@ with the phone without losing the remote ergonomics:
    for review, plus upstream's `version.json` (extractor bumps matter most —
    a NewPipe bump is the one thing to take promptly).
 
-Skill `.claude/skills/pickwick-upstream`: run the script, read the log,
+Skill `.claude/skills/yosemite-kids-upstream`: run the script, read the log,
 propose per-commit "cherry-pick / port by hand / skip" with reasons, and
 never merge automatically. Optionally a `/loop`-able weekly check.
 

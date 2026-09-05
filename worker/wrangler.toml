@@ -1,4 +1,4 @@
-name = "pickwick-suggest"
+name = "yosemite-kids-suggest"
 main = "submit-worker.js"
 compatibility_date = "2026-08-01"
 

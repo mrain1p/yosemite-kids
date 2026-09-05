@@ -1,4 +1,4 @@
-# Pickwick community whitelist — Science & nature explorers (ages ~7–12)
+# Yosemite Kids community whitelist — Science & nature explorers (ages ~7–12)
 # Import: copy this page's GitHub URL → parent settings → Channels & playlists → import from link.
 # Format: one channel/playlist per line; "| Name" sets the display label; "#" starts a comment.
 
