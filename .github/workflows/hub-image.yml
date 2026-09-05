@@ -18,6 +18,8 @@ on:
     # a :core change with no :hub change still needs a new image.
     paths:
       - "hub/**"
+      # The build context allow-list: a change there is a change to the image.
+      - ".dockerignore"
       - "core/**"
       - "gradle/**"
       - "gradlew"
