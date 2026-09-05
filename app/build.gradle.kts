@@ -39,8 +39,10 @@ android {
         // never settled (ConfigMerge dropped settled tombstones). 1.0.2 is
         // the first build whose settings converge. 1.0.3 is the first built
         // with the update manifest URL, so the last one installed by hand.
-        versionCode = 4
-        versionName = "1.0.3"
+        // 1.0.4: the Settings fixes from the first real fleet, and the first
+        // release delivered through the app's own update check.
+        versionCode = 5
+        versionName = "1.0.4"
 
         // Every outbound URL the app talks to, overridable per build so a fork
         // never phones upstream by accident. Set in local.properties or the
