@@ -18,3 +18,6 @@ scripts/seed-config.real.json
 
 # Design handoff bundles — the extracted contents live in docs/design/
 *App Design*.zip
+
+# Isolated worktrees the orchestrator creates for parallel agents; never part of the tree.
+.claude/worktrees/
