@@ -271,6 +271,75 @@ class HubIntegrationTest {
         assertEquals("Living Room", tokens.nameOf(token))
     }
 
+    /** A config as bytes with explicit bookkeeping, so tombstones are exact. */
+    private fun configWith(
+        ids: List<String>,
+        at: Map<String, Long>,
+        gone: Map<String, Long> = emptyMap()
+    ) = ConfigJson.toJson(
+        Whitelist(
+            sources = ids.map { entry(it) },
+            blockedVideoIds = emptySet(),
+            sync = SyncMeta(docAt = (at.values + gone.values + 0L).max(), at = at, gone = gone)
+        )
+    )
+
+    @Test
+    fun aSettledDeleteHoldsOnTheHubAgainstAStalePeer() {
+        // The shape a real hub log showed on the first family fleet: pushes
+        // from one phone landing on hashes that alternated between two values.
+        // A delete settled; the next push listed the unit on neither side and
+        // the merge dropped its tombstone; a stale peer (an old-build TV) then
+        // re-added the channel as if it were new, and the parent's next save
+        // deleted it again. Four requests reproduce it end to end, through the
+        // real server and the same calls the client makes.
+        val phone = PairedDevice(
+            "Yosemite Kids hub", "127.0.0.1", port,
+            runBlocking { HubEnrolment.tokenFor("127.0.0.1:$port", 8765, admin, "Phone") }.getOrThrow(),
+            secretless = true
+        )
+        val stale = PairedDevice(
+            "Yosemite Kids hub", "127.0.0.1", port,
+            runBlocking { HubEnrolment.tokenFor("127.0.0.1:$port", 8765, admin, "Old TV") }.getOrThrow(),
+            secretless = true
+        )
+        val src = ConfigStamp::src
+
+        val both = configWith(
+            listOf("UCaaa", "UCbbb"),
+            at = mapOf(src("UCaaa") to T + 1, src("UCbbb") to T + 1)
+        )
+        assertEquals(200, post(phone, both).first)
+
+        // The parent removes UCbbb.
+        val deleted = configWith(
+            listOf("UCaaa"),
+            at = mapOf(src("UCaaa") to T + 1),
+            gone = mapOf(src("UCbbb") to T + 2)
+        )
+        assertEquals(200, post(phone, deleted).first)
+        val settled = org.json.JSONObject(status(phone).second).getString("hash")
+
+        // The same document again: what the phone's own bytes look like once
+        // its merge has run. UCbbb is listed by nobody. Nothing new for the hub
+        // — and the tombstone must still be there afterwards.
+        val (code, body) = post(phone, deleted)
+        assertEquals(200, code)
+        assertFalse("an unchanged push must not read as a change", org.json.JSONObject(body).getBoolean("changed"))
+        assertEquals(
+            "a settled tombstone must survive a push that never mentions its subject",
+            T + 2, ConfigJson.fromJson(get(phone).second).sync.gone[src("UCbbb")]
+        )
+
+        // The stale peer still holds both channels from before the delete.
+        assertEquals(200, post(stale, both).first)
+        assertEquals(
+            "a stale copy that never saw the delete must not bring the channel back",
+            listOf("UCaaa"), ConfigJson.fromJson(get(phone).second).sources.map { it.id }
+        )
+        assertEquals("the hub must land back on the settled hash", settled, org.json.JSONObject(status(phone).second).getString("hash"))
+    }
+
     // --- the same calls LanClient makes, without pulling in Android --------
 
     private fun client() = okhttp3.OkHttpClient.Builder().build()

@@ -138,13 +138,18 @@ in the format devices already exchange over `/index`, devices pulling from the
 hub instead of the master; then, as a separate decision, screening in the
 container, which means the API key living on the NAS. *Medium-large.*
 
-**I. Phone-to-hub pushes do not converge.** Found 2026-09-05 on the first
-real fleet: six pushes from one phone produced merged hashes alternating
-between two values, the phone's own log recorded a "changed screening"
-edit nobody made, and the card blamed "an older version" on a hub built
-from the same commit. Under investigation; blocks everything above, since
-settings never settle. Fix ships with a `:core` convergence test and a
-round trip in `HubIntegrationTest`.
+**I. The Settings form re-stamps what it did not change.** Found with the
+convergence bug (fixed 2026-09-05, see `FORK-NOTES.md`) and left open: a
+save carries units the merge brought in from disk into `baseline` without
+stamping them while the form's own lists are never refreshed, so the *next*
+tap reads them as deletions and mints tombstones nobody asked for, and
+`section3` puts the disk's `ai` into the baseline while the form keeps its
+own, so every tap re-mints the AI unit ("changed screening" in the feed
+with nobody touching screening). A co-parent's channel that lands under an
+open form is deleted by this phone's second tap. Fix: after
+`baseline = saved?.config`, fold what the stamper carried into the form's
+list state, and re-read `configStore.syncHash()` inside the Push coroutine
+instead of the composition-time value. Needs the emulator loop. *Medium.*
 
 ---
 

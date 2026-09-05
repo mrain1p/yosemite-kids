@@ -894,13 +894,18 @@ internal fun DevicePage(
                                 "Sent, but ${device.name} stopped answering — check it arrived."
                             // Through matches(), not a second copy of its rule.
                             after.matches(expected, localSyncHash) -> "Pushed ✓"
-                            // The device took the config and still disagrees:
-                            // almost always an older build that can't see a
-                            // setting this phone knows about.
+                            // The device took the config and still disagrees.
+                            // Two honest causes: it merged in something this
+                            // phone has not pulled yet, or it is an older build
+                            // that cannot see a setting this phone knows about.
+                            // The first is the common one, and blaming a
+                            // version for it sent a parent to update a hub
+                            // built from the same commit.
                             else ->
-                                "${device.name} saved it but still reports different " +
-                                    "settings — it's probably on an older version. " +
-                                    "Update it and this clears."
+                                "${device.name} saved it but still holds different " +
+                                    "settings — it knows something this phone hasn't " +
+                                    "pulled yet. Pull, then push again. If that never " +
+                                    "settles, it may be on an older build."
                         })
                     }
                 }) { Text("Push") }

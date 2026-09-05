@@ -498,6 +498,9 @@ object ConfigMerge {
         val out = JSONObject(locRoot.toString())   // rebuild from local: unknown roots survive
         val at = LinkedHashMap<String, Long>()
         val gone = LinkedHashMap<String, Long>()
+        // Every unit a loop asked about. The tombstone carry below is for the
+        // units nobody asked about; a decided unit already had its say.
+        val decided = HashSet<String>()
         val floor = LinkedHashMap<String, Long>()
         (L.sync.floor.keys + R.sync.floor.keys).forEach { ns ->
             floor[ns] = maxOf(L.sync.floor[ns] ?: 0L, R.sync.floor[ns] ?: 0L)
@@ -512,6 +515,7 @@ object ConfigMerge {
          * construction rather than by testing.
          */
         fun decide(key: String): Decision {
+            decided += key
             val la = L.sync.at[key] ?: 0L
             val ra = R.sync.at[key] ?: 0L
             val lg = L.sync.gone[key] ?: 0L
@@ -529,6 +533,15 @@ object ConfigMerge {
             // dropped a tombstone.
             val below = a > SYNTHETIC_AT_MAX && a < (floor[ns] ?: 0L) && (la == 0L || ra == 0L)
 
+            // The tombstone the merged blob will carry. A lift the fail-closed
+            // rule rejects must not leave its tombstone behind: the merged copy
+            // would then hold the block's stamp beside the peer's tombstone,
+            // which is exactly what a *deliberate* lift looks like, and the
+            // next merge of the same peer would read its own bookkeeping as
+            // proof and lift after all — the block came and went on alternate
+            // pushes. A rejected lift is forgotten; the peer, told it is
+            // behind, adopts the block on its next pull.
+            var carriedGone = g
             val present = when {
                 below -> false
                 g == 0L -> a > 0
@@ -541,7 +554,11 @@ object ConfigMerge {
                     val sawAdd = (lg == g && la in 1 until g) || (rg == g && ra in 1 until g)
                     when (safeState(ns)) {
                         Safe.ABSENT -> a > g && sawTombstone
-                        Safe.PRESENT -> !(g > a && sawAdd)
+                        Safe.PRESENT -> {
+                            val lifted = g > a && sawAdd
+                            if (g > a && !lifted) carriedGone = 0L
+                            !lifted
+                        }
                         Safe.SCALAR -> true
                     }
                 }
@@ -551,7 +568,7 @@ object ConfigMerge {
                 ra > la -> false
                 else -> null   // a tie: the caller breaks it on the value
             }
-            return Decision(present, a, g, fromLocal, la, ra)
+            return Decision(present, a, carriedGone, fromLocal, la, ra)
         }
 
         /**
@@ -696,7 +713,23 @@ object ConfigMerge {
                 val rv = theirs?.optInt("rulesVersion", 0) ?: 0
                 val judgingDiffers = mine != null && theirs != null &&
                     judgingInputs(mine) != judgingInputs(theirs)
-                ai.put("rulesVersion", maxOf(lv, rv) + if (judgingDiffers) 1 else 0)
+                // The number has to be a function of the two documents, not of
+                // how many times they met: "max + 1 whenever they differ" moved
+                // the fingerprint on every push from a stale peer that kept
+                // its old rules, so a hub never settled and a phone could
+                // never match it. The loser must re-screen, which only needs
+                // the winner's rules to arrive under a version the loser has
+                // no verdicts for — bump past the loser's number when it
+                // would collide, otherwise the winner's own number stands.
+                val fromMine = pick === mine
+                val winnerV = if (fromMine) lv else rv
+                val loserV = if (fromMine) rv else lv
+                val version = when {
+                    !judgingDiffers -> maxOf(lv, rv)
+                    loserV >= winnerV -> loserV + 1
+                    else -> winnerV
+                }
+                ai.put("rulesVersion", version)
                 out.put("ai", ai)
                 if (d.at > 0) at[ConfigStamp.AI] = d.at
                 collide(ConfigStamp.AI, "ai", d, mine?.toString(), theirs?.toString())
@@ -743,6 +776,27 @@ object ConfigMerge {
 
         // Cross-section coherence, then the bookkeeping.
         scrubReferences(out)
+        // A tombstone whose subject is listed by NEITHER side is visited by no
+        // loop above: every loop walks content ids, and a settled delete has
+        // none. It must still travel (PLAN-sync R14, "tombstones are
+        // permanent"). Dropping it here made a delete enforceable for exactly
+        // one merge: the next push in which nobody listed the unit lost the
+        // tombstone, any stale peer still holding the unit re-added it as new
+        // (no tombstone anywhere reads as a plain add), the parent's next save
+        // deleted it again, and a hub's log flipped between two hashes forever.
+        // Carrying the newer of the two is what the loops do for the units they
+        // do visit; prune below still caps the blob.
+        (L.sync.gone.keys + R.sync.gone.keys).forEach { k ->
+            if (k in decided) return@forEach
+            if (k !in gone) gone[k] = maxOf(L.sync.gone[k] ?: 0L, R.sync.gone[k] ?: 0L)
+            // In a fail-closed namespace the lift's proof is the block's own
+            // stamp, and it travels with the tombstone or a stale block
+            // outranks a deliberate unblock the moment nobody lists the unit.
+            if (failsClosed(k.substringBefore('|')) && k !in at) {
+                val stamp = maxOf(L.sync.at[k] ?: 0L, R.sync.at[k] ?: 0L)
+                if (stamp > 0) at[k] = stamp
+            }
+        }
         val learned = mergeLogs(L.sync.log, R.sync.log)
             .filterNot { c -> L.sync.log.any { it.id == c.id } }
         val sync = ConfigStamp.prune(
@@ -996,7 +1050,16 @@ object ConfigMerge {
         val from = when (d.fromLocal) {
             true -> mine
             false -> theirs
-            null -> mine ?: theirs
+            // A tie: neither side stamped the unit more recently. "Mine" here
+            // meant each side kept its own, so two devices holding different
+            // unstamped limits pushed at each other forever. Both must land
+            // on the same answer — the canonical-order rule pickKey uses.
+            null -> when {
+                mine == null -> theirs
+                theirs == null -> mine
+                canonical(mine.opt(field)) <= canonical(theirs.opt(field)) -> mine
+                else -> theirs
+            }
         }
         if (from != null && from.has(field)) into.put(field, from.get(field)) else into.remove(field)
         if (d.at > 0) at[key] = d.at
@@ -1059,7 +1122,16 @@ object ConfigMerge {
             return when (d.fromLocal) {
                 true -> mine
                 false -> theirs
-                null -> mine ?: theirs
+                // A tie with different content: "mine" meant each side kept
+                // its own, so two devices holding different unstamped limits
+                // pushed at each other forever. Same canonical-order rule as
+                // pickKey and the settings group, so both land on one answer.
+                null -> when {
+                    mine == null -> theirs
+                    theirs == null -> mine
+                    canonical(mine) <= canonical(theirs) -> mine
+                    else -> theirs
+                }
             }
         }
 
@@ -1150,7 +1222,17 @@ object ConfigMerge {
             val k = key(m)
             val d = decide(k)
             if (d.gone > 0) gone[k] = d.gone
-            if (!d.present) return@forEach
+            if (!d.present) {
+                // In a fail-closed namespace the lift is what needs proof, and
+                // the proof is the block's own stamp: decide() accepts an
+                // unblock only when the side asserting it saw the block
+                // (`sawAdd` reads `at` against `gone`). Dropping `at` with the
+                // unit made the next push of the same stale block unprovable,
+                // so it came back, was lifted again, and the hub flipped
+                // between two hashes on every push. Keep the proof travelling.
+                if (failsClosed(k.substringBefore('|')) && d.at > 0) at[k] = d.at
+                return@forEach
+            }
             if (d.at > 0) at[k] = d.at
             kept += m
         }
@@ -1175,7 +1257,12 @@ object ConfigMerge {
             val k = "$ns|$pair"
             val d = decide(k)
             if (d.gone > 0) gone[k] = d.gone
-            if (!d.present) return@forEach
+            if (!d.present) {
+                // Same as mergeSet: a lifted per-kid block keeps the block's
+                // stamp, or the lift cannot be proved on the next push.
+                if (failsClosed(ns) && d.at > 0) at[k] = d.at
+                return@forEach
+            }
             if (d.at > 0) at[k] = d.at
             val videoId = pair.substringBefore('|')
             val kidId = pair.substringAfter('|')

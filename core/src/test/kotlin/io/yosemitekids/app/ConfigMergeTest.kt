@@ -207,6 +207,42 @@ class ConfigMergeTest {
     }
 
     @Test
+    fun aSettledDeleteStaysEnforceableAgainstAStaleCopy() {
+        // The shape a real hub log showed: a delete lands, then a push in
+        // which NOBODY lists the unit any more, then the stale copy again.
+        // Step two used to drop the tombstone (no loop visits a unit no side
+        // lists), so step three re-added the channel as if it were new, the
+        // parent deleted it again, and the hub flipped between two hashes.
+        val stale = doc(
+            sources = listOf(entry("UCaaa")),
+            at = mapOf(ConfigStamp.src("UCaaa") to T + 1)
+        )
+        val deleted = doc(gone = mapOf(ConfigStamp.src("UCaaa") to T + 2))
+        val afterDelete = settleJson(stale, deleted)
+
+        // A document that lists UCaaa on neither side and knows nothing new.
+        val unrelated = doc(
+            sources = listOf(entry("UCbbb")),
+            at = mapOf(ConfigStamp.src("UCbbb") to T + 3)
+        )
+        val afterUnrelated = settleJson(afterDelete, unrelated)
+        val kept = ConfigJson.fromJson(afterUnrelated)
+        assertEquals(
+            "a settled tombstone must survive a merge that never mentions its subject",
+            T + 2, kept.sync.gone[ConfigStamp.src("UCaaa")]
+        )
+        // And merging the same peer again changes nothing: the merge is a
+        // fixed point of itself, blob included.
+        assertNull(mergedOf(afterUnrelated, unrelated))
+
+        val resurrected = settle(afterUnrelated, stale)
+        assertEquals(
+            "a stale copy that never saw the delete must not bring the channel back",
+            setOf("UCbbb"), ids(resurrected)
+        )
+    }
+
+    @Test
     fun aRelabelOnACopyThatNeverSawTheDeleteDoesNotResurrect() {
         // Delete wins over edit: removing a channel is a considered safety
         // call, and a label edit must not quietly undo it.

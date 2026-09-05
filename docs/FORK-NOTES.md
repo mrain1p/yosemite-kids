@@ -754,6 +754,22 @@ included — those are what a later reader would otherwise re-investigate.
   config was read each time, and the launcher lists the app as Yosemite Kids
   beside the old Pickwick install. 1.0.0 was handed out before this was
   found and never installed anywhere; 1.0.1 is the first build that starts.
+- **Settings never settled on the first real fleet (1.0.2).** Six pushes from
+  one phone landed on hub hashes alternating between two values. Three merge
+  defects, one family (bookkeeping dropped for a unit nobody lists): a
+  settled tombstone vanished on the next merge, so a stale peer re-added the
+  deleted channel and the parent's next save deleted it again; a lifted
+  block lost the block's own stamp, so the lift could not be proved on the
+  next push and the block returned; and `rulesVersion` bumped on every
+  merge with a stale peer, moving the fingerprint each time. Plus two
+  tie-breaks that let each side keep its own. All in `ConfigMerge`, all
+  covered now by `MergeConvergenceTest` (the merge run again and again with
+  inputs held still) and a four-request reproduction in
+  `HubIntegrationTest` through the real server. The Devices page also said
+  "probably on an older version" for a hub built from the same commit; it
+  now says to pull. A TV paired while Settings was open never appeared in
+  the list until Settings was reopened; the fleet now reloads on any
+  pairing change.
 
 ## Next up, in order
 

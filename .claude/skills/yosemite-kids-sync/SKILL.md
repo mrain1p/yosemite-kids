@@ -41,7 +41,7 @@ it. A phone out of a drawer claims to be brand new.
 `updatedAt`.** The edit clock is `sync.at[unit]`, minted once per save in
 `ConfigStamp.stamped`.
 
-## 2. Nine prohibitions
+## 2. Ten prohibitions
 
 1. **Never add a term to `ConfigStore.fingerprint`.** Stamps and tombstones
    live in `syncHash`, advertised separately on `/status`. An old build can
@@ -77,6 +77,19 @@ it. A phone out of a drawer claims to be brand new.
    never be taught to walk free text, and `config.json` is in all three backup
    include lists. The `Change` record has no value field at all, which is a
    stronger guarantee than filtering one.
+10. **Never assemble the sync blob only from the units the loops visit.**
+    Every loop in `merge` walks content ids, and a settled delete has none:
+    a tombstone whose subject neither side lists was silently dropped, so a
+    delete was enforceable for exactly one merge and a stale peer re-added
+    the channel as new. The carry pass before `prune` keeps every unvisited
+    tombstone (and, in fail-closed namespaces, the block stamp that proves a
+    lift); a lift the fail-closed rule rejects keeps *no* tombstone, or the
+    merged copy would look like a deliberate unblock on the next round; and
+    `rulesVersion` is a function of the two documents, never of how many
+    times they met. `MergeConvergenceTest` runs the merge again and again
+    with the inputs held still, which is what a Push button and a
+    fifteen-minute worker actually do; a rule that passes `ConfigMergeTest`
+    once and fails there is not a rule yet.
 
 ## 3. The unit table
 

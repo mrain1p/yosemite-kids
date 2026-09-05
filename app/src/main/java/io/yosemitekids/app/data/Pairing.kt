@@ -310,7 +310,20 @@ class PairingStore(context: Context) {
 
     private fun savePaired(list: List<PairedDevice>) {
         prefs.edit().putString("paired", serializePaired(list)).apply()
+        PairingEvents.notifyChanged()
     }
+}
+
+/**
+ * Bumped after any change to the paired list, so a screen holding a snapshot
+ * of it can re-read. The pairing dialog lives in the activity, above every
+ * page: a TV paired while Settings was open landed in the store and nowhere
+ * on screen until Settings was left and reopened. Process-local, like
+ * [DownloadEvents]; the store itself is the truth.
+ */
+object PairingEvents {
+    val changes = kotlinx.coroutines.flow.MutableStateFlow(0)
+    fun notifyChanged() { changes.value = changes.value + 1 }
 }
 
 /** Fired on the TV when a paired phone pushes new config. */

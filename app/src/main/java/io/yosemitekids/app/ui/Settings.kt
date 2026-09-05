@@ -606,6 +606,12 @@ private fun AdminScreen(
     // or every return would flash "Checking…" down the whole list.
     val fleet = remember { DeviceFleet(pairingStore) }
     DisposableEffect(fleet) { onDispose { fleet.close() } }
+    // The fleet is a snapshot of the paired list; a pairing completed in the
+    // activity's dialog while this screen is open must show up without
+    // leaving and coming back.
+    LaunchedEffect(fleet) {
+        io.yosemitekids.app.data.PairingEvents.changes.collect { fleet.reload() }
+    }
     var openDevice by remember { mutableStateOf<String?>(null) }
     var openParent by remember { mutableStateOf<String?>(null) }
     var openThisPhone by remember { mutableStateOf(false) }
