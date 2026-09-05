@@ -298,6 +298,15 @@ internal fun AiScreeningSection(
 // --- AI review queue ---------------------------------------------------------
 
 /**
+ * Which half of the review flow a page wants.
+ *
+ * The design gives the queue and the blocked pile their own pages, but they
+ * are one flow — same cards, same rulings, same per-kid dialog — so they stay
+ * one composable rather than becoming the same code twice.
+ */
+internal enum class ReviewHalf { QUEUE, BLOCKED, BOTH }
+
+/**
  * THE review queue — the one place a held-back video waits for the parent.
  * Served from this device's own verdict store, merged with what each paired
  * device reports as held (live over the LAN, or its last cached stats snapshot
@@ -315,7 +324,9 @@ internal fun AiReviewSection(
     resolved: Set<String>,
     /** Second arg: null = everyone (tap); a kid set = long-press per-kid ruling. */
     onAllow: (String, Set<String>?) -> Unit,
-    onBlock: (String, Set<String>?) -> Unit
+    onBlock: (String, Set<String>?) -> Unit,
+    /** Which half to render — see [ReviewHalf]. */
+    show: ReviewHalf = ReviewHalf.BOTH
 ) {
     /** (videoId, allow?) awaiting the long-press "which kids?" answer. */
     var perKid by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
@@ -539,7 +550,7 @@ internal fun AiReviewSection(
         " $stillScreening more still being screened — they'll appear here as the AI finishes."
     } else ""
 
-    if (review.isEmpty()) {
+    if (show != ReviewHalf.BLOCKED) if (review.isEmpty()) {
         Text(
             "Nothing waiting for you. Videos the AI is unsure about " +
                 "appear here for your decision." + screeningNote,
@@ -567,8 +578,11 @@ internal fun AiReviewSection(
         }
     }
 
-    SectionTitle("Blocked videos")
-    if (blockedList.isEmpty()) {
+    if (show != ReviewHalf.QUEUE) {
+        // No SectionTitle on its own page — the app bar already says it.
+        if (show == ReviewHalf.BOTH) SectionTitle("Blocked videos")
+    }
+    if (show != ReviewHalf.QUEUE) if (blockedList.isEmpty()) {
         Text(
             "Nothing blocked right now. Videos the AI blocks — at screening, or in " +
                 "the final check just before one plays — collect here so you can " +

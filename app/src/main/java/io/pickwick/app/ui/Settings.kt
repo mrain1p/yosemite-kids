@@ -742,6 +742,23 @@ private fun AdminScreen(
     // The kid page takes over the screen while open (profile, rules, today).
     // It edits the form's profile list directly; the auto-apply above does
     // the rest, so a pause tapped there is on the TV a moment later.
+    // Sub-pages pushed from Screening. Declared ABOVE the early returns below:
+    // everything after openKid leaves composition when a sub-page opens, so a
+    // remember there is discarded and a count would flash 0 on the way back.
+    var openReview by remember { mutableStateOf(false) }
+    var openBlocked by remember { mutableStateOf(false) }
+    // Held-for-review count for the row. produceState so the file read is off
+    // the main thread; keyed on the rules version because a rules edit
+    // invalidates every verdict taken under the old ones.
+    val heldForReview by produceState(0, configEpoch, ai.rulesVersion) {
+        value = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                io.pickwick.app.data.ScreeningStore(settingsContext)
+                    .flagged(ai.rulesVersion).size
+            }.getOrDefault(0)
+        }
+    }
+
     var openKid by remember { mutableStateOf<Pair<io.pickwick.app.data.Profile, Boolean>?>(null) }
     openKid?.let { (kid, isNew) ->
         KidPage(
@@ -759,6 +776,56 @@ private fun AdminScreen(
                 openKid = null
             }
         )
+        return
+    }
+
+    // Pushed from Screening, not from the root, so they are not SettingsPages.
+    // Making them pages would force the hub to serve a "Blocked videos" tab
+    // (guard 3 is bidirectional) for a list only a phone can act on.
+    if (openReview) {
+        BackHandler { openReview = false }
+        SubPage(title = "Waiting for your OK", onBack = { openReview = false }) {
+            SettingsCard {
+                AiReviewSection(
+                    ai = ai,
+                    profiles = profiles,
+                    pairingStore = pairingStore,
+                    resolved = blocked + aiAllowed + blockedFor.keys + allowedFor.keys,
+                    onAllow = { id, forKids ->
+                        if (forKids == null) aiAllowed = aiAllowed + id
+                        else allowedFor = allowedFor + (id to forKids)
+                    },
+                    onBlock = { id, forKids ->
+                        if (forKids == null) blocked = blocked + id
+                        else blockedFor = blockedFor + (id to forKids)
+                    },
+                    show = ReviewHalf.QUEUE
+                )
+            }
+        }
+        return
+    }
+    if (openBlocked) {
+        BackHandler { openBlocked = false }
+        SubPage(title = "Blocked videos", onBack = { openBlocked = false }) {
+            SettingsCard {
+                AiReviewSection(
+                    ai = ai,
+                    profiles = profiles,
+                    pairingStore = pairingStore,
+                    resolved = emptySet(),
+                    onAllow = { id, forKids ->
+                        if (forKids == null) { blocked = blocked - id; aiAllowed = aiAllowed + id }
+                        else allowedFor = allowedFor + (id to forKids)
+                    },
+                    onBlock = { id, forKids ->
+                        if (forKids == null) blocked = blocked + id
+                        else blockedFor = blockedFor + (id to forKids)
+                    },
+                    show = ReviewHalf.BLOCKED
+                )
+            }
+        }
         return
     }
 
@@ -884,38 +951,41 @@ private fun AdminScreen(
                     }
                 }
                 SettingsPage.Screening -> {
-                    // The connection is its own section, above both features
-                    // that use it. It used to live inside the screening switch,
-                    // so a parent who only wanted AI channel discovery had to
-                    // turn content screening on to reach the key field.
+                    // Rebuilt to raw-screening.png. The page used to be five
+                    // headed sections stacked down a scroll; it is now the
+                    // connection, the two features it powers, and the rules —
+                    // which is the order a parent sets them up in.
                     SectionTitle("AI connection")
                     SettingsCard { AiConnectionSection(ai, onChanged = { ai = it }) }
-                    SectionTitle("AI content screening")
-                    SettingsCard { AiScreeningSection(ai, profiles, onChanged = { ai = it }) }
-                    if (ai.enabled) {
-                        SectionTitle("Waiting for your OK")
-                        SettingsCard {
-                            AiReviewSection(
-                                ai = ai,
-                                profiles = profiles,
-                                pairingStore = pairingStore,
-                                resolved = blocked + aiAllowed + blockedFor.keys + allowedFor.keys,
-                                onAllow = { id, forKids ->
-                                    if (forKids == null) aiAllowed = aiAllowed + id
-                                    else allowedFor = allowedFor + (id to forKids)
-                                },
-                                onBlock = { id, forKids ->
-                                    if (forKids == null) blocked = blocked + id
-                                    else blockedFor = blockedFor + (id to forKids)
-                                }
+
+                    SectionTitle("The two features")
+                    SettingsCard(padded = false) {
+                        Column(Modifier.padding(horizontal = 16.dp)) {
+                            AiScreeningSection(ai, profiles, onChanged = { ai = it })
+                            SettingsDivider()
+                            // What screening has actually produced, stated on the
+                            // row rather than a tap inside it. Both were buried:
+                            // blocked videos at the bottom of a different page,
+                            // and the queue behind a section that only appeared
+                            // when screening was already on.
+                            ValueRow(
+                                "Waiting for your OK",
+                                "Videos the AI held back until you decide",
+                                value = if (heldForReview > 0) "$heldForReview held" else "None",
+                                onClick = { openReview = true }
                             )
-                        }
-                    }
-                    SectionTitle("Discover with AI")
-                    SettingsCard {
-                        AiDiscoverySection(ai, entries, yt) { e ->
-                            entries = (entries + e).distinctBy { it.id }
-                            newIds = newIds + e.id
+                            SettingsDivider()
+                            ValueRow(
+                                "Blocked videos",
+                                "Never shown to the kids",
+                                value = blocked.size.let { if (it == 0) "None" else "$it blocked" },
+                                onClick = { openBlocked = true }
+                            )
+                            SettingsDivider()
+                            AiDiscoverySection(ai, entries, yt) { e ->
+                                entries = (entries + e).distinctBy { it.id }
+                                newIds = newIds + e.id
+                            }
                         }
                     }
                 }
@@ -1008,81 +1078,60 @@ private fun AdminScreen(
                     SettingsCard { LocalVideosSection(profiles) }
                 }
                 SettingsPage.Playback -> {
-                    // The app bar already carries this page name.
-                    Spacer(Modifier.height(12.dp))
-                    SettingsCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Skip sponsors & intros", modifier = Modifier.weight(1f))
-                            Switch(
-                                modifier = Modifier.tvFocusHighlight(),
-                                checked = sponsorSkip,
-                                onCheckedChange = { sponsorSkip = it }
+                    // Rebuilt to raw-playback.png. Four switches in one card
+                    // under a single heading, each with a one-line summary and
+                    // its paragraph behind a ?. Before, every switch printed its
+                    // full explanation always, under its own SectionTitle — four
+                    // headings and four paragraphs for four toggles.
+                    SectionTitle("While a video plays")
+                    SettingsCard(padded = false) {
+                        Column(Modifier.padding(horizontal = 16.dp)) {
+                            ToggleRow(
+                                "Skip sponsors & intros",
+                                "Using SponsorBlock community markers",
+                                sponsorSkip, { sponsorSkip = it },
+                                help = "Skips the parts of a video the SponsorBlock community " +
+                                    "has marked: sponsor messages, merch plugs, intros/outros " +
+                                    "and \"like and subscribe\" reminders. Marked parts show in " +
+                                    "green on the TV's playback bar. Lookups send only an " +
+                                    "anonymous fingerprint of the video, never what is being watched."
+                            )
+                            SettingsDivider()
+                            ListenRateRow(listenPercent) { listenPercent = it }
+                            SettingsDivider()
+                            ToggleRow(
+                                "Autoplay the next video",
+                                "Behind a short countdown",
+                                autoplayNext, { autoplayNext = it },
+                                help = "When a video the kid picked ends, the next unwatched one " +
+                                    "from the same channel lines up behind a short countdown " +
+                                    "(Play now / Not now). Screen-time rules still apply. Off: " +
+                                    "every video ends on the shelf."
+                            )
+                            SettingsDivider()
+                            ToggleRow(
+                                "More like what you watch",
+                                "A home row of older videos",
+                                suggestSimilar, { suggestSimilar = it },
+                                help = "A home row of older videos from the channels you have " +
+                                    "already added, matched to what this kid actually watched. " +
+                                    "Nothing new is fetched and nothing leaves the device. Off: " +
+                                    "the home screen stays newest-first."
                             )
                         }
-                        Text(
-                            "Skips the parts of a video the SponsorBlock community has marked: " +
-                                "sponsor messages, merch plugs, intros/outros and \"like and " +
-                                "subscribe\" reminders. Marked parts show in green on the TV's " +
-                                "playback bar. Lookups send only an anonymous fingerprint of the " +
-                                "video, never what is being watched.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
-                    SectionTitle("Listening")
-                    SettingsCard { ListenRateRow(listenPercent) { listenPercent = it } }
-                    SectionTitle("After a video")
-                    SettingsCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Autoplay the next video", modifier = Modifier.weight(1f))
-                            Switch(
-                                modifier = Modifier.tvFocusHighlight(),
-                                checked = autoplayNext,
-                                onCheckedChange = { autoplayNext = it }
-                            )
-                        }
-                        Text(
-                            "When a video the kid picked ends, the next unwatched one from the same " +
-                                "channel lines up behind a short countdown (Play now / Not now). " +
-                                "Screen-time rules still apply. Off: every video ends on the shelf.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    SectionTitle("Suggestions")
-                    SettingsCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("More like what you watch", modifier = Modifier.weight(1f))
-                            Switch(
-                                modifier = Modifier.tvFocusHighlight(),
-                                checked = suggestSimilar,
-                                onCheckedChange = { suggestSimilar = it }
-                            )
-                        }
-                        Text(
-                            "A home row of older videos from the channels you have already added, " +
-                                "matched to what this kid actually watched. Off: the home screen " +
-                                "stays newest-first.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        // Folded away by default. A parent deciding whether to
-                        // leave this on deserves the whole mechanism, but it is
-                        // three screens of text on a phone and every other
-                        // setting would be below it.
-                        SuggestionExplainer()
-                    }
+
                     SectionTitle("Picture quality")
                     SettingsCard {
                         Text(
-                            "A ceiling, not a target: Auto follows the connection and the " +
-                                "device, and a number caps it. Kids can change it for the " +
-                                "video they're watching from the player.",
+                            "Auto follows the connection and the device, with no cap. Pick a " +
+                                "number to set a ceiling instead. Either way a kid can change it " +
+                                "for the video they are watching, from the player.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text("On TVs", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("On televisions", style = MaterialTheme.typography.labelLarge)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             PLAYBACK_QUALITIES.forEach { h ->
                                 FilterChip(
                                     selected = qualityTv == h,
@@ -1094,7 +1143,7 @@ private fun AdminScreen(
                         }
                         SettingsDivider()
                         Text("On phones & tablets", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             PLAYBACK_QUALITIES.forEach { h ->
                                 FilterChip(
                                     selected = qualityPhone == h,
