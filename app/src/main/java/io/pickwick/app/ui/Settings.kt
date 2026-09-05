@@ -747,6 +747,35 @@ private fun AdminScreen(
     // remember there is discarded and a count would flash 0 on the way back.
     var openReview by remember { mutableStateOf(false) }
     var openBlocked by remember { mutableStateOf(false) }
+    var openAiConnection by remember { mutableStateOf(false) }
+    // The root-page selection lives up here for the same reason: it is what a
+    // sub-page returns TO. Declared below the returns it was forgotten while
+    // one was open, and Back from "Blocked videos" landed on the root.
+    var page by remember { mutableStateOf<SettingsPage?>(null) }
+    // Whether the AI connection actually answers, for the row that leads to
+    // it. Nothing on disk records this — the one real signal is the /models
+    // call the form makes — so the row makes the same call, only while the
+    // Screening page is the thing on screen (the form probes for itself when
+    // it is open), and again on the way back so an edited key is reflected.
+    val aiLink by produceState<String?>(
+        null, page == SettingsPage.Screening && !openAiConnection, ai.baseUrl, ai.apiKey, ai.model
+    ) {
+        if (page != SettingsPage.Screening || openAiConnection) return@produceState
+        val keyless = ai.baseUrl.startsWith("http://")
+        value = when {
+            ai.baseUrl.isBlank() -> "Tap to choose a provider"
+            ai.apiKey.isBlank() && !keyless -> "Not connected · no API key yet"
+            else -> {
+                value = "Checking…"
+                val reachable = runCatching { io.pickwick.app.data.AiScreener.listModels(ai) }.isSuccess
+                when {
+                    !reachable -> "Not connected · couldn't reach it"
+                    ai.model.isBlank() -> "Connected · no model chosen"
+                    else -> "Connected · ${ai.model}"
+                }
+            }
+        }
+    }
     // Held-for-review count for the row. produceState so the file read is off
     // the main thread; keyed on the rules version because a rules edit
     // invalidates every verdict taken under the old ones.
@@ -829,11 +858,21 @@ private fun AdminScreen(
         return
     }
 
+    if (openAiConnection) {
+        BackHandler { openAiConnection = false }
+        // The form itself is unchanged; it moved off the Screening page so
+        // that page reads as a summary row plus the two features, which is
+        // how raw-screening.png draws it.
+        SubPage(title = "AI connection", onBack = { openAiConnection = false }) {
+            SettingsCard { AiConnectionSection(ai, onChanged = { ai = it }) }
+        }
+        return
+    }
+
     // --- Hub -------------------------------------------------------------------
     // The root is a short list; each row opens its own page (stock Android
     // settings shape). Everything below the header used to be one scroll of
     // eighteen sections, and "where is X" was the first support question.
-    var page by remember { mutableStateOf<SettingsPage?>(null) }
     page?.let { p ->
         BackHandler { page = null }
         SubPage(title = p.title, onBack = { page = null }) {
@@ -955,8 +994,25 @@ private fun AdminScreen(
                     // headed sections stacked down a scroll; it is now the
                     // connection, the two features it powers, and the rules —
                     // which is the order a parent sets them up in.
-                    SectionTitle("AI connection")
-                    SettingsCard { AiConnectionSection(ai, onChanged = { ai = it }) }
+                    SectionTitle(
+                        "AI connection",
+                        help = "Where Pickwick talks to an AI, and which model. Set it up " +
+                            "once; screening new videos and finding channels are each " +
+                            "switched on separately below. Bring your own provider — a " +
+                            "model running on your own network works too."
+                    )
+                    // One row, not the form: the provider and whether it answers
+                    // is what a parent checks; the fields are for the day it is
+                    // set up, and live one tap in.
+                    SettingsCard(padded = false) {
+                        Column(Modifier.padding(horizontal = 16.dp)) {
+                            ValueRow(
+                                aiProviderName(ai.baseUrl) ?: "Not set up",
+                                aiLink ?: "Checking…",
+                                onClick = { openAiConnection = true }
+                            )
+                        }
+                    }
 
                     SectionTitle("The two features")
                     SettingsCard(padded = false) {
@@ -1685,15 +1741,34 @@ private fun KidErrandCard(
     }
 }
 
+/**
+ * A quiet grey label over a card. With [help], a **?** sits at the label's
+ * right edge (raw-screening.png, "AI connection") and the explanation unfolds
+ * under the label — the same fold [ToggleRow] uses, so one gesture explains
+ * everything on these pages.
+ */
 @Composable
-internal fun SectionTitle(text: String) {
+internal fun SectionTitle(text: String, help: String? = null) {
+    var helpOpen by remember { mutableStateOf(false) }
     Spacer(Modifier.height(20.dp))
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 4.dp)
-    )
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f).padding(start = 4.dp)
+        )
+        if (help != null) HelpDot(open = helpOpen, onToggle = { helpOpen = !helpOpen })
+    }
+    if (help != null && helpOpen) {
+        Spacer(Modifier.height(6.dp))
+        Text(
+            help,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp)
+        )
+    }
     Spacer(Modifier.height(8.dp))
 }
 

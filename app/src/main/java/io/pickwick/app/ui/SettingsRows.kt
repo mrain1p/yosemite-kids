@@ -138,7 +138,7 @@ internal fun ValueRow(
  * whole row is not clickable so there is nothing else here to hit by mistake.
  */
 @Composable
-private fun HelpDot(open: Boolean, onToggle: () -> Unit) {
+internal fun HelpDot(open: Boolean, onToggle: () -> Unit) {
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceVariant,

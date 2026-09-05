@@ -29,6 +29,18 @@ private val AI_PRESETS = listOf(
     AiPreset("Local", "http://192.168.0.10:11434/v1", "llama3.2")
 )
 
+/**
+ * The name the Screening page's "AI connection" row leads with: the preset
+ * whose base URL this is, else the host of a hand-typed URL, else null for
+ * blank. Kept beside the presets so a new preset names itself on the row too.
+ */
+internal fun aiProviderName(baseUrl: String): String? {
+    if (baseUrl.isBlank()) return null
+    AI_PRESETS.firstOrNull { it.baseUrl == baseUrl }?.let { return it.name }
+    return runCatching { java.net.URI(baseUrl).host }.getOrNull()
+        ?.takeIf { it.isNotBlank() } ?: "Custom provider"
+}
+
 private val DEFAULT_AI_RULES = """
     No scary, violent, or disturbing content.
     No adult themes, romance, or innuendo.
