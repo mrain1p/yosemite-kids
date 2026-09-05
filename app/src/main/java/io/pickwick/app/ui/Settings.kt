@@ -946,17 +946,23 @@ private fun AdminScreen(
     }
     if (openThisPhone) {
         BackHandler { openThisPhone = false }
+        // raw-phone.png: a quiet title over each card, and the section's
+        // explanation folded behind a ? on the title rather than printed
+        // above the controls.
         SubPage(title = "This phone", onBack = { openThisPhone = false }) {
             // This phone's name in the change log. Build.MODEL is no help when
             // both parents carry the same handset, and "Dad's phone" is
             // exactly what a co-parent needs to read.
+            SectionTitle("Called")
             SettingsCard {
                 var myName by remember { mutableStateOf(pairingStore.myName()) }
                 OutlinedTextField(
                     value = myName,
                     onValueChange = { myName = it; pairingStore.setMyName(it) },
                     singleLine = true,
-                    label = { Text("Called") },
+                    // The title above the card already says "Called"; a
+                    // floating label would say it twice.
+                    placeholder = { Text("Mum's phone") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text(
@@ -980,7 +986,7 @@ private fun AdminScreen(
             // crawl has got. Read-only — the master does the work.
             SectionTitle("Search index")
             SettingsCard { SearchIndexSection(entries, masterToken, pairingStore) }
-            SectionTitle("Offline downloads")
+            SectionTitle("Offline downloads", help = DOWNLOADS_HELP)
             SettingsCard { DownloadsSection() }
             SectionTitle("Videos from this phone")
             SettingsCard { LocalVideosSection(profiles) }
@@ -2038,16 +2044,6 @@ private fun SearchIndexSection(
     val isMaster = masterToken != null && masterToken == myToken
     var expanded by remember { mutableStateOf(false) }
 
-    Text(
-        when {
-            isMaster -> "This device is the ★ master — it builds the index and shares it."
-            masterToken != null -> "Another device is the master; the index arrives over your home network."
-            else -> "No master yet — the first parent device to open the app claims it."
-        },
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-
     // Summary first: the per-channel list is long and rarely what the parent
     // came for. Totals answer "is search working" at a glance. Sum only the
     // sources that are still whitelisted — a dropped channel's index file can
@@ -2055,27 +2051,51 @@ private fun SearchIndexSection(
     val whitelistedStates = entries.mapNotNull { stateFor(it) }
     val totalVideos = whitelistedStates.sumOf { it.count }
     val complete = whitelistedStates.count { it.complete }
-    Spacer(Modifier.height(6.dp))
-    // Top-aligned: the sentence wraps to two lines on a phone, and a
-    // centre-aligned button then floated against the middle of the paragraph.
-    Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
-        val channels = if (entries.size == 1) "1 channel" else "${entries.size} channels"
-        Text(
-            "$totalVideos videos indexed across $channels — $complete fully indexed.",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f)
-        )
-        // The shared flow is process-local; a crawl that ran in the WorkManager
-        // process (or before this screen opened) only appears after a disk
-        // re-read. This forces one.
-        IconButton(
-            onClick = { scope.launch(kotlinx.coroutines.Dispatchers.IO) { index.refresh() } },
-            modifier = Modifier.size(32.dp).tvFocusHighlight()
-        ) {
-            // material-icons-core shipped here has no Refresh; a glyph does the job.
-            Text("↻", style = MaterialTheme.typography.titleMedium)
-        }
-    }
+    val channels = if (entries.size == 1) "1 channel" else "${entries.size} channels"
+    // raw-phone.png: the totals as a headline, then one amber line carrying
+    // how complete the index is and who is building it.
+    Text(
+        "${java.text.NumberFormat.getIntegerInstance().format(totalVideos)} videos " +
+            "across $channels",
+        style = MaterialTheme.typography.titleMedium
+    )
+    Text(
+        "$complete fully indexed  ·  " + when {
+            isMaster -> "this device is the master"
+            masterToken != null -> "another device is the master"
+            else -> "no master yet"
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = StatusAmber
+    )
+    Spacer(Modifier.height(4.dp))
+    // The design's button here says "Rebuild index", but nothing on the phone
+    // can start a crawl: the master's WorkManager job runs every 15 minutes on
+    // its own and there is no route or entry point that presses it early. What
+    // the button CAN do is re-read the index from disk — the shared flow is
+    // process-local, so a crawl that ran in the worker process (or before this
+    // screen opened) only shows up after one. Labelled for what it does.
+    var refreshing by remember { mutableStateOf(false) }
+    OutlinedButton(
+        onClick = {
+            refreshing = true
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                index.refresh()
+                refreshing = false
+            }
+        },
+        enabled = !refreshing,
+        modifier = Modifier.fillMaxWidth().tvFocusHighlight()
+    ) { Text(if (refreshing) "Working…" else "Refresh counts") }
+    Text(
+        when {
+            isMaster -> "The master builds the index and shares it with the other devices."
+            masterToken != null -> "Another device is the master; the index arrives over your home network."
+            else -> "No master yet — the first parent device to open the app claims it."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 
     if (!expanded) {
         CompactButton(onClick = { expanded = true }) { Text("Read more") }

@@ -21,6 +21,18 @@ import kotlinx.coroutines.launch
 // --- Offline downloads ------------------------------------------------------
 
 /**
+ * What offline downloads are, for the **?** on the "Offline downloads" title
+ * (raw-phone.png). It used to open the card; a parent who came to change the
+ * quality read it every time.
+ */
+internal const val DOWNLOADS_HELP =
+    "The kid taps ⬇️ on any video to ask for it offline. Approved videos are " +
+        "saved to this device and play without internet — perfect for car trips. " +
+        "Watching them still uses screen time as usual. With AI screening on, " +
+        "each request is deep-checked first — refused ones never reach this " +
+        "list (they're under \"Blocked videos\", where you can overrule)."
+
+/**
  * The parent's side of offline downloads: approve or decline the kid's
  * requests, watch active downloads, pick the quality, and free up space.
  * No storage cap — usage is shown and cleanup is a deliberate delete here.
@@ -52,30 +64,25 @@ internal fun DownloadsSection() {
         DownloadService.start(context)
     }
 
-    Text(
-        "The kid taps ⬇️ on any video to ask for it offline. Approved videos are " +
-            "saved to this device and play without internet — perfect for car trips. " +
-            "Watching them still uses screen time as usual. With AI screening on, " +
-            "each request is deep-checked first — refused ones never reach this " +
-            "list (they're under \"Blocked videos\", where you can overrule).",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-
     // Label above rather than beside: three chips plus a two-word label do not
     // fit one line on a phone at display scale, and the label wrapped to two
-    // lines against the chips.
-    Text("Download quality", style = MaterialTheme.typography.labelLarge)
+    // lines against the chips. The chips share the row in thirds, so the
+    // choice reads as one segmented control rather than three tags.
+    Text("Download quality", style = MaterialTheme.typography.titleMedium)
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
         listOf(480, 720, 1080).forEach { h ->
             FilterChip(
                 selected = quality == h,
                 onClick = { quality = h; store.maxHeight = h },
-                label = { Text("${h}p") },
-                modifier = Modifier.tvFocusHighlight()
+                label = {
+                    Text("${h}p", modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                },
+                modifier = Modifier.weight(1f).tvFocusHighlight()
             )
         }
     }
