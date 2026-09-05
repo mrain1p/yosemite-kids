@@ -885,15 +885,14 @@ nothing; the change would only have complicated master election.
 
 ## Before the first release of the fork
 
-- Self-update is off: `UPDATE_MANIFEST_URL` bakes in blank until a public
-  releases repo exists. Then set `YOSEMITE_KIDS_UPDATE_URL` to that repo's raw
-  `version.json` and write that file last, once the APK it names is up. The
+- Self-update is on from 1.0.3 (2026-09-05): the repo is public,
+  `YOSEMITE_KIDS_UPDATE_URL` is set in `local.properties` on the build machine
+  (a build without it bakes in blank and cannot update itself), and
+  `version.json` at the root of `main` names the release asset. The
   directory and suggestion URLs still point at upstream's community
   directory on purpose (roadmap §1); nothing can pull an install back onto
   an upstream build now that the package id and signing key differ.
-- The download links in `docs/SETUP.md` name this repo's
-  `releases/latest/download/yosemite-kids.apk`; they resolve only once the
-  repo is public and a release exists. Until then, hand the APK over.
+- The download links in `docs/SETUP.md` resolve now.
 - Back up the release keystore and its password file off-machine (they
   exist; `CLAUDE.md` says where). Losing them strands every install.
 - Test on a real Google TV: D-pad on the end card / error card / blocked card

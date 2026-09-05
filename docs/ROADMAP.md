@@ -40,22 +40,18 @@ These are ordered because each depends on the one before it. Nothing here works
 in isolation, which is why the pre-release checklist in `FORK-NOTES.md` reads as
 four independent one-line edits and is not.
 
-1. **A fork repo exists** (see §0). Everything else needs somewhere to publish.
-2. **Repoint the outbound URLs.** `YOSEMITE_KIDS_UPDATE_URL`, `YOSEMITE_KIDS_DIRECTORY_URL`,
-   `YOSEMITE_KIDS_SUGGEST_URL` in `app/build.gradle.kts`. `SUGGEST_WORKER_URL` is an
-   outbound **POST** to upstream's worker — worth knowing before a family runs it.
-3. **`version.json` is the last step, not the first.** It still reads
-   `versionCode 28 / 0.7.8` and points at upstream's release asset — untouched
-   since the branch point. It must name an `apkUrl` that resolves, so it comes
-   after the release exists.
-4. **Tag and publish**, then check `install -r` across the version boundary.
+Done 2026-09-05, in this order: the repo went public; 1.0.3 was built with
+`YOSEMITE_KIDS_UPDATE_URL` pointing at this repo's raw `version.json`;
+`gh release create v1.0.3` published `yosemite-kids.apk` under the constant
+asset name; `version.json` was written last, once the asset it names resolved.
+From 1.0.3 on, "Check for updates" in the app delivers every later build, and
+the upstream-tracking routine finally has a payoff: an adopted extractor bump
+reaches every TV. `YOSEMITE_KIDS_DIRECTORY_URL` and `YOSEMITE_KIDS_SUGGEST_URL`
+still point at upstream's community directory on purpose. Each release is
+the release skill: bump both version numbers, gate, build, `gh release
+create`, then `version.json`.
 
-**Two things the checklist does not say:**
-
-- **Self-update is off in every build.** `UPDATE_MANIFEST_URL` bakes in as `""`
-  (`Updater.kt:36-37` bails on blank). Good news — families cannot be pushed onto
-  upstream builds. Bad news — **the entire upstream-tracking routine has zero
-  payoff today**, because an adopted extractor bump cannot reach anyone.
+**One thing the checklist did not say:**
 - **The package id changed with the name** (`io.yosemitekids.app`, versionCode
   reset to 1 in 1.0.0). To Android that is a different app: an upstream install
   keeps working beside it and nothing has to be uninstalled — but nothing
@@ -235,5 +231,3 @@ fires: confirm the work is done, then delete the item and its row.
 | §2H crawl in the container | `config.masterDeviceToken != me` | code |
 | §4 stats on hub | `outstandingOnHub` | code |
 | §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |
-| §1 update off | `UPDATE_MANIFEST_URL` | code |
-| §1 version.json | `version.json` | path |

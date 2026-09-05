@@ -37,9 +37,10 @@ android {
         // 1.0.0 never shipped: it died at launch (MainViewModel init order).
         // 1.0.1 started, and on the first real fleet its pushes to the hub
         // never settled (ConfigMerge dropped settled tombstones). 1.0.2 is
-        // the first build whose settings converge.
-        versionCode = 3
-        versionName = "1.0.2"
+        // the first build whose settings converge. 1.0.3 is the first built
+        // with the update manifest URL, so the last one installed by hand.
+        versionCode = 4
+        versionName = "1.0.3"
 
         // Every outbound URL the app talks to, overridable per build so a fork
         // never phones upstream by accident. Set in local.properties or the
