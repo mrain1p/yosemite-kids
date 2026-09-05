@@ -919,7 +919,9 @@ internal fun DevicePage(
 
     if (device.secretless) {
         SectionTitle("Hub setup")
-        SettingsCard { HubSection(pairingStore) { fleet.reload(); onFleetChanged() } }
+        // Not removable here: the Disconnect row under "This entry" below
+        // already is, and the same action twice on one page reads as two.
+        HubSection(pairingStore, fleet, onFleetChanged = { fleet.reload(); onFleetChanged() })
     } else {
         SectionTitle("On this device")
         SettingsCard(padded = false) {
@@ -1308,59 +1310,98 @@ internal fun UpdateSection(tv: Boolean = false, onUpdateFound: () -> Unit = {}) 
         busy = false
     }
 
+    /** The manual check, phone only — see the note on the button that runs it. */
+    fun checkNow() {
+        scope.launch {
+            busy = true
+            message = "Checking…"
+            val found = updater.check()
+            update = found
+            message = when {
+                // Not "You're up to date". UPDATE_MANIFEST_URL is blank in
+                // every build shipped so far, and check() returns null for
+                // that without making a request — so the reassuring message
+                // was reporting the result of a check that never happened.
+                // It matters most in the one case this exists for:
+                // extraction breaks, and a parent presses this to find out
+                // whether a fix is waiting.
+                !io.pickwick.app.data.Updater.canCheck() ->
+                    "Updates aren't set up for this build"
+                found == null -> "You're up to date"
+                else -> "Version ${found.versionName} is available"
+            }
+            busy = false
+        }
+    }
+
+    fun install(pending: Updater.UpdateInfo) {
+        scope.launch {
+            busy = true
+            message = "Downloading ${pending.versionName}…"
+            runCatching { updater.downloadAndInstall(pending) }
+                .onSuccess { message = "Follow the install prompt" }
+                .onFailure { message = "Update failed: ${it.message}" }
+            busy = false
+        }
+    }
+
+    if (!tv) {
+        // raw-backup.png: the version as the card's headline, the build under
+        // it, and one full-width button — Check, or Install once a version is
+        // known. The old row put "Pickwick 0.12" on the left and a text
+        // button on the right, which read as a caption with a link in it.
+        Text("Pickwick ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Build ${BuildConfig.VERSION_CODE}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(4.dp))
+        val pending = update
+        if (pending == null) {
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth().tvFocusHighlight(),
+                enabled = !busy,
+                onClick = { checkNow() }
+            ) { Text(if (busy) "Checking…" else "Check for updates") }
+        } else {
+            // Same red as the settings-gear dot, so the nudge that got the
+            // parent here and the button that resolves it read as one thing.
+            Button(
+                modifier = Modifier.fillMaxWidth().tvFocusHighlight(),
+                enabled = !busy,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = UpdateDot,
+                    contentColor = Color.White
+                ),
+                onClick = { install(pending) }
+            ) { Text(if (busy) "Downloading…" else "Install ${pending.versionName}") }
+        }
+        message?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         // The rest of the TV screen is a centred column; a weighted text would
         // stretch this row to the full width and leave the version stranded on
-        // the left of it. On the phone that same weight is what pushes the
-        // check/install button to the trailing edge of the form row.
-        horizontalArrangement = if (tv) Arrangement.Center else Arrangement.Start
+        // the left of it.
+        horizontalArrangement = Arrangement.Center
     ) {
-        // Phone only. On a TV the pairing panel directly above now prints the
-        // device name and this same version, and two version lines a centimetre
-        // apart on a 10-foot screen reads as a bug rather than as thoroughness.
-        if (!tv) Text(
-            "Pickwick ${BuildConfig.VERSION_NAME}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f)
-        )
+        // No version line here. The pairing panel directly above prints the
+        // device name and this same version, and two version lines a
+        // centimetre apart on a 10-foot screen reads as a bug rather than as
+        // thoroughness.
         val pending = update
-        if (pending == null) {
-            // Nothing on TV: this screen already re-checks every time it opens,
-            // so a manual button there can never report anything the screen
-            // isn't about to say on its own — it would just be a dead control
-            // the D-pad can't reach. The phone keeps it: that form is long and
-            // a parent may want to force a check without reopening settings.
-            if (!tv) TextButton(
-                modifier = Modifier.tvFocusHighlight(),
-                enabled = !busy,
-                onClick = {
-                    scope.launch {
-                        busy = true
-                        message = "Checking…"
-                        val found = updater.check()
-                        update = found
-                        message = when {
-                            // Not "You're up to date". UPDATE_MANIFEST_URL is
-                            // blank in every build shipped so far, and check()
-                            // returns null for that without making a request —
-                            // so the reassuring message was reporting the
-                            // result of a check that never happened. It matters
-                            // most in the one case this exists for: extraction
-                            // breaks, and a parent presses this to find out
-                            // whether a fix is waiting.
-                            !io.pickwick.app.data.Updater.canCheck() ->
-                                "Updates aren't set up for this build"
-                            found == null -> "You're up to date"
-                            tv -> "Press OK on the remote to install"
-                            else -> "Version ${found.versionName} is available"
-                        }
-                        busy = false
-                    }
-                }
-            ) { Text(if (busy) "Checking…" else "Check for updates") }
-        } else {
+        if (pending != null) {
+            // Nothing when there is no update: this screen already re-checks
+            // every time it opens, so a manual button here can never report
+            // anything the screen isn't about to say on its own — it would
+            // just be a dead control the D-pad can't reach.
+            //
             // The rest of the TV settings screen is static text and a QR image,
             // so this button is the only focusable thing on it — without an
             // explicit request nothing holds focus and the D-pad does nothing.
@@ -1369,8 +1410,8 @@ internal fun UpdateSection(tv: Boolean = false, onUpdateFound: () -> Unit = {}) 
             // Re-requested when [busy] clears: disabling the button during a
             // download drops focus, and with nothing else focusable a failed
             // attempt would leave the remote dead with no way to retry.
-            LaunchedEffect(tv, pending.versionCode, busy) {
-                if (!tv || busy) return@LaunchedEffect
+            LaunchedEffect(pending.versionCode, busy) {
+                if (busy) return@LaunchedEffect
                 repeat(10) {
                     if (runCatching { installFocus.requestFocus() }.isSuccess) return@LaunchedEffect
                     delay(100)
@@ -1388,35 +1429,20 @@ internal fun UpdateSection(tv: Boolean = false, onUpdateFound: () -> Unit = {}) 
                     .focusRequester(installFocus)
                     .tvFocusHighlight { focused = it }
                     .then(
-                        if (tv && focused) Modifier.border(3.dp, Color.White, RectangleShape)
+                        if (focused) Modifier.border(3.dp, Color.White, RectangleShape)
                         else Modifier
                     ),
-                shape = if (tv) RectangleShape else ButtonDefaults.shape,
+                shape = RectangleShape,
                 enabled = !busy,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = UpdateDot,
                     contentColor = Color.White
                 ),
-                onClick = {
-                    scope.launch {
-                        busy = true
-                        message = "Downloading ${pending.versionName}…"
-                        runCatching { updater.downloadAndInstall(pending) }
-                            .onSuccess { message = "Follow the install prompt" }
-                            .onFailure { message = "Update failed: ${it.message}" }
-                        busy = false
-                    }
-                }
+                onClick = { install(pending) }
             ) {
                 // The TV has no comfortable place for a separate status line to
                 // be read from ten feet, so the button states the version itself.
-                Text(
-                    when {
-                        busy -> "Downloading…"
-                        tv -> "Version ${pending.versionName} available"
-                        else -> "Install ${pending.versionName}"
-                    }
-                )
+                Text(if (busy) "Downloading…" else "Version ${pending.versionName} available")
             }
         }
     }

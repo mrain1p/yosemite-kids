@@ -161,6 +161,18 @@ if ($hubName.Count -ne 1) {
     Fail-Guard "the literal `"Pickwick hub`" must appear only in PairedDevice.HUB_NAME (found in $($hubName.Count) files)."
 }
 
+# And nothing decides "is this the hub" by that name. A parent can rename the
+# hub (its card, its device page), and a name check then reads it as a TV:
+# rediscovery would sweep the subnet for it, the hub form would offer to join
+# a second one. The flag is PairedDevice.secretless; the migration in
+# parsePaired is the one place the name may still stand in for it.
+$hubByName = @(Get-ChildItem -Recurse -File app/src/main/java, core/src/main/kotlin |
+    Select-String -Pattern '[A-Za-z_]\.name == PairedDevice\.HUB_NAME' |
+    ForEach-Object { "$($_.Path):$($_.LineNumber)" })
+if ($hubByName.Count -ne 0) {
+    Fail-Guard "a hub is recognised by name ($($hubByName -join ', ')). Test PairedDevice.secretless instead; the name is editable."
+}
+
 # --- phone/hub settings parity ---------------------------------------------
 #
 # SettingsSurface is the single list of settings groups, read in both

@@ -35,6 +35,29 @@ object Backup {
             .toString(2)
     }
 
+    /**
+     * When this phone last wrote a backup file — 0 if never — for the row
+     * that offers the next one. Nothing else recorded it, so "Never backed
+     * up" could only ever be guessed. Stamped by the UI once the file is
+     * actually written, not when [export] builds the JSON: the picker
+     * failing to open the file is precisely the case a parent must not be
+     * told went fine.
+     *
+     * Its own prefs file, deliberately outside the Auto Backup include list:
+     * it is about this phone's copy, and a restored phone has not backed up.
+     */
+    fun lastExportedAt(context: Context): Long =
+        stampPrefs(context).getLong(LAST_EXPORT_AT, 0L)
+
+    fun noteExported(context: Context, at: Long = System.currentTimeMillis()) {
+        stampPrefs(context).edit().putLong(LAST_EXPORT_AT, at).apply()
+    }
+
+    private fun stampPrefs(context: Context) =
+        context.applicationContext.getSharedPreferences("backup", Context.MODE_PRIVATE)
+
+    private const val LAST_EXPORT_AT = "last_export_at"
+
     /** What a file holds, before committing to it — for the confirm dialog. */
     fun inspect(json: String): Result<Summary> = runCatching {
         val root = parse(json)

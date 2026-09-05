@@ -997,7 +997,7 @@ private fun AdminScreen(
     if (openHub) {
         BackHandler { openHub = false }
         SubPage(title = "A hub you run", onBack = { openHub = false }) {
-            SettingsCard { HubSection(pairingStore) { fleet.reload(); configEpoch++ } }
+            HubSection(pairingStore, fleet, onFleetChanged = { fleet.reload(); configEpoch++ })
         }
         return
     }
@@ -1433,31 +1433,48 @@ private fun AdminScreen(
                     }
                 }
                 SettingsPage.Backup -> {
+                    // Rebuilt to raw-backup.png: the version card, then the
+                    // hub's card — its setup used to live only behind the
+                    // hub's row on Devices & sync — then the channel list's
+                    // ways in and out, then the full backup, as rows.
                     SectionTitle("App")
                     SettingsCard { UpdateSection(onUpdateFound = {}) }
-                    SectionTitle("Import, export & backup")
-                    SettingsCard {
-                        ExportSection(
-                            current = {
-                                // Fill resolved names in as labels so the receiving
-                                // parent sees "url | Name" lines, not bare urls.
-                                Whitelist(
-                                    entries.map { e ->
-                                        if (e.label == null) e.copy(label = resolvedNames[e.url]) else e
-                                    },
-                                    blocked, limits
-                                )
-                            },
-                            onImport = { parsed ->
-                                // Links only — screen-time rules are UI-managed, never file-driven.
-                                val fresh = parsed.sources.filter { p -> entries.none { it.id == p.id } }
-                                entries = entries + fresh
-                                newIds = newIds + fresh.map { it.id }
-                                fresh.size
-                            },
-                            onConfigReplaced = { configEpoch++ }
-                        )
-                    }
+                    SectionTitle("Hub", aside = "Docker on your network")
+                    // The one hub form, shared with the hub's device page.
+                    // Removable here, since this is the page a parent comes
+                    // to for the hub as a thing, not as one device among many.
+                    HubSection(
+                        pairingStore, fleet,
+                        onFleetChanged = { fleet.reload(); configEpoch++ },
+                        removable = true
+                    )
+                    if (fleet.hub != null) Text(
+                        "The hub still appears as a device under Devices & sync, " +
+                            "with its version and sync state.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 10.dp)
+                    )
+                    ExportSection(
+                        current = {
+                            // Fill resolved names in as labels so the receiving
+                            // parent sees "url | Name" lines, not bare urls.
+                            Whitelist(
+                                entries.map { e ->
+                                    if (e.label == null) e.copy(label = resolvedNames[e.url]) else e
+                                },
+                                blocked, limits
+                            )
+                        },
+                        onImport = { parsed ->
+                            // Links only — screen-time rules are UI-managed, never file-driven.
+                            val fresh = parsed.sources.filter { p -> entries.none { it.id == p.id } }
+                            entries = entries + fresh
+                            newIds = newIds + fresh.map { it.id }
+                            fresh.size
+                        },
+                        onConfigReplaced = { configEpoch++ }
+                    )
                 }
             }
         }
@@ -1983,7 +2000,12 @@ private fun KidErrandCard(
  * everything on these pages.
  */
 @Composable
-internal fun SectionTitle(text: String, help: String? = null) {
+internal fun SectionTitle(
+    text: String,
+    help: String? = null,
+    /** A quieter note at the label's right edge — "Docker on your network" beside "Hub". */
+    aside: String? = null
+) {
     var helpOpen by remember { mutableStateOf(false) }
     Spacer(Modifier.height(20.dp))
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -1992,6 +2014,12 @@ internal fun SectionTitle(text: String, help: String? = null) {
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f).padding(start = 4.dp)
+        )
+        if (aside != null) Text(
+            aside,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.padding(end = 4.dp)
         )
         if (help != null) HelpDot(open = helpOpen, onToggle = { helpOpen = !helpOpen })
     }

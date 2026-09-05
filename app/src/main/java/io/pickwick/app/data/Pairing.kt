@@ -1149,8 +1149,9 @@ object LanClient {
         // rather than discovered, it is normally a server with a DHCP
         // reservation or a static lease, and scanning the subnet to guess at
         // something a human can retype is not a trade worth making on TV
-        // hardware. If a hub really moved, it gets re-entered.
-        if (device.name == PairedDevice.HUB_NAME) return@withContext null
+        // hardware. If a hub really moved, it gets re-entered. Judged on the
+        // flag, not the name: a parent can rename the hub.
+        if (device.secretless) return@withContext null
         val now = System.currentTimeMillis()
         // Per device, not global: one cooldown for the whole list meant a
         // powered-off TV's fruitless sweep locked the kid's tablet — sitting

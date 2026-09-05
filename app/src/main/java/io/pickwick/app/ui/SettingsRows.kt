@@ -93,7 +93,9 @@ internal fun ValueRow(
     title: String,
     summary: String? = null,
     value: String? = null,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    /** The summary in a tone — amber for "Never backed up" — rather than the quiet grey. */
+    summaryColor: androidx.compose.ui.graphics.Color? = null
 ) {
     val base = Modifier.fillMaxWidth()
     Row(
@@ -107,7 +109,7 @@ internal fun ValueRow(
                 Text(
                     summary,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = summaryColor ?: MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

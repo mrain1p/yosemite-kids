@@ -23,6 +23,14 @@ import java.util.concurrent.TimeUnit
 object HubEnrolment {
 
     /**
+     * The port a hub listens on unless its compose file says otherwise —
+     * the bottom of the range the app's own LAN server uses, so a parent
+     * who has seen one number has seen both. The join form assumes it when
+     * the address typed carries none; the hub card omits it when it holds.
+     */
+    const val DEFAULT_PORT = 8765
+
+    /**
      * Its own client rather than [Http.client]: a hub is on the LAN or one hop
      * away, so the internet client's five-second connect and retry
      * interceptor would turn "wrong address" into a ten-second wait behind a

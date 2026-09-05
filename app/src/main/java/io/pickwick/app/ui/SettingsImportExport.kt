@@ -3,7 +3,7 @@ package io.pickwick.app.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -17,10 +17,12 @@ import kotlinx.coroutines.withContext
  * The list's way in and out: save or share the current list (including unsaved
  * edits) as a whitelist.txt, read one back in, or offer the whole list to the
  * community directory. [current] is a provider rather than a value so the file
- * written is whatever is on screen at the moment the button is pressed.
+ * written is whatever is on screen at the moment the row is tapped.
  * [onImport] merges parsed links into the form and returns how many were new.
+ *
+ * Renders its own titled cards (raw-backup.png), so the caller places it
+ * rather than wrapping it.
  */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun ExportSection(
     current: () -> Whitelist,
@@ -31,6 +33,9 @@ internal fun ExportSection(
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var message by remember { mutableStateOf<String?>(null) }
+    /** The full-backup card's own line: a "Saved" under Share… would answer the wrong row. */
+    var backupMessage by remember { mutableStateOf<String?>(null) }
+    var lastBackupAt by remember { mutableStateOf(io.pickwick.app.data.Backup.lastExportedAt(context)) }
     var submitting by remember { mutableStateOf(false) }
     var askingLang by remember { mutableStateOf(false) }
     /** A restore awaiting the parent's OK: the file's contents and its summary. */
@@ -43,14 +48,17 @@ internal fun ExportSection(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            message = "Writing backup…"
-            message = runCatching {
+            backupMessage = "Writing backup…"
+            backupMessage = runCatching {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
                     val text = io.pickwick.app.data.Backup.export(context)
                     context.contentResolver.openOutputStream(uri)?.use { out ->
                         out.write(text.toByteArray())
                     } ?: error("couldn't open the file")
+                    // Stamped only now, with the bytes on disk.
+                    io.pickwick.app.data.Backup.noteExported(context)
                 }
+                lastBackupAt = io.pickwick.app.data.Backup.lastExportedAt(context)
                 "Backup saved ✓ — keep it somewhere safe (it holds no API key)"
             }.getOrElse { "Backup failed: ${it.message}" }
         }
@@ -61,7 +69,7 @@ internal fun ExportSection(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            message = "Reading…"
+            backupMessage = "Reading…"
             runCatching {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
                     val text = context.contentResolver.openInputStream(uri)?.use { input ->
@@ -78,9 +86,9 @@ internal fun ExportSection(
                     text to io.pickwick.app.data.Backup.inspect(text).getOrThrow()
                 }
             }.onSuccess { (text, summary) ->
-                message = null
+                backupMessage = null
                 pendingRestore = text to summary
-            }.onFailure { message = "Restore failed: ${it.message}" }
+            }.onFailure { backupMessage = "Restore failed: ${it.message}" }
         }
     }
 
@@ -105,11 +113,11 @@ internal fun ExportSection(
                 Button(onClick = {
                     pendingRestore = null
                     scope.launch {
-                        message = "Restoring…"
+                        backupMessage = "Restoring…"
                         val result = withContext(kotlinx.coroutines.Dispatchers.IO) {
                             io.pickwick.app.data.Backup.restore(context, text)
                         }
-                        message = result.fold(
+                        backupMessage = result.fold(
                             { "Restored ✓ — now Push to each kid device" },
                             { "Restore failed: ${it.message}" }
                         )
@@ -205,75 +213,99 @@ internal fun ExportSection(
         )
     }
 
-    Text(
-        "Save the channel list as a file — keep it as a backup, or send it to " +
+    // raw-backup.png: two titled cards of rows, each card's paragraph behind
+    // a ? on its title. The paragraphs used to print always, above two rows
+    // of buttons that never fit one phone width.
+    SectionTitle(
+        "The channel list",
+        help = "Save the channel list as a file — keep it as a backup, or send it to " +
             "another parent. Import a saved file to add its channels here. Or offer " +
             "the whole list to the shared Pickwick directory, where other families " +
-            "can find it after review.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+            "can find it after review."
     )
-    // Four buttons never fit one phone row.
-    androidx.compose.foundation.layout.FlowRow {
-        CompactButton( onClick = {
-            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(android.content.Intent.EXTRA_SUBJECT, "Pickwick whitelist")
-                putExtra(android.content.Intent.EXTRA_TEXT, exportText())
+    SettingsCard(padded = false) {
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            ValueRow("Share…", onClick = {
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_SUBJECT, "Pickwick whitelist")
+                    putExtra(android.content.Intent.EXTRA_TEXT, exportText())
+                }
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent.createChooser(send, "Share whitelist")
+                    )
+                }.onFailure { message = "No app available to share with" }
+            })
+            SettingsDivider()
+            ValueRow("Save to file…", onClick = {
+                runCatching { saveLauncher.launch("pickwick-whitelist.txt") }
+                    .onFailure { message = "No file picker on this device" }
+            })
+            SettingsDivider()
+            ValueRow("Import from file…", onClick = {
+                // Exports are text/plain, but pickers on some devices type a .txt
+                // from a share or a download as octet-stream and would hide it.
+                runCatching {
+                    openLauncher.launch(
+                        arrayOf("text/plain", "text/*", "application/octet-stream")
+                    )
+                }.onFailure { message = "No file picker on this device" }
+            })
+            SettingsDivider()
+            // A row has no disabled state the way the old button did, so the
+            // reason it would have been disabled is said on the row instead.
+            val empty = current().sources.isEmpty()
+            ValueRow(
+                if (submitting) "Submitting…" else "Submit list to directory…",
+                summary = if (empty && !submitting) "Nothing to submit yet" else null,
+                onClick = { if (!submitting && !empty) askingLang = true }
+            )
+            message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp))
             }
-            runCatching {
-                context.startActivity(
-                    android.content.Intent.createChooser(send, "Share whitelist")
-                )
-            }.onFailure { message = "No app available to share with" }
-        }) { Text("Share…") }
-        Spacer(Modifier.width(8.dp))
-        CompactButton( onClick = {
-            runCatching { saveLauncher.launch("pickwick-whitelist.txt") }
-                .onFailure { message = "No file picker on this device" }
-        }) { Text("Save to file…") }
-        Spacer(Modifier.width(8.dp))
-        CompactButton( onClick = {
-            // Exports are text/plain, but pickers on some devices type a .txt
-            // from a share or a download as octet-stream and would hide it.
-            runCatching {
-                openLauncher.launch(
-                    arrayOf("text/plain", "text/*", "application/octet-stream")
-                )
-            }.onFailure { message = "No file picker on this device" }
-        }) { Text("Import from file…") }
-        Spacer(Modifier.width(8.dp))
-        CompactButton(
-            enabled = !submitting && current().sources.isNotEmpty(),
-            onClick = { askingLang = true }
-        ) { Text(if (submitting) "Submitting…" else "Submit list to directory…") }
+        }
     }
-    Spacer(Modifier.height(8.dp))
-    Text(
-        "Full backup: everything on this phone — channels, kids and their rules, " +
-            "blocked and allowed videos, AI screening settings (without the key), " +
+
+    SectionTitle(
+        "Full backup",
+        help = "Everything on this phone — channels, kids and their rules, " +
+            "blocked and allowed videos, AI screening settings without the key, " +
             "every kid's resume points and favourites, and the AI verdict cache. " +
-            "Restore it on a fresh install and push to the kid devices.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+            "Restore it on a fresh install and push to the kid devices."
     )
-    androidx.compose.foundation.layout.FlowRow {
-        CompactButton(onClick = {
-            val stamp = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
-                .format(java.util.Date())
-            runCatching { backupLauncher.launch("pickwick-backup-$stamp.json") }
-                .onFailure { message = "No file picker on this device" }
-        }) { Text("Full backup…") }
-        Spacer(Modifier.width(8.dp))
-        CompactButton(onClick = {
-            runCatching {
-                restoreLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream"))
-            }.onFailure { message = "No file picker on this device" }
-        }) { Text("Restore backup…") }
-    }
-    message?.let {
-        Text(it, style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    SettingsCard(padded = false) {
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            // "Never backed up" in the warning tone: it is the state the
+            // root raises this page for. Once one exists, the date instead.
+            ValueRow(
+                "Full backup…",
+                summary = if (lastBackupAt > 0L) {
+                    "Last backup " + java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault())
+                        .format(java.util.Date(lastBackupAt))
+                } else "Never backed up",
+                summaryColor = if (lastBackupAt > 0L) null else StatusAmber,
+                onClick = {
+                    val stamp = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
+                        .format(java.util.Date())
+                    runCatching { backupLauncher.launch("pickwick-backup-$stamp.json") }
+                        .onFailure { backupMessage = "No file picker on this device" }
+                }
+            )
+            SettingsDivider()
+            ValueRow("Restore backup…", onClick = {
+                runCatching {
+                    restoreLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream"))
+                }.onFailure { backupMessage = "No file picker on this device" }
+            })
+            backupMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp))
+            }
+        }
     }
 }
 

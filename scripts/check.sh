@@ -165,6 +165,16 @@ if [ "$hubname" -ne 1 ]; then
   guard_fail "the literal \"Pickwick hub\" must appear only in PairedDevice.HUB_NAME (found in $hubname files)."
 fi
 
+# And nothing decides "is this the hub" by that name. A parent can rename the
+# hub (its card, its device page), and a name check then reads it as a TV:
+# rediscovery would sweep the subnet for it, the hub form would offer to join
+# a second one. The flag is PairedDevice.secretless; the migration in
+# parsePaired is the one place the name may still stand in for it.
+hub_by_name=$(grep -rnE "[A-Za-z_]\.name == PairedDevice\.HUB_NAME" app/src/main/java core/src/main/kotlin 2>/dev/null || true)
+if [ -n "$hub_by_name" ]; then
+  guard_fail "a hub is recognised by name ($hub_by_name). Test PairedDevice.secretless instead; the name is editable."
+fi
+
 # --- phone/hub settings parity ---------------------------------------------
 #
 # SettingsSurface is the single list of settings groups, and these read it in

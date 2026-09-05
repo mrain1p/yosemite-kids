@@ -161,10 +161,11 @@ object SettingsSurface {
         SettingsSection("local-videos", "Local videos", Page.DEVICES, "LocalVideosSection",
             emptyList(), Where.PHONE, false,
             "Files a parent sideloaded onto this device."),
-        SettingsSection("hub-join", "Hub", Page.DEVICES, "HubSection",
+        SettingsSection("hub-join", "Hub", Page.BACKUP, "HubSection",
             emptyList(), Where.PHONE, false,
-            "How a phone joins a hub, and introduces its TVs. Meaningless on " +
-                "the hub itself."),
+            "How a phone joins a hub, and introduces its TVs. Its card is on " +
+                "App, hub & backup, and again behind the hub's row on Devices. " +
+                "Meaningless on the hub itself."),
 
         // --- Playback -------------------------------------------------------
         SettingsSection("playback", "Playback", Page.PLAYBACK, "",
