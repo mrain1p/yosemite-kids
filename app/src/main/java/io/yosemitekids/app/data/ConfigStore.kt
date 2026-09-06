@@ -273,11 +273,22 @@ class ConfigStore internal constructor(
             // Deliberately not load(): that scrubs lapsed passes and lays a
             // kid's pending restyle over the profiles, so stamping against it
             // would attribute a clock tick to the parent as an edit.
-            val previous = runCatching {
+            val onDisk = runCatching {
                 if (file.exists()) withSecrets(ConfigJson.fromJson(file.readText())) else null
             }.getOrNull() ?: Whitelist(emptyList(), emptySet())
             val w = registered(whitelist)
             rememberSecrets(w)
+            // withSecrets overlays the key only once AI is in use (it is a
+            // Keystore round trip on the cold-start path), so a key typed
+            // before the model is picked reads back blank here while the form
+            // carries it. rememberSecrets has just stored that key, so the
+            // device holds it — say so. Otherwise an unrelated save, with the
+            // `ai` section untouched, hands the form a keyless copy to adopt,
+            // and the save that then picks the model stores that blank over
+            // the real key.
+            val previous = if (onDisk.ai.apiKey.isBlank() && w.ai.apiKey.isNotBlank()) {
+                onDisk.copy(ai = onDisk.ai.copy(apiKey = w.ai.apiKey))
+            } else onDisk
             val stamped = ConfigStamp.stamped(
                 previous = previous,
                 base = base ?: previous,

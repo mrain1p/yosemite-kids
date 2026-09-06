@@ -43,10 +43,13 @@ fi
 
 # buildCurrentConfig must copy the baseline: a positional constructor silently
 # defaults out any field the form does not name, erasing the sync blob from
-# every save and every push.
-if grep -q "return Whitelist(" app/src/main/java/io/yosemitekids/app/ui/Settings.kt; then
-  guard_fail "Settings.kt constructs a Whitelist. Use baseline.copy(...) so new fields are inherited."
-fi
+# every save and every push. The shaping lives in SettingsForm.toConfig now,
+# so both files are held to it.
+for f in app/src/main/java/io/yosemitekids/app/ui/Settings.kt app/src/main/java/io/yosemitekids/app/ui/SettingsForm.kt; do
+  if grep -q "return Whitelist(" "$f"; then
+    guard_fail "$f constructs a Whitelist. Use baseline.copy(...) so new fields are inherited."
+  fi
+done
 
 # :core is the code the Android app and the Docker hub both run. The moment it
 # imports Android, the hub stops building — and the failure would surface in
@@ -379,6 +382,26 @@ for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/d
   grep -qE "(GET|POST) $r[^a-z-]" docs/LAN-API.md ||
     guard_fail "LanServer answers $r and docs/LAN-API.md has no row for it. Add it to the route table."
 done
+
+# 15. The settings form adopts the whole of what it saved.
+#     A save returns the STAMPED document, which is not the form: it carries
+#     units a co-parent's push landed under the open form and keeps the
+#     disk's copy of sections the editor left alone. Adopt that as the
+#     baseline while the form keeps its own lists, and the next save shows
+#     the stamper a unit in `base` and not in `next` — a deletion. A
+#     co-parent's channel was tombstoned by this phone's second tap, and
+#     every tap re-minted the AI unit. So `baseline` is assigned in exactly
+#     one place, adopt(), which moves the form's fields in the same snapshot.
+#     SettingsFormSaveTest proves the path is idempotent; this proves the
+#     screen still goes through it.
+settings=app/src/main/java/io/yosemitekids/app/ui/Settings.kt
+baseline_writes=$(grep -cE '^\s*baseline = ' "$settings" || true)
+if [ "$baseline_writes" -ne 1 ] || ! grep -q 'fun adopt(result: FormSave)' "$settings"; then
+  guard_fail "Settings.kt assigns baseline in $baseline_writes places (must be exactly one, inside adopt(result: FormSave)). Route every save through saveForm() and adopt(), so the form takes the carried units too."
+fi
+if grep -qE 'configStore\.save\(' "$settings" && [ "$(grep -cE 'configStore\.save\(' "$settings" || true)" -ne 1 ]; then
+  guard_fail "Settings.kt calls configStore.save() directly more than once (the kid migration before the form exists is the one allowed). The form's saves go through saveForm() so the stamped result is adopted."
+fi
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

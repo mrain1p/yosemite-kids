@@ -262,6 +262,13 @@ The shape:
   three-way diff (`previous` on disk, `base` the editor opened with, `next` the
   form), because a co-parent's push can land while a parent has Settings open
   and that must not read as a deletion.
+- **`ui/SettingsForm`** is the settings form's Compose-free half: the twenty
+  fields as one value, `toConfig` (the rules-version bump and the removed-kid
+  scrub), and `saveForm`, which every save on the screen runs. What comes
+  back is the *stamped* document, and the screen's `adopt` takes it as both
+  the baseline and the form's own state — a form that kept its own lists
+  showed the stamper a carried unit as a deletion on the very next tap.
+  Guard 15 keeps `baseline` assigned there and nowhere else.
 - **`ConfigMerge`** merges two config *documents*, unit by unit, at the JSON
   level. Pure, and takes no clock — which is what makes idempotence and
   associativity structural rather than test artifacts.
@@ -277,6 +284,7 @@ The shape:
 | --- | --- |
 | Change how two configs are reconciled | `ConfigMerge.merge` (pure; `ConfigMergeTest` is the matrix) |
 | Change what a save records | `ConfigStamp.stamped` (`ConfigStampTest`) |
+| Change what the settings form saves, or what it does with the result | `ui/SettingsForm.kt` (`SettingsFormSaveTest`), then `adopt` in `AdminScreen` |
 | Add a field that two parents could edit independently | The checklist in `.claude/skills/yosemite-kids-sync`, section 4 |
 | Change what the sweep does about a peer | `data/SyncDecision.kt` (`SyncDecisionTest`) |
 | Change what a parent is told after a collision | `data/SyncNotices.kt` and the banner at the top of `AdminScreen` |

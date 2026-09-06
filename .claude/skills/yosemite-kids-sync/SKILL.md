@@ -41,7 +41,7 @@ it. A phone out of a drawer claims to be brand new.
 `updatedAt`.** The edit clock is `sync.at[unit]`, minted once per save in
 `ConfigStamp.stamped`.
 
-## 2. Ten prohibitions
+## 2. Eleven prohibitions
 
 1. **Never add a term to `ConfigStore.fingerprint`.** Stamps and tombstones
    live in `syncHash`, advertised separately on `/status`. An old build can
@@ -90,6 +90,22 @@ it. A phone out of a drawer claims to be brand new.
     with the inputs held still, which is what a Push button and a
     fifteen-minute worker actually do; a rule that passes `ConfigMergeTest`
     once and fails there is not a rule yet.
+11. **Never let the settings form's state and its baseline come from
+    different documents.** `ConfigStore.save` returns the *stamped* result,
+    which is not what the form handed in: the stamper carries every unit a
+    co-parent's push landed under the open form, and keeps the disk's copy
+    of any section the editor left alone (`section3`, and now the loose
+    settings scalars too). Adopt that as the baseline while the form keeps
+    its own lists and the next save shows the stamper a unit in `base` and
+    not in `next` — a deletion, tombstoned and propagated, of a channel
+    nobody removed; and `ai` re-mints on every tap. So the screen's saves
+    all run `saveForm` and `adopt`, which take the same document into both,
+    in one snapshot. Guard 15 holds `baseline` to that one assignment;
+    `SettingsFormSaveTest` drives three saves of an unchanged form. The
+    stamper side of the same contract is
+    `ConfigStampTest.aSaveThatChangesNothingMintsNothing`: previous, base
+    and next all equal must leave the sync block byte-for-byte alone,
+    `docAt` included.
 
 ## 3. The unit table
 
@@ -142,6 +158,7 @@ needs proof.
 | An empty container written differently from `toJson` | A document merges against itself as "changed", and the sweep pushes forever |
 | A settings-open guard | Reconciliation stops while a parent leaves Settings open, and it never covered `POST /config` anyway |
 | Scrub emptying `profileIds` | `visibleTo` fails open and a kid sees a channel meant for an older sibling |
+| The form adopts a save as its baseline and not as its state | The next tap tombstones whatever the stamper carried in (a co-parent's channel), and "changed screening" appears in the feed on every tap |
 
 ## 6. The half-upgraded household
 

@@ -151,18 +151,13 @@ which needs one line in the merge's master rule ("a hub outranks a phone")
 in place of today's tie-break by token order. The same vacancy rule cures
 the dead-master case the rename exposed.
 
-**I. The Settings form re-stamps what it did not change.** Found with the
-convergence bug (fixed 2026-09-05, see `FORK-NOTES.md`) and left open: a
-save carries units the merge brought in from disk into `baseline` without
-stamping them while the form's own lists are never refreshed, so the *next*
-tap reads them as deletions and mints tombstones nobody asked for, and
-`section3` puts the disk's `ai` into the baseline while the form keeps its
-own, so every tap re-mints the AI unit ("changed screening" in the feed
-with nobody touching screening). A co-parent's channel that lands under an
-open form is deleted by this phone's second tap. Fix: after
-`baseline = saved?.config`, fold what the stamper carried into the form's
-list state, and re-read `configStore.syncHash()` inside the Push coroutine
-instead of the composition-time value. Needs the emulator loop. *Medium.*
+**I. The Settings form re-stamps what it did not change — done** (see
+`FORK-NOTES.md`, "The settings form adopts what it saved"). Every save now
+goes through `saveForm` and the screen's `adopt`, which take the stamped
+result into the form's own state as well as the baseline; guard 15 holds it
+there and `SettingsFormSaveTest` drives the path three times on an unchanged
+form. Still owed: a run through the emulator loop with two phones' worth of
+edits under one open form, which this round could not do.
 
 ---
 

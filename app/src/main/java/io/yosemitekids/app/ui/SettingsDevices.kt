@@ -166,6 +166,23 @@ internal fun expectedHash(device: PairedDevice, localHash: String, localSecretle
     if (device.secretless) localSecretlessHash else localHash
 
 /**
+ * The fingerprint [device] should answer with after taking [json] — computed
+ * from the bytes the push sent, not from the form the screen held when the
+ * button was drawn. Push saves first, and that save can carry a unit a
+ * co-parent landed under the open form, so the screen's hash is already one
+ * save behind by the time the device answers. Same rule as [expectedHash]
+ * for which fingerprint a secretless peer is judged on.
+ */
+internal fun expectedAfterPush(device: PairedDevice, json: String): String {
+    val sent = ConfigJson.fromJson(json)
+    return expectedHash(
+        device,
+        ConfigJson.fingerprint(sent),
+        ConfigJson.fingerprint(sent, includeSecrets = false)
+    )
+}
+
+/**
  * What this phone knows about every device it administers, held ABOVE the
  * pages that show it.
  *
@@ -1065,6 +1082,16 @@ internal fun DevicePage(
                         // reports something else" are different problems and
                         // only the second one needs explaining.
                         val after = fleet.refreshOne(device)
+                        // Judged against what was just written, not against
+                        // the values this composition was drawn with. The
+                        // save above minted this phone's stamps, so the
+                        // composition-time syncHash is one save behind, and
+                        // every Push carrying an unsaved edit read "still
+                        // holds different settings" while the tile, a
+                        // recomposition later, said in sync.
+                        val (expectedNow, syncNow) = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            expectedAfterPush(device, json) to configStore.syncHash()
+                        }
                         fleet.pushMessage = fleet.pushMessage + (device.key to when {
                             !sent ->
                                 "Push failed — ${device.name} didn't answer. " +
@@ -1072,7 +1099,7 @@ internal fun DevicePage(
                             after == null ->
                                 "Sent, but ${device.name} stopped answering — check it arrived."
                             // Through matches(), not a second copy of its rule.
-                            after.matches(expected, localSyncHash) -> "Pushed ✓"
+                            after.matches(expectedNow, syncNow) -> "Pushed ✓"
                             // The device took the config and still disagrees.
                             // Two honest causes: it merged in something this
                             // phone has not pulled yet, or it is an older build
