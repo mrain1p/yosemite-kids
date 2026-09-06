@@ -1,6 +1,7 @@
 package io.yosemitekids.app.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
@@ -8,8 +9,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import io.yosemitekids.app.data.DownloadEvents
 import io.yosemitekids.app.data.DownloadService
@@ -26,11 +29,11 @@ import kotlinx.coroutines.launch
  * quality read it every time.
  */
 internal const val DOWNLOADS_HELP =
-    "The kid taps ⬇️ on any video to ask for it offline. Approved videos are " +
-        "saved to this device and play without internet — perfect for car trips. " +
-        "Watching them still uses screen time as usual. With AI screening on, " +
-        "each request is deep-checked first — refused ones never reach this " +
-        "list (they're under \"Blocked videos\", where you can overrule)."
+    "The kid taps the download arrow on any video to ask for it offline. " +
+        "Approved videos are saved to this device and play without internet — " +
+        "good for car trips. Watching them still uses screen time. With AI " +
+        "screening on, each request is deep-checked first; refused ones never " +
+        "reach this list, they go under Blocked videos where you can overrule."
 
 /**
  * The parent's side of offline downloads: approve or decline the kid's
@@ -68,20 +71,34 @@ internal fun DownloadsSection() {
     // fit one line on a phone at display scale, and the label wrapped to two
     // lines against the chips. The chips share the row in thirds, so the
     // choice reads as one segmented control rather than three tags.
-    Text("Download quality", style = MaterialTheme.typography.titleMedium)
+    Text("Download quality", style = MaterialTheme.typography.bodyMedium)
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         listOf(480, 720, 1080).forEach { h ->
+            val on = quality == h
             FilterChip(
-                selected = quality == h,
+                selected = on,
                 onClick = { quality = h; store.maxHeight = h },
                 label = {
                     Text("${h}p", modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.labelMedium,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 },
+                // Outlined either way, the chosen one in the accent over its
+                // 16% tint: M3's default selected chip is a solid fill, which
+                // on this page reads as a button rather than a choice made.
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = Color.Transparent,
+                    labelColor = SettingsTextSecondary,
+                    selectedContainerColor = SettingsAccentTint,
+                    selectedLabelColor = MaterialTheme.colorScheme.primary
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp, if (on) MaterialTheme.colorScheme.primary else SettingsStrongBorder
+                ),
                 modifier = Modifier.weight(1f).tvFocusHighlight()
             )
         }
@@ -163,9 +180,9 @@ internal fun DownloadsSection() {
 
     if (entries.isEmpty()) {
         Text(
-            "No requests yet.",
+            "No requests yet",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = SettingsTextTertiary
         )
     }
 }
@@ -274,31 +291,40 @@ internal fun LocalVideosSection(profiles: List<io.yosemitekids.app.data.Profile>
     }
 
     Text(
-        "Add videos already on this phone — home videos, rips, purchases. " +
-            "Yosemite Kids links to the files where they are (nothing is copied or " +
-            "uploaded) and shows them on the kid's Downloads shelf, with the " +
-            "folder name where the channel name usually goes.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        "Home videos, rips, purchases. Yosemite Kids links to the files where " +
+            "they are — nothing is copied or uploaded — and shows them on the " +
+            "kid's Downloads shelf, with the folder name where the channel name " +
+            "usually goes.",
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 20.sp),
+        color = SettingsTextTertiary
     )
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Button(
-            modifier = Modifier.tvFocusHighlight(),
-            onClick = { pickFolder.launch(null) }
-        ) { Text("Add folder") }
-        Spacer(Modifier.width(8.dp))
-        OutlinedButton(
-            modifier = Modifier.tvFocusHighlight(),
-            onClick = { pickVideos.launch(arrayOf("video/*")) }
-        ) { Text("Add videos") }
-        if (trees.isNotEmpty()) {
-            Spacer(Modifier.width(8.dp))
-            CompactButton(
-                onClick = { rescan() }
-            ) { Text("Rescan") }
+    // Two ways into the same thing, so neither is the primary: a folder is
+    // the one to reach for, but a filled teal button beside an outlined one
+    // says "this is the answer" about a choice that depends on the phone.
+    Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+        listOf<Pair<String, () -> Unit>>(
+            "Add folder" to { pickFolder.launch(null) },
+            "Add videos" to { pickVideos.launch(arrayOf("video/*")) }
+        ).forEach { (label, onClick) ->
+            OutlinedButton(
+                onClick = onClick,
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, SettingsStrongBorder),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                // .height, not heightIn: M3's own 40dp minimum only yields to
+                // an exact incoming constraint.
+                modifier = Modifier.weight(1f).height(32.dp).tvFocusHighlight(cornerRadius = 8.dp)
+            ) { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1) }
         }
     }
+    // Its own line: the design has no linked-folder state, and squeezing a
+    // third button into a row of two equal halves un-equals them.
+    if (trees.isNotEmpty()) CompactButton(onClick = { rescan() }) { Text("Rescan") }
 
     progress?.let { (done, total) ->
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
@@ -377,9 +403,12 @@ internal fun LocalVideosSection(profiles: List<io.yosemitekids.app.data.Profile>
 
     if (items.isEmpty() && trees.isEmpty()) {
         Text(
-            "Nothing linked yet.",
+            "Nothing linked yet",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = SettingsTextTertiary,
+            // 3dp on top of the card's 8dp gap: the design sets this one
+            // further off the buttons than the card spaces its children.
+            modifier = Modifier.padding(top = 3.dp)
         )
     }
 }
