@@ -40,7 +40,13 @@ fun main() {
     // Not the config itself — see HubNudge for why that limit is deliberate.
     val nudge = HubNudge(tokens)
     val store = HubStore(dataDir, onChanged = nudge::changed)
-    val admin = tokens.adminToken(System.getenv("YOSEMITE_KIDS_ADMIN_TOKEN"))
+    // The environment value, kept separate from the resolved one. The server
+    // is handed THIS, so it reads the stored token through HubTokens on every
+    // call and a rotated one stops working at once; handing it the resolved
+    // value would freeze the credential at boot and keep a rotated token
+    // alive until someone restarted the container.
+    val envAdmin = System.getenv("YOSEMITE_KIDS_ADMIN_TOKEN")?.takeIf { it.isNotBlank() }
+    val admin = tokens.adminToken(envAdmin)
     // Beside config.json, on the volume a parent already backs up. Devices
     // pull it from here; HubCrawl fills it once this hub holds the slot.
     val index = io.yosemitekids.app.data.ChannelIndex(File(dataDir, "search-index"))
@@ -50,17 +56,35 @@ fun main() {
     // serves whatever it has and leaves the crawl to the phone.
     val crawl = HubCrawl.real(store, index, tokens.selfToken())
     val master = HubMaster(store, tokens, probe = HubCrawl::probeYouTube)
-    val server = HubServer(store, tokens, port, admin, index = index, master = master, crawl = crawl)
+    val server = HubServer(store, tokens, port, envAdmin, index = index, master = master, crawl = crawl)
 
     val bound = server.start()
     println("Yosemite Kids hub listening on $bound, data in ${dataDir.absolutePath}")
     master.start()
     crawl.start()
     println("Devices enrolled: ${tokens.devices().size}")
-    // Printed because the container log is the one place a parent can reach
-    // without already holding a credential. Set YOSEMITE_KIDS_ADMIN_TOKEN in the
-    // compose file to pin it instead of reading it from here each time.
-    println("Admin token: $admin")
+    // The log is the one place a parent can reach without already holding a
+    // credential, which is why this is printed at all. But a container log is
+    // a broadcast with a long tail: docker logs replays it from the
+    // beginning, Container Manager shows it in a web UI, and a log driver
+    // ships it to a file whose permissions have nothing to do with /data.
+    // A full-power credential printed on every boot is not a recovery
+    // credential, it is a second front door held open — and while the hex is
+    // still on screen after every restart it stays the thing people use, and
+    // the password never becomes real.
+    //
+    // So: print it until a password exists, then stop, and name the lever.
+    if (!tokens.hasPassword()) {
+        println("Admin token: $admin")
+        println("No password set yet. Open this hub in a browser and set one — the token above is what claims it.")
+    } else if (System.getenv("YOSEMITE_KIDS_PRINT_ADMIN_TOKEN") == "1") {
+        println("Admin token: $admin  (printed because YOSEMITE_KIDS_PRINT_ADMIN_TOKEN=1)")
+    } else {
+        println(
+            "Admin token: not shown, because a password is set. " +
+                "YOSEMITE_KIDS_PRINT_ADMIN_TOKEN=1 prints it for one boot — see docs/HUB.md."
+        )
+    }
     if (tokens.devices().isEmpty()) {
         println("Nothing paired yet. Approve a device code to pair the first one.")
     }

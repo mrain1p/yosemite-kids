@@ -27,8 +27,15 @@ class HubServer(
     private val store: HubStore,
     private val tokens: HubTokens,
     private val port: Int,
-    /** The secret that may approve a device code. See HubTokens.adminToken. */
-    private val adminToken: String,
+    /**
+     * YOSEMITE_KIDS_ADMIN_TOKEN, or null when the compose file does not set
+     * one. Deliberately the ENVIRONMENT value and not the resolved token: the
+     * stored one is read through [tokens] on every call, so a password change
+     * or a rotated recovery token takes effect without restarting the
+     * container. Passing the resolved value here would freeze the credential
+     * at boot and keep a rotated token alive for ever.
+     */
+    private val envAdminToken: String?,
     /** Shown on the status page so a parent can see which volume is live. */
     private val dataDir: String = System.getenv("YOSEMITE_KIDS_DATA") ?: "/data",
     /**
@@ -96,6 +103,13 @@ class HubServer(
         s.createContext("/approve") { ex -> guarded(ex) { approve(ex) } }
         s.createContext("/pending") { ex -> guarded(ex) { pending(ex) } }
         s.createContext("/health") { ex -> respond(ex, 200, "ok") }
+        // Unauthenticated, and one key. A parent staring at a password box
+        // for a password nobody ever set is the failure this prevents; it
+        // tells a LAN peer only that this hub is unclaimed, which they still
+        // cannot act on without the container log.
+        s.createContext("/setup") { ex -> guarded(ex) { setup(ex) } }
+        s.createContext("/password") { ex -> guarded(ex) { password(ex) } }
+        s.createContext("/recovery") { ex -> guarded(ex) { recovery(ex) } }
         // The search index, for devices to pull. GET only: the hub builds
         // the index itself and takes nobody's copy — a device that could
         // POST here could truncate a source the hub had crawled further.
@@ -229,7 +243,16 @@ class HubServer(
      */
     private fun approve(ex: HttpExchange) {
         if (ex.requestMethod != "POST") return respond(ex, 405, "no")
-        if (!admin(ex)) return
+        val kind = adminGate(ex) ?: return
+        // Once a password exists the recovery token signs in and changes the
+        // password, but it does not enrol devices. So a leaked log line can
+        // no longer quietly add a device to the family; it can only take the
+        // hub over visibly, by changing the password, which the parent meets
+        // at their next sign-in. That is what makes "recovery credential"
+        // mean something other than "a second admin token".
+        if (kind == HubTokens.Secret.RECOVERY && tokens.hasPassword()) {
+            return respond(ex, 401, JSONObject().put("error", "password").toString())
+        }
         val body = readBody(ex) ?: return respond(ex, 413, "too large")
         val code = runCatching { JSONObject(body).optString("code") }.getOrNull()
             ?: return respond(ex, 400, "no code")
@@ -247,7 +270,7 @@ class HubServer(
 
     /** What is waiting to be approved — the list a console would render. */
     private fun pending(ex: HttpExchange) {
-        if (!admin(ex)) return
+        adminGate(ex) ?: return
         val arr = org.json.JSONArray()
         tokens.pending(now()).forEach {
             arr.put(JSONObject().put("code", it.code).put("name", it.name).put("createdAt", it.createdAt))
@@ -306,17 +329,16 @@ class HubServer(
     private fun login(ex: HttpExchange) {
         if (ex.requestMethod != "POST") return respond(ex, 405, "no")
         if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
-        if (!sessions.mayAttempt()) {
-            val wait = sessions.retryAfterSeconds()
-            ex.responseHeaders.add("Retry-After", wait.toString())
-            return respond(ex, 429, JSONObject().put("retryAfter", wait).toString())
-        }
         val body = readBody(ex) ?: return respond(ex, 413, "too large")
-        val given = runCatching { JSONObject(body).optString("token") }.getOrNull().orEmpty()
-        if (!constantTimeEquals(given, adminToken)) {
-            sessions.recordFailure()
-            return respond(ex, 401, JSONObject().put("error", "wrong token").toString())
-        }
+        // "secret" is what a current page sends; "token" is what a page
+        // cached by the service worker still sends. sw.js caches "/", so a
+        // browser can be posting a stale shell's body shape at a rebuilt
+        // container, and accepting both is cheaper than telling a parent to
+        // reinstall the app.
+        val json = runCatching { JSONObject(body) }.getOrNull()
+        val given = json?.optString("secret")?.ifEmpty { null }
+            ?: json?.optString("token")?.ifEmpty { null }
+        adminGate(ex, given) ?: return
         val id = sessions.open()
         // No Secure flag: this is plain HTTP on a home LAN, and marking the
         // cookie Secure would stop it being sent at all. HttpOnly and
@@ -460,22 +482,95 @@ class HubServer(
     // --- plumbing -------------------------------------------------------
 
     /**
-     * The admin gate. Compared in constant time: a token checked with ordinary
-     * string equality leaks its prefix to anyone willing to time the answer,
-     * and this is the secret that can add devices.
+     * The admin gate: throttle, then verify. **Every** presentation of the
+     * admin secret goes through here, which is the point.
+     *
+     * Before this, /approve and /pending checked the header themselves with
+     * no rate limit at all. Against 96 bits of hex that was harmless. Behind
+     * a password it is an unmetered guessing oracle four threads wide, and
+     * once a key derivation sits behind it, a processor exhaustion attack as
+     * well. The throttle runs BEFORE any derivation, which is what bounds the
+     * cost of guessing to a handful of derivations per window.
+     *
+     * Returns what the secret turned out to be, or null after answering the
+     * caller. The body of a request is read before this on the routes that
+     * carry the secret in one; that read is already bounded to a megabyte and
+     * the expensive half is the derivation, which is behind the gate.
      */
-    private fun admin(ex: HttpExchange): Boolean {
-        val ok = constantTimeEquals(
-            ex.requestHeaders.getFirst("X-Admin-Token").orEmpty(), adminToken
-        )
-        if (!ok) respond(ex, 401, "not admin")
-        return ok
+    private fun adminGate(ex: HttpExchange, given: String?): HubTokens.Secret? {
+        if (!sessions.mayAttempt()) {
+            val wait = sessions.retryAfterSeconds()
+            ex.responseHeaders.add("Retry-After", wait.toString())
+            respond(ex, 429, JSONObject().put("retryAfter", wait).toString())
+            return null
+        }
+        val kind = tokens.verifyAdminSecret(given, envAdminToken)
+        if (kind == HubTokens.Secret.NO) {
+            sessions.recordFailure()
+            // Names the regime rather than the mistake, so a phone can say
+            // "wrong password" or "wrong token" correctly, and so nothing
+            // echoes back what was submitted.
+            val regime = if (tokens.hasPassword()) "password" else "secret"
+            respond(ex, 401, JSONObject().put("error", regime).toString())
+            return null
+        }
+        return kind
     }
 
-    /** Shared with the login route, which compares the same secret. */
-    private fun constantTimeEquals(given: String, expected: String): Boolean =
-        given.length == expected.length &&
-            given.indices.fold(0) { acc, i -> acc or (given[i].code xor expected[i].code) } == 0
+    /** The header form, for routes that carry no body of their own. */
+    private fun adminGate(ex: HttpExchange): HubTokens.Secret? =
+        adminGate(ex, ex.requestHeaders.getFirst("X-Admin-Token"))
+
+    /** Is this hub claimed yet? One key, and a test pins that. */
+    private fun setup(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        respond(ex, 200, JSONObject().put("password", tokens.hasPassword()).toString())
+    }
+
+    /**
+     * Set the first password, or change it later. One route for both, which
+     * is why it sits outside /api/ — on first run there is no session to have.
+     *
+     * `current` is required even inside a live session. That session may be a
+     * browser on a kitchen counter, and the failure it prevents (someone
+     * picks it up and locks the parent out of their own hub) is a household
+     * failure rather than a theoretical one.
+     */
+    private fun password(ex: HttpExchange) {
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        val body = readBody(ex) ?: return respond(ex, 413, "too large")
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return respond(ex, 400, JSONObject().put("error", "bad request").toString())
+        val current = json.optString("current").ifEmpty { null }
+        val next = json.optString("next")
+        adminGate(ex, current) ?: return
+        tokens.setPassword(current, next, now(), envAdminToken).fold(
+            onSuccess = { rotated ->
+                // You change a password because you think someone else has
+                // it. Every other session ends; the caller's survives.
+                sessions.closeAll(except = sessionOf(ex))
+                respond(
+                    ex, 200,
+                    JSONObject().put("ok", true).put("recovery", rotated ?: JSONObject.NULL).toString()
+                )
+            },
+            onFailure = {
+                val why = if (it is HubPassword.TooShort) "short" else "wrong"
+                respond(ex, 400, JSONObject().put("error", why).toString())
+            }
+        )
+    }
+
+    /** A fresh recovery token on demand, behind the same gate and throttle. */
+    private fun recovery(ex: HttpExchange) {
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        val body = readBody(ex) ?: return respond(ex, 413, "too large")
+        val current = runCatching { JSONObject(body).optString("current") }.getOrNull()?.ifEmpty { null }
+        adminGate(ex, current) ?: return
+        respond(ex, 200, JSONObject().put("token", tokens.rotateRecoveryToken()).toString())
+    }
 
     private companion object {
         const val SESSION_COOKIE = "yk_session"

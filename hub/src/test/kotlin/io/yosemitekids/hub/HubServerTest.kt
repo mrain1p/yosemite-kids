@@ -535,4 +535,169 @@ class HubServerTest {
             assertEquals("$it must be GET-only", 405, call(it, "POST", body = "{}").first)
         }
     }
+
+    // --- the admin password ----------------------------------------------
+
+    /** POST with arbitrary headers, returning status, body and any Set-Cookie. */
+    private fun post(
+        path: String,
+        body: String,
+        headers: Map<String, String> = emptyMap()
+    ): Triple<Int, String, String?> {
+        val c = URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection
+        c.requestMethod = "POST"
+        headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
+        c.doOutput = true
+        c.outputStream.use { it.write(body.toByteArray()) }
+        val code = c.responseCode
+        val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
+        val cookie = c.getHeaderField("Set-Cookie")
+        c.disconnect()
+        return Triple(code, text, cookie)
+    }
+
+    private fun setPassword(current: String, next: String, cookie: String? = null) =
+        post(
+            "/password",
+            JSONObject().put("current", current).put("next", next).toString(),
+            if (cookie == null) emptyMap() else mapOf("Cookie" to cookie)
+        )
+
+    private fun sessionCookie(secret: String): String {
+        val (code, _, cookie) = post("/login", JSONObject().put("secret", secret).toString())
+        assertEquals(200, code)
+        return cookie!!.substringBefore(";")
+    }
+
+    @Test
+    fun `setup says whether the hub is claimed, and carries nothing else`() {
+        val (code, body) = call("/setup")
+        assertEquals("no token: a browser reads this before it can have one", 200, code)
+        val json = JSONObject(body)
+        // Exactly one key, so nobody later adds the device count to a route
+        // that answers an unauthenticated stranger.
+        assertEquals(setOf("password"), json.keySet())
+        assertFalse(json.getBoolean("password"))
+
+        setPassword(ADMIN, "a good password")
+        assertTrue(JSONObject(call("/setup").second).getBoolean("password"))
+    }
+
+    @Test
+    fun approveIsThrottledLikeEverythingElse() {
+        // The hole this design closes. /approve checked the header itself,
+        // with no rate limit at all: an unmetered guessing oracle, four
+        // threads wide, and a processor exhaustion attack once a key
+        // derivation sits behind it.
+        val code = JSONObject(call("/enrol", "POST", body = JSONObject().put("name", "TV").toString()).second)
+            .getString("code")
+        repeat(HubSessions.MAX_ATTEMPTS) { attempt ->
+            val refused = post(
+                "/approve",
+                JSONObject().put("code", code).toString(),
+                mapOf("X-Admin-Token" to "wrong-guess-$attempt")
+            )
+            assertEquals("guess $attempt", 401, refused.first)
+        }
+        // Now even the RIGHT secret is refused, which it would not have been
+        // before: this route had no counter of its own at all.
+        val (after, _) = callAdmin("/approve", JSONObject().put("code", code).toString())
+        assertEquals(429, after)
+    }
+
+    @Test
+    fun loginTakesThePasswordOrTheRecoveryToken() {
+        assertEquals(200, post("/login", JSONObject().put("secret", ADMIN).toString()).first)
+        setPassword(ADMIN, "a good password")
+        assertEquals(200, post("/login", JSONObject().put("secret", "a good password").toString()).first)
+        assertEquals("the recovery token still signs in", 200, post("/login", JSONObject().put("secret", ADMIN).toString()).first)
+        assertEquals(401, post("/login", JSONObject().put("secret", "a bad password").toString()).first)
+        // A page cached by the service worker still sends the old key name.
+        assertEquals(200, post("/login", JSONObject().put("token", "a good password").toString()).first)
+    }
+
+    @Test
+    fun changingThePasswordTakesEffectWithoutARestart() {
+        // The server is handed the ENVIRONMENT token, not the resolved one,
+        // and reads the rest through HubTokens on every call. Capturing the
+        // credential by value at boot is the regression this catches.
+        setPassword(ADMIN, "the first password")
+        assertEquals(200, post("/login", JSONObject().put("secret", "the first password").toString()).first)
+        setPassword("the first password", "the second password")
+        assertEquals(200, post("/login", JSONObject().put("secret", "the second password").toString()).first)
+        assertEquals(401, post("/login", JSONObject().put("secret", "the first password").toString()).first)
+    }
+
+    @Test
+    fun changingThePasswordNeedsTheCurrentOneEvenInsideASession() {
+        setPassword(ADMIN, "the first password")
+        val mine = sessionCookie("the first password")
+        // A live session is not enough: that browser may be a phone on a
+        // kitchen counter, and this is what stops whoever picks it up from
+        // locking the parent out of their own hub.
+        assertEquals(401, setPassword("", "another password", mine).first)
+        assertEquals(401, setPassword("not the password", "another password", mine).first)
+        assertEquals(200, setPassword("the first password", "another password", mine).first)
+    }
+
+    @Test
+    fun changingThePasswordEndsOtherSessionsAndKeepsTheCallersOwn() {
+        setPassword(ADMIN, "the first password")
+        val kitchen = sessionCookie("the first password")
+        val mine = sessionCookie("the first password")
+        assertEquals(200, get("/api/state", null, mapOf("Cookie" to mine)).first)
+
+        assertEquals(200, setPassword("the first password", "another password", mine).first)
+        assertEquals("the caller stays signed in", 200, get("/api/state", null, mapOf("Cookie" to mine)).first)
+        assertEquals("every other session ends", 401, get("/api/state", null, mapOf("Cookie" to kitchen)).first)
+    }
+
+    @Test
+    fun theFirstPasswordRotatesTheRecoveryTokenAndShowsItOnce() {
+        val (code, body, _) = setPassword(ADMIN, "a good password")
+        assertEquals(200, code)
+        val rotated = JSONObject(body).getString("recovery")
+        assertNotEquals(ADMIN, rotated)
+        // A later change rotates nothing: silently invalidating a token a
+        // parent wrote down is itself a lockout.
+        val second = JSONObject(setPassword("a good password", "another password").second)
+        assertTrue(second.isNull("recovery"))
+    }
+
+    @Test
+    fun onceAPasswordExistsTheRecoveryTokenNoLongerEnrolsDevices() {
+        setPassword(ADMIN, "a good password")
+        val code = JSONObject(call("/enrol", "POST", body = JSONObject().put("name", "TV").toString()).second)
+            .getString("code")
+        // A leaked log line can no longer quietly add a device. It can only
+        // take the hub over visibly, by changing the password.
+        val (refused, body) = callAdmin("/approve", JSONObject().put("code", code).toString())
+        assertEquals(401, refused)
+        assertEquals("password", JSONObject(body).getString("error"))
+
+        val withPassword = post(
+            "/approve",
+            JSONObject().put("code", code).toString(),
+            mapOf("X-Admin-Token" to "a good password")
+        )
+        assertEquals("the password still enrols", 200, withPassword.first)
+    }
+
+    @Test
+    fun aRefusalNeverEchoesWhatWasSubmitted() {
+        setPassword(ADMIN, "a good password")
+        val guess = "unmistakable-wrong-guess"
+        val (_, body, _) = post("/login", JSONObject().put("secret", guess).toString())
+        assertFalse(body, body.contains(guess))
+        assertFalse("nor the real one", body.contains("a good password"))
+        assertEquals("password", JSONObject(body).getString("error"))
+    }
+
+    @Test
+    fun aSecretInAQueryStringIsNeverAccepted() {
+        // guarded() logs the request URI on a failure, so a secret must
+        // travel in a body or a header and never in a query.
+        assertEquals(401, post("/login?secret=$ADMIN", "{}").first)
+        assertEquals(401, post("/password?current=$ADMIN", JSONObject().put("next", "a good password").toString()).first)
+    }
 }
