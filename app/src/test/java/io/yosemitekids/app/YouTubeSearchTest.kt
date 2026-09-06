@@ -24,7 +24,11 @@ class YouTubeSearchTest {
         // A hidden count comes back as 0 or -1 from the extractor: never "0 subscribers".
         assertEquals("Channel · science for kids", channelHitMeta(0, " science for kids "))
         assertEquals("Channel", channelHitMeta(-1, null))
-        assertEquals("Channel · 912.0K subscribers", channelHitMeta(912_000, "   "))
+        // A whole thousand or million keeps no decimal: the design writes
+        // "912K" and "19M", never "912.0K". A fraction still shows one place.
+        assertEquals("Channel · 912K subscribers", channelHitMeta(912_000, "   "))
+        assertEquals("Channel · 19M subscribers", channelHitMeta(19_000_000, null))
+        assertEquals("Channel · 1.2M subscribers", channelHitMeta(1_200_000, null))
     }
 
     @Test
