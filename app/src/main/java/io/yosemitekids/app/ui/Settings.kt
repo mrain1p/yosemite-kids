@@ -1201,93 +1201,141 @@ private fun AdminScreen(
                 SettingsPage.Listing -> {
                     // No SectionTitle: the app bar already carries this page name,
                     // and repeating it verbatim two lines down reads as a bug.
-                    Spacer(Modifier.height(12.dp))
-                    SettingsCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Show when a video came out", modifier = Modifier.weight(1f))
-                            Switch(
-                                modifier = Modifier.tvFocusHighlight(),
-                                checked = showVideoAge,
-                                onCheckedChange = { showVideoAge = it }
+                    Spacer(Modifier.height(16.dp))
+                    // One card, four blocks, each padded 12dp with a divider
+                    // running the full width between them — the dividers used
+                    // to sit inside the card's own padding and stop 16dp short
+                    // of the border on both sides.
+                    SettingsCard(padded = false) {
+                        ToggleRow(
+                            "Show when a video came out",
+                            "“3 days ago” beside the channel name",
+                            checked = showVideoAge,
+                            onCheckedChange = { showVideoAge = it },
+                            help = "Adds “3 days ago” beside the channel name under a " +
+                                "video, the way other video apps do. Videos whose date YouTube " +
+                                "didn't give us show the channel alone."
+                        )
+                        SettingsDivider()
+                        Column(
+                            Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(9.dp)
+                        ) {
+                            Text(
+                                "Videos before “Show more”",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                PAGE_SIZES.forEach { n ->
+                                    SegmentChip(
+                                        n?.toString() ?: "All",
+                                        selected = pageSize == n,
+                                        onClick = { pageSize = n },
+                                        modifier = Modifier.weight(1f),
+                                        fill = true
+                                    )
+                                }
+                            }
+                            Text(
+                                "Grids stop after this many videos and offer a button for the " +
+                                    "next batch, so a scroll has an end. All keeps loading as " +
+                                    "the kid scrolls.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text(
-                            "Adds \"3 days ago\" beside the channel name under a video, the way " +
-                                "other video apps do. Videos whose date YouTube didn't give us " +
-                                "show the channel alone.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         SettingsDivider()
-                        Text("Videos before \"Show more\"", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PAGE_SIZES.forEach { n ->
-                                FilterChip(
-                                    selected = pageSize == n,
-                                    onClick = { pageSize = n },
-                                    label = { Text(n?.toString() ?: "All") },
-                                    modifier = Modifier.tvFocusHighlight()
-                                )
+                        Column(
+                            Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(9.dp)
+                        ) {
+                            Text("Channel page layout", style = MaterialTheme.typography.bodyMedium)
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                listOf(
+                                    CHANNEL_LAYOUT_NEWEST to "Newest first",
+                                    CHANNEL_LAYOUT_POPULAR to "Popular first"
+                                ).forEach { (value, label) ->
+                                    SegmentChip(
+                                        label,
+                                        selected = channelLayout == value,
+                                        onClick = { channelLayout = value },
+                                        modifier = Modifier.weight(1f),
+                                        fill = true
+                                    )
+                                }
                             }
+                            // The sentence follows the chip. A paragraph
+                            // describing all of them made a parent find their
+                            // own choice in it before it told them anything.
+                            Text(
+                                when (channelLayout) {
+                                    CHANNEL_LAYOUT_POPULAR ->
+                                        "Popular first orders the same videos by how often they " +
+                                            "have been watched on YouTube. View counts are never shown."
+                                    else -> "Newest first is the channel's own upload order."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                        Text(
-                            "Grids stop after this many videos and offer a button for the " +
-                                "next batch, so a scroll has an end. All = keep loading as " +
-                                "the kid scrolls.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         SettingsDivider()
-                        Text("Channel page layout", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                CHANNEL_LAYOUT_NEWEST to "Newest first",
-                                CHANNEL_LAYOUT_POPULAR to "Popular first"
-                            ).forEach { (value, label) ->
-                                FilterChip(
-                                    selected = channelLayout == value,
-                                    onClick = { channelLayout = value },
-                                    label = { Text(label) },
-                                    modifier = Modifier.tvFocusHighlight()
-                                )
+                        Column(
+                            Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(9.dp)
+                        ) {
+                            Text("Channel row order", style = MaterialTheme.typography.bodyMedium)
+                            // Flow, not Row: four chips overflow a phone width and the
+                            // last one collapsed to a column of single letters.
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                verticalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                listOf(
+                                    CHANNEL_ORDER_WATCHED to "Most watched",
+                                    CHANNEL_ORDER_ALPHA to "A to Z",
+                                    CHANNEL_ORDER_RANDOM to "Random",
+                                    CHANNEL_ORDER_LATEST to "Latest video"
+                                ).forEach { (value, label) ->
+                                    SegmentChip(
+                                        label,
+                                        selected = channelOrder == value,
+                                        onClick = { channelOrder = value }
+                                    )
+                                }
                             }
+                            Text(
+                                when (channelOrder) {
+                                    CHANNEL_ORDER_ALPHA ->
+                                        "A steady order, so the first chip is always the same one."
+                                    CHANNEL_ORDER_RANDOM ->
+                                        "Re-mixed on every visit, so nothing stays buried."
+                                    CHANNEL_ORDER_LATEST ->
+                                        "Whoever uploaded most recently leads."
+                                    else -> "The kid's favourites lead."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                        Text(
-                            "The kid's default for a channel's page (they can switch with the chips " +
-                                "on the page). Newest first is the upload feed. Popular first orders " +
-                                "the same videos by how often they've been watched on YouTube (no " +
-                                "numbers are ever shown). A channel's own playlists — seasons, songs, " +
-                                "series — always show above the videos.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        SettingsDivider()
-                        Text("Channel row order", style = MaterialTheme.typography.labelLarge)
-                        // Flow, not Row: four chips overflow a phone width and the
-                        // last one collapsed to a column of single letters.
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                CHANNEL_ORDER_WATCHED to "Most watched",
-                                CHANNEL_ORDER_ALPHA to "A to Z",
-                                CHANNEL_ORDER_RANDOM to "Random",
-                                CHANNEL_ORDER_LATEST to "Latest video"
-                            ).forEach { (value, label) ->
-                                FilterChip(
-                                    selected = channelOrder == value,
-                                    onClick = { channelOrder = value },
-                                    label = { Text(label) },
-                                    modifier = Modifier.tvFocusHighlight()
-                                )
-                            }
-                        }
-                        Text(
-                            "The default order of the home screen's row of channels. Most watched " +
-                                "puts the kid's favourites first; A to Z is easiest to scan; Random " +
-                                "reshuffles on each visit, for the kid who always picks the first one; Latest video puts the channel that uploaded most recently first.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
+                    // What the four blocks have in common, once, under the
+                    // card — the three facts the per-option sentences above
+                    // no longer each repeat.
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "These are the kid’s defaults. They can re-sort with the chips on a " +
+                            "channel page and their choice sticks for them only. A channel’s " +
+                            "own playlists always show above its videos.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SettingsPlaceholder,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
                 }
                 SettingsPage.Screening -> {
                     // Rebuilt to raw-screening.png. The page used to be five
@@ -1406,19 +1454,26 @@ private fun AdminScreen(
                     // headings and four paragraphs for four toggles.
                     SectionTitle("While a video plays")
                     SettingsCard(padded = false) {
-                        Column(Modifier.padding(horizontal = 16.dp)) {
+                        // Full width: the rows carry their own 12dp now, so
+                        // the dividers between them span the card.
+                        Column(Modifier.fillMaxWidth()) {
                             ToggleRow(
                                 "Skip sponsors & intros",
                                 "Using SponsorBlock community markers",
                                 sponsorSkip, { sponsorSkip = it },
                                 help = "Skips the parts of a video the SponsorBlock community " +
                                     "has marked: sponsor messages, merch plugs, intros/outros " +
-                                    "and \"like and subscribe\" reminders. Marked parts show in " +
+                                    "and “like and subscribe” reminders. Marked parts show in " +
                                     "green on the TV's playback bar. Lookups send only an " +
                                     "anonymous fingerprint of the video, never what is being watched."
                             )
                             SettingsDivider()
-                            ListenRateRow(listenPercent) { listenPercent = it }
+                            // Padded here rather than in the row: it is shared
+                            // with the screen-time page, where the card still
+                            // supplies the inset.
+                            Box(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                ListenRateRow(listenPercent) { listenPercent = it }
+                            }
                             SettingsDivider()
                             ToggleRow(
                                 "Autoplay the next video",
@@ -1443,35 +1498,51 @@ private fun AdminScreen(
                     }
 
                     SectionTitle("Picture quality")
-                    SettingsCard {
-                        Text(
-                            "Auto follows the connection and the device, with no cap. Pick a " +
-                                "number to set a ceiling instead. Either way a kid can change it " +
-                                "for the video they are watching, from the player.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text("On televisions", style = MaterialTheme.typography.labelLarge)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PLAYBACK_QUALITIES.forEach { h ->
-                                FilterChip(
-                                    selected = qualityTv == h,
-                                    onClick = { qualityTv = h },
-                                    label = { Text(qualityLabel(h)) },
-                                    modifier = Modifier.tvFocusHighlight()
-                                )
+                    // Three blocks, each 12dp-padded, with the dividers
+                    // running the full width of the card between them.
+                    SettingsCard(padded = false) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(
+                                "Auto follows the connection and the device, with no cap. Pick a " +
+                                    "number to set a ceiling instead. Either way a kid can change it " +
+                                    "for the video they are watching, from the player.",
+                                style = MaterialTheme.typography.bodySmall
+                                    .copy(fontSize = 12.5.sp, lineHeight = 20.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        SettingsDivider()
+                        Column(Modifier.padding(12.dp)) {
+                            Text("On TVs", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.height(11.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                verticalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                PLAYBACK_QUALITIES.forEach { h ->
+                                    SegmentChip(
+                                        qualityLabel(h),
+                                        selected = qualityTv == h,
+                                        onClick = { qualityTv = h }
+                                    )
+                                }
                             }
                         }
                         SettingsDivider()
-                        Text("On phones & tablets", style = MaterialTheme.typography.labelLarge)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PLAYBACK_QUALITIES.forEach { h ->
-                                FilterChip(
-                                    selected = qualityPhone == h,
-                                    onClick = { qualityPhone = h },
-                                    label = { Text(qualityLabel(h)) },
-                                    modifier = Modifier.tvFocusHighlight()
-                                )
+                        Column(Modifier.padding(12.dp)) {
+                            Text("On phones & tablets", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.height(11.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                verticalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                PLAYBACK_QUALITIES.forEach { h ->
+                                    SegmentChip(
+                                        qualityLabel(h),
+                                        selected = qualityPhone == h,
+                                        onClick = { qualityPhone = h }
+                                    )
+                                }
                             }
                         }
                     }
@@ -2055,6 +2126,54 @@ private fun SuggestionExplainer() {
 @Composable
 internal fun SettingsDivider() {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+/**
+ * The settings pages' chip: hollow with a strong border, and the accent as a
+ * 16% tint when it is the one chosen. Material's filled `secondaryContainer`
+ * selection read as a button among options rather than as a picked one, and
+ * a row of unselected chips with no border read as plain text.
+ *
+ * [fill] stretches the label so a row of `Modifier.weight(1f)` chips reads as
+ * one segmented control; without it a chip keeps its natural width and a
+ * [FlowRow] can wrap it.
+ */
+@Composable
+private fun SegmentChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    fill: Boolean = false
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        label = {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = if (fill) Modifier.fillMaxWidth() else Modifier,
+                textAlign = if (fill) androidx.compose.ui.text.style.TextAlign.Center else null
+            )
+        },
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            labelColor = SettingsTextSecondary,
+            selectedContainerColor = SettingsAccentTint,
+            selectedLabelColor = MaterialTheme.colorScheme.primary
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = selected,
+            borderColor = SettingsStrongBorder,
+            selectedBorderColor = MaterialTheme.colorScheme.primary,
+            borderWidth = 1.dp,
+            selectedBorderWidth = 1.dp
+        ),
+        modifier = modifier.tvFocusHighlight(cornerRadius = 8.dp)
+    )
 }
 
 /**
