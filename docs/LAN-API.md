@@ -207,9 +207,10 @@ new field.
 ## The hub's routes
 
 The hub answers `GET /status` and `GET|POST /config` like a device, has
-`/enrol`, `/approve`, `/pending`, `/health` and the admin GUI of its own
-(see `docs/HUB.md`), and serves the search index. Guard 14 covers the device
-table above; these are pinned by `HubServerTest` and `HubIntegrationTest`.
+`/enrol`, `/approve`, `/pending`, `/health`, `/setup`, `/password`, `/recovery`
+and the admin GUI of its own (see `docs/HUB.md`), and serves the search index.
+Guard 14 covers the device table above; these are pinned by `HubServerTest` and
+`HubIntegrationTest`.
 
 **Everything else in the device table above is a JSON 404 on the hub.**
 `HubServer` registers `"/"` last, so an unknown path lands on the admin page
@@ -224,5 +225,20 @@ into the phone's `files/stats_cache/` on every sweep. The refusal list is
 | Route | Auth | Body | Reply | Notes |
 | --- | --- | --- | --- | --- |
 | `GET /status` | device token | — | as a device, plus `token` and `kind: "hub"` | `token` is the hub's self token (`.hub` + 28 hex, minted once): an identity, never a credential. It is what `config.masterDeviceToken` holds while the hub builds the index, and how a phone backfills `PairedDevice.id`. |
+| `GET /setup` | none | — | `{"password": true\|false}` | Whether this hub has been claimed, and **exactly one key** — it tells a LAN peer only what they can already infer from the sign-in form, and nothing they can act on without the container log. It is what decides the phone's field label and which card the GUI shows; a hub older than this route answers the admin page's HTML with a 200, so a caller reads the body and not the status. |
+| `POST /password` | `current` in the body | `{current, next}` | `{"ok": true, "recovery": <token>\|null}` | Set the first password or change it. `current` is the password or the recovery token, required **even inside a live session** (that session may be a browser on a kitchen counter). `recovery` is non-null on the first set only, is shown once, and retires the token from the log. 400 `{"error":"short"}` under `HubPassword.MIN_LENGTH`. Every other session is closed; the caller's survives. |
+| `POST /recovery` | `current` in the body | `{current}` | `{"token": <24 hex>}` | A fresh recovery token, shown once. The previous one stops working immediately. |
+
+`/login`, `/approve`, `/pending`, `/password` and `/recovery` all pass through
+one `adminGate()`, which consults the throttle **before** reading a body and
+before deriving anything: ten wrong secrets and every attempt is refused for
+fifteen minutes, then thirty, then an hour, doubling to six, reset by any
+success. `/approve` used not to be throttled at all, which behind a KDF is both
+a guessing oracle and a processor-exhaustion attack. Refusals answer `401
+{"error":"password"|"secret"}` — the regime, never what was submitted — and a
+lockout answers `429 {"retryAfter": <seconds>}` with a `Retry-After` header.
+The recovery token is exempt from the lockout, or an attacker who only wants
+the family locked out simply fails ten times a window. Guard 25 holds the gate
+to one door; see `docs/HUB.md` for what a parent does with it.
 | `GET /index-status` | device token | — | `{sourceId:{count,complete,hash}}`, byte-for-byte a device's | `X-Index-Pull: 1` says the caller takes its index from this hub. That **arms** the hub to claim the master slot (`HubTokens.armed`, 24 h window); a plain read arms nothing. |
 | `GET /index?source=<id>` | device token | — | `{count,newest,complete}\n[…videos]` / 404 | id `[A-Za-z0-9_-]{1,64}`, else 400. Anything but GET is 405: there is deliberately **no `POST /index` on the hub**. It takes nobody's copy, because a device that could push could truncate a source the hub had crawled further. |

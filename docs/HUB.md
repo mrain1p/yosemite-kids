@@ -120,8 +120,12 @@ Data volume /data is writable as uid 10001.
 Yosemite Kids hub listening on 8765, data in /data
 Devices enrolled: 0
 Admin token: <24 hex characters>
+No password set yet. Open this hub in a browser and set one — the token above is what claims it.
 Nothing paired yet. Approve a device code to pair the first one.
 ```
+
+Once a password is set the fourth line becomes `Admin token: not shown, because
+a password is set.` — see "The password" below.
 
 Confirm it from another machine on the LAN:
 
@@ -130,15 +134,81 @@ curl http://<host>:8765/health          -> ok
 curl -i http://<host>:8765/status       -> 401, which is correct
 ```
 
-`/health` is deliberately the only unauthenticated route. A 401 from `/status`
+`/health` and `/setup` are the only unauthenticated routes, and `/setup`
+carries exactly one key — whether a password has been set. A 401 from `/status`
 is the proof that the LAN cannot read a family's configuration without a
 token.
+
+## The password
+
+**First run.** Open `http://<host>:8765/` in a browser on the same network. The
+page offers to claim the hub: paste the admin token from the container log
+(`docker logs yosemite-kids-hub`), choose a password, and it signs you in. It
+then shows a **recovery token, once**, behind an "I have saved this" step —
+save it where you keep passwords, not on the hub. Nothing can show it again.
+
+You can also sign in with the token and set the password later, from **App, hub
+& backup**. Until one is set the page carries a banner saying so, because the
+token is printed on every restart and anyone who can read the log can
+administer the hub.
+
+**What changes once a password exists:**
+
+- The token stops approving devices. It still signs in, still changes the
+  password, still mints a new recovery token — so a leaked log line can no
+  longer quietly add a device to your family, only take the hub over visibly,
+  by changing the password you meet at your next sign-in.
+- It stops being printed. The boot line becomes `Admin token: not shown,
+  because a password is set.` To see it for one boot, set
+  `YOSEMITE_KIDS_PRINT_ADMIN_TOKEN=1` in the compose file and restart.
+- The phone's field renames itself. It asks the hub (`GET /setup`) and says
+  "Hub password" instead of "Admin token" — one field either way, because the
+  hub decides what matched.
+
+**Changing it.** App, hub & backup → Hub password. The current password (or
+your recovery token) is required even though you are already signed in: that
+session may be a browser on a kitchen counter. Changing it signs out every
+other browser and leaves every enrolled device alone — devices hold their own
+enrolment tokens and never see this one.
+
+**Four ways back in, if the password is forgotten.** In the order to try them:
+
+1. The **recovery token** you saved. It is exempt from the lockout below, and
+   it both signs in and changes the password.
+2. `YOSEMITE_KIDS_ADMIN_TOKEN` in `docker-compose.yml`, if you pinned one. It
+   always works and overrides the stored token.
+3. Set `YOSEMITE_KIDS_PRINT_ADMIN_TOKEN=1` and restart, if no password had been
+   set when the current token was minted — a first set rotates it, so the value
+   in an old log is dead.
+4. Stop the container and delete the `"password"` object from `/data/devices.json`
+   by hand. The hub is then unclaimed again and the page offers to claim it.
+   Leave the rest of that file alone: it holds every device's enrolment.
+
+There is deliberately **no reset route**. A `/forgot` endpoint on a box whose
+stated future is facing the internet is a second front door, and guard 25 fails
+the build if one appears.
+
+**The lockout.** Ten wrong secrets and every sign-in is refused — the right one
+included — for fifteen minutes, then thirty, then an hour, doubling to six. Any
+success clears it. It is counted globally rather than per address, because on a
+LAN an attacker picks their own source address. `/approve` shares that counter,
+so a phone's "Connect my TVs" with a wrong password stops at the first refusal
+rather than spending an attempt per television.
+
+**How it is stored.** PBKDF2-HMAC-SHA256, 210 000 iterations, a 16-byte salt,
+under `password` in `devices.json`. The plaintext is never written. That is not
+because the file is a secure place — anyone who can read it already holds every
+device token and the recovery token beside it, and the hub is over — but
+because families reuse a password, and this volume gets backed up to cloud
+drives. Measure the first verify on your own NAS: on a low-power box a sign-in
+should still be well under a second.
 
 ## The admin GUI
 
 Open `http://<host>:8765/` in a browser on the same network and sign in with
-the admin token from the log. From there you can manage channels and blocked
-videos, approve or remove devices, and see what the hub holds.
+your hub password — or, before you have set one, the admin token from the log.
+From there you can manage channels and blocked videos, approve or remove
+devices, set or change the password, and see what the hub holds.
 
 The status page names every setting that exists on the phone and is not here
 yet, so "can I do this on the NAS?" is answerable without guessing. That list
@@ -150,8 +220,7 @@ Notes on the session:
 
 - It lives in memory. Restarting the hub signs everyone out. That is
   deliberate: a bearer credential never lands on the volume.
-- Sign-in is throttled. Eight wrong tokens in fifteen minutes and it refuses
-  everything, the correct token included, until the window passes.
+- Sign-in is throttled, and the lockout escalates. See "The password" above.
 - The API key is not editable here and will not be. The hub strips secrets
   before writing and has no keystore, so a key typed here could not survive a
   restart. It stays on the phone.
@@ -202,11 +271,21 @@ the isolation.
 ## Connecting a phone
 
 On the phone: Settings, then Devices, then the hub section. Enter the address
-(`192.168.1.245:8765`) and the admin token from the log. The phone joins, is
-marked a parent device, and the hub appears under Kid devices like any other.
+(`192.168.1.245:8765`) and the hub's secret — the field says which one it wants,
+because the phone asks the hub (`GET /setup`) as soon as the address is typed:
+"Hub password" once one is set, "Admin token" until then. It is one field
+either way; the hub checks the password and the recovery token against the same
+header and decides which matched. The phone keeps neither — what it stores is
+the per-device enrolment token the hub hands back.
+
+The phone will not connect if the hub is refusing sign-ins: it reports the wait
+rather than the address being wrong, and it stops at the first refused secret
+instead of spending an attempt per television.
 
 To pin the token instead of reading it from the log each time, set
-`YOSEMITE_KIDS_ADMIN_TOKEN` in `docker-compose.yml`.
+`YOSEMITE_KIDS_ADMIN_TOKEN` in `docker-compose.yml`. That value always works,
+password or no password, which makes it the way back in if the password is
+forgotten.
 
 ## The search index
 

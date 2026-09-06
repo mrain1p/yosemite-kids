@@ -12,6 +12,18 @@ Full route table: `docs/LAN-API.md`. Code: `app/src/main/java/io/yosemitekids/ap
 
 - Never `POST /pair-request` at a device with no admins while its QR is
   showing — the first requester becomes the admin and locks the family out.
+- Never probe a **real** hub's `/approve` or `/login` with a secret you are not
+  sure of. Ten wrong ones lock every sign-in — the right one included — for
+  fifteen minutes, then thirty, then an hour, doubling to six (`HubSessions`,
+  and the counter is global rather than per-IP on purpose). Testing "does it
+  refuse a bad token?" against the family's actual box therefore costs them
+  their hub for the afternoon, and the escalation does not reset until a
+  successful sign-in. Do it against a throwaway hub instead:
+  `./gradlew :hub:installDist` then `YOSEMITE_KIDS_DATA=<tmp>
+  YOSEMITE_KIDS_PORT=8799 hub/build/install/hub/bin/hub`, which prints its own
+  admin token on first boot. If you are locked out of a real one anyway, the
+  recovery token from the container log is exempt from the lockout, and
+  `YOSEMITE_KIDS_ADMIN_TOKEN` in the compose file always works.
 - Every read from the socket is bounded (line, headers, body, workers). A new
   route that allocates from request data must keep that: read the body only
   after auth, via `readBody()`, and cap ids/params with a bounded regex.
