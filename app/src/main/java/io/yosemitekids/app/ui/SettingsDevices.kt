@@ -806,17 +806,18 @@ private fun RefreshButton(
 private fun DeviceBadge(text: String) {
     val fill: Color
     val ink: Color
+    // The design's own fills (Theme.kt), not tints derived from Material's
+    // roles: PARENT was borrowing colorScheme.error, so this phone announced
+    // itself in the colour the rest of the app uses for something broken.
     when {
         text.startsWith("HUB") -> {
-            ink = SettingsSuccess; fill = SettingsSuccess.copy(alpha = 0.12f)
+            ink = SettingsSuccess; fill = ChipHubSurface
         }
         text.startsWith("PARENT") -> {
-            ink = MaterialTheme.colorScheme.error
-            fill = MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+            ink = ChipParentText; fill = ChipParentSurface
         }
         else -> {
-            ink = MaterialTheme.colorScheme.onSurfaceVariant
-            fill = MaterialTheme.colorScheme.surfaceContainerHigh
+            ink = SettingsTextTertiary; fill = ChipNeutralSurface
         }
     }
     Text(

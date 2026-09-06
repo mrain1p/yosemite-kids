@@ -328,6 +328,20 @@ val SettingsAccentTint = Color(0x298FCFBE)
  *  the kid's own colour would make the grid a colour picker twice over. */
 val AvatarTile = Color(0xFF25242C)
 
+/**
+ * The device chips on Devices & sync: HUB, PARENT, TV, TABLET.
+ *
+ * Their own fills, not Material's roles. The parent chip had been borrowing
+ * `colorScheme.error`, which is the colour this app uses to say something is
+ * wrong — so the phone a parent administers the family from read, at a
+ * glance, as a fault. These are the design's: warm rather than alarming, and
+ * each dark enough that the small capitals sit on it without vibrating.
+ */
+val ChipHubSurface = Color(0xFF1E2A26)
+val ChipParentSurface = Color(0xFF2E1A1C)
+val ChipParentText = Color(0xFFE38C7E)
+val ChipNeutralSurface = Color(0xFF1C1B21)
+
 /** "Needs a look, not an alarm": a device offline or behind on updates, the
  *  banner that counts them. Warm rather than red, because a TV that is
  *  switched off is the normal state of a TV. */
