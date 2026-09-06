@@ -827,15 +827,16 @@ older backlog and stay in their original order.
    all, since that page has no `*Section(` composable. Nine outstanding
    groups became one.
 
-   Stats stays outstanding for a structural reason, not an unfinished one:
-   the numbers live on each device and travel over `GET /stats`, which the
-   hub never calls because **the hub never initiates**. Every other route it
-   has is inbound. Closing this means either teaching the hub to poll its
-   enrolled devices — giving it an outbound HTTP client and a schedule it
-   has so far deliberately not had — or having devices push a stats digest
-   on their existing sync. The push is the smaller change and keeps the hub
-   passive; the poll gives fresher numbers from a box that is always on.
-   Decide that before writing either.
+   Stats stays outstanding for a structural reason, not an unfinished one.
+   The reason written here was "the hub never initiates", and that stopped
+   being true when it started crawling and nudging; the one that replaced it
+   is sharper. **Guard 7 holds the hub to two outbound destinations** —
+   YouTube's hosts for the crawl, and the devices' `/sync-now` — in four
+   negative-tested clauses. Polling `GET /stats` would need a credential on
+   each device, which is the exact shape that guard exists to refuse. So the
+   direction was settled as **push**: devices carry a digest on their
+   existing sync (`ROADMAP.md` §4). Only the work is missing, and the round
+   that would have carried it is the tabled budget (§J).
 
 2. **A device is not reachable while Yosemite Kids is closed.** `LanServer` is
    constructed in `MainActivity` and dies with the process, so a sleeping TV
@@ -865,9 +866,11 @@ older backlog and stay in their original order.
    next sweep tidies. The hub also serves on a fixed pool of four threads with
    no backoff anywhere.
 
-4. **Show build version, last sync and role on every device row**, on both
-   faces. Half exists already: `/status` reports `versionCode`/`versionName`
-   and `DeviceStatus` now parses them, but no tile shows them yet.
+4. ~~**Show build version, last sync and role on every device row**, on both
+   faces.~~ **Done.** The phone's rows and pages have carried version and
+   status since 1.0.4, "Update now" since 1.0.5, and the hub's device page
+   renders `HubTokens`' address and last-seen time from 1.0.7 — the half that
+   had been recorded and never displayed.
 
 5. **"Recently added" vs "new".** Needs an `addedAt` on channels; today a
    channel added months ago with a fresh upload reads like one added
@@ -1229,6 +1232,154 @@ and a route table in `HubServer`; nothing about how the page works changed.
   height only starts to bind once there are two lines — at mdpi the whole
   banner is 160 by 90 pixels.
 
+### The hub becomes the parent app (PLAN-hub-parity steps 1-3, 8-9; 1.0.7)
+
+The owner's ask, in five parts: the hub should have the phone's parent
+settings, it should feel like an app rather than a form, it should take a
+password instead of a token, the AI key should live on the NAS, and adding a
+setting to one face should make it hard *not* to add it to the other. The
+design record is `docs/PLAN-hub-parity.md`; the shared watch-time budget it
+also designs was tabled by the owner before any of it was built (roadmap J),
+so nothing here counts a minute.
+
+**Four things that were already broken, found by reading rather than by a
+failure.** Each of them looked fine and did nothing.
+
+- **Config-carried grants were applied by nobody.** `Whitelist.grantsFor` had
+  no caller in `app/src/main`, so the 1.0.5 claim that "a television that was
+  asleep when the parent tapped still finds the minutes when it wakes" was
+  false the whole time: only the LAN fast path granted anything, and only to a
+  device that was awake. `ConfigSync.applyArrived` now applies them per
+  profile, `applyGrants` is idempotent by grant id so the two paths cannot
+  double-count, and guard 21 keeps the call there.
+- **"This device is for Emma", set on the hub, did nothing.** The hub keyed
+  `deviceProfiles` by the enrolment token it minted itself; every device reads
+  that map by its own pairing token. Different keys, no error, no symptom.
+  Devices now announce `X-Device-Id` on every authenticated hub call and the
+  hub records it first-writer-wins, because a pairing token is minted once per
+  install and a second one is a restored backup or a lie — overwriting would
+  re-point an assignment a parent had already made at a different television.
+- **The hub answered a device's routes with its own admin page.** `"/"` is
+  registered last on purpose, which is right for a parent who mistyped and a
+  lie to a phone: the sweep called `/watchstate`, `/verdicts` and `/stats` on
+  the hub like any peer, got 200 and HTML, parsed it to nothing, and wrote
+  `index.html` into the phone's stats cache on every sweep for ever. Nothing
+  failed, because a 200 is a success. Those are a JSON 404 now, named in
+  `HubServer.DEVICE_ONLY` and held there by guard 22.
+- **The browser minted kid ids from the clock** — the low eight hex of
+  `Date.now()`. A kid id is a merge key. Two children added in the same
+  millisecond on two faces of one household would not have collided loudly;
+  they would have merged into one profile with one set of rules. The hub mints
+  them with `Profile.newId()` now, and guard 23 fails the build if the page
+  mints an identifier again.
+
+**A password, not a token (ask 3).** PBKDF2-HMAC-SHA256, 210 000 iterations,
+in `v1:salt:iterations:hash` — the same record shape the phone's PIN already
+used, with the pure half lifted into `:core` so there is one verifier. Stored
+in `devices.json`; the plaintext appears nowhere in it, which is asserted from
+outside rather than intended.
+
+- **The important change is not the hashing, it is one `adminGate()`.**
+  `/approve` and `/pending` were not throttled at all. Behind a KDF an
+  unmetered credential check is both a guessing oracle and a way to keep all
+  four worker threads busy, so every presentation of the admin secret now goes
+  through one gate that consults the throttle *before* reading a body and
+  *before* deriving anything. The lockout escalates 15 min to 30 to an hour to
+  two, capped at six, reset by any success. Guard 25 holds `X-Admin-Token` to
+  one occurrence in the module and `mayAttempt()` to inside that gate.
+- **The recovery token is exempt from the lockout**, deliberately: a 96-bit
+  secret gains nothing from a rate limit, and it has to keep working while the
+  password path is locked — otherwise locking a family out of their own hub
+  costs an attacker ten wrong guesses.
+- **Once a password exists the token stops approving devices and stops being
+  printed.** It still signs in and still changes the password. So a leaked log
+  line can no longer quietly enrol a device; it can only take the box over
+  visibly, which the parent meets at their next sign-in.
+- **No claim window on first boot.** The television's pairing window is safe
+  because a human is standing in front of it holding the QR screen open.
+  Nobody is standing at the NAS, and `restart: unless-stopped`, an image pull,
+  a power cut and a DSM update all reboot that container unattended — each one
+  reopening a window any LAN peer could walk through. The printed token stays
+  the claim ticket instead.
+- The phone reads `GET /setup` before it asks for anything, so the field is
+  labelled with whatever this hub actually wants, and it stops looping every
+  television with a secret it has already been told is wrong.
+
+**Parity per CONTROL, not per group (ask 6).** `SettingsSurface` was keyed on
+groups, and `hubReady = true` is permanent — so a control added to a group the
+hub already rendered slipped through silently. Not hypothetical:
+`screen-time-rules` claimed the hub while the hub drew four of a kid's seven
+rules, no `minVideoMinutes` and no pause, and `blocked-times` claimed it with
+no windows editor at all. Both had been lying for a round.
+
+- **The manifest now declares each control** — its id, the words a parent
+  reads, how it is drawn, its range, and the config leaf it writes — and
+  **both faces read the words from it**, which is what makes the phone half of
+  the guard load-bearing rather than ceremonial: a control that is not
+  declared has no label to render. It also closed a class of drift nobody was
+  watching, the two faces naming one switch differently. They did: "Time per
+  session" against "Minutes a session", and the hub offered page sizes and
+  quality steps the app has never had.
+- **The hub draws a simple control from the declaration alone.**
+  `renderControl` in `index.html` handles `TOGGLE`, `NUMBER`, `TEXT`,
+  `TEXTAREA` and `CHIPS`, so a new toggle on a page the hub already has is one
+  line in `:core` and *nothing* in the hub — which is the ask, literally.
+  Controls too particular for that stay hand-written and carry
+  `data-control="<id>"`. Still one file, still no build step, still nothing
+  from a CDN: a NAS may have no outbound access at all, and the generic
+  renderer *removes* markup rather than adding a framework.
+- **Guard 26 reads it from both ends**, in five clauses, each negative-tested:
+  every leaf of `Whitelist`, `Limits` and `AiConfig` is claimed by exactly one
+  control or excused by name; a hub-eligible control is generically drawn or
+  built by hand; a phone control is referenced by a phone file; a single-face
+  control states why; and a control cannot declare a `kind` the hub's renderer
+  does not implement.
+- **It failed on the day it was written, which was the point.** A harness
+  written to match what already exists proves nothing, so the family-wide
+  rules card, `minVideoMinutes`, the blocked-times editor and pause were built
+  in the same step and the two groups stopped lying.
+
+**Bonus minutes and pause, from the hub (ask 1).** `POST /api/grant` is a
+route of its own and `grants` is deliberately not patchable: a patch replaces
+the array it names, so a browser could leave an entry out — which the stamper
+reads as expiry and tombstones for the whole fleet — or send an id already
+live as a merge key. The hub only appends, mints the id itself, and takes the
+*browser's* local day, refused when it is more than a day from the container's
+UTC one and never quietly rewritten to it. Guard 27 keeps the container
+calendar-free: a NAS runs UTC and a family does not.
+
+The wording had to be its own, not the phone's. A phone calls each device, so
+a television that is awake stops as the parent's thumb comes off the button.
+The hub calls nothing — it holds no credential on any device and guard 7
+refuses it one — so it writes the change into the config and nudges. The card
+says exactly that, because a parent standing in a doorway should not have to
+come back to the page to find out whether the television has heard yet.
+
+**The page becomes an app (ask 2).** A home page instead of a row of tabs: the
+kids first with what each one's rules currently say, two status tiles, then the
+settings grouped, each row's second line stating what that page says right now.
+A kid and a device are each a page — `#/kids/<id>`, `#/devices/<ref>` — and
+the system Back button works, which matters because once this is installed on
+a phone Back is the only navigation there is.
+
+- **The change feed is the highest value per line in the whole round.** Every
+  stamped edit and every merge already wrote a sentence, the sentences already
+  rode inside the config, and nothing rendered them. Now "why did the TV
+  change?" is answerable on the box in the cupboard, in the same words the
+  phone uses, with no new data and no new route.
+- **A backup you can take off the box**, in the same envelope the phone
+  writes, so the file opens on a phone — which is the day it is wanted. The
+  restore is a **stamped edit**, never a byte copy, so a rollback outstamps
+  the peer that has edited since instead of being undone by it on the next
+  sweep. A backup of a hub that has never been written is refused rather than
+  handed over: an empty config is a valid one meaning "no channels, no kids,
+  no rules", and handing a parent that file is handing them one that wipes
+  their family.
+- **The device page closes roadmap 2G's hub half**: `HubTokens` had been
+  recording each device's address and last-seen time since the crawl round,
+  and nothing rendered them.
+
+
 ### The AI key lives on the NAS (PLAN-hub-parity step 10)
 
 The owner's ask, in their words: "ideally they should live on the nas so
@@ -1289,3 +1440,63 @@ it again.
   run again and again with the inputs held still, the way
   `MergeConvergenceTest` does — a rule that holds once and fails on the fourth
   round is not a rule yet.
+
+### Ruling on the AI's queue from the hub (PLAN-hub-parity step 11)
+
+*Content screening* on the admin page now carries the same review queue the
+phone has: the videos the AI is holding back, the pile it blocked, and Allow or
+Block for the family or for one child at a time. A ruling made there is an
+ordinary config edit and reaches every device the way a bedtime does.
+
+- **The hub was the one peer that answered `/verdicts` with its own page.** A
+  phone's sweep pushes and pulls verdicts across every paired peer, the hub
+  included; the hub returned 200 and HTML, the merger parsed it to nothing, and
+  a video a television had already paid the AI to judge was re-judged by the
+  next phone that saw it, for ever. Nothing failed, because a 200 is a success.
+- **`ScreeningStore` and `AiScreener` moved to `:crawl`**, the `ChannelIndex`
+  split again — the store already knew only a `File`, and the `Context`
+  convenience constructor came back in `:app` so no call site changed. The
+  screener travelled with it because a verdict is typed by an enum nested
+  inside it and Kotlin has no nested typealias. The hub cannot use the screener
+  and could not usefully: `Main` arms `Http.HUB_HOSTS` at startup, so an AI
+  call from that box is refused before DNS.
+- **The reason recorded against the group was half wrong**, and correcting it
+  was worth more than deleting it. It said the queue is verdicts plus the video
+  cache and the hub holds neither. The hub holds verdicts now — and the video
+  cache was never needed, because a queue entry carries the title, the channel,
+  a thumbnail URL and the AI's own sentence, which is the whole card.
+- **Guard 29 is the rule this created.** Guard 22 says a device route is
+  answered or refused by name; the other half is that answering it means gating
+  it. This is the first hub route whose body is about the family's *viewing*
+  rather than their settings, and a handler that forgot `authorised(ex)` would
+  compile, pass every other check, and be invisible from outside unless
+  somebody thought to call it with no token.
+- **The thumbnails are fetched by the parent's browser**, not by the hub, so
+  guard 7 is untouched — and `HUB.md` says so, because "this page makes
+  requests to YouTube's CDN" is a thing a parent is entitled to know. On a NAS
+  with no outbound access the page still works, thumbnail-less.
+
+### The docs, the manifest and the skill catch up (1.0.7)
+
+The step that exists because the last one always gets skipped.
+
+- **Guard 30**: every route `HubServer` registers needs a row in
+  `docs/LAN-API.md`, the way guard 14 has held `LanServer` since `/join-hub`
+  spent a round undocumented. The hub's own half had never been covered by
+  anything, and `/enrol`, `/pending`, `/health`, `/login`, `/logout` and `/`
+  had been live for rounds with five of them named in one sentence of prose.
+  It reads table rows inside the hub's own section, because three route names
+  appear in both tables and mean different things.
+- **Three stale `why` lines in `SettingsSurface`.** `directory` and
+  `ai-discovery` each blamed a dependency the hub has had since the crawl moved
+  into `:crawl`; what actually stops both is guard 7's allow-list. `stats`
+  blamed "the hub never initiates", which stopped being true two rounds ago,
+  and then blamed a ledger the owner has tabled. It stays off the hub, but what
+  it is waiting for now is a device→hub *push* that nobody is building.
+- **A twelfth prohibition in the sync skill: never put a counter in
+  `config.json`.** It is the one rule in that file no script can help with — a
+  `use|<kid>|<day>` unit looks exactly like every other unit — and it is
+  precisely what the session that un-tables the budget will reach for first. So
+  it does the arithmetic: a counter's stamp moves `syncHash`, `syncAction`
+  takes the merge arm on any `syncHash` difference, and thirty log lines is
+  half an hour of a family's change history at one usage line a minute.
