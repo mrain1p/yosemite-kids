@@ -181,6 +181,42 @@ marked a parent device, and the hub appears under Kid devices like any other.
 To pin the token instead of reading it from the log each time, set
 `YOSEMITE_KIDS_ADMIN_TOKEN` in `docker-compose.yml`.
 
+## The search index
+
+Since 1.0.5 the hub builds the search index — every channel's full list of
+videos, so search on a TV answers without asking YouTube — instead of the
+parent's phone. It lives under `/data/search-index` beside `config.json`, so
+the volume you already back up carries it.
+
+How it takes the job over, and gives it back:
+
+- A device that pulls the index from the hub sends `X-Index-Pull: 1` on
+  `GET /index-status`; the hub remembers that per device for a day
+  (`HubTokens.armed`). Devices from 1.0.5 pull on every sync.
+- Every 15 minutes the hub runs the election (`HubMaster`, rules in `:core`
+  `MasterElection`). While armed, it claims the slot — from nobody, or from a
+  phone — after a probe proves YouTube answers from the NAS. The phone's
+  worker sees the token is not its own and stops crawling.
+- The holder re-touches the master stamp every 6 hours. A stamp older than a
+  day means the slot is vacant, so a hub that is off for a day hands the job
+  back to the first parent phone that syncs; when the hub returns and a device
+  pulls again, it takes it back.
+- A hub nobody has pulled from for a day stops heartbeating on purpose, so a
+  fleet that reverted to older builds gets its phone back as builder.
+
+The crawl (`HubCrawl`) is the same 60-page, 4-seconds-apart batch the phone
+ran, every 15 minutes, on one thread. Consecutive failed runs back off,
+doubling from 15 minutes to 6 hours, so a NAS address YouTube has walled is
+not hammered. The Devices page of the admin GUI shows who builds the index,
+how far it is, the last crawl and whether any device is pulling.
+
+The container reaches exactly two things on the network: YouTube, through a
+client whose host allow-list is armed at startup, and the devices' `/sync-now`.
+Guard 7 in `scripts/check.*` fails the build on anything else.
+
+`mem_limit` in the compose file is 384m to leave the crawl room. Measure the
+first full crawl with `docker stats yosemite-kids-hub` and put the number here.
+
 ## Permissions — read this if the container restarts in a loop
 
 **Symptom.** `docker ps` shows `Restarting`, and the log repeats a

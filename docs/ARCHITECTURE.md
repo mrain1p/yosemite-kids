@@ -18,6 +18,15 @@ the community channel directory.
 
 ## Source layout
 
+Four Gradle modules. `:app` is the Android app. `:core` is the pure config
+model and merge (no disk, no clock, no Android; guarded). `:crawl` is the
+network layer, the YouTube repository, the search index and its crawler, plain
+JVM (no Android; guarded), so the phone's worker and the hub's scheduler run
+one crawler. `:hub` is the Docker container: config store, LAN routes, the
+admin GUI, and since 1.0.5 the crawl itself (`HubCrawl`) and the election
+(`HubMaster`). `:app` and `:hub` depend on `:crawl` and `:core`; `:crawl`
+on `:core`; nothing depends on `:app`.
+
 ```
 app/src/main/java/io/yosemitekids/app/
 ├── YosemiteKidsApp.kt            Application: OkHttp/NewPipe wiring, Coil image loader
@@ -46,9 +55,10 @@ app/src/main/java/io/yosemitekids/app/
 │   ├── ChunkedStreamDataSource.kt  Media3 data source that fetches googlevideo in
 │   │                         ranged chunks (defeats throttling)
 │   ├── SourceCache.kt / VideoCache.kt   Last-known channel tiles and feed pages
-│   ├── ChannelIndex.kt / IndexCrawler.kt / IndexCrawlWorker.kt
-│   │                         Whitelist-scoped search index (master device crawls,
-│   │                         pushes to peers)
+│   ├── ChannelIndexAndroid.kt  ChannelIndex(context): the app's factory for :crawl's index
+│   ├── IndexCrawlWorker.kt   The 15-minute shell around :crawl's IndexCrawlRun,
+│   │                         master-only; every device runs its drop pass
+│   ├── IndexPull (in :crawl) Pulling the hub's index, called from ConfigSync.sweep
 │   ├── AiScreener.kt / Screening.kt / DeepCheck.kt / Captions.kt
 │   │                         Optional AI content screening (title pass, deep check)
 │   ├── Downloads.kt / DownloadService.kt / DownloadChecker.kt / LocalLibrary.kt

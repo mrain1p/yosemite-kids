@@ -53,9 +53,13 @@ updates.
 
 or on a POSIX shell `scripts/check.sh`. It runs:
 
+0. The source guards (`--guards` / `-Guards` runs only these; no SDK needed).
 1. `gradlew assembleDebug` — the app compiles.
-2. `gradlew :app:testDebugUnitTest` minus `ExtractorSmokeTest` (live YouTube).
-3. `node --test worker/test/*.test.mjs` — the Cloudflare Worker's pure helpers.
+2. `gradlew :core:test` — the config model and merge, plain JVM.
+3. `gradlew :crawl:test` — the network layer, index and crawler, plain JVM.
+4. `gradlew :hub:test` — the container's store, routes, GUI, election, crawl.
+5. `gradlew :app:testDebugUnitTest` minus `ExtractorSmokeTest` (live YouTube).
+6. `node --test worker/test/*.test.mjs` — the Cloudflare Worker's pure helpers.
 
 CI (`.github/workflows/build.yml`) runs the same on every PR.
 

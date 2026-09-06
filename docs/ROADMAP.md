@@ -120,30 +120,12 @@ same item: `HubTokens` records `host`/`port`/`lastSeenAt` on every
 authenticated call and `HubWeb` does not render them, and `Device.address`
 has no caller. *Small.*
 
-**H. The crawl in the container; retire master election.** Design record in `docs/PLAN-crawl.md`. Decided
-2026-09-05, next after the sync bug below. Today the search index is built
-only by whichever device holds `masterDeviceToken`, and that crawl advances
-only while that phone has the app open; the hub, the one machine in the
-house that is never in a pocket or asleep, holds settings and nothing else.
-`PLAN-hub.md` called this its highest day-to-day-value item and nothing
-tracked it. It also dissolves a migration hazard found today: a master token
-that no live device holds (the old package's phone, after the rename) is
-never vacated, so nobody ever crawls again. Pieces: NewPipeExtractor in
-`:hub` (plain Java, runs in the JVM container as is); guard 7 rewritten from
-"no outbound connection" to "YouTube and the devices' `/sync-now`, nothing
-else", so the boundary stays enforced; the hub serving per-channel index files
-in the format devices already exchange over `/index`, devices pulling from the
-hub instead of the master; then, as a separate decision, screening in the
-container, which means the API key living on the NAS. *Medium-large.*
-
-The fallback rule, decided 2026-09-05: a hub that is paired and answering
-holds the master slot, and the phone's crawl worker already goes quiet when
-the token is not its own. A master that has not answered in a day is
-vacant, so with no hub, or a hub that is off for a while, a parent phone
-claims it through the existing election; when the hub returns it reclaims,
-which needs one line in the merge's master rule ("a hub outranks a phone")
-in place of today's tie-break by token order. The same vacancy rule cures
-the dead-master case the rename exposed.
+**H. The crawl in the container — done** (2026-09-05, 1.0.5; design record
+`docs/PLAN-crawl.md`, changelog entry "The hub builds the search index" in
+`FORK-NOTES.md`). Still owed from the plan's own list: the first full crawl
+measured with `docker stats` on the NAS and the number written into
+`HUB.md`, and a fleet-scale run of the handover (phone master → hub) watched
+end to end; both need the rebuilt image running on the NAS.
 
 **I. The Settings form re-stamps what it did not change — done** (see
 `FORK-NOTES.md`, "The settings form adopts what it saved"). Every save now
@@ -203,7 +185,7 @@ either way.
   and are partly built; a verifier overturned all three, so re-read before
   trusting either verdict.
 - **`PLAN-hub.md` has live commitments nobody tracks** — the crawl in the
-  container is now §2H above; three items in `OPEN-QUESTIONS.md` still are.
+  container shipped (§2H); three items in `OPEN-QUESTIONS.md` still are.
 - **`PLAN-round3/4/5.md` are finished history** and can be archived.
 
 ---
@@ -236,6 +218,5 @@ fires: confirm the work is done, then delete the item and its row.
 | §2A reachability | `LanServerHolder.server = LanServer(` | code |
 | §2C key in backup | `app/src/main/res/xml/backup_rules.xml` | path |
 | §2G device rows on the hub | `val address: String?` | code |
-| §2H crawl in the container | `config.masterDeviceToken != me` | code |
 | §4 stats on hub | `outstandingOnHub` | code |
 | §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |

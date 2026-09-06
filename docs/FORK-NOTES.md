@@ -1146,3 +1146,38 @@ the button when it is answering, behind, and on a build that can check at
 all; older builds keep the by-hand wording. **Guard 14** was added on the
 way: every route `LanServer` answers must have a row in `docs/LAN-API.md` —
 `/join-hub` and `/leave-hub` had been missing since the hub round.
+
+### The hub builds the search index (roadmap 2H, 1.0.5)
+
+Design record: `docs/PLAN-crawl.md`. Eight commits, "Crawl step 1" to
+"Crawl step 8".
+
+- **A fourth module, `:crawl`.** Http, the YouTube repository, the search
+  index and the crawler moved out of `:app` into a plain-JVM module the hub
+  can run; the crawl loop that lived inside the WorkManager worker became
+  `IndexCrawlRun`, and the worker is a shell around it. Guarded like
+  `:core`: no Android, no dependency on `:app`.
+- **The hub has an identity** (`.hub` + 28 hex, an identity never a
+  credential) and serves the index in the device wire format:
+  `GET /index-status`, `GET /index?source=`. No `POST /index` on the hub —
+  it takes nobody's copy.
+- **The election is a pure function** (`MasterElection.decide`), liveness
+  is the master stamp itself (heartbeat every 6 h, vacant after a day), and
+  the merge's tie rule prefers a hub. The stamper gained a `refresh` set for
+  the one stamp allowed to move without a change. A holder that answered the
+  sweep is live whatever its stamp says, so a hub with a wrong clock cannot
+  be fought over.
+- **The hub claims only while armed** — a device pulled from it within a
+  day — and only after a probe proves YouTube answers from the NAS. A hub
+  nobody pulls from lets its slot lapse. The crawl backs off exponentially
+  on consecutive failures.
+- **Devices pull.** `ConfigSync.sweep` ends with the election and a pull
+  from every paired hub; asking is what arms the hub. A phone that crawled
+  deeper keeps what it has (union import). The old push relay stays for TVs
+  older than 1.0.5.
+- **Explained where it shows.** The phone's Search index card says who
+  builds it and why; the hub row is badged; "Make master" hides while the
+  hub holds the slot; the hub's Devices page has a Search index card.
+- **Guards 17 and 18.** One crawl loop and one extractor stamp; and each
+  gate script now syntax-checks the other, because `check.ps1` had sat
+  unparseable for a whole round while bash stayed green.

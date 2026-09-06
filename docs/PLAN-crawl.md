@@ -6,7 +6,13 @@ judged by hand). The cleanest design is the base; the resilience design's
 arming rule, backoff and hardening are grafted in. Every claim below was
 checked against the code at commit 36fc774; re-read before acting on a line.
 
-## What is true today
+**Status, 2026-09-05:** built, in eight commits ("Crawl step 1" … "Crawl step
+8"), shipped as 1.0.5. Two things the plan asked for are not yet done and are
+listed in `ROADMAP.md` §2H: the `docker stats` measurement of a full crawl,
+and the handover watched on the real fleet. What follows is the design as it
+was decided, kept as the record of *why*.
+
+## What was true before this (2026-09-05, morning)
 
 - One device holds `config.masterDeviceToken` (Whitelist.kt; JSON key
   `master`; fingerprint term `;MS:`; stamp unit `master`). ConfigSync.sweep

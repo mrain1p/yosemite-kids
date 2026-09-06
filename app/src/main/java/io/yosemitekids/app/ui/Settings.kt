@@ -2226,6 +2226,10 @@ private fun SearchIndexSection(
     fun stateFor(e: io.yosemitekids.app.data.WhitelistEntry) =
         states[canonicalByUrl[e.url]] ?: states[e.id]
     val isMaster = masterToken != null && masterToken == myToken
+    // A hub's token starts with ".hub" (MasterToken). While one holds the
+    // slot this phone pulls rather than crawls, and the wording has to say so
+    // or "another device is the master" reads as a mystery.
+    val hubIsMaster = io.yosemitekids.app.data.MasterToken.isHub(masterToken)
     var expanded by remember { mutableStateOf(false) }
 
     // Summary first: the per-channel list is long and rarely what the parent
@@ -2245,9 +2249,10 @@ private fun SearchIndexSection(
     )
     Text(
         "$complete fully indexed  ·  " + when {
-            isMaster -> "this device is the master"
-            masterToken != null -> "another device is the master"
-            else -> "no master yet"
+            isMaster -> "this device builds it"
+            hubIsMaster -> "the hub builds it"
+            masterToken != null -> "another device builds it"
+            else -> "nobody builds it yet"
         },
         style = MaterialTheme.typography.bodySmall,
         color = StatusAmber
@@ -2273,9 +2278,20 @@ private fun SearchIndexSection(
     ) { Text(if (refreshing) "Working…" else "Refresh counts") }
     Text(
         when {
-            isMaster -> "The master builds the index and shares it with the other devices."
-            masterToken != null -> "Another device is the master; the index arrives over your home network."
-            else -> "No master yet — the first parent device to open the app claims it."
+            isMaster ->
+                "This phone builds the index — every channel's full list of videos, " +
+                    "so search on the TVs answers without asking YouTube — and shares it " +
+                    "with the other devices. If a hub is connected, it takes over as soon " +
+                    "as any device has pulled from it: the hub is always on and this phone is not."
+            hubIsMaster ->
+                "The hub builds the index because it is always on. Every device pulls it " +
+                    "from the hub when it syncs, so the counts above climb on their own. " +
+                    "This phone takes over if the hub is off for a day."
+            masterToken != null ->
+                "Another phone builds the index; it arrives here over your home network."
+            else ->
+                "Nobody builds it yet — the first parent phone to sync claims the job, " +
+                    "and a connected hub takes it over once a device has pulled from it."
         },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -608,7 +608,15 @@ internal fun PhoneDevicesSection(
         if (hub != null) {
             val (line, amber) = rowStatusLine(hub, fleet, localHash, localSecretlessHash, localSyncHash)
             DeviceRow(
-                name = hub.name, badge = "HUB", status = line, amber = amber,
+                name = hub.name, badge = "HUB",
+                // The hub's identity token arrives on /status and backfills
+                // PairedDevice.id; when the master slot names it, say so here
+                // like the phone rows do.
+                status = listOfNotNull(
+                    if (hub.id != null && hub.id == masterToken) "Builds the search index" else null,
+                    line
+                ).joinToString(" · "),
+                amber = amber,
                 dot = fleet.lastAnswer[hub.key]?.behind() == true,
                 refreshing = fleet.syncStates[hub.key] is DeviceSync.Checking,
                 onRefresh = { fleet.refresh(hub) },
@@ -1189,7 +1197,11 @@ internal fun DevicePage(
                             color = if (isMaster) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (!isMaster) {
+                        // Not while a hub holds the slot: it would reclaim on its
+                        // next tick (an armed hub outranks a phone), and the button
+                        // would read as broken. The hub steps aside on its own when
+                        // it has been off for a day.
+                        if (!isMaster && !io.yosemitekids.app.data.MasterToken.isHub(masterToken)) {
                             CompactButton(onClick = { onMakeMaster(adminToken) }) { Text("Make master") }
                         }
                         if (!isThisPhone) {
@@ -1262,13 +1274,17 @@ internal fun ParentPage(
         )
     }
     SettingsCard {
+        val hubHoldsIt = io.yosemitekids.app.data.MasterToken.isHub(masterToken)
         Text(
-            if (parent.token == masterToken) "Search-index master — their phone builds the index every device searches."
-            else "A parent's phone, approved on the devices below.",
+            when {
+                parent.token == masterToken -> "Search-index master — their phone builds the index every device searches."
+                hubHoldsIt -> "A parent's phone, approved on the devices below. The hub builds the search index; a phone takes over only if the hub is off for a day."
+                else -> "A parent's phone, approved on the devices below."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        if (parent.token != masterToken) {
+        if (parent.token != masterToken && !hubHoldsIt) {
             CompactButton(onClick = { onMakeMaster(parent.token) }) { Text("Make search-index master") }
         }
     }
