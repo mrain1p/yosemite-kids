@@ -119,7 +119,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
     /** Daily watch budget in ms (incl. parent-granted bonus), or null when not configured. */
     private fun dailyBudgetMs(l: Limits): Long? = budgetMs(l, isWeekend(), bonusMs())
 
-    // The two bonus stores are each read in exactly one place — guard 14 in
+    // The two bonus stores are each read in exactly one place — guard 16 in
     // scripts/check.* holds it to that — so the LAN path and the config path
     // can never be summed differently by two callers.
     private fun legacyBonusMs(): Long = prefs.getLong("bonusMs", 0)
@@ -504,7 +504,9 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         return Snapshot(
             watchedTodayMin = (watched / 60_000).toInt(),
             budgetTodayMin = budget?.let { (it / 60_000).toInt() },
-            bonusTodayMin = (prefs.getLong("bonusMs", 0) / 60_000).toInt(),
+            // Through the one sum, or the stats screen would count the LAN
+            // grants and not the config-carried ones (guard 16).
+            bonusTodayMin = (bonusMs() / 60_000).toInt(),
             sittingWatchedMin = (prefs.getLong("sittingWatchedMs", 0) / 60_000).toInt(),
             sittingCapMin = l.sessionMinutes,
             state = state,

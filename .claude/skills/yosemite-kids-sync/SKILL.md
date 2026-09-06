@@ -121,6 +121,7 @@ A *unit* is the smallest thing two parents can edit independently.
 | `for` | blocked for one kid | **PRESENT** |
 | `afor` | allowed for one kid | ABSENT |
 | `dev` | one device's kid assignment | ABSENT |
+| `grant` | one "Add time" tap: minutes for one kid or everyone, on one day; a day that has passed is tombstoned by the phone's next save, never by the merge | ABSENT |
 | `lim.rules`, `lim.windows`, `lim.pause`, `lim.brk` | family screen time | scalar |
 | `ai`, `settings`, `master` | one blob each | scalar |
 
