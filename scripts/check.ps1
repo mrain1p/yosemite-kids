@@ -661,6 +661,70 @@ foreach ($f in @(
     }
 }
 
+# 25. One door to the hub's admin secret, and nothing that prints it.
+#     Four clauses, because "the credential is handled carefully" is four
+#     different properties and each fails on its own.
+#
+#     Before the password there was no gate: /approve and /pending compared the
+#     header themselves with no rate limit at all. Against 96 bits of hex that
+#     was harmless; behind a key derivation it is an unmetered guessing oracle
+#     four threads wide AND a processor-exhaustion attack, because the
+#     derivation is the expensive half. adminGate() checks mayAttempt() BEFORE
+#     reading a body and BEFORE deriving anything, which is what bounds the
+#     cost of guessing - and a second route that verified the secret its own
+#     way would restore both holes without failing a single test.
+$hubMain = @(Get-ChildItem -Recurse -File -Filter *.kt "hub/src/main/kotlin")
+#    (a) One header name, named once. A second spelling is a second gate.
+$adminHdr = 0
+foreach ($f in $hubMain) {
+    $adminHdr += @([regex]::Matches((Get-Content $f.FullName -Raw), [regex]::Escape('"X-Admin-Token"'))).Count
+}
+if ($adminHdr -ne 1) {
+    Fail-Guard """X-Admin-Token"" appears $adminHdr times in hub/src/main (must be exactly once, in adminGate). Every presentation of the admin secret goes through that one gate."
+}
+#    (b) The throttle is consulted in exactly one place, and that place is the
+#        gate. A route that asked mayAttempt() itself would be a route that
+#        could forget to.
+$strayAttempt = @($hubMain |
+    Where-Object { $_.Name -ne "HubSessions.kt" -and $_.Name -ne "HubServer.kt" } |
+    Select-String -Pattern 'mayAttempt()' -SimpleMatch |
+    ForEach-Object { $_.Path })
+if ($strayAttempt.Count -gt 0) {
+    Fail-Guard "mayAttempt() is called in $($strayAttempt -join ' '). Only adminGate() may ask; everything else goes through it."
+}
+$srvLines = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt"
+$attempts = @($srvLines | Where-Object { $_.Contains("mayAttempt()") })
+if ($attempts.Count -ne 1) {
+    Fail-Guard "HubServer.kt calls mayAttempt() $($attempts.Count) times (must be exactly one, inside adminGate)."
+}
+$gateOwner = ""
+foreach ($line in $srvLines) {
+    if ($line -match ' fun ') { $gateOwner = $line }
+    if ($line.Contains("mayAttempt()")) { break }
+}
+if (-not $gateOwner.Contains("adminGate(")) {
+    Fail-Guard "mayAttempt() is called from '$gateOwner', not from adminGate(. The throttle must run before any derivation, in the one gate."
+}
+#    (c) Nothing prints a credential. The boot line may name the regime - "a
+#        password is set" - but a VALUE reaches a println only by interpolation
+#        or concatenation, and a container log is a broadcast: docker logs
+#        replays it from the beginning, Container Manager shows it in a web UI,
+#        and a log driver ships it to a file whose permissions have nothing to
+#        do with /data.
+$printed = @($hubMain | Select-String -Pattern 'println|print\(|System\.err' |
+    Where-Object { $_.Line -match '(?i)password|secret' -and $_.Line -match '[\$\+]' })
+if ($printed.Count -gt 0) {
+    Fail-Guard "the hub prints something on a line naming a password or secret ($($printed[0].Path):$($printed[0].LineNumber)) - name the regime, never the value."
+}
+#    (d) Recovery is a token you already hold, not a route. A reset endpoint on
+#        a box whose stated future is facing the internet is a second front
+#        door, and every one of these names is what that door gets called.
+foreach ($door in @("/forgot", "/reset", "/recover")) {
+    if (@($hubMain | Select-String -Pattern ('createContext("' + $door + '")') -SimpleMatch).Count -gt 0) {
+        Fail-Guard "the hub serves $door. Recovery is the token from the log, deliberately not a route - a reset endpoint is a second front door on a box meant to face the internet."
+    }
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan

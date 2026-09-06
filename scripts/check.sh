@@ -581,6 +581,59 @@ for f in app/src/main/java/io/yosemitekids/app/data/Pairing.kt \
     guard_fail "$f no longer names ${q}X-Device-Id${q}. Both ends must spell it the same, or the hub cannot key a device→kid assignment by anything the device will ever read."
 done
 
+# 25. One door to the hub's admin secret, and nothing that prints it.
+#     Four clauses, because "the credential is handled carefully" is four
+#     different properties and each fails on its own.
+#
+#     Before the password there was no gate: /approve and /pending compared the
+#     header themselves with no rate limit at all. Against 96 bits of hex that
+#     was harmless; behind a key derivation it is an unmetered guessing oracle
+#     four threads wide AND a processor-exhaustion attack, because the
+#     derivation is the expensive half. adminGate() checks mayAttempt() BEFORE
+#     reading a body and BEFORE deriving anything, which is what bounds the
+#     cost of guessing — and a second route that verified the secret its own
+#     way would restore both holes without failing a single test.
+hubmain=hub/src/main/kotlin
+#    (a) One header name, named once. A second spelling is a second gate.
+admin_hdr=$(grep -rhoF "${q}X-Admin-Token${q}" $hubmain | wc -l || true)
+if [ "$admin_hdr" -ne 1 ]; then
+  guard_fail "${q}X-Admin-Token${q} appears $admin_hdr times in $hubmain (must be exactly once, in adminGate). Every presentation of the admin secret goes through that one gate."
+fi
+#    (b) The throttle is consulted in exactly one place, and that place is the
+#        gate. A route that asked mayAttempt() itself would be a route that
+#        could forget to.
+stray_attempt=$(grep -rlF "mayAttempt()" $hubmain | grep -vE "/(HubSessions|HubServer)[.]kt$" | tr "\n" " " || true)
+if [ -n "$stray_attempt" ]; then
+  guard_fail "mayAttempt() is called in $stray_attempt. Only adminGate() may ask; everything else goes through it."
+fi
+attempts=$(grep -cF "mayAttempt()" "$hubsrv" || true)
+if [ "$attempts" -ne 1 ]; then
+  guard_fail "HubServer.kt calls mayAttempt() $attempts times (must be exactly one, inside adminGate)."
+fi
+gate_owner=$(awk '/ fun /{last=$0} /mayAttempt\(\)/{print last; exit}' "$hubsrv" || true)
+case "$gate_owner" in
+  *"adminGate("*) ;;
+  *) guard_fail "mayAttempt() is called from '${gate_owner:-nothing}', not from adminGate(. The throttle must run before any derivation, in the one gate." ;;
+esac
+#    (c) Nothing prints a credential. The boot line may name the regime — "a
+#        password is set" — but a VALUE reaches a println only by interpolation
+#        or concatenation, and a container log is a broadcast: docker logs
+#        replays it from the beginning, Container Manager shows it in a web UI,
+#        and a log driver ships it to a file whose permissions have nothing to
+#        do with /data.
+printed=$(grep -rniE "println|print\(|System[.]err" $hubmain | grep -iE "password|secret" | grep -E '[$+]' || true)
+if [ -n "$printed" ]; then
+  guard_fail "the hub prints something on a line naming a password or secret: $printed — name the regime, never the value."
+fi
+#    (d) Recovery is a token you already hold, not a route. A reset endpoint on
+#        a box whose stated future is facing the internet is a second front
+#        door, and every one of these names is what that door gets called.
+for door in "/forgot" "/reset" "/recover"; do
+  if grep -rqF "createContext(${q}${door}${q})" $hubmain; then
+    guard_fail "the hub serves $door. Recovery is the token from the log, deliberately not a route — a reset endpoint is a second front door on a box meant to face the internet."
+  fi
+done
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"
