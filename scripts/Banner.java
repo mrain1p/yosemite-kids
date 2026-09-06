@@ -66,34 +66,55 @@ public class Banner {
         g.fill(tri);
     }
 
-    /** 16:9 banner: tile on the left, wordmark on the right, both on brand teal. */
+    /**
+     * 16:9 banner: tile on the left, the wordmark stacked beside it, both on
+     * brand teal.
+     *
+     * Two lines, "Yosemite" over "Kids". A television shows this at roughly a
+     * thumbnail's size across the room, and on one line the whole lockup had
+     * to shrink to the width of its longest string — the words were smaller
+     * than the tile beside them. Stacked, each line is short enough for the
+     * type to grow, so the name is legible from a sofa.
+     */
     static BufferedImage banner(int w, int h) {
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = g(img);
         g.setColor(TEAL);
         g.fillRect(0, 0, w, h);
         double tile = h * 0.56;
-        String text = "Yosemite Kids";
+        String[] lines = { "Yosemite", "Kids" };
         double gap = h * 0.10;
-        // Fit the wordmark: shrink until mark + gap + text sits inside 84% of the width.
-        float size = (float) (h * 0.30);
+        // Fit on BOTH axes. Width, as before, against the longer line; and
+        // height, which one line never needed: two lines plus their leading
+        // must still clear the banner's edges at mdpi, where the whole thing
+        // is 160x90 pixels.
+        float size = (float) (h * 0.34);
         Font f = font(size);
         g.setFont(f);
         FontMetrics fm = g.getFontMetrics();
-        double total = tile + gap + fm.stringWidth(text);
-        while (total > w * 0.84 && size > 8) {
+        double leading = fm.getAscent() * 0.98;
+        double widest = Math.max(fm.stringWidth(lines[0]), fm.stringWidth(lines[1]));
+        double stack = fm.getAscent() + leading + fm.getDescent();
+        while ((tile + gap + widest > w * 0.84 || stack > h * 0.86) && size > 8) {
             size *= 0.95f;
             f = font(size);
             g.setFont(f);
             fm = g.getFontMetrics();
-            total = tile + gap + fm.stringWidth(text);
+            leading = fm.getAscent() * 0.98;
+            widest = Math.max(fm.stringWidth(lines[0]), fm.stringWidth(lines[1]));
+            stack = fm.getAscent() + leading + fm.getDescent();
         }
+        double total = tile + gap + widest;
         double x = (w - total) / 2.0;
         double y = (h - tile) / 2.0;
         mark(g, x, y, tile, true);
         g.setColor(WHITE);
-        double baseline = h / 2.0 + (fm.getAscent() - fm.getDescent()) / 2.0;
-        g.drawString(text, (float) (x + tile + gap), (float) baseline);
+        // Centre the block the two baselines describe, not the first line:
+        // centring on one baseline hangs the pair low by a whole line.
+        double first = h / 2.0 + (fm.getAscent() - fm.getDescent() - leading) / 2.0;
+        double textX = x + tile + gap;
+        g.drawString(lines[0], (float) textX, (float) first);
+        g.drawString(lines[1], (float) textX, (float) (first + leading));
         g.dispose();
         return img;
     }

@@ -1207,3 +1207,22 @@ and a route table in `HubServer`; nothing about how the page works changed.
   bookmark rather than an install; iOS honours the Apple tags over http and
   gives a standalone window today. `HUB.md` says how to front it with the
   proxy already on the NAS for the full thing.
+
+### The launcher says YM Kids, and the TV banner stacks (1.0.6)
+
+- **`app_name` is now "YM Kids"**, which is the label under the icon on a
+  phone and beside the banner on a television. Nothing else moved: the
+  package id stays `io.yosemitekids.app` (a package rename is an uninstall
+  for every family, and an uninstall wipes their curation), the release
+  asset stays `yosemite-kids.apk` because
+  `releases/latest/download/yosemite-kids.apk` is both the self-update URL
+  and the Downloader code a TV is set up with, and `PairedDevice.HUB_NAME`
+  stays "Yosemite Kids hub" because the phone finds a paired hub by that
+  exact string and migrates older entries by it.
+- **The TV banner stacks the wordmark**, "Yosemite" over "Kids", generated
+  by `scripts/Banner.java` at all five densities. On one line the lockup
+  had to shrink to the width of its longest string and the words came out
+  smaller than the tile beside them; two short lines let the type grow, so
+  the name reads from a sofa. The generator now fits on both axes, because
+  height only starts to bind once there are two lines — at mdpi the whole
+  banner is 160 by 90 pixels.
