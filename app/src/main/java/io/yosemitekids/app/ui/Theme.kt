@@ -103,14 +103,14 @@ val YosemiteLightColors = androidx.compose.material3.lightColorScheme(
 )
 
 /** WCAG contrast between two opaque colours, 1:1 (identical) to 21:1. */
-private fun ratio(a: Color, b: Color): Float {
+internal fun ratio(a: Color, b: Color): Float {
     val la = a.luminance()
     val lb = b.luminance()
     return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f)
 }
 
 /** Near-black or white, whichever can actually be read on [bg]. */
-private fun readableOn(bg: Color): Color {
+internal fun readableOn(bg: Color): Color {
     val ink = Color(0xFF1B1B1B)
     return if (ratio(ink, bg) >= ratio(Color.White, bg)) ink else Color.White
 }
@@ -125,7 +125,7 @@ private fun readableOn(bg: Color): Color {
  * swatch, the blend gets moved until the label works, which also covers the
  * colours a parent can set that the picker never offers.
  */
-private fun legible(bg: Color, fg: Color, min: Float = 4.5f): Color {
+internal fun legible(bg: Color, fg: Color, min: Float = 4.5f): Color {
     if (ratio(fg, bg) >= min) return bg
     val away = if (fg.luminance() > 0.5f) Color.Black else Color.White
     var t = 0.06f

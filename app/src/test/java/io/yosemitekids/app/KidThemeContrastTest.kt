@@ -110,6 +110,78 @@ class KidThemeContrastTest {
     }
 
     /**
+     * The four signal colours have to carry text on every ground a kid can
+     * produce — including the light theme, where the canonical coral starts at
+     * 3.67:1 and has to be darkened, and including the eight tinted grounds.
+     * This is the assertion that lets one canonical hue serve all three looks
+     * instead of a second table that drifts.
+     */
+    @Test fun signalColoursCarryTextOnEveryGround() {
+        val bad = everyLook().flatMap { (label, s) ->
+            val t = io.yosemitekids.app.ui.kidTokensFor(s.background)
+            listOf(
+                "action" to t.action,
+                "timeWarning" to t.timeWarning,
+                "watched" to t.watched,
+                "offline" to t.offline
+            ).mapNotNull { (name, c) ->
+                val r = contrast(c, s.background)
+                if (r < 4.5) "$label: $name is %.2f:1".format(r) else null
+            }
+        }
+        assertTrue("signal colours below 4.5:1 —\n" + bad.joinToString("\n"), bad.isEmpty())
+    }
+
+    /**
+     * A glyph on the action colour is large text, so 3:1 — but it still has to
+     * clear it, and it is fixed rather than derived, so one assertion covers
+     * every look at once.
+     */
+    @Test fun theActionColourCarriesItsOwnGlyph() {
+        val t = io.yosemitekids.app.ui.kidTokensFor(Color(0xFF141218))
+        val r = contrast(t.onAction, t.action)
+        assertTrue("onAction on action is %.2f:1, under 3:1".format(r), r >= 3.0)
+    }
+
+    /**
+     * Perceptual distance in Oklab, where roughly 0.02 is the smallest
+     * difference an eye catches and 0.10 is plainly a different colour.
+     *
+     * Deliberately not WCAG contrast: that is a luminance ratio, so two hues
+     * darkened to the same lightness score 1.03:1 and look "converged" when
+     * they are still obviously red and yellow. Asking the wrong question here
+     * produced exactly that false alarm.
+     */
+    private fun perceptualDistance(a: Color, b: Color): Double {
+        val space = androidx.compose.ui.graphics.colorspace.ColorSpaces.Oklab
+        val x = a.convert(space)
+        val y = b.convert(space)
+        val dl = (x.red - y.red).toDouble()
+        val da = (x.green - y.green).toDouble()
+        val db = (x.blue - y.blue).toDouble()
+        return Math.sqrt(dl * dl + da * da + db * db)
+    }
+
+    /**
+     * The signals have to be told apart from each other, not just from the
+     * page. "This is the button" and "your time is nearly up" in the same
+     * colour is the specific failure that ruled out deriving the action colour
+     * from the kid's own — a kid can pick amber, and coral and amber are
+     * already neighbours before either gets darkened for the light theme.
+     */
+    @Test fun actionAndTimeWarningNeverConverge() {
+        val muddy = everyLook().mapNotNull { (label, s) ->
+            val t = io.yosemitekids.app.ui.kidTokensFor(s.background)
+            val d = perceptualDistance(t.action, t.timeWarning)
+            if (d < 0.06) "$label: action vs timeWarning is only %.3f apart".format(d) else null
+        }
+        assertTrue(
+            "the action colour and the time warning have converged —\n" + muddy.joinToString("\n"),
+            muddy.isEmpty()
+        )
+    }
+
+    /**
      * The card steps have to actually step. If a surface and the card on it
      * land within a hair of each other the cards vanish, which is exactly what
      * a careless palette edit does and exactly what no assertion caught before.
