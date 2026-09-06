@@ -1073,3 +1073,41 @@ Its comment even names the symptom it failed to catch.
 
 **A worse bug found on the way, not fixed here:** a rotated API key can be
 silently reverted by a peer still holding the old one. See "Next up" above.
+
+### Update a TV from the phone (roadmap 2G, second half)
+
+A device behind on updates used to install one only from its own settings
+screen; the phone's Devices page could say "update available" and nothing
+more. Now the row and the device's page carry **Update now**: `POST
+/check-updates` makes the device fetch `version.json`, download the APK and
+put the system installer's prompt on its own screen, and the phone says in
+plain words what happened — "The install prompt for 1.0.5 is on Living room
+TV. Confirm it there with the remote." (or "on its screen" for a tablet),
+"couldn't fetch the update", "already fetching", "open Yosemite Kids on it
+first". The prompt itself is confirmed by whoever is at the device: Android
+hands the APK to its own installer, and no LAN credential can press that,
+which the page states outright. The banner points at the per-row action
+instead of "each device offers the install on its own screen".
+
+Two things the obvious version would have got wrong. The device answers only
+once the download is done, so the phone waits with a read timeout sized for a
+download (3 min) rather than the LAN client's 10 s — otherwise nearly every
+real update would report "failed" while the prompt was in fact waiting on
+the TV. And Android 10+ drops an activity start from a process with no
+visible window silently, so the device checks it is on screen before
+downloading (no point fetching what cannot be shown) and again after, and
+answers `not-on-screen` rather than "offered" for a prompt that never
+appeared. `Updater.check()` grew a detailed sibling (`Check.Off / UpToDate /
+Offered / Failed`) because "up to date" and "couldn't reach GitHub" want
+different words on a phone, and the old null covered both.
+
+The decision is `RemoteUpdate.run`, written over three lambdas so
+`RemoteUpdateTest` drives every branch — including the one-in-flight gate —
+without a Context; the wording is `updateOutcomeText`, pinned by
+`UpdateFromPhoneTest` for every status plus the two a device never sends
+(unreachable, and a 404 from a build older than the route, which is sent to
+its own Check for updates rather than to a sideload). The device only gets
+the button when it is answering, behind, and on a build that can check at
+all; older builds keep the by-hand wording. **Guard 14** was added on the
+way: every route `LanServer` answers must have a row in `docs/LAN-API.md` —
+`/join-hub` and `/leave-hub` had been missing since the hub round.

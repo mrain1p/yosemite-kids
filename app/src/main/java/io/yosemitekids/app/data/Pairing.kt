@@ -416,7 +416,22 @@ class LanServer(
      * the form factor is the one fact about a device that never changes, so
      * it is served here rather than guessed at from a name.
      */
-    private val deviceKind: () -> String? = { null }
+    private val deviceKind: () -> String? = { null },
+    /**
+     * A paired phone asked this device to update itself (`POST
+     * /check-updates`). Answers the JSON [RemoteUpdate.Outcome] puts on the
+     * wire, and blocks for the download — the caller is a LAN worker, and the
+     * phone waits on it with a timeout sized for that. The default is what a
+     * build with no manifest URL would say, so a server built without the
+     * hook still answers rather than 500s.
+     */
+    private val onUpdateRequested: () -> String = {
+        RemoteUpdate.Outcome(
+            RemoteUpdate.OFF,
+            io.yosemitekids.app.BuildConfig.VERSION_NAME,
+            io.yosemitekids.app.BuildConfig.VERSION_CODE
+        ).toJson()
+    }
 ) {
     @Volatile
     var port: Int = 0
@@ -942,6 +957,22 @@ class LanServer(
                     respond(200, "granted")
                 } else respond(400, "bad minutes")
             }
+            // "Update now" from the phone. This device fetches version.json,
+            // downloads the APK and puts the system installer's prompt on its
+            // own screen; whoever holds the remote confirms it. Nothing over
+            // the LAN can press that prompt, which is the point — an admin
+            // token gets to ask, not to change what is installed on the TV.
+            //
+            // Always 200 with a JSON status, never 4xx/5xx for the outcomes:
+            // "busy", "off" and "failed" are answers about this device, not
+            // about the request, and the phone prints them in plain words.
+            // The body is ignored and drained (an old client might send `{}`).
+            // Rate limit: one in flight per device (RemoteUpdate's gate); a
+            // second request during a download answers {"status":"busy"}.
+            method == "POST" && path == "/check-updates" -> {
+                discardBody()
+                respond(200, onUpdateRequested())
+            }
             else -> respond(404, "not found")
         }
     }
@@ -1293,6 +1324,56 @@ object LanClient {
         .retryOnConnectionFailure(false)
         .build()
 
+    /**
+     * How long [checkUpdates] waits for a device's answer. The device answers
+     * only once it has fetched the manifest AND downloaded the APK — tens of
+     * megabytes from GitHub over home Wi-Fi — so the LAN client's 10 s read
+     * timeout would give up on nearly every real update while the device
+     * carried on and put the prompt up anyway, and the phone would then say
+     * "failed" about an install that was waiting on the TV. Same 1.5 s
+     * connect as every other LAN call: an off device is still found out fast.
+     */
+    internal const val UPDATE_READ_TIMEOUT_S = 180L
+
+    private val updateClient = lanClient.newBuilder()
+        .readTimeout(UPDATE_READ_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
+    /**
+     * What a device said to "Update now". [status] is one of the
+     * [RemoteUpdate] wire statuses, or [NO_ROUTE] — the phone's own word for
+     * a 404, which is what a build older than the route answers. Kept apart
+     * from `off`: that build may well offer the update on its own screen.
+     */
+    data class UpdateAnswer(val status: String, val versionName: String?, val versionCode: Int?)
+
+    const val NO_ROUTE = "no-route"
+
+    /**
+     * Ask a device to fetch and offer its update. Null = unreachable, or an
+     * answer that was neither JSON nor a 404 (a 403 means our approval was
+     * dropped, and re-pairing is the fix — as for every other call).
+     */
+    suspend fun checkUpdates(device: PairedDevice): UpdateAnswer? = withContext(Dispatchers.IO) {
+        runCatching {
+            raw(device.host, device.port, "POST", "/check-updates", "{}", device.token, updateClient)
+                .use { resp ->
+                    when {
+                        resp.code == 404 -> UpdateAnswer(NO_ROUTE, null, null)
+                        !resp.isSuccessful -> null
+                        else -> {
+                            val json = JSONObject(resp.body?.string().orEmpty())
+                            UpdateAnswer(
+                                json.getString("status"),
+                                json.optString("versionName").ifEmpty { null },
+                                if (json.has("versionCode")) json.optInt("versionCode") else null
+                            )
+                        }
+                    }
+                }
+        }.getOrNull()
+    }
+
     /** Status including the device's own identity token (for profile assignment). */
     suspend fun fullStatus(device: PairedDevice): DeviceStatus? = withContext(Dispatchers.IO) {
         runCatching {
@@ -1562,8 +1643,9 @@ object LanClient {
         raw(device.host, device.port, method, path, body, device.token)
 
     private fun raw(
-        host: String, port: Int, method: String, path: String, body: String?, token: String?
-    ) = lanClient.newCall(
+        host: String, port: Int, method: String, path: String, body: String?, token: String?,
+        client: okhttp3.OkHttpClient = lanClient
+    ) = client.newCall(
         Request.Builder()
             .url("http://$host:$port$path")
             .apply { token?.let { header("X-Token", it) } }

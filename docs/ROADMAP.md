@@ -111,18 +111,20 @@ visible), but the fix — carry bonus minutes in the config — now rides merge
 machinery that exists. Drop "pause" from the old wording; that half is done.
 *Medium.*
 
-**G. Version, last sync and role on every device row.** Smaller than it was: the
-hub already records `host`/`port`/`lastSeenAt` on every authenticated call and
-`HubWeb` simply does not render them, and `Device.address` has no caller at all.
-On the phone, `/status` serves `versionCode` and `versionName` but `DeviceStatus`
-parses only the name and `DeviceSync.Reachable` carries neither. Answers the first
-question anyone asks about a sideloaded fleet. *Small.* The rows show the
-version now; what is left is **starting the update from the phone**: a
-`POST /check-updates` route that makes a TV fetch `version.json`, download
-the APK and show its installer prompt, which the parent confirms with the
-remote. Nothing can press that button over the LAN, but bringing the prompt
-up saves a walk through the TV's settings. Works from the first build that
-carries the route on the TV. *Small-medium.*
+**G. Version, last sync and role on every device row — done on the phone;
+the hub's half remains.** The phone's rows show each device's version, and
+**starting a device's update from the phone shipped 2026-09-05**: `POST
+/check-updates` makes a device fetch `version.json`, download the APK and put
+its installer prompt on its own screen; "Update now" on the device's row and
+page calls it and says in plain words what happened (`RemoteUpdate` in
+`data/Updater.kt`, `LanClient.checkUpdates`, `DeviceFleet.updateNow`,
+`docs/LAN-API.md`). Nothing over the LAN presses the prompt — whoever is at
+the device confirms it — and the page says so. Works from the first build
+that carries the route; older builds answer 404 and the phone sends the parent
+to the device's own Check for updates. What is left is the hub's side of the
+same item: `HubTokens` records `host`/`port`/`lastSeenAt` on every
+authenticated call and `HubWeb` does not render them, and `Device.address`
+has no caller. *Small.*
 
 **H. The crawl in the container; retire master election.** Decided
 2026-09-05, next after the sync bug below. Today the search index is built
@@ -242,7 +244,7 @@ fires: confirm the work is done, then delete the item and its row.
 | --- | --- | --- |
 | §2A reachability | `LanServerHolder.server = LanServer(` | code |
 | §2C key in backup | `app/src/main/res/xml/backup_rules.xml` | path |
-| §2G device rows | `val address: String?` | code |
+| §2G device rows on the hub | `val address: String?` | code |
 | §2H crawl in the container | `config.masterDeviceToken != me` | code |
 | §4 stats on hub | `outstandingOnHub` | code |
 | §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |

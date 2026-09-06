@@ -176,7 +176,13 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         )
                     }
                 },
-                deviceKind = { io.yosemitekids.app.data.DeviceKind.of(appContext) }
+                deviceKind = { io.yosemitekids.app.data.DeviceKind.of(appContext) },
+                // "Update now" from a paired phone: check, download, and put
+                // the installer prompt on this screen. Whoever holds the
+                // remote confirms it; the phone only gets to ask.
+                onUpdateRequested = {
+                    io.yosemitekids.app.data.RemoteUpdate.handleBlocking(appContext)
+                }
             ).also { it.start() }
         }
         // "Play this on the TV" from a parent's phone. The device applies its
@@ -195,7 +201,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             // Android 10+ drops an activity start from a process with no visible
             // window, silently. Refuse instead, so the phone says "open Yosemite Kids
             // on the TV first" rather than "playing".
-            if (android.os.Build.VERSION.SDK_INT >= 29 && !io.yosemitekids.app.data.AppVisibility.inForeground) {
+            if (!io.yosemitekids.app.data.AppVisibility.canStartActivity) {
                 return@handler false
             }
             runOnUiThread {

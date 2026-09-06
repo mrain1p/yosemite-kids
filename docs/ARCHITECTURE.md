@@ -231,7 +231,8 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Let the parent pick a channel's playlists | `SettingsChannels.kt` (`PinnedPlaylistsDialog`, from the source's own page) → `WhitelistEntry.playlistIds` |
 | Change when the phone shrinks to PiP, or what the window does | `PlayerActivity.pipEligible` / `enterPip` / `onPictureInPictureModeChanged` |
 | Add a screen-time rule | `Whitelist.Limits` + `ConfigStore` (de)serializers + `SessionGuard` + settings section |
-| Add a LAN route | `LanServer.handle` (bound every read!) + `LanClient` + `docs/LAN-API.md` |
+| Add a LAN route | `LanServer.handle` (bound every read!) + `LanClient` + `docs/LAN-API.md` (guard 14 checks the row is there) |
+| Change what "Update now" does to a device, or says on the phone | `RemoteUpdate` in `data/Updater.kt` (the device's decision, over lambdas) + `POST /check-updates` + `LanClient.checkUpdates`; on the phone `DeviceFleet.updateNow` and `updateOutcomeText` in `SettingsDevices.kt` |
 | Add a parent setting | `Settings.kt` AdminScreen section + config field + push |
 | Change kid-facing wording | grep the string; every kid string is inline (no `strings.xml` yet) |
 | Touch the extractor | `YouTubeRepository.kt`; bump `newpipeextractor` in `gradle/libs.versions.toml` |
