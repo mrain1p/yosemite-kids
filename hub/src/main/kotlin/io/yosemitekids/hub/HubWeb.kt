@@ -44,9 +44,14 @@ object HubWeb {
     /**
      * The pages this GUI serves, in the phone's own navigation order.
      *
-     * Derived from [SettingsSurface] rather than listed again here, so the two
-     * faces cannot present different pages. `scripts/check.*` reads the same
-     * manifest from the other direction.
+     * Spelled out rather than derived from `SettingsSurface.Page`, and the
+     * KDoc here claimed the opposite until 1.0.7. The list is held equal to
+     * the manifest by guard 3, in both directions and both scripts: a page id
+     * is the enum constant lowercased, so one invented on either side fails
+     * the build. Deriving it would be strictly better — a list that cannot
+     * drift beats a list watched by a guard — but guard 3 finds its page ids
+     * by grepping the string literals below, so the two have to change
+     * together, in both scripts, with the negative test.
      */
     val pages: List<HubPage> = listOf(
         HubPage("kids", "Kids"),

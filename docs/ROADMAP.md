@@ -5,9 +5,11 @@ it records what happened. The `PLAN-*.md` files are finished history from single
 rounds. When those disagree with this file, this file is wrong and should be
 fixed — but check the code before believing any of them.
 
-Last audited **2026-09-04** against commit `170b7e3` (0.12.3-fork), by reading
-the code rather than the docs. That audit found 12 doc claims that were simply
-untrue, including one that had been stale since the round that closed it.
+Last fully audited **2026-09-04** against commit `170b7e3` (0.12.3-fork), by
+reading the code rather than the docs. That audit found 12 doc claims that were
+simply untrue, including one that had been stale since the round that closed it.
+The hub-parity round (1.0.7, 2026-09-06) closed §2G and every bullet of §3 and
+re-checked what it touched; the rest is still on the 09-04 reading.
 
 > **Verification status.** The audit's adversarial re-check pass was cut short by
 > a rate limit, so most findings below are single-source. Of the ten claims that
@@ -60,11 +62,13 @@ create`, then `version.json`.
   `yosemitekids://`), then removes the old app so two LAN servers do not
   answer on the same TV.
 
-**Also unproven: this fork has never run on a Google TV or a real phone.** Every
-"verified" note in `FORK-NOTES.md` is an emulator run, and the Chromecast
-cold-start table in `CLAUDE.md:34-40` is upstream's measurement on upstream's
-hardware, inherited by the fork. If a device run happened and went unrecorded,
-record it — right now the standing claim is the honest one.
+**Since 2026-09-05 the fork runs on a real fleet** — a Samsung phone, a Google
+TV Streamer and the hub on a Synology NAS — and the sync-convergence and
+Settings findings in `FORK-NOTES.md` came from it. What is *still* unproven is
+performance: the Chromecast cold-start table in `CLAUDE.md` is upstream's
+measurement on upstream's hardware, inherited by the fork and never re-taken
+here. Measure it on the Streamer before quoting it (`am start -S -W`, three
+samples), and until then treat those numbers as inherited rather than observed.
 
 ---
 
@@ -123,21 +127,6 @@ rather than how reliably things happen — today a kid who wants a channel has t
 physically find a parent. Needs a LAN route, a durable queue surviving both
 devices sleeping, and a notification channel. *Large.*
 
-**G. Version, last sync and role on every device row — done on the phone;
-the hub's half remains.** The phone's rows show each device's version, and
-**starting a device's update from the phone shipped 2026-09-05**: `POST
-/check-updates` makes a device fetch `version.json`, download the APK and put
-its installer prompt on its own screen; "Update now" on the device's row and
-page calls it and says in plain words what happened (`RemoteUpdate` in
-`data/Updater.kt`, `LanClient.checkUpdates`, `DeviceFleet.updateNow`,
-`docs/LAN-API.md`). Nothing over the LAN presses the prompt — whoever is at
-the device confirms it — and the page says so. Works from the first build
-that carries the route; older builds answer 404 and the phone sends the parent
-to the device's own Check for updates. What is left is the hub's side of the
-same item: `HubTokens` records `host`/`port`/`lastSeenAt` on every
-authenticated call and `HubWeb` does not render them, and `Device.address`
-has no caller. *Small.*
-
 **H. The crawl in the container — done** (2026-09-05, 1.0.5; design record
 `docs/PLAN-crawl.md`, changelog entry "The hub builds the search index" in
 `FORK-NOTES.md`). Still owed from the plan's own list: the first full crawl
@@ -184,41 +173,50 @@ either way, and much smaller if the hub is required.*
 
 ---
 
-## 3. Known-wrong docs
+## 3. Known-wrong docs — cleared 2026-09-06
 
-Cheap, and they actively mislead:
+All five went out with 1.0.7 and are recorded here rather than deleted,
+because "documentation drifts and nobody is watching" is the standing risk and
+the list is the evidence for it. `HUB.md` had told parents their TVs only sync
+while a kid is watching; `ARCHITECTURE.md` still showed a one-module app;
+`LAN-API.md` was missing routes, and the hub's whole half of it was covered by
+no guard at all until guard 30; the `stats` entry in `SettingsSurface` blamed
+"the hub never initiates"; and `HubWeb.pages` claimed to be derived from
+`SettingsSurface` while being a literal list.
 
-- **`HUB.md` tells parents their TVs only sync while a kid is watching.** The
-  background worker and the nudge both made that false.
-- **`ARCHITECTURE.md` describes a one-module app.** `:core` and `:hub` are
-  invisible in it and the sync section predates `ConfigSync`.
-- **`LAN-API.md`** is missing two live routes and has stale response shapes.
-- **The `stats` entry in `SettingsSurface`** blames "the hub never initiates" —
-  which stopped being true in `e5239f3`. See §4.
-- **`HubWeb.pages` claims to be "derived from SettingsSurface"** and is a
-  hardcoded literal list.
+The last one is only half fixed: the KDoc now says what the code does and
+names guard 3 as what holds it equal. **Deriving the list would be strictly
+better** — a list that cannot drift beats a list a guard watches — but guard 3
+finds its page ids by grepping the `HubPage("…")` literals, so the two have to
+move together, in both scripts, with the negative test. *Small, and worth
+doing the next time anything else in that file is open.*
+
+The general lesson, which is why a doc list keeps reappearing here: every one
+of these was a sentence explaining why something could not be done, written
+when it was true and left standing after the constraint moved. A stale reason
+is worse than none, because it is what the next session reads before deciding
+not to build something.
 
 ---
 
-## 4. Stats on the hub — decide before building
+## 4. Stats on the hub — decided (push), not scheduled
 
-The last `Where.BOTH` group not on the hub. Its recorded reasoning is now stale:
-the hub *does* initiate. But a genuinely new constraint replaced it — **guard 7
-holds the hub to exactly two outbound destinations: YouTube, through
-`:crawl`'s shared client with its host allow-list armed, and the devices'
-`/sync-now` through `HubNudge.kt`** (rewritten 2026-09-05 for the crawl; four
-negative-tested clauses). It still means "the hub announces; it does not
-command."
+The last `Where.BOTH` group not on the hub. **The decision is made: devices
+push a digest on their existing sync.** Recorded here so it is not re-argued.
 
-So the two options are no longer equivalent:
+The reasoning that used to sit in `SettingsSurface` — that the hub never
+initiates — stopped being true when it started crawling and nudging. What
+replaced it is sharper and is why the poll is not an option: **guard 7 holds
+the hub to exactly two outbound destinations**, YouTube through `:crawl`'s
+shared client with its host allow-list armed, and the devices' `/sync-now`
+through `HubNudge.kt` (four negative-tested clauses). Polling `GET /stats`
+would need the hub to hold a credential on each device — the exact shape that
+guard exists to refuse, on the box most likely to face the internet one day.
+So: the hub announces; it does not command.
 
-- **Devices push a stats digest** on their existing sync — leaves the guard
-  intact, consistent with the direction-of-trust argument.
-- **The hub polls devices** — requires amending a guard that exists to forbid
-  exactly that shape.
-
-The push is the smaller change and the one that fits. Fix the stale `why` text
-either way.
+What is missing is only the work. The round that would have carried it was the
+shared budget (§J), which the owner tabled, so nobody owns the push today. The
+`why` text in the manifest now says that rather than blaming the old reason.
 
 ---
 
@@ -239,9 +237,19 @@ either way.
 
 ## 6. The gate
 
-- **CI runs neither `check.sh` nor `check.ps1`** — roughly 25 source guards are
-  enforced only when someone runs them by hand. `check.sh` was additionally dead
-  from line 78 onward until 2026-09-04.
+- **CI runs `bash scripts/check.sh --guards`** as its first step, before the
+  toolchain, since 2026-09-04 (`35df387`). Thirty guards, on every push and
+  every PR. That entry read "CI runs neither script" until 1.0.7, which is the
+  same failure it describes: the audit found the gap, the next round closed it,
+  and nobody came back for the sentence. `check.sh` was additionally dead from
+  line 78 onward until the same date — a `grep` with no match ending the script
+  under `pipefail`, silently, from inside a guard that had *passed*. Guard on
+  guard: the pipefail trap is itself checked now.
+- **`check.ps1` is still run only by hand**, and it is the half the author of
+  this project actually types. Guard 10 compares the two scripts' numbered
+  headings and guard 18 makes each syntax-check the other, so a guard added to
+  one and not the other fails — but a guard that is present in both and *wrong*
+  in the PowerShell one would be found by nobody until someone ran it.
 - **The upstream "touches fork files" flag went blind to 8 files** when `:core`
   was extracted — it still runs and still prints, covering less than it says. The
   weekly scheduled agent is told "no overlap means cherry-pick", and
@@ -264,6 +272,6 @@ fires: confirm the work is done, then delete the item and its row.
 | --- | --- | --- |
 | §2A reachability | `LanServerHolder.server = LanServer(` | code |
 | §2C key in backup | `app/src/main/res/xml/backup_rules.xml` | path |
-| §2G device rows on the hub | `val address: String?` | code |
+| §3 hub pages not derived | `HubPage("kids"` | code |
 | §4 stats on hub | `outstandingOnHub` | code |
 | §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |
