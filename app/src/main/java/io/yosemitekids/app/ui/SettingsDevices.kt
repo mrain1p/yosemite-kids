@@ -572,33 +572,36 @@ internal fun PhoneDevicesSection(
             .filter { d -> (fleet.lastAnswer[d.key]?.versionCode ?: Int.MAX_VALUE) < Updater.FIRST_SELF_UPDATING_VERSION_CODE }
             .map { it.name }
         UpdateBanner(behind.size, cannotSelfUpdate)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
     }
 
     // "Devices ⟳ · 5 paired": the label carries the check-again control, and
-    // the count sits where a value would.
+    // the count sits where a value would. The ⟳ is teal here and grey on the
+    // rows — this one checks every device, so it is the section's action.
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(
             "Devices",
-            style = MaterialTheme.typography.labelLarge.copy(
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
-            ),
+            fontSize = 12.5.sp,
+            lineHeight = 12.5.sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp)
         )
         RefreshButton(
             busy = fleet.checking,
             contentDescription = "Check every device now",
+            tint = MaterialTheme.colorScheme.primary,
             onClick = { fleet.checkNow(onSyncNow) }
         )
         Spacer(Modifier.weight(1f))
         Text(
             "${fleet.devices.size} paired",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            fontSize = 11.5.sp,
+            color = SettingsPlaceholder,
+            modifier = Modifier.padding(end = 4.dp)
         )
     }
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(8.dp))
 
     SettingsCard(padded = false) {
         // The hub first, whether or not there is one: the row is how a parent
@@ -613,7 +616,9 @@ internal fun PhoneDevicesSection(
                 // PairedDevice.id; when the master slot names it, say so here
                 // like the phone rows do.
                 status = listOfNotNull(
-                    if (hub.id != null && hub.id == masterToken) "Builds the search index" else null,
+                    // The same phrase the phone rows use: one wording for one
+                    // slot, whichever device holds it.
+                    if (hub.id != null && hub.id == masterToken) "Search-index master" else null,
                     line
                 ).joinToString(" · "),
                 amber = amber,
@@ -671,28 +676,32 @@ internal fun PhoneDevicesSection(
                 dot = last?.behind() == true,
                 refreshing = fleet.syncStates[device.key] is DeviceSync.Checking,
                 onRefresh = { fleet.refresh(device) },
-                onClick = { onOpenDevice(device) },
-                note = fleet.updateMessage[device.key],
-                onUpdate = if (fleet.canAskToUpdate(device)) ({ fleet.updateNow(device) }) else null,
-                updating = device.key in fleet.updating
+                onClick = { onOpenDevice(device) }
             )
         }
 
         SettingsDivider()
         Row(
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .tvFocusHighlight()
                 .clickable(onClick = onAddDevice)
-                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .heightIn(min = 52.dp)
+                .padding(horizontal = 12.dp, vertical = 9.dp)
         ) {
             Icon(
                 Icons.Filled.Add, contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)
+                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp)
             )
-            Spacer(Modifier.width(10.dp))
-            Text("Add a device", color = MaterialTheme.colorScheme.primary)
+            Text(
+                "Add a device",
+                fontSize = 14.5.sp,
+                lineHeight = 19.sp,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1
+            )
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -706,86 +715,126 @@ internal fun PhoneDevicesSection(
 }
 
 /**
- * "2 devices behind on updates". Still no "Update all": a phone can make a
- * device fetch the release and put up its install prompt (Update now, on
- * the row), but Android hands the APK to its own installer, which asks the
- * person in front of the device — and no LAN route can press that button
- * for them. Each prompt wants someone at that screen, so the banner points
- * at the per-row action and says who finishes it.
+ * "2 devices behind on updates", over the version they are behind.
+ *
+ * Still no "Update all", which the design draws here: a phone can make a
+ * device fetch the release and put up its install prompt, but Android hands
+ * the APK to its own installer, which asks the person standing in front of
+ * that device — and no LAN route can press that button for them. So the ask
+ * stays one device at a time, on the page that row opens.
  */
 @Composable
 private fun UpdateBanner(count: Int, cannotSelfUpdate: List<String>) {
-    val askable = count - cannotSelfUpdate.size
     Surface(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-        color = StatusAmber.copy(alpha = 0.12f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, StatusAmber.copy(alpha = 0.35f)),
+        color = WarningAmberSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, WarningAmberBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
             Text(
                 "$count ${if (count == 1) "device" else "devices"} behind on updates",
-                color = StatusAmber,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                fontSize = 13.5.sp,
+                lineHeight = 18.sp,
+                color = WarningAmber
             )
+            Spacer(Modifier.height(2.dp))
             Text(
-                "This phone has ${BuildConfig.VERSION_NAME}. " + listOfNotNull(
-                    if (askable > 0)
-                        "Update now on a device's row has it fetch the release and put up " +
-                            "its install prompt; whoever is at that device confirms it there."
-                    else null,
-                    installByHandText(cannotSelfUpdate, BuildConfig.VERSION_NAME)
-                ).joinToString(" "),
-                style = MaterialTheme.typography.bodySmall,
+                "Latest is ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // Only for builds with no update check at all: those need the walk
+            // to the device, and nothing else on this screen says so.
+            installByHandText(cannotSelfUpdate, BuildConfig.VERSION_NAME)?.let {
+                Text(
+                    it,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
         }
     }
 }
 
-/** ⟳ in a 36dp target: a spinner while the read is in flight, so a tap is seen to do something. */
+/**
+ * ⟳ with a spinner while the read is in flight, so a tap is seen to do
+ * something. [size] never goes below 32dp — the design's targets bottom out
+ * there and a smaller one is a miss on a phone and unreachable on a TV.
+ */
 @Composable
-private fun RefreshButton(busy: Boolean, contentDescription: String, onClick: () -> Unit) {
+private fun RefreshButton(
+    busy: Boolean,
+    contentDescription: String,
+    onClick: () -> Unit,
+    size: androidx.compose.ui.unit.Dp = 32.dp,
+    icon: androidx.compose.ui.unit.Dp = 16.dp,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant
+) {
     IconButton(
         onClick = onClick,
         enabled = !busy,
-        modifier = Modifier.size(36.dp).tvFocusHighlight()
+        modifier = Modifier.size(size).tvFocusHighlight()
     ) {
-        if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        if (busy) CircularProgressIndicator(Modifier.size(icon), strokeWidth = 2.dp)
         else Icon(
             androidx.compose.material.icons.Icons.Filled.Refresh,
             contentDescription = contentDescription,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp)
+            tint = tint,
+            modifier = Modifier.size(icon)
         )
     }
 }
 
-/** "HUB", "PARENT · THIS DEVICE", "TV": the small caps tag beside a name. */
+/**
+ * "HUB", "PARENT · THIS DEVICE", "TV": the small caps tag beside a name.
+ *
+ * Coloured by what the device is, not decorated: the hub is the household's
+ * server (success green), a parent device is the one that can change things
+ * (the destructive red, which is this palette's "you" colour), and a kid
+ * device is neutral. Matched on the prefix so "PARENT · THIS DEVICE" reads
+ * as a parent without a second branch.
+ */
 @Composable
 private fun DeviceBadge(text: String) {
+    val fill: Color
+    val ink: Color
+    when {
+        text.startsWith("HUB") -> {
+            ink = SettingsSuccess; fill = SettingsSuccess.copy(alpha = 0.12f)
+        }
+        text.startsWith("PARENT") -> {
+            ink = MaterialTheme.colorScheme.error
+            fill = MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+        }
+        else -> {
+            ink = MaterialTheme.colorScheme.onSurfaceVariant
+            fill = MaterialTheme.colorScheme.surfaceContainerHigh
+        }
+    }
     Text(
         text,
-        style = MaterialTheme.typography.labelSmall.copy(
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-            letterSpacing = 0.6.sp
-        ),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 9.5.sp,
+        lineHeight = 15.sp,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+        letterSpacing = 0.57.sp,
+        color = ink,
         maxLines = 1,
         modifier = Modifier
-            .background(
-                MaterialTheme.colorScheme.surfaceVariant,
-                androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-            )
-            .padding(horizontal = 5.dp, vertical = 1.dp)
+            .background(fill, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+            .padding(horizontal = 5.dp, vertical = 2.dp)
     )
 }
 
 /**
  * One device: name + badge, status line, amber dot when behind, ⟳, chevron.
- * With [onUpdate], an "Update now" button stands in for the dot — the dot
- * says "behind", the button says it and offers the fix — and [note] is the
- * last thing that ask came back with, under the status line.
+ *
+ * Two lines and nothing else. A behind device says so in its status line and
+ * carries the dot; the ask that fixes it lives on the page this row opens,
+ * where there is room for the answer it comes back with.
  */
 @Composable
 private fun DeviceRow(
@@ -796,65 +845,51 @@ private fun DeviceRow(
     dot: Boolean,
     refreshing: Boolean,
     onRefresh: (() -> Unit)?,
-    onClick: () -> Unit,
-    note: String? = null,
-    onUpdate: (() -> Unit)? = null,
-    updating: Boolean = false
+    onClick: () -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier
             .fillMaxWidth()
             .tvFocusHighlight()
             .clickable(onClick = onClick)
-            .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp)
+            .heightIn(min = 62.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     name, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    fontSize = 14.5.sp, lineHeight = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 if (badge != null) {
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(7.dp))
                     DeviceBadge(badge)
                 }
             }
+            Spacer(Modifier.height(3.dp))
             Text(
                 status,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (amber) StatusAmber else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp, lineHeight = 17.sp,
+                color = if (amber) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
-            if (note != null) Text(
-                note,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
         }
-        if (onUpdate != null) {
-            Spacer(Modifier.width(4.dp))
-            CompactButton(enabled = !updating, onClick = onUpdate) {
-                Text(if (updating) "Updating…" else "Update now")
-            }
-        } else if (dot) {
-            Spacer(Modifier.width(8.dp))
-            Box(
-                Modifier
-                    .size(7.dp)
-                    .background(StatusAmber, androidx.compose.foundation.shape.CircleShape)
-            )
-        }
+        if (dot) Box(
+            Modifier
+                .size(7.dp)
+                .background(WarningAmber, androidx.compose.foundation.shape.CircleShape)
+        )
         if (onRefresh != null) {
-            Spacer(Modifier.width(6.dp))
             RefreshButton(busy = refreshing, contentDescription = "Check $name now", onClick = onRefresh)
         }
-        Spacer(Modifier.width(2.dp))
         Icon(
             YosemiteIcons.ChevronRight, contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp)
+            tint = SettingsPlaceholder,
+            modifier = Modifier.size(17.dp)
         )
     }
 }
