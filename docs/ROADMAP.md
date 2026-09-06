@@ -153,6 +153,35 @@ there and `SettingsFormSaveTest` drives the path three times on an unchanged
 form. Still owed: a run through the emulator loop with two phones' worth of
 edits under one open form, which this round could not do.
 
+**J. One watch-time budget per child, across every device — parked.** Design
+record: `docs/PLAN-hub-parity.md`. Today a child with a television and a
+tablet gets the daily budget on each: the rules and the grants are per child
+already, but the running tally (`dailyWatchedMs` in `SessionGuard`) is per
+device, and nothing documents that. The owner asked for a per-profile choice
+between per-device and shared.
+
+The design in `PLAN-hub-parity.md` solves it without a hub, and pays for that
+in complexity: a separate grow-only ledger, per-cell `max` joins, and a
+careful day boundary — because two devices merging counters can otherwise
+ratchet the family's day forward and hand out a second budget that no parent
+action reverses.
+
+**Reconsider that scope before building it.** The owner's question was how
+YouTube manages this without any of it, and the answer is that Google has one
+always-on server every device authenticates to, so there is only ever one
+copy of the number and nothing to merge. We have that too, when a hub exists.
+So the smaller feature is: **a shared budget REQUIRES a hub.** The hub is the
+single copy, devices ask it at session start and report as they spend, and
+its clock settles the day. No merge arithmetic, no competing counters, and no
+route by which a television with a wrong clock grants a second day. Families
+with no hub keep per-device budgets, and the setting says so rather than
+being silently absent.
+
+That version is a fraction of the work and loses only the case of a family
+who wants a shared budget and refuses to run a hub. Decide between the two
+before starting; do not start from the plan's ledger by default. *Medium
+either way, and much smaller if the hub is required.*
+
 ---
 
 ## 3. Known-wrong docs
