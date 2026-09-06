@@ -21,7 +21,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.yosemitekids.app.data.ConfigJson
@@ -1137,10 +1140,10 @@ private fun AdminScreen(
             when (p) {
                 SettingsPage.Kids -> {
                     // The app bar already carries this page name.
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(16.dp))
                     // Unpadded: the rows run edge to edge with dividers
                     // between them, and "Add a kid" is the last row of the
-                    // same card (raw-kids.png), not a button under it.
+                    // same card (full-02-kids.png), not a button under it.
                     SettingsCard(padded = false) {
                         KidsSection(profiles, onOpen = { kid, isNew -> openKid = kid to isNew })
                     }
@@ -1150,11 +1153,13 @@ private fun AdminScreen(
                     // here": a single kid's pause is on their page, and the
                     // family pause is on the settings home.
                     Text(
-                        "A kid's page holds their profile, screen-time rules and " +
-                            "today's extras. The pause that stops everyone is on the " +
+                        "A kid’s page holds their profile, screen-time rules and " +
+                            "today’s extras. The pause that stops everyone is on the " +
                             "settings home.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.bodySmall
+                            .copy(fontSize = 12.5.sp, lineHeight = 20.5.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp)
                     )
                 }
                 SettingsPage.Channels -> {
@@ -1353,18 +1358,29 @@ private fun AdminScreen(
                     // is what a parent checks; the fields are for the day it is
                     // set up, and live one tap in.
                     SettingsCard(padded = false) {
-                        Column(Modifier.padding(horizontal = 16.dp)) {
+                        Column(Modifier.padding(horizontal = 12.dp)) {
+                            // The status line in its own tone: green when the
+                            // model actually answers, amber while anything is
+                            // still missing. Grey said "connected" and "no API
+                            // key yet" in the same voice.
+                            val link = aiLink
                             ValueRow(
                                 aiProviderName(ai.baseUrl) ?: "Not set up",
-                                aiLink ?: "Checking…",
-                                onClick = { openAiConnection = true }
+                                link ?: "Checking…",
+                                onClick = { openAiConnection = true },
+                                summaryColor = when {
+                                    link == null || link == "Checking…" -> null
+                                    link.startsWith("Connected · ") && ai.model.isNotBlank() ->
+                                        SettingsSuccess
+                                    else -> WarningAmber
+                                }
                             )
                         }
                     }
 
                     SectionTitle("The two features")
                     SettingsCard(padded = false) {
-                        Column(Modifier.padding(horizontal = 16.dp)) {
+                        Column(Modifier.padding(horizontal = 12.dp)) {
                             AiScreeningSection(ai, profiles, onChanged = { ai = it })
                             SettingsDivider()
                             // What screening has actually produced, stated on the
@@ -1379,10 +1395,13 @@ private fun AdminScreen(
                                 onClick = { openReview = true }
                             )
                             SettingsDivider()
+                            // One line, and the count stated plainly at zero
+                            // too: "None" made an empty list look like a
+                            // missing feature. What blocking means is on the
+                            // page the row opens.
                             ValueRow(
                                 "Blocked videos",
-                                "Never shown to the kids",
-                                value = blocked.size.let { if (it == 0) "None" else "$it blocked" },
+                                value = "${blocked.size} blocked",
                                 onClick = { openBlocked = true }
                             )
                             SettingsDivider()
@@ -1420,30 +1439,82 @@ private fun AdminScreen(
                         onOpenHub = { openHub = true },
                         onAddDevice = { openAddDevice = true }
                     )
-                    SectionTitle("Activity")
+                    // No label over it: the digest card is one more thing about
+                    // the same devices, not a second subject.
+                    Spacer(Modifier.height(18.dp))
                     SettingsCard(padded = false) {
-                        Column(Modifier.padding(horizontal = 16.dp)) {
-                            Spacer(Modifier.height(10.dp))
-                            VersionLine(configStore, refreshKey = currentHash)
+                        Column(Modifier.padding(horizontal = 12.dp)) {
                             // Per-device Stats answers "what's happening
                             // today"; this answers "how did the week go"
                             // across every device.
                             ValueRow(
-                                "Weekly digest", "How the week went, across every device",
+                                "Weekly digest",
+                                "What everyone watched, and every change made",
                                 onClick = { digestOpen = true }
                             )
-                            SettingsDivider()
-                            // Who changed what. Nothing like this existed, so
-                            // "why did the TV change?" and "did my edit stick?"
-                            // were simply unanswerable — a parent's only
-                            // recourse was comparing two screens by eye.
-                            ValueRow(
-                                "Recent changes",
-                                latestChangeLine(baseline.sync.log)
-                                    ?: "No settings changes recorded yet.",
-                                onClick = { activityOpen = true }
-                            )
                         }
+                        SettingsDivider()
+                        // Who changed what. Nothing like this existed, so
+                        // "why did the TV change?" and "did my edit stick?"
+                        // were simply unanswerable — a parent's only recourse
+                        // was comparing two screens by eye. The newest few are
+                        // on the card now rather than the latest one alone:
+                        // three lines answer the question outright, where one
+                        // line and a chevron only promised to.
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Recent changes",
+                                    fontSize = 12.5.sp, fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "See all",
+                                    fontSize = 12.5.sp, fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .tvFocusHighlight(cornerRadius = 8.dp)
+                                        .clickable { activityOpen = true }
+                                )
+                            }
+                            Spacer(Modifier.height(9.dp))
+                            val recent = baseline.sync.log.takeLast(3).reversed()
+                            if (recent.isEmpty()) {
+                                Text(
+                                    "No settings changes recorded yet.",
+                                    fontSize = 12.5.sp, lineHeight = 19.sp,
+                                    color = SettingsTextSecondary
+                                )
+                            } else recent.forEachIndexed { i, c ->
+                                if (i > 0) Spacer(Modifier.height(7.dp))
+                                Text(
+                                    buildAnnotatedString {
+                                        append(
+                                            listOf(c.who.trim(), c.text)
+                                                .filter { it.isNotBlank() }.joinToString(" ")
+                                        )
+                                        // shownAt, not at: the stamp is forced
+                                        // monotonic, and `at` can be a time
+                                        // that never happened.
+                                        changeAge(c.shownAt.takeIf { it > 0 } ?: c.at)?.let { age ->
+                                            withStyle(SpanStyle(color = SettingsPlaceholder)) {
+                                                append("  ·  $age")
+                                            }
+                                        }
+                                    },
+                                    fontSize = 12.5.sp, lineHeight = 19.sp,
+                                    color = SettingsTextSecondary
+                                )
+                            }
+                        }
+                    }
+                    // Which settings these are, and when they were last
+                    // edited — under the card as a footer, where a fingerprint
+                    // being read out loud belongs.
+                    Spacer(Modifier.height(11.dp))
+                    Column(Modifier.padding(horizontal = 4.dp)) {
+                        VersionLine(configStore, refreshKey = currentHash)
                     }
                 }
                 SettingsPage.Playback -> {
