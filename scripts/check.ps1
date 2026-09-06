@@ -623,6 +623,27 @@ foreach ($r in $lanRoutes) {
     }
 }
 
+# 23. The browser mints no identifiers.
+#     A kid id is a merge key - `kid|<id>`, and the key of every per-kid
+#     overlay, grant, verdict and device assignment filed under that child.
+#     The GUI minted them from the clock (the low eight hex of Date.now()),
+#     which is sequential, guessable and identical for two kids added in the
+#     same millisecond on two faces of one household. A collision does not
+#     fail; it merges two children into one profile with one set of rules.
+#     Reading a clock in the browser is still fine and will be needed (the
+#     hub takes a grant's local date from the parent's browser on purpose,
+#     PLAN-hub-parity D22) - minting an id from one is not.
+$hubUiPath = "hub/src/main/resources/web/index.html"
+$hubUi = Get-Content $hubUiPath -Raw
+foreach ($mint in @('toString(16)', 'Math.random', 'randomUUID')) {
+    if ($hubUi.Contains($mint)) {
+        Fail-Guard "$hubUiPath mints an id with $mint. Ids are merge keys: leave the id off and let HubWeb mint it with Profile.newId(), or two faces of one household collide and two children become one profile."
+    }
+}
+if (-not (Select-String -Path "hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt" -Pattern 'Profile.newId(' -SimpleMatch -Quiet)) {
+    Fail-Guard "HubWeb no longer mints kid ids with Profile.newId(). Something has to: the browser deliberately sends a kid with no id at all."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan

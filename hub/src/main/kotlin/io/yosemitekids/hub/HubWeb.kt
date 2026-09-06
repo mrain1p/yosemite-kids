@@ -6,6 +6,7 @@ import io.yosemitekids.app.data.ChannelIndex
 
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.Page
+import io.yosemitekids.app.data.Profile
 import io.yosemitekids.app.data.SettingsSurface
 import io.yosemitekids.app.data.SourceKind
 import io.yosemitekids.app.data.Whitelist
@@ -175,9 +176,39 @@ object HubWeb {
         store.edit(who, now) { current ->
             val doc = JSONObject(ConfigJson.toJson(current))
             keys.forEach { doc.put(it, patch.get(it)) }
+            mintKidIds(doc)
             ConfigJson.fromJson(scrubPatch(doc).toString())
         }
         return true
+    }
+
+    /**
+     * Give every kid the browser sent without an id a real one.
+     *
+     * A kid id is merge-key material — `kid|<id>`, and the key of every
+     * per-kid overlay, device assignment, grant and verdict filed under that
+     * child. The GUI minted them in the browser from the clock, as the low
+     * eight hex of `Date.now()`: sequential, guessable, and identical for two
+     * kids added in the same millisecond on two faces of the same household.
+     * A collision there does not fail; it merges two children into one
+     * profile with one set of rules. [Profile.newId] is four CSPRNG bytes,
+     * which is what the phone has always used.
+     *
+     * An id that arrived is kept exactly as it is, whatever its shape: moving
+     * one would orphan every stamp and overlay under it, so the clock-minted
+     * ids families already have stay. Only a blank one, or a duplicate of an
+     * id already used earlier in the same array, is replaced.
+     */
+    private fun mintKidIds(doc: JSONObject) {
+        val arr = doc.optJSONArray("profiles") ?: return
+        val seen = mutableSetOf<String>()
+        for (i in 0 until arr.length()) {
+            val kid = arr.optJSONObject(i) ?: continue
+            val given = kid.optString("id")
+            val id = if (given.isNotBlank() && seen.add(given)) given else Profile.newId()
+            seen += id
+            kid.put("id", id)
+        }
     }
 
     /**

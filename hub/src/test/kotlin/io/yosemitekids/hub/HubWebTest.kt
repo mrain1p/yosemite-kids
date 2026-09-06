@@ -307,6 +307,66 @@ class HubWebTest {
         assertFalse(java.io.File(tmp.root, "hub/config.json").readText().contains("sk-nope"))
     }
 
+    // --- kid ids ----------------------------------------------------------
+
+    @Test
+    fun aKidAddedInTheBrowserTakesItsIdFromTheHub() {
+        // The GUI used to mint the id itself, as the low eight hex of
+        // Date.now(): sequential, guessable, and the same on two faces that
+        // added a kid in the same millisecond. An id is a merge key, so a
+        // collision does not fail — it merges two children into one profile
+        // with one set of rules.
+        val session = signIn()!!
+        val kid = JSONObject().put("name", "Leo").put("age", 6)
+        val body = JSONObject().put("profiles", org.json.JSONArray().put(kid)).toString()
+        assertEquals(200, post("/api/config", body, session).first)
+
+        val stored = store.load().profiles.single()
+        assertEquals("Leo", stored.name)
+        assertTrue(
+            "a kid id must be Profile.newId()'s shape: eight lowercase hex",
+            Regex("^[0-9a-f]{8}$").matches(stored.id)
+        )
+        // And it is the key the rest of the document is filed under.
+        assertTrue(store.load().sync.at.keys.any { it.endsWith(stored.id) })
+    }
+
+    @Test
+    fun anExistingKidsIdIsNeverRewritten() {
+        // Moving one would orphan every stamp, overlay, grant and device
+        // assignment filed under it — including the clock-minted ids families
+        // already have.
+        val session = signIn()!!
+        val kid = JSONObject().put("id", "1a2b3c4d").put("name", "Noa")
+        post("/api/config", JSONObject().put("profiles", org.json.JSONArray().put(kid)).toString(), session)
+        assertEquals("1a2b3c4d", store.load().profiles.single().id)
+
+        post(
+            "/api/config",
+            JSONObject().put(
+                "profiles",
+                org.json.JSONArray().put(JSONObject().put("id", "1a2b3c4d").put("name", "Noa B"))
+            ).toString(),
+            session
+        )
+        val after = store.load().profiles.single()
+        assertEquals("1a2b3c4d", after.id)
+        assertEquals("Noa B", after.name)
+    }
+
+    @Test
+    fun twoKidsCannotShareAnId() {
+        val session = signIn()!!
+        val kids = org.json.JSONArray()
+            .put(JSONObject().put("id", "deadbeef").put("name", "Leo"))
+            .put(JSONObject().put("id", "deadbeef").put("name", "Noa"))
+        assertEquals(200, post("/api/config", JSONObject().put("profiles", kids).toString(), session).first)
+
+        val ids = store.load().profiles.map { it.id }
+        assertEquals("both kids must survive", 2, ids.size)
+        assertEquals("with ids of their own", 2, ids.toSet().size)
+    }
+
     @Test
     fun aPatchNamingNothingSettableIsRefused() {
         val session = signIn()!!

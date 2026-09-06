@@ -547,6 +547,25 @@ for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/d
     guard_fail "LanServer answers $r and the hub neither implements it nor names it in HubServer.DEVICE_ONLY — its catch-all would hand a device the admin page with a 200."
 done
 
+# 23. The browser mints no identifiers.
+#     A kid id is a merge key — `kid|<id>`, and the key of every per-kid
+#     overlay, grant, verdict and device assignment filed under that child.
+#     The GUI minted them from the clock (the low eight hex of Date.now()),
+#     which is sequential, guessable and identical for two kids added in the
+#     same millisecond on two faces of one household. A collision does not
+#     fail; it merges two children into one profile with one set of rules.
+#     Reading a clock in the browser is still fine and will be needed (the
+#     hub takes a grant's local date from the parent's browser on purpose,
+#     PLAN-hub-parity D22) — minting an id from one is not.
+huihtml=hub/src/main/resources/web/index.html
+for mint in 'toString(16)' 'Math.random' 'randomUUID'; do
+  if grep -qF "$mint" "$huihtml"; then
+    guard_fail "$huihtml mints an id with $mint. Ids are merge keys: leave the id off and let HubWeb mint it with Profile.newId(), or two faces of one household collide and two children become one profile."
+  fi
+done
+grep -q "Profile.newId(" hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt ||
+  guard_fail "HubWeb no longer mints kid ids with Profile.newId(). Something has to: the browser deliberately sends a kid with no id at all."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"

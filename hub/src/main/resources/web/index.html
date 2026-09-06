@@ -365,9 +365,11 @@
     add.appendChild(button("Add a kid", "primary", function () {
       var n = nameIn.value.trim();
       if (!n) return Promise.resolve();
-      var id = String(Date.now().toString(16)).slice(-8);
+      // No id: the hub mints it. A kid id is a merge key, and one taken from
+      // the clock in here collides with one the phone minted the same
+      // millisecond — which merges two children into one profile.
       var next = kids().concat([{
-        id: id, name: n, color: 4293467747, avatar: "🙂", age: 6,
+        name: n, color: 4293467747, avatar: "🙂", age: 6,
         limits: { session: 15, weekdaySessions: 4, weekendSessions: 6, breakMinutes: 5 }
       }]);
       return patch({ profiles: next });
