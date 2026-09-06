@@ -145,6 +145,20 @@ object ConfigJson {
                 // Append-only-when-set, same reasoning — and it must be in the
                 // hash so the offline reconcile re-pushes a rate change.
                 w.listenPercent?.let { append(";LN:"); append(it) }
+                // Append-only-when-set, at the tail like every field since.
+                // It has to move the hash: the offline reconcile only
+                // re-pushes on a mismatch, and a grant that didn't would never
+                // reach the TV that slept through the tap — which is the whole
+                // reason grants moved into the config. Sorted by id so two
+                // phones holding the same taps hash alike; `at` is display
+                // only and left out.
+                if (w.grants.isNotEmpty()) {
+                    append(";G:")
+                    w.grants.sortedBy { it.id }.forEach { g ->
+                        append(g.id); append(','); append(g.kidId ?: ""); append(',')
+                        append(g.date); append(','); append(g.minutes); append(';')
+                    }
+                }
             }
             return java.security.MessageDigest.getInstance("SHA-256")
                 .digest(canonical.toByteArray())
@@ -242,6 +256,11 @@ object ConfigJson {
             if (w.showVideoAge) root.put("showVideoAge", true)
             // Written only when set — absent means listening off (see Whitelist).
             w.listenPercent?.let { root.put("listen", it) }
+            // Only when a parent has added time: a family that never does keeps
+            // its bytes. An older build parses past it, and its merge rebuilds
+            // from its own root, so the key does not survive a hop through one
+            // — the LAN grant is that build's path (see LanServer /grant).
+            if (w.grants.isNotEmpty()) root.put("grants", JSONArray(grantsToJson(w.grants)))
             // Last, and only when there is anything to say: a family that has
             // never edited since upgrading writes a byte-identical file, so no
             // fingerprint moves and no fleet-wide re-push fires at upgrade.
@@ -371,6 +390,59 @@ object ConfigJson {
             }
         }.getOrDefault(emptyList())
 
+        /**
+         * Grants as a JSON array string — the config's `grants` key, and also
+         * the SharedPreferences form SessionGuard keeps of the ones it has
+         * taken, exactly as windows are shared between the two.
+         */
+        fun grantsToJson(grants: List<Grant>): String =
+            JSONArray().apply {
+                grants.forEach { g ->
+                    put(JSONObject().apply {
+                        put("id", g.id)
+                        // Omitted for everyone: absent is the family-wide case.
+                        g.kidId?.let { put("kid", it) }
+                        put("date", g.date)
+                        put("minutes", g.minutes)
+                        put("at", g.at)
+                    })
+                }
+            }.toString()
+
+        /**
+         * Per-grant, like windows: one malformed entry (a newer build's shape)
+         * drops alone rather than costing the family the whole config. The id
+         * and the date are checked against the shapes the app mints, because
+         * both become delimiters downstream — the id in the `grant|<id>` merge
+         * key and the fingerprint, the date in the fingerprint — and a stray
+         * `|` or `;` there would let two different documents hash alike.
+         */
+        fun grantsFromJson(text: String?): List<Grant> = runCatching {
+            val arr = JSONArray(text ?: return emptyList())
+            (0 until arr.length()).mapNotNull { i ->
+                runCatching {
+                    val g = arr.getJSONObject(i)
+                    val id = g.getString("id")
+                    val date = g.getString("date")
+                    val minutes = g.getInt("minutes")
+                    if (!GRANT_ID.matches(id) || !GRANT_DATE.matches(date) || minutes <= 0) {
+                        return@runCatching null
+                    }
+                    Grant(
+                        id = id,
+                        kidId = g.optString("kid").ifEmpty { null },
+                        date = date,
+                        minutes = minutes,
+                        at = g.optLong("at", 0L)
+                    )
+                }.getOrNull()
+            }
+        }.getOrDefault(emptyList())
+
+        /** [Profile.newId]'s shape, which is what every tap mints and what `POST /grant` accepts. */
+        private val GRANT_ID = Regex("[0-9a-f]{8}")
+        private val GRANT_DATE = Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
         private fun limitsFromJson(lo: JSONObject): Limits {
             fun opt(name: String): Int? = if (lo.has(name)) lo.getInt(name) else null
             // A config written before windows existed carries only the bedtime
@@ -497,6 +569,9 @@ object ConfigJson {
                 qualityPhone = root.optInt("qualityPhone", 0).takeIf { it in PLAYBACK_QUALITIES },
                 pageSize = root.optInt("pageSize", 0).takeIf { it in PAGE_SIZES },
                 showVideoAge = root.optBoolean("showVideoAge", false),
+                // Per-entry lenient, like the sync blob below: a grant a build
+                // cannot read costs the kid those minutes, never the config.
+                grants = grantsFromJson(root.optJSONArray("grants")?.toString()),
                 // Outside the throwing path on purpose: a malformed or
                 // future-versioned blob must cost the family its bookkeeping,
                 // never its channels. See ConfigMerge.syncFromJson.

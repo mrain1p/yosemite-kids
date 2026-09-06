@@ -295,6 +295,15 @@ data class Whitelist(
      */
     val showVideoAge: Boolean = false,
     /**
+     * Extra minutes parents have handed out ("Add time"), one entry per tap.
+     * In the config so a device that slept through the tap finds them at its
+     * next sync; the direct LAN grant is only the fast path, and it carries
+     * the same id so nothing counts a tap twice. Only today's count on a
+     * device ([grantsFor]); days that have passed are tombstoned by the
+     * stamper on the next save. See [Grant].
+     */
+    val grants: List<Grant> = emptyList(),
+    /**
      * Sync bookkeeping: when each part of this config was last edited, what
      * has been deleted, and the recent change log. Never enforced, never read
      * by a screen — it exists so two parents' edits can be merged instead of
@@ -305,6 +314,9 @@ data class Whitelist(
     val sync: SyncMeta = SyncMeta.EMPTY
 ) {
     fun profile(id: String?): Profile? = profiles.firstOrNull { it.id == id }
+
+    /** The grants that give [profileId] extra minutes on [date] — see [Grants.forKid]. */
+    fun grantsFor(profileId: String?, date: String): List<Grant> = Grants.forKid(grants, profileId, date)
 
     /**
      * Effective screen-time rules for one kid. Two pauses can apply: the

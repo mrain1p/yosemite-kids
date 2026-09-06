@@ -377,8 +377,13 @@ object PairingWindow {
  */
 class LanServer(
     private val configStore: ConfigStore,
-    /** Applies a grant to the right kid's guard (null profile = legacy/active). */
-    private val grantHandler: (minutes: Int, profileId: String?) -> Unit,
+    /**
+     * Applies a grant to the right kid's guard (null profile = legacy/active).
+     * [grant] is the config-carried form of the same tap when the phone is
+     * new enough to mint one; null from a build that predates grants in the
+     * config, which only ever sent minutes.
+     */
+    private val grantHandler: (minutes: Int, profileId: String?, grant: Grant?) -> Unit,
     private val pairingStore: PairingStore,
     /** Stats for one kid (`?profile=`), or the device's current kid when null. */
     private val statsProvider: (profileId: String?) -> String = { "{}" },
@@ -952,8 +957,17 @@ class LanServer(
             method == "POST" && path == "/grant" -> {
                 val minutes = Regex("minutes=(\\d+)").find(target)?.groupValues?.get(1)?.toIntOrNull()
                 val profileId = Regex("profile=([0-9a-f]{8})").find(target)?.groupValues?.get(1)
+                // The fast path of a tap the config also carries: the same id,
+                // so the guard counts it once however it hears. Shapes are
+                // pinned (8 hex, yyyy-mm-dd) because both become delimiters
+                // in the merge key and the fingerprint. A phone that sends no
+                // id is an older build; its grant is applied the legacy way.
+                val id = Regex("id=([0-9a-f]{8})").find(target)?.groupValues?.get(1)
+                val date = Regex("date=([0-9]{4}-[0-9]{2}-[0-9]{2})").find(target)?.groupValues?.get(1)
+                val at = Regex("at=([0-9]{1,16})").find(target)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
                 if (minutes != null && minutes in 1..240) {
-                    grantHandler(minutes, profileId)
+                    val grant = if (id != null && date != null) Grant(id, profileId, date, minutes, at) else null
+                    grantHandler(minutes, profileId, grant)
                     respond(200, "granted")
                 } else respond(400, "bad minutes")
             }
@@ -1457,11 +1471,22 @@ object LanClient {
             }.getOrDefault(false)
         }
 
-    suspend fun grant(device: PairedDevice, minutes: Int, profileId: String? = null): Boolean =
+    /**
+     * The fast path for a device that is awake: the tap lands now rather than
+     * at its next sync. [grant] rides along so the device counts this tap
+     * once whichever arrives first, the call or the config that carries it.
+     */
+    suspend fun grant(
+        device: PairedDevice,
+        minutes: Int,
+        profileId: String? = null,
+        grant: Grant? = null
+    ): Boolean =
         withContext(Dispatchers.IO) {
             val profileParam = profileId?.let { "&profile=$it" } ?: ""
+            val grantParam = grant?.let { "&id=${it.id}&date=${it.date}&at=${it.at}" } ?: ""
             runCatching {
-                request(device, "POST", "/grant?minutes=$minutes$profileParam", "")
+                request(device, "POST", "/grant?minutes=$minutes$profileParam$grantParam", "")
                     .use { it.isSuccessful }
             }.getOrDefault(false)
         }

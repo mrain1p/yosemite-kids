@@ -110,7 +110,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         if (LanServerHolder.server == null) {
             LanServerHolder.server = LanServer(
                 configStore,
-                grantHandler = { minutes, profileId ->
+                grantHandler = { minutes, profileId, grant ->
                     // Route the grant to the named kid's guard; unnamed grants
                     // (older admin phones) land on whoever this device shows.
                     // An explicit id stays unvalidated on purpose — a grant can
@@ -118,11 +118,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     // (new) kid.
                     val here = kidHere(ConfigStore(appContext).load())
                     val target = profileId ?: here
-                    SessionGuard(appContext, profileNs.suffixFor(target))
-                        .grantExtraMinutes(minutes)
+                    val guard = SessionGuard(appContext, profileNs.suffixFor(target))
+                    // A tap the config also carries is counted by id, so the
+                    // config landing later adds nothing; a legacy call has no
+                    // id and is applied as it always was.
+                    val fresh = if (grant != null) guard.applyGrant(grant)
+                    else { guard.grantExtraMinutes(minutes); true }
                     // Only the kid the minutes belong to hears about them —
                     // a grant aimed at their sibling is not their news.
-                    if (target == here) KidNotices.post(KidNotices.grant(minutes))
+                    if (fresh && target == here) KidNotices.post(KidNotices.grant(minutes))
                 },
                 pairingStore,
                 statsProvider = { profileId -> io.yosemitekids.app.data.Stats.build(appContext, profileId) },

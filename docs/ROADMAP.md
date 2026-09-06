@@ -105,12 +105,6 @@ rather than how reliably things happen — today a kid who wants a channel has t
 physically find a parent. Needs a LAN route, a durable queue surviving both
 devices sleeping, and a notification channel. *Large.*
 
-**F. Grants are fire-and-forget.** A sleeping TV misses bonus minutes entirely.
-The receipt is at least honest now ("Granted N min here + K device(s)", so K=0 is
-visible), but the fix — carry bonus minutes in the config — now rides merge
-machinery that exists. Drop "pause" from the old wording; that half is done.
-*Medium.*
-
 **G. Version, last sync and role on every device row — done on the phone;
 the hub's half remains.** The phone's rows show each device's version, and
 **starting a device's update from the phone shipped 2026-09-05**: `POST

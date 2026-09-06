@@ -403,6 +403,20 @@ if grep -qE 'configStore\.save\(' "$settings" && [ "$(grep -cE 'configStore\.sav
   guard_fail "Settings.kt calls configStore.save() directly more than once (the kid migration before the form exists is the one allowed). The form's saves go through saveForm() so the stamped result is adopted."
 fi
 
+# 16. Today's bonus minutes come from two stores, each read in exactly one
+#     place. The legacy LAN grant lands in prefs "bonusMs"; the config's
+#     grants are taken by id into prefs "grants". SessionGuard.bonusMs() is
+#     the one sum. A second reader of either store would add the two up its
+#     own way, and the settings root, the stats screen and the enforcement
+#     path could then disagree about how much time a kid has today.
+guardsrc=app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt
+for pair in 'getLong("bonusMs"' 'getString("grants"'; do
+  reads=$(grep -cF "$pair" "$guardsrc" || true)
+  if [ "$reads" -ne 1 ]; then
+    guard_fail "SessionGuard.kt reads $pair in $reads places (must be exactly one). Sum the two stores in bonusMs() and read that."
+  fi
+done
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/5 compile (assembleDebug)"

@@ -35,6 +35,26 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         /** Deliberately parent-attributed, so the kid doesn't read it as a bug. */
         private const val PAUSED_MESSAGE =
             "A parent paused screen time for today. See you tomorrow 💛"
+
+        /**
+         * The day's allowance in ms: sittings × length, plus [bonusMs]. Null
+         * when no limit is set. Pure, so a JVM test can hold a config-carried
+         * grant against the budget without a Context.
+         */
+        internal fun budgetMs(l: Limits, weekend: Boolean, bonusMs: Long): Long? {
+            val perSession = l.sessionMinutes ?: return null
+            val count = (if (weekend) l.weekendSessions else l.weekdaySessions) ?: return null
+            return perSession * count * 60_000L + bonusMs
+        }
+
+        /**
+         * Today's extra time from both places it can come from: the legacy
+         * LAN grant (an older phone, a plain number of ms) and the grants the
+         * config carries, taken by id. One number, so the settings root, the
+         * stats screen and the enforcement paths cannot disagree about it.
+         */
+        internal fun bonusMs(legacyBonusMs: Long, grants: List<Grant>): Long =
+            legacyBonusMs + grants.sumOf { it.minutes } * 60_000L
     }
 
     // ---- limits config (persisted at whitelist refresh) ----
@@ -97,22 +117,63 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
 
 
     /** Daily watch budget in ms (incl. parent-granted bonus), or null when not configured. */
-    private fun dailyBudgetMs(l: Limits): Long? {
-        val perSession = l.sessionMinutes ?: return null
-        val count = (if (isWeekend()) l.weekendSessions else l.weekdaySessions) ?: return null
-        return perSession * count * 60_000L + prefs.getLong("bonusMs", 0)
-    }
+    private fun dailyBudgetMs(l: Limits): Long? = budgetMs(l, isWeekend(), bonusMs())
+
+    // The two bonus stores are each read in exactly one place — guard 16 in
+    // scripts/check.* holds it to that — so the LAN path and the config path
+    // can never be summed differently by two callers.
+    private fun legacyBonusMs(): Long = prefs.getLong("bonusMs", 0)
+    private fun knownGrants(): List<Grant> = ConfigJson.grantsFromJson(prefs.getString("grants", null))
+    private fun bonusMs(): Long = bonusMs(legacyBonusMs(), knownGrants())
 
     /**
-     * Parent grant: adds minutes to today's budget, ends any break lock, starts a
-     * fresh sitting, and waives every blocked window for the granted minutes.
-     * Resets at midnight.
+     * Parent grant from a build that predates grants in the config (`POST
+     * /grant` with no id): adds minutes to today's budget, ends any break
+     * lock, starts a fresh sitting, and waives every blocked window for the
+     * granted minutes. Resets at midnight.
      */
     fun grantExtraMinutes(minutes: Int) {
         rolloverIfNewDay()
+        prefs.edit()
+            .putLong("bonusMs", legacyBonusMs() + minutes * 60_000L)
+            .apply()
+        lift(minutes)
+    }
+
+    /**
+     * Take the config's grants for this kid — the same effects as
+     * [grantExtraMinutes], counted by id. Idempotent: a grant the LAN fast
+     * path already delivered adds nothing when the config carrying it lands,
+     * and vice versa, so the two paths can never disagree about today's
+     * budget. Other days are ignored outright — expiry belongs to the
+     * stamper (the phone's next save tombstones them) and to midnight here.
+     * Returns what was new, so the caller can tell the kid.
+     */
+    fun applyGrants(grants: List<Grant>): List<Grant> {
+        rolloverIfNewDay()
+        val today = Grants.dateOf(System.currentTimeMillis())
+        val fresh = Grants.unseen(knownGrants(), grants.filter { it.date == today }).distinctBy { it.id }
+        if (fresh.isEmpty()) return fresh
+        prefs.edit()
+            .putString("grants", ConfigJson.grantsToJson(knownGrants() + fresh))
+            .apply()
+        lift(fresh.sumOf { it.minutes })
+        return fresh
+    }
+
+    /** One grant, however it arrived. True when it was new here. */
+    fun applyGrant(grant: Grant): Boolean = applyGrants(listOf(grant)).isNotEmpty()
+
+    /**
+     * What extra minutes buy beyond the budget: the break lock ends, a fresh
+     * sitting starts, and every blocked window is waived for that long. The
+     * pass runs from now, not from the tap — a TV that wakes ten minutes
+     * after "20 more minutes" still gives the kid twenty, which is what the
+     * parent meant.
+     */
+    private fun lift(minutes: Int) {
         val now = System.currentTimeMillis()
         prefs.edit()
-            .putLong("bonusMs", prefs.getLong("bonusMs", 0) + minutes * 60_000L)
             .putLong("lockUntil", 0)
             .putLong("sittingWatchedMs", 0)
             .putLong(
@@ -350,6 +411,10 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
                 .putLong("sittingWatchedMs", 0)
                 .putLong("lockUntil", 0)
                 .putLong("bonusMs", 0)
+                // Yesterday's grants are yesterday's; the config's copies
+                // expire on the phone's next save, and applyGrants ignores
+                // any other day, so nothing can put them back here.
+                .remove("grants")
                 .putLong("windowPassUntil", 0)
                 .putLong("breakPassSpent", 0)
                 .apply()
@@ -370,12 +435,14 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
      * as total − remaining with a total that ignored the bonus, and read
      * "110 min left today" over "0 of 90 min used" the moment a parent granted
      * twenty minutes.
+     *
+     * [grants] are the config's for this kid ([Whitelist.grantsFor]); a caller
+     * holding the config passes them so a device that has only just synced
+     * counts them here and now, not on its next refresh.
      */
-    fun dailyBudgetMin(l: Limits): Int? {
-        rolloverIfNewDay()
-        val perSession = l.sessionMinutes ?: return null
-        val count = (if (isWeekend()) l.weekendSessions else l.weekdaySessions) ?: return null
-        return ((perSession * count * 60_000L + prefs.getLong("bonusMs", 0)) / 60_000L).toInt()
+    fun dailyBudgetMin(l: Limits, grants: List<Grant> = emptyList()): Int? {
+        applyGrants(grants)
+        return budgetMs(l, isWeekend(), bonusMs())?.let { (it / 60_000L).toInt() }
     }
 
     /** Minutes watched today on this device, bonus or not. */
@@ -384,12 +451,10 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         return (prefs.getLong("dailyWatchedMs", 0) / 60_000L).toInt()
     }
 
-    fun remainingTodayMin(l: Limits): Int? {
-        rolloverIfNewDay()
+    fun remainingTodayMin(l: Limits, grants: List<Grant> = emptyList()): Int? {
+        applyGrants(grants)
         if (isPaused(l)) return 0
-        val perSession = l.sessionMinutes ?: return null
-        val count = (if (isWeekend()) l.weekendSessions else l.weekdaySessions) ?: return null
-        val budget = perSession * count * 60_000L + prefs.getLong("bonusMs", 0)
+        val budget = budgetMs(l, isWeekend(), bonusMs()) ?: return null
         return ((budget - prefs.getLong("dailyWatchedMs", 0)).coerceAtLeast(0) / 60_000L).toInt()
     }
 
@@ -439,7 +504,9 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         return Snapshot(
             watchedTodayMin = (watched / 60_000).toInt(),
             budgetTodayMin = budget?.let { (it / 60_000).toInt() },
-            bonusTodayMin = (prefs.getLong("bonusMs", 0) / 60_000).toInt(),
+            // Through the one sum, or the stats screen would count the LAN
+            // grants and not the config-carried ones (guard 16).
+            bonusTodayMin = (bonusMs() / 60_000).toInt(),
             sittingWatchedMin = (prefs.getLong("sittingWatchedMs", 0) / 60_000).toInt(),
             sittingCapMin = l.sessionMinutes,
             state = state,

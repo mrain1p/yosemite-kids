@@ -293,7 +293,7 @@ class ConfigStore internal constructor(
                 previous = previous,
                 base = base ?: previous,
                 next = w,
-                now = System.currentTimeMillis(),
+                now = System.currentTimeMillis(), today = Grants.dateOf(System.currentTimeMillis()),
                 who = who,
                 by = by
             )
@@ -331,7 +331,7 @@ class ConfigStore internal constructor(
                 rememberSecrets(w)
                 val stamped = ConfigStamp.stamped(
                     previous = previous, base = previous, next = w,
-                    now = System.currentTimeMillis(), who = who, by = by
+                    now = System.currentTimeMillis(), today = Grants.dateOf(System.currentTimeMillis()), who = who, by = by
                 )
                 commit(ConfigJson.toJson(stamped.config))
                 stamped.config

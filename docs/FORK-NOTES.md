@@ -804,6 +804,17 @@ included — those are what a later reader would otherwise re-investigate.
   `baseline` assigned in `adopt` and nowhere else. Not yet walked through
   the emulator with two phones' edits under one open form.
 
+- **Bonus minutes travel in the config (1.0.5).** "Add time" was a LAN call
+  and nothing else, so a TV asleep at the tap never heard of the minutes.
+  Each tap is now a stamped unit of the config (`grant|<id>`, one per tap,
+  merged like a channel), so it reaches every device by the same path as
+  every rule; the LAN call stays as the fast path for awake devices and
+  carries the same id, so a device counts a tap once whichever arrives
+  first. Two phones granting on one day both land and add up. A day that
+  has passed is tombstoned by the phone's next save (the hub judges no
+  day: its clock is UTC and the family's is not). `SessionGuard` sums both
+  stores in one place; guard 16 holds it there. The Add-time row says where
+  the minutes go. `GrantsTest`, `SessionGuardBudgetTest`.
 ## Next up, in order
 
 These are decided, not merely noticed. The numbered lists below are the
