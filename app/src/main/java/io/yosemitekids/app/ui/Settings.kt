@@ -854,6 +854,14 @@ private fun AdminScreen(
             }.getOrDefault(0)
         }
     }
+    // When the last export was, for the backup row's state. Off the main
+    // thread for the same reason: it is a SharedPreferences read.
+    val lastBackupAt by produceState(0L, configEpoch) {
+        value = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { io.yosemitekids.app.data.Backup.lastExportedAt(settingsContext) }
+                .getOrDefault(0L)
+        }
+    }
 
     var openKid by remember { mutableStateOf<Pair<io.yosemitekids.app.data.Profile, Boolean>?>(null) }
     openKid?.let { (kid, isNew) ->
@@ -1521,17 +1529,23 @@ private fun AdminScreen(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(24.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Parent settings",
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
-                )
-            }
+        // The same 52dp bar every page under this one wears, so the root does
+        // not announce itself in a different voice from its own children.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 6.dp)
+        ) {
+            Text(
+                "Parent settings",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+            )
             TextButton(modifier = Modifier.tvFocusHighlight(), onClick = ::close) { Text("Done") }
         }
+        SettingsDivider()
+        Column(Modifier.padding(horizontal = 14.dp)) {
+        Spacer(Modifier.height(14.dp))
         // "Your change lost." Found here rather than raised: a background
         // sweep does not get to interrupt a parent, and this is the first
         // place they look after one. One banner per unit, dismissible, and
@@ -1575,8 +1589,8 @@ private fun AdminScreen(
                     }) { Text("OK") }
                 }
             }
+            Spacer(Modifier.height(10.dp))
         }
-        Spacer(Modifier.height(16.dp))
 
         // The daily errand, at the root.
         //
@@ -1627,6 +1641,7 @@ private fun AdminScreen(
         LaunchedEffect(fleet.devices) { if (!fleet.anyAnswered()) fleet.checkAll() }
         val answeredNow = fleet.anyAnswered()
         val behindNow = fleet.behindCount()
+        val offlineNow = fleet.devices.count { fleet.syncStates[it.key] is DeviceSync.Offline }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             RootStatusTile(
                 "Devices",
@@ -1637,22 +1652,27 @@ private fun AdminScreen(
                     behindNow > 0 -> "$behindNow behind on updates"
                     else -> "$inSyncNow of $pairedNow in sync"
                 },
-                warn = pairedNow > 0 && answeredNow && (inSyncNow < pairedNow || behindNow > 0),
+                // Green only when the whole fleet is actually in sync. Amber
+                // is the design's tone for "not all of them", and a state
+                // nothing has answered for yet is neither.
+                tone = when {
+                    pairedNow == 0 || !answeredNow -> MaterialTheme.colorScheme.onSurface
+                    inSyncNow < pairedNow || behindNow > 0 -> WarningAmber
+                    else -> SettingsSuccess
+                },
                 modifier = Modifier.weight(1f)
             ) { page = SettingsPage.Devices }
             RootStatusTile(
                 "AI screening",
                 if (ai.enabled) "On" else "Off",
-                warn = false,
+                tone = if (ai.enabled) SettingsSuccess else SettingsTextSecondary,
                 modifier = Modifier.weight(1f)
             ) { page = SettingsPage.Screening }
         }
-        Spacer(Modifier.height(6.dp))
         // Every row's second line is live state, not a list of what is inside.
         // "Autoplay, quality, listening" told a parent what the page contains;
         // "Autoplay on · up to 1080p" tells them what it currently says, which
         // is the question they opened settings to answer.
-        val pairedCount = remember(configEpoch) { pairingStore.paired().size }
         SectionTitle("Kids & content")
         SettingsCard(padded = false) {
             val kidsLine = profiles.joinToString(", ") { it.name }
@@ -1672,7 +1692,9 @@ private fun AdminScreen(
             SettingsDivider()
             HubRow(
                 YosemiteIcons.Shield, "Content screening",
-                if (ai.enabled) "On · review queue, discover" else "Off"
+                // The count at 0 too: the row states the queue, and the banner
+                // above is the thing that stays conditional.
+                if (ai.enabled) "On · $heldForReview held for review" else "Off"
             ) { page = SettingsPage.Screening }
         }
 
@@ -1680,9 +1702,11 @@ private fun AdminScreen(
         SettingsCard(padded = false) {
             HubRow(
                 YosemiteIcons.PlayArrow, "Playback",
-                listOfNotNull(
+                listOf(
                     if (autoplayNext) "Autoplay on" else "Autoplay off",
-                    qualityPhone?.takeIf { it > 0 }?.let { "up to ${it}p" }
+                    // Two clauses always: a row that drops to "Autoplay on" at
+                    // Auto reads as a row that forgot half its state.
+                    qualityPhone?.takeIf { it > 0 }?.let { "up to ${it}p" } ?: "quality auto"
                 ).joinToString(" · ")
             ) { page = SettingsPage.Playback }
             SettingsDivider()
@@ -1692,8 +1716,8 @@ private fun AdminScreen(
                 // and a parent hunting "show release dates" was reading a
                 // subtitle rather than seeing a destination.
                 YosemiteIcons.Playlist, "How videos are listed",
-                listOfNotNull(
-                    if (showVideoAge) "Dates on" else null,
+                listOf(
+                    if (showVideoAge) "Dates on" else "Dates off",
                     when (channelLayout) {
                         CHANNEL_LAYOUT_POPULAR -> "popular first"
                         else -> "newest first"
@@ -1712,32 +1736,73 @@ private fun AdminScreen(
                 // for the first time is hunting for, and nothing else on this
                 // screen hints at where it lives.
                 YosemiteIcons.Devices, "Devices & sync",
-                // Count only. Whether any of them is REACHABLE needs a LAN
-                // sweep, and the settings screen must not block on the network
-                // to open — "1 offline" waits until something already knows.
-                pairedCount.let {
-                    if (it == 0) "Nothing paired yet"
-                    else "$it paired · downloads, search index"
+                // The offline clause comes from the sweep the tile above
+                // already started, never from a call made for this row: the
+                // settings screen must not block on the network to open, so
+                // until something has answered the row states the count alone.
+                when {
+                    pairedNow == 0 -> "Nothing paired yet"
+                    !answeredNow -> "$pairedNow paired"
+                    else -> "$pairedNow paired · $offlineNow offline"
                 }
             ) { page = SettingsPage.Devices }
             SettingsDivider()
             HubRow(
                 YosemiteIcons.Save, "App, hub & backup",
-                "${io.yosemitekids.app.BuildConfig.VERSION_NAME} · import, export"
+                // The version and the one fact about backup a parent wants
+                // from the row: whether there has ever been one. The amber
+                // "Never backed up" tone stays on the page itself.
+                "${io.yosemitekids.app.BuildConfig.VERSION_NAME} · " + if (lastBackupAt > 0L) {
+                    "backed up " + java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault())
+                        .format(java.util.Date(lastBackupAt))
+                } else "never backed up"
             ) { page = SettingsPage.Backup }
         }
 
-        SectionTitle("Everyone at once")
-        SettingsCard {
-            Text(
-                "Bonus minutes and a single kid's pause are on that kid's page. This " +
-                    "one stops every kid at once.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        // One switch, not a sentence and a button: the state and the way to
+        // change it are the same control, and the paragraph that explained
+        // where the *other* pauses live folds behind the ? like every other
+        // explanation on these pages.
+        SectionTitle(
+            "Everyone at once",
+            help = "Bonus minutes and a single kid's pause are on that kid's page. This " +
+                "one stops every kid at once, until midnight."
+        )
+        val pauseAllActive = (limits.pausedUntilMillis ?: 0L) > System.currentTimeMillis()
+        var confirmPauseAll by remember { mutableStateOf(false) }
+        if (confirmPauseAll) {
+            AlertDialog(
+                onDismissRequest = { confirmPauseAll = false },
+                title = { Text("Pause screen time for everyone for the rest of today?") },
+                text = {
+                    Text(
+                        "All watching stops right away on every device and stays off " +
+                            "until midnight. Normal limits return tomorrow. You can " +
+                            "resume any time."
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        confirmPauseAll = false
+                        limits = limits.copy(pausedUntilMillis = endOfToday())
+                    }) { Text("Pause") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmPauseAll = false }) { Text("Cancel") }
+                }
             )
-            PauseTodayRow(
-                pausedUntil = limits.pausedUntilMillis,
-                onChanged = { until -> limits = limits.copy(pausedUntilMillis = until) }
+        }
+        SettingsCard(padded = false) {
+            ToggleRow(
+                "Turn off all watching",
+                if (pauseAllActive) "Paused until midnight" else "Every kid, every device",
+                checked = pauseAllActive,
+                // Stopping every device is worth a confirm; lifting it is not,
+                // so the switch only waits on the way on.
+                onCheckedChange = { on ->
+                    if (on) confirmPauseAll = true
+                    else limits = limits.copy(pausedUntilMillis = null)
+                }
             )
         }
 
@@ -1747,13 +1812,18 @@ private fun AdminScreen(
         // errand should have had.
         Spacer(Modifier.height(20.dp))
         Text(
-            "Yosemite Kids ${io.yosemitekids.app.BuildConfig.VERSION_NAME}  ·  changes apply as you " +
+            "Yosemite Kids ${io.yosemitekids.app.BuildConfig.VERSION_NAME} " +
+                "(${io.yosemitekids.app.BuildConfig.VERSION_CODE})  ·  changes apply as you " +
                 "make them and reach the kids' devices on their own.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            // The faintest tone on the screen: a footer is for the moment
+            // someone is reading a bug report back to you.
+            color = SettingsPlaceholder,
             modifier = Modifier.padding(horizontal = 4.dp)
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(26.dp))
+        }
     }
 }
 
@@ -2036,90 +2106,163 @@ private fun KidErrandCard(
         runCatching { guard.watchedTodayMin() }.getOrDefault(0)
     }
     val remaining = budget?.let { (it - watched).coerceAtLeast(0) }
+    // Today's granted minutes, from the same guard the rest of the card reads.
+    val bonus = remember(kid.id, kid.limits, familyPausedUntil) {
+        runCatching { guard.snapshot().bonusTodayMin }.getOrDefault(0)
+    }
+    // One tone for the label and the bar: they state the same fact, and two
+    // thresholds drifting apart would say two different things about it.
+    val leftTone = when {
+        budget == null -> MaterialTheme.colorScheme.onSurfaceVariant
+        remaining == 0 -> MaterialTheme.colorScheme.error
+        remaining != null && remaining <= 15 -> WarningAmber
+        else -> SettingsSuccess
+    }
 
-    SettingsCard {
+    // The kid card is the one elevated card in the design — a step lighter
+    // than the page's other cards, with a stronger border — because it is the
+    // errand, not another destination.
+    OutlinedCard(
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        border = androidx.compose.foundation.BorderStroke(1.dp, SettingsStrongBorder),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+      // No arrangement spacing: every gap in this card is an explicit spacer,
+      // so the design's 7 / 7 / 9 rhythm is readable here rather than added to
+      // an invisible 8 somewhere else.
+      Column(Modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
+                .heightIn(min = 64.dp)
+                .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 10.dp)
         ) {
             ProfileAvatar(kid, size = 40)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(kid.name, fontWeight = FontWeight.SemiBold)
+                Text(
+                    kid.name,
+                    fontSize = 15.5.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.height(2.dp))
+                // Who they are, not how much is left: the budget states itself
+                // one line down, in the design's own wording, and printing it
+                // twice made the card read as two contradicting readouts.
                 val (line, tone) = when {
                     paused -> "Paused until midnight" to MaterialTheme.colorScheme.error
-                    budget == null -> "No time limit set" to MaterialTheme.colorScheme.onSurfaceVariant
-                    remaining == 0 -> "Out of time today" to MaterialTheme.colorScheme.error
                     else -> (kid.age?.let { "Age $it" } ?: "Screen time on") to
                         MaterialTheme.colorScheme.onSurfaceVariant
                 }
-                Text(line, style = MaterialTheme.typography.bodySmall, color = tone)
+                Text(line, fontSize = 12.5.sp, lineHeight = 18.sp, color = tone)
             }
             Icon(
                 YosemiteIcons.ChevronRight, contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
             )
         }
 
-        if (budget != null && remaining != null && !paused) {
-            Spacer(Modifier.height(10.dp))
-            // The design's one line: time left on the left in the accent, used
-            // on the right in grey. Stacking them read as two unrelated facts.
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
+            // The design's one line: how today stands on the left in its tone,
+            // what has been used on the right in grey. Always drawn — a kid
+            // with no cap has a state too, and hiding the row made "is screen
+            // time even on?" unanswerable from the card.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "$remaining min left today",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (remaining <= 5) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.primary,
+                    when {
+                        budget == null -> "No daily limit set"
+                        remaining == 0 -> "Time is up for today"
+                        else -> "$remaining min left today"
+                    },
+                    fontSize = 13.5.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium,
+                    color = leftTone,
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    "$watched of $budget min used",
+                    if (budget != null) "$watched of $budget min used"
+                    else "$watched min watched today",
+                    fontSize = 12.sp, lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(7.dp))
+            LinearProgressIndicator(
+                // How much of the day has been SPENT, which is what the "42 of
+                // 60 used" beside it says. It filled the remainder before, so
+                // the bar emptied as the day was used up — backwards from
+                // every other progress bar a parent has ever seen.
+                progress = {
+                    if (budget == null || budget == 0) 1f
+                    else (watched.toFloat() / budget).coerceIn(0f, 1f)
+                },
+                modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
+                color = leftTone,
+                trackColor = MaterialTheme.colorScheme.background,
+                drawStopIndicator = {}
+            )
+            if (bonus > 0) {
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "+$bonus min bonus granted today",
+                    fontSize = 12.sp, lineHeight = 17.sp, color = SettingsSuccess
+                )
+            }
+
+            Spacer(Modifier.height(9.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Full width, split evenly, as designed: on a phone two compact chips
+                // left a stretch of empty card where the primary action should be.
+                Button(
+                    onClick = onOpen,
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    modifier = Modifier.weight(1f).height(32.dp).tvFocusHighlight()
+                ) {
+                    Text(
+                        "Add time",
+                        fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(Modifier.width(7.dp))
+                OutlinedButton(
+                    onClick = {
+                        // Midnight tonight, like every other pause in the app: an
+                        // unbounded pause is one a parent forgets they set.
+                        onPauseChanged(if (paused) null else endOfToday())
+                    },
+                    enabled = !paused || ownPauseOnly,
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, SettingsStrongBorder),
+                    // Teal only when the label reads "Resume": the accent is
+                    // for the action a parent is being offered, and "Pause
+                    // today" beside a teal "Add time" read as two primaries.
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        contentColor = if (paused) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface
+                    ),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    modifier = Modifier.weight(1f).height(32.dp).tvFocusHighlight()
+                ) {
+                    Text(
+                        if (paused) "Resume" else "Pause today",
+                        fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+            if (paused && !ownPauseOnly) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Everyone is paused — resume from the switch at the bottom.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Spacer(Modifier.height(6.dp))
-            LinearProgressIndicator(
-                progress = { (remaining.toFloat() / budget).coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().height(5.dp),
-                color = if (remaining <= 5) MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                drawStopIndicator = {}
-            )
         }
-
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // Full width, split evenly, as designed: on a phone two compact chips
-            // left a stretch of empty card where the primary action should be.
-            Button(
-                onClick = onOpen,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                modifier = Modifier.weight(1f).height(40.dp).tvFocusHighlight()
-            ) { Text("Add time") }
-            Spacer(Modifier.width(8.dp))
-            OutlinedButton(
-                onClick = {
-                    // Midnight tonight, like every other pause in the app: an
-                    // unbounded pause is one a parent forgets they set.
-                    onPauseChanged(if (paused) null else endOfToday())
-                },
-                enabled = !paused || ownPauseOnly,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                modifier = Modifier.weight(1f).height(40.dp).tvFocusHighlight()
-            ) { Text(if (paused) "Resume" else "Pause today") }
-        }
-        if (paused && !ownPauseOnly) {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Everyone is paused — resume from the switch at the bottom.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+      }
     }
 }
 
@@ -2134,59 +2277,83 @@ private fun ReviewBanner(count: Int, onOpen: () -> Unit) {
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+            modifier = Modifier.heightIn(min = 60.dp)
+                .padding(horizontal = 12.dp, vertical = 11.dp)
         ) {
-            Surface(
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
-                color = WarningAmberBorder
-            ) {
-                Text(
-                    count.toString(),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = WarningAmber,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                )
+            // The count is the loudest thing here, so it is the filled chip
+            // and the title is not: amber on amber-on-amber read as three
+            // warnings stacked.
+            Surface(shape = RoundedCornerShape(6.dp), color = WarningAmber) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.heightIn(min = 24.dp).widthIn(min = 30.dp)
+                        .padding(horizontal = 8.dp)
+                ) {
+                    Text(
+                        count.toString(),
+                        fontSize = 12.5.sp, lineHeight = 12.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = WarningAmberOn
+                    )
+                }
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
-                Text("Waiting for your OK", fontWeight = FontWeight.SemiBold, color = WarningAmber)
+                Text(
+                    "Waiting for your OK",
+                    fontSize = 14.sp, lineHeight = 19.sp, color = WarningAmber
+                )
+                Spacer(Modifier.height(2.dp))
                 Text(
                     "Videos the AI held back until you decide",
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 12.sp, lineHeight = 17.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Icon(YosemiteIcons.ChevronRight, contentDescription = null, tint = WarningAmber)
+            Icon(
+                YosemiteIcons.ChevronRight, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
 
-/** One of the two root status tiles: a label over a state, amber when it needs a look. */
+/**
+ * One of the two root status tiles: a label over a state, in the state's own
+ * tone — green when everything is in sync or on, amber when it is not, dim
+ * when a feature is off. The tone is the tile's whole job: a parent reads the
+ * colour before the words, and a white "4 of 5 in sync" said nothing.
+ */
 @Composable
 private fun RootStatusTile(
     label: String,
     state: String,
-    warn: Boolean,
+    tone: androidx.compose.ui.graphics.Color,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     OutlinedCard(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp, MaterialTheme.colorScheme.outline
+        ),
         modifier = modifier.clickable(onClick = onClick).tvFocusHighlight()
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
             Text(
                 label,
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp, lineHeight = 16.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 state,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (warn) WarningAmber else MaterialTheme.colorScheme.onSurface
+                fontSize = 13.5.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium,
+                color = tone
             )
         }
     }
