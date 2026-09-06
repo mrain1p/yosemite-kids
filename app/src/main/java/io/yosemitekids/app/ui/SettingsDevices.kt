@@ -149,18 +149,17 @@ private fun LanClient.DeviceStatus.matches(expectedHash: String, localSyncHash: 
 /**
  * The fingerprint [device] should be reporting if it agrees with this phone.
  *
- * A secretless peer — a hub — strips the API key before writing and has no
- * SecretStore to put it back, so the hash it advertises is computed over a
- * config with a blank key. Compared against this phone's full fingerprint it
- * could never match, and the hub read as permanently out of sync: the tile
- * said so, Push and Pull were offered forever, and the background reconcile
- * took the merge arm on every single sweep instead of doing nothing.
+ * A keyless peer strips the API key before writing and has nowhere to put it
+ * back, so the hash it advertises is computed over a config with a blank key.
+ * Compared against this phone's full fingerprint it could never match, and it
+ * read as permanently out of sync: the tile said so, Push and Pull were
+ * offered forever, and the background reconcile took the merge arm on every
+ * single sweep instead of doing nothing.
  *
- * The flag comes from the stored [PairedDevice], recorded at enrolment, never
- * from the peer's own /status. A peer that could declare itself secretless
- * could switch off this phone's only content-level check on the key — and a
- * TV holding a revoked key would then read "in sync" while its screening was
- * dead.
+ * The flag is [PairedDevice.secretless] and nothing else. It is emphatically
+ * not "is this the hub" — that is [PairedDevice.isHub], recorded at
+ * enrolment — because a hub that holds an API key of its own is judged on the
+ * full fingerprint like any television.
  */
 internal fun expectedHash(device: PairedDevice, localHash: String, localSecretlessHash: String): String =
     if (device.secretless) localSecretlessHash else localHash
@@ -171,7 +170,7 @@ internal fun expectedHash(device: PairedDevice, localHash: String, localSecretle
  * button was drawn. Push saves first, and that save can carry a unit a
  * co-parent landed under the open form, so the screen's hash is already one
  * save behind by the time the device answers. Same rule as [expectedHash]
- * for which fingerprint a secretless peer is judged on.
+ * for which fingerprint a keyless peer is judged on.
  */
 internal fun expectedAfterPush(device: PairedDevice, json: String): String {
     val sent = ConfigJson.fromJson(json)
@@ -254,7 +253,7 @@ internal class DeviceFleet(private val pairingStore: PairingStore) {
                 ?.matches(expectedHashFor(d), localSyncHash) == true
         }
 
-    val hub: PairedDevice? get() = devices.firstOrNull { it.secretless }
+    val hub: PairedDevice? get() = devices.firstOrNull { it.isHub }
 
     /** Has any device said anything yet, in either direction? Before that, counts are not news. */
     fun anyAnswered(): Boolean = devices.any { d ->
@@ -264,7 +263,7 @@ internal class DeviceFleet(private val pairingStore: PairingStore) {
     /** Devices whose last answer named an older build than this phone. */
     fun behindCount(myVersionCode: Int = BuildConfig.VERSION_CODE): Int =
         devices.count { d -> lastAnswer[d.key]?.behind(myVersionCode) == true }
-    val kidDevices: List<PairedDevice> get() = devices.filterNot { it.secretless }
+    val kidDevices: List<PairedDevice> get() = devices.filterNot { it.isHub }
 
     /** Re-reads one device's sync state, returning it for the caller to judge. */
     suspend fun refreshOne(device: PairedDevice): LanClient.DeviceStatus? {
@@ -1015,10 +1014,10 @@ internal fun DevicePage(
     if (pendingUnpair) {
         AlertDialog(
             onDismissRequest = { pendingUnpair = false },
-            title = { Text(if (device.secretless) "Disconnect the hub?" else "Unpair ${device.name}?") },
+            title = { Text(if (device.isHub) "Disconnect the hub?" else "Unpair ${device.name}?") },
             text = {
                 Text(
-                    if (device.secretless)
+                    if (device.isHub)
                         "This phone stops syncing with it. Your TVs keep their own hub " +
                             "connection until you remove them there."
                     else "This phone stops managing it. Its settings stay as they are, and " +
@@ -1034,7 +1033,7 @@ internal fun DevicePage(
                     pairingStore.removePaired(device.key)
                     fleet.reload()
                     onFleetChanged()
-                }) { Text(if (device.secretless) "Disconnect" else "Unpair") }
+                }) { Text(if (device.isHub) "Disconnect" else "Unpair") }
             },
             dismissButton = { TextButton(onClick = { pendingUnpair = false }) { Text("Cancel") } }
         )
@@ -1192,7 +1191,7 @@ internal fun DevicePage(
         }
     }
 
-    if (device.secretless) {
+    if (device.isHub) {
         SectionTitle("Hub setup")
         // Not removable here: the Disconnect row under "This entry" below
         // already is, and the same action twice on one page reads as two.
@@ -1279,8 +1278,8 @@ internal fun DevicePage(
             ValueRow("Name", value = device.name, onClick = { renaming = true })
             SettingsDivider()
             ValueRow(
-                if (device.secretless) "Disconnect from this hub" else "Unpair",
-                summary = if (device.secretless) "This phone stops syncing with it"
+                if (device.isHub) "Disconnect from this hub" else "Unpair",
+                summary = if (device.isHub) "This phone stops syncing with it"
                 else "This phone stops managing it",
                 onClick = { pendingUnpair = true }
             )

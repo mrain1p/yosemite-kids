@@ -80,7 +80,7 @@ import kotlinx.coroutines.launch
  *
  * The hub is read from [fleet] rather than looked up by name: a parent can
  * rename it (here, or on its device page), and the flag that marks a hub is
- * [PairedDevice.secretless], which a rename cannot lose.
+ * [PairedDevice.isHub], which a rename cannot lose.
  */
 @Composable
 internal fun HubSection(
@@ -144,7 +144,7 @@ internal fun HubSection(
     suspend fun connectDevices(hubHost: String, hubPort: Int, adminToken: String): HubConnect {
         var added = 0
         var missed = 0
-        for (device in pairingStore.paired().filterNot { it.secretless }) {   // never the hub itself
+        for (device in pairingStore.paired().filterNot { it.isHub }) {   // never the hub itself
             val status = LanClient.fullStatus(device)
             when {
                 status == null -> missed++

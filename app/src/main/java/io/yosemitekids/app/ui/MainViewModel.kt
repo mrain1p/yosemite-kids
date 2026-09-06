@@ -257,7 +257,7 @@ class MainViewModel(
                 val relayForHub = master != null &&
                     io.yosemitekids.app.data.MasterToken.isHub(master) && isParent
                 if (master != me && !relayForHub) return@launch
-                devices.filterNot { it.secretless }.forEach { device ->
+                devices.filterNot { it.isHub }.forEach { device ->
                     if (relayForHub) {
                         val v = LanClient.fullStatus(device)?.versionCode ?: return@forEach
                         if (v >= io.yosemitekids.app.data.IndexPull.FIRST_PULLING_VERSION_CODE) return@forEach

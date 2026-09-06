@@ -46,18 +46,36 @@ data class PairedDevice(
      */
     val id: String? = null,
     /**
-     * This peer holds no API key, so it must be compared on a fingerprint
-     * computed without one. True for a self-hosted hub, which strips secrets
-     * before writing and has no SecretStore to put them back.
+     * Which fingerprint this peer is judged on: true = the keyless form,
+     * because this peer holds no API key.
      *
-     * Recorded here, at enrolment, and deliberately NOT read from the peer's
-     * /status. A peer that could assert this about itself could switch off
-     * the phone's only content-level check on the key — and a TV holding a
-     * revoked key would then read "in sync" while its screening was dead.
-     * The one party that must not be trusted for this is the peer being
-     * checked.
+     * **Not** "this peer is a hub" — that is [isHub], and the two stopped
+     * meaning the same thing the moment a hub could hold a key of its own
+     * (`HubSecrets`). They coincided for as long as a hub was the only
+     * keyless peer in the fleet, which is exactly why one flag did both jobs
+     * and why reading this one to answer "is this the hub?" now silently
+     * re-enables the /24 subnet sweep for a NAS, offers to introduce the hub
+     * to itself, and leaves `POST /leave-hub` removing nothing.
+     *
+     * For a kid device this is recorded at pairing and never moves. For a hub
+     * it follows the hub's own `holdsKey` on `/status`, and that is safe in a
+     * way the general case is not: claiming `holdsKey = false` only makes
+     * this phone compare the keyless hash, which is what it does today, and
+     * claiming `true` only makes it compare a hash the liar then has to
+     * produce. Neither buys the liar anything, and the phone pushes the key
+     * to the hub either way.
      */
-    val secretless: Boolean = false
+    val secretless: Boolean = false,
+    /**
+     * This peer is the family's hub — a NAS container, not a television.
+     *
+     * Identity, recorded by this phone at enrolment (`HubEnrolment.join`, or
+     * `POST /join-hub` on a device a phone introduced) and never claimed by
+     * the peer. Everything that asks "what kind of thing is this?" reads this
+     * flag: rediscovery never sweeps a subnet for it, the hub card finds it,
+     * the index relay skips it, and unpairing calls it Disconnect.
+     */
+    val isHub: Boolean = false
 ) {
     /**
      * Stable list key: the remote identity when known, else the address the
@@ -71,7 +89,7 @@ data class PairedDevice(
         /**
          * The name [io.yosemitekids.app.data.HubEnrolment] gives a hub it joins.
          * A constant because it is load-bearing in two places: the settings
-         * screen finds the hub by it, and entries written before [secretless]
+         * screen finds the hub by it, and entries written before [isHub]
          * existed are migrated by it on read.
          */
         const val HUB_NAME = "Yosemite Kids hub"
@@ -255,16 +273,28 @@ class PairingStore(context: Context) {
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
                 val name = o.getString("name")
+                // Whether this entry was written by a build that tells the two
+                // flags apart. Before the split there was one flag meaning
+                // both things, and the name was the only record of a hub that
+                // predated even that — so the fallbacks below apply to those
+                // entries and to nothing else. Reading the name for an entry
+                // that states `isHub` would put a hub holding an API key back
+                // on the keyless fingerprint every time the list was loaded.
+                val split = o.has("isHub")
                 PairedDevice(
                     name, o.getString("host"), o.getInt("port"),
                     o.getString("token"), o.optString("id").ifEmpty { null },
-                    // Entries written before the flag existed. A hub is the
-                    // only peer this phone ever named HUB_NAME, and it wrote
-                    // that name itself at enrolment, so the name is this
-                    // phone's own record rather than the peer's claim. The
-                    // next savePaired persists the flag explicitly, so a
-                    // later rename cannot lose it.
-                    o.optBoolean("secretless", name == PairedDevice.HUB_NAME)
+                    // A hub is the only peer this phone ever named HUB_NAME,
+                    // and it wrote that name itself at enrolment, so the name
+                    // is this phone's own record rather than the peer's claim.
+                    o.optBoolean("secretless", !split && name == PairedDevice.HUB_NAME),
+                    // Pre-split entries carry only `secretless`, and back then
+                    // it meant both things — so one that was keyless was a
+                    // hub. The name covers the entries that predate both.
+                    o.optBoolean(
+                        "isHub",
+                        o.optBoolean("secretless", false) || name == PairedDevice.HUB_NAME
+                    )
                 )
             }
         }.getOrDefault(emptyList())
@@ -276,7 +306,10 @@ class PairingStore(context: Context) {
                     put("name", d.name); put("host", d.host)
                     put("port", d.port); put("token", d.token)
                     d.id?.let { put("id", it) }
+                    // Both written only when true, so a family with no hub
+                    // keeps the bytes it already had on disk.
                     if (d.secretless) put("secretless", true)
+                    if (d.isHub) put("isHub", true)
                 })
             }
             return arr.toString()
@@ -849,7 +882,7 @@ class LanServer(
                     // administers needs to know which ones are already done,
                     // or it mints a second token on every attempt and leaves
                     // orphans enrolled on the hub forever.
-                    .put("hub", pairingStore.paired().any { it.secretless })
+                    .put("hub", pairingStore.paired().any { it.isHub })
                     .apply { deviceKind()?.let { put("kind", it) } }
                     .toString()
             )
@@ -944,11 +977,15 @@ class LanServer(
                             host = host,
                             port = hubPort,
                             token = hubToken,
-                            // The hub strips the API key before writing and
-                            // has no keystore to put it back, so it must be
-                            // judged on the keyless fingerprint or this
-                            // device decides it is out of sync forever.
-                            secretless = true
+                            // A hub, and — until its own /status says
+                            // otherwise — a keyless one: it strips the API
+                            // key before writing, so judged on the full
+                            // fingerprint this device would decide it is out
+                            // of sync forever. A hub that holds a key of its
+                            // own advertises `holdsKey` and this flips on the
+                            // first sweep; the identity above never does.
+                            secretless = true,
+                            isHub = true
                         )
                     )
                     respond(200, "joined")
@@ -958,7 +995,7 @@ class LanServer(
             // this rather than leaving every TV pointed at a box that is no
             // longer there.
             method == "POST" && path == "/leave-hub" -> {
-                pairingStore.paired().filter { it.secretless }
+                pairingStore.paired().filter { it.isHub }
                     .forEach { pairingStore.removePaired(it.key) }
                 respond(200, "left")
             }
@@ -1234,8 +1271,9 @@ object LanClient {
         // reservation or a static lease, and scanning the subnet to guess at
         // something a human can retype is not a trade worth making on TV
         // hardware. If a hub really moved, it gets re-entered. Judged on the
-        // flag, not the name: a parent can rename the hub.
-        if (device.secretless) return@withContext null
+        // identity flag, not the name: a parent can rename the hub, and a hub
+        // that holds an API key is no less a hub for it.
+        if (device.isHub) return@withContext null
         val now = System.currentTimeMillis()
         // Per device, not global: one cooldown for the whole list meant a
         // powered-off TV's fruitless sweep locked the kid's tablet — sitting

@@ -149,11 +149,16 @@ object HubEnrolment {
                     .substringBefore(':').removeSuffix("/"),
                 port = Regex(":(\\d+)$").find(host.trim())?.groupValues?.get(1)?.toIntOrNull() ?: port,
                 token = token,
-                // Recorded now, by the side that knows. The hub strips the
-                // API key before writing and has no SecretStore to put it
-                // back, so its config fingerprint is permanently the
-                // keyless one and comparing it against this phone's full
-                // fingerprint can never match.
+                // Recorded now, by the side that knows: this is a hub, and
+                // this phone put it in the list. Nothing the peer says can
+                // set that.
+                isHub = true,
+                // Keyless until the hub's own /status says otherwise. A hub
+                // with no key store strips the API key before writing, so its
+                // fingerprint is the keyless one and comparing it against this
+                // phone's full form could never match. The sweep flips this
+                // from `holdsKey` — which is a claim about the peer's own
+                // storage and not about this phone's checks.
                 secretless = true
             )
         }.recoverCatching { e ->

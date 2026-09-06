@@ -9,12 +9,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The stored form of the paired list, and the one-way door in it.
+ * The stored form of the paired list, and the two one-way doors in it.
  *
  * `secretless` decides which fingerprint a peer is judged against, so an entry
  * that loses the flag reads as permanently out of sync and an entry that
  * gains it wrongly can hide a real difference. Neither is visible until a
  * parent is staring at a device that will not settle.
+ *
+ * `isHub` answers a different question — what kind of thing is this — and the
+ * two were one flag for as long as a hub was the only keyless peer. They stop
+ * coinciding the moment a hub holds an API key of its own, which is what the
+ * cases at the bottom of this file are about.
  */
 class PairedSecretlessTest {
 
@@ -85,5 +90,56 @@ class PairedSecretlessTest {
         val explicit =
             """{"name":"Yosemite Kids hub","host":"h","port":1,"token":"t","secretless":false}"""
         assertFalse(PairingStore.parsePaired(stored(explicit)).single().secretless)
+    }
+
+    // --- the split: which fingerprint, versus what kind of thing ------------
+
+    @Test
+    fun aHubPairedBeforeTheSplitIsStillRecognisedAsAHub() {
+        // Both migrations have to fire on the same legacy bytes. Miss this one
+        // and the phone stops knowing the NAS is a NAS: rediscovery sweeps the
+        // /24 for it, the hub card cannot find it, and POST /leave-hub removes
+        // nothing.
+        val hub = PairingStore.parsePaired(stored(legacyHub)).single()
+        assertTrue("a legacy hub entry must migrate to isHub", hub.isHub)
+    }
+
+    @Test
+    fun aLegacyTvIsNotSweptUpIntoBeingAHub() {
+        assertFalse(PairingStore.parsePaired(stored(legacyTv)).single().isHub)
+    }
+
+    @Test
+    fun anEntryWrittenWithOnlyTheOldFlagStillMigratesToAHub() {
+        // The entry a build between the two shapes wrote: renamed by a parent,
+        // so the name cannot carry the migration, and marked only secretless.
+        // Back then that word meant both things, so it has to mean both here.
+        val renamedHub =
+            """{"name":"The NAS","host":"h","port":1,"token":"t","secretless":true}"""
+        val hub = PairingStore.parsePaired(stored(renamedHub)).single()
+        assertTrue(hub.isHub)
+        assertTrue(hub.secretless)
+    }
+
+    @Test
+    fun aHubThatHoldsAKeyIsStillAHub() {
+        // The whole reason for the split. Once the NAS holds an API key it is
+        // judged on the full fingerprint like a television — and it is still
+        // the hub, so nothing may start sweeping the subnet for it.
+        val withKey = PairedDevice(
+            PairedDevice.HUB_NAME, "h", 1, "t", secretless = false, isHub = true
+        )
+        val reloaded =
+            PairingStore.parsePaired(PairingStore.serializePaired(listOf(withKey))).single()
+        assertTrue(reloaded.isHub)
+        assertFalse(reloaded.secretless)
+    }
+
+    @Test
+    fun anOrdinaryDeviceIsWrittenWithNeitherFlag() {
+        val tv = PairedDevice("Living Room", "192.168.1.10", 8765, "t2")
+        val o = JSONArray(PairingStore.serializePaired(listOf(tv))).getJSONObject(0)
+        assertFalse(o.has("secretless"))
+        assertFalse(o.has("isHub"))
     }
 }

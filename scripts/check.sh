@@ -155,13 +155,27 @@ if ! grep -q 'includeSecrets: Boolean = true' core/src/main/kotlin/io/yosemiteki
   guard_fail "ConfigJson.fingerprint must keep includeSecrets defaulting to true. Only a secretless peer passes false."
 fi
 
-# Whether a peer holds no secrets is this phone's record, made at enrolment —
-# never the peer's claim. A peer that could assert it would switch off the
-# only content-level check on the API key, and a TV holding a revoked key
-# would read "in sync" while its screening was dead. So the hub does not
-# advertise it and the app does not look for it.
+# The word `secretless` is the phone's own vocabulary and must not appear in
+# :hub at all. A hub says whether it holds a key (`holdsKey` on /status) — a
+# fact about its own storage, which it is the only party that knows — and the
+# phone decides what that means for its checks. Spelling the phone's flag on
+# the hub is how a peer starts asserting the phone's conclusions.
 if grep -rq 'secretless' hub/src/main; then
-  guard_fail ":hub must not advertise secretless. The flag is recorded on the phone at enrolment, not asserted by the peer."
+  guard_fail ":hub must not advertise secretless. A hub reports holdsKey about itself; what that means for a fingerprint is the phone's conclusion."
+fi
+
+# `secretless` and `isHub` answer two different questions and were one flag
+# until a hub could hold an API key of its own. `secretless` is only ever
+# "which fingerprint is this peer judged on"; `isHub` is "what kind of thing
+# is this". Reading the first to answer the second fails silently and in four
+# directions at once: rediscovery sweeps the /24 for a NAS, the hub card
+# cannot find it, the index relay pushes at a peer that answers 405, and
+# POST /leave-hub removes nothing. Pairing.kt declares, parses and writes the
+# flag; ConfigSync picks the fingerprint to compare against and
+# SettingsDevices computes it. Anywhere else, someone meant isHub.
+keyless_readers=$(grep -rl '[A-Za-z_)]\.secretless' app/src/main | grep -vE '/(Pairing|ConfigSync|SettingsDevices)\.kt$' || true)
+if [ -n "$keyless_readers" ]; then
+  guard_fail "$keyless_readers reads PairedDevice.secretless. That flag only picks a fingerprint; to ask whether a peer is the hub, read isHub."
 fi
 
 # One comparison rule, in matches(). A hand-rolled copy in the push-result
@@ -185,7 +199,7 @@ fi
 # parsePaired is the one place the name may still stand in for it.
 hub_by_name=$(grep -rnE "[A-Za-z_]\.name == PairedDevice\.HUB_NAME" app/src/main/java core/src/main/kotlin 2>/dev/null || true)
 if [ -n "$hub_by_name" ]; then
-  guard_fail "a hub is recognised by name ($hub_by_name). Test PairedDevice.secretless instead; the name is editable."
+  guard_fail "a hub is recognised by name ($hub_by_name). Test PairedDevice.isHub instead; the name is editable."
 fi
 
 # --- phone/hub settings parity ---------------------------------------------
