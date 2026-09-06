@@ -1,6 +1,5 @@
 package io.yosemitekids.app.data
 
-import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -22,7 +21,6 @@ class ChannelIndex(private val dir: File) {
     // setup, remember{} in settings). mkdirs runs lazily on the write paths,
     // and the manifest loads on first state access — callers of anything
     // file-backed are already on Dispatchers.IO.
-    constructor(context: Context) : this(File(context.filesDir, "search-index"))
 
     private val manifestFile = File(dir, "manifest.json")
 

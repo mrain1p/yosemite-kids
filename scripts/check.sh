@@ -448,6 +448,32 @@ for pair in 'getLong("bonusMs"' 'getString("grants"'; do
   fi
 done
 
+# 17. One crawler, one version stamp. The crawl loop lives in :crawl
+#     (IndexCrawlRun) so the hub and the phone run the same batch; a second
+#     copy of the loop in the app is the drift CLAUDE.md warns about. And the
+#     cursor stamp is the generated ExtractorVersion: a BuildConfig field for
+#     it would let the app and the hub stamp cursors differently while
+#     believing they agree, and a cursor is readable only by its own stamp.
+if grep -q "EXTRACTOR_VERSION" app/build.gradle.kts; then
+  guard_fail "app/build.gradle.kts defines EXTRACTOR_VERSION again. The stamp is :crawl's generated ExtractorVersion.VALUE; there is one."
+fi
+if grep -rq "PAGES_PER_RUN\s*=" app/src/main/java; then
+  guard_fail "the app defines its own PAGES_PER_RUN. The crawl loop is IndexCrawlRun in :crawl; the worker only calls it."
+fi
+
+# 18. The mirror must at least parse. Guard 10 compares the two scripts'
+#     headings, not their syntax, and the PowerShell one sat unparseable for
+#     a whole round (guard 14's foreach never closed) while the bash one, the
+#     only one CI runs, stayed green. So each script syntax-checks the other
+#     when the other's interpreter is on this machine. On a Linux runner with
+#     no PowerShell this is a no-op, which is exactly why the author's own
+#     machine has to run the gate before a commit.
+ps=$(command -v pwsh || command -v powershell || true)
+if [ -n "$ps" ]; then
+  perr=$("$ps" -NoProfile -ExecutionPolicy Bypass -Command '$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile("scripts/check.ps1", [ref]$null, [ref]$e); $e | ForEach-Object { "{0}: {1}" -f $_.Extent.StartLineNumber, $_.Message }' 2>&1 || true)
+  [ -z "$perr" ] || guard_fail "scripts/check.ps1 does not parse: $perr"
+fi
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"

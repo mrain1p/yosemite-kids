@@ -1,12 +1,16 @@
 ﻿# Yosemite Kids pre-commit check: compile, offline unit tests, worker tests.
-# Usage: .\scripts\check.ps1 [-Quick]
-param([switch]$Quick)
+# Usage: .\scripts\check.ps1 [-Quick|-Guards]
+#
+#   -Quick    step 0 + compile
+#   -Guards   step 0 only: the source guards, no SDK, no Gradle, no
+#             local.properties. Mirrors check.sh --guards.
+param([switch]$Quick, [switch]$Guards)
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-if (-not (Test-Path "local.properties")) {
+if (-not $Guards -and -not (Test-Path "local.properties")) {
     Write-Host "local.properties is missing — create it with sdk.dir=<path to Android SDK>" -ForegroundColor Red
     exit 1
 }
@@ -469,6 +473,7 @@ foreach ($r in $routes) {
     if ($lanApi -notmatch "(GET|POST) $([regex]::Escape($r))[^a-z-]") {
         Fail-Guard "LanServer answers $r and docs/LAN-API.md has no row for it. Add it to the route table."
     }
+}
 
 # 15. The settings form adopts the whole of what it saved.
 #     A save returns the STAMPED document, which is not the form: it carries
@@ -504,6 +509,44 @@ foreach ($pair in @('getLong("bonusMs"', 'getString("grants"')) {
         Fail-Guard "SessionGuard.kt reads $pair in $reads places (must be exactly one). Sum the two stores in bonusMs() and read that."
     }
 }
+
+# 17. One crawler, one version stamp. The crawl loop lives in :crawl
+#     (IndexCrawlRun) so the hub and the phone run the same batch; a second
+#     copy of the loop in the app is the drift CLAUDE.md warns about. And the
+#     cursor stamp is the generated ExtractorVersion: a BuildConfig field for
+#     it would let the app and the hub stamp cursors differently while
+#     believing they agree, and a cursor is readable only by its own stamp.
+if (Select-String -Path "app/build.gradle.kts" -Pattern 'EXTRACTOR_VERSION' -SimpleMatch -CaseSensitive -Quiet) {
+    Fail-Guard "app/build.gradle.kts defines EXTRACTOR_VERSION again. The stamp is :crawl's generated ExtractorVersion.VALUE; there is one."
+}
+# Not -Quiet: on piped files it emits one boolean per file, and an array of
+# $false is still truthy in an if, so the guard would fire on every tree.
+if (@(Get-ChildItem -Recurse -File -Filter *.kt app/src/main/java | Select-String -Pattern 'PAGES_PER_RUN\s*=' -CaseSensitive).Count -gt 0) {
+    Fail-Guard "the app defines its own PAGES_PER_RUN. The crawl loop is IndexCrawlRun in :crawl; the worker only calls it."
+}
+
+# 18. The mirror must at least parse. Guard 10 compares the two scripts'
+#     headings, not their syntax, and the PowerShell one sat unparseable for
+#     a whole round (guard 14's foreach never closed) while the bash one, the
+#     only one CI runs, stayed green. So each script syntax-checks the other
+#     when the other's interpreter is on this machine. On a Linux runner with
+#     no PowerShell this is a no-op, which is exactly why the author's own
+#     machine has to run the gate before a commit.
+# Git's bash, not WSL's: System32\bash.exe is a launcher for a Linux distro
+# that may not exist. PATH usually resolves to Git's own bash; when it does
+# not, Git for Windows keeps one under its install directory.
+$bashCandidates = @(
+    (Get-Command bash -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch 'System32' } | ForEach-Object { $_.Source }),
+    (Join-Path $env:ProgramFiles "Git\bin\bash.exe"),
+    (Join-Path $env:ProgramFiles "Git\usr\bin\bash.exe")
+) | Where-Object { $_ -and (Test-Path $_) }
+$bashExe = $bashCandidates | Select-Object -First 1
+if ($bashExe) {
+    & $bashExe -n scripts/check.sh
+    if ($LASTEXITCODE -ne 0) { Fail-Guard "scripts/check.sh does not parse (bash -n)." }
+}
+
+if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q assembleDebug

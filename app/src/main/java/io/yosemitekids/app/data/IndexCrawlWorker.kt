@@ -49,50 +49,16 @@ class IndexCrawlWorker(
         // Master-only past here: a kid device or co-parent must never crawl.
         if (config.masterDeviceToken != me) return Result.success()
 
-        val incomplete = sources.filter { index.state(it.id)?.complete != true }
-        if (incomplete.isEmpty()) {
-            // Still stamp the diagnostics line: a fully-crawled catalog should
-            // read "ran, nothing to do", not "hasn't run since the last page".
-            index.recordRun(0, failed = false)
-            return Result.success()
-        }
-
-        // Bounded batch per run: PAGES_PER_RUN pages, round-robin from the
-        // first incomplete source. ~17 pages per 500-video channel, so one
-        // 15-minute run finishes a channel and starts the next.
-        var pages = 0
-        var attempts = 0
-        var failures = 0
-        for (source in incomplete) {
-            while (pages < PAGES_PER_RUN) {
-                // Spread the budget out instead of firing it as one burst —
-                // see CRAWL_DELAY_MS. Paced per fetch ATTEMPT, not per stored
-                // page: a parked source's probe returns false without counting
-                // a page, and N parked sources would otherwise fire N
-                // back-to-back page-1 fetches at the head of every run. First
-                // attempt of the run goes immediately.
-                if (attempts > 0) kotlinx.coroutines.delay(IndexCrawler.CRAWL_DELAY_MS)
-                attempts++
-                val more = runCatching { crawler.crawlOnce(source) }
-                    .getOrElse {
-                        android.util.Log.w("YosemiteKids", "index crawl failed", it)
-                        failures++
-                        false
-                    }
-                if (!more) break
-                pages++
-            }
-            if (pages >= PAGES_PER_RUN) break
-        }
-        // Visible in logcat: confirms the worker ran, how much it did, and how
-        // far along the catalog is — the "is it stuck?" answer without a debugger.
-        android.util.Log.i("YosemiteKids",
-            "index crawl: $pages pages this run, " +
-                "${sources.size - incomplete.size}/${sources.size} sources complete"
+        // The loop itself is IndexCrawlRun, in :crawl, because the hub runs
+        // the same one. This worker only decides whether to run it and where
+        // its log lines go — logcat, the "is it stuck?" answer without a
+        // debugger.
+        val outcome = IndexCrawlRun.run(
+            index, sources,
+            crawlOnce = { crawler.crawlOnce(it) },
+            onFailure = { android.util.Log.w("YosemiteKids", "index crawl failed", it) }
         )
-        // Failed = we attempted a source and it threw without yielding a page —
-        // the red dot in settings. A run that simply had nothing to do is green.
-        index.recordRun(pages, failed = failures > 0 && pages == 0)
+        android.util.Log.i("YosemiteKids", outcome.summary)
         return Result.success()
     }
 
@@ -121,20 +87,6 @@ class IndexCrawlWorker(
                             ?.takeIf { it > 0 && it != Long.MAX_VALUE }
                     )
                 }
-
-        /**
-         * Pages per run. Sized against the system's ~10-minute cap on a single
-         * worker execution, NOT the 15-minute period: at CRAWL_DELAY_MS spacing
-         * plus fetch time this lands near 5-6 minutes, leaving real headroom
-         * before the platform kills the run mid-page.
-         *
-         * The 15-minute period is WorkManager's floor and can't be shortened,
-         * so throughput has to come from doing more per window rather than
-         * more windows. Averaged over the period this is still only ~4
-         * requests/minute — the burst is paced, and it uses the background
-         * fetch lane, so the kid's browsing never queues behind it.
-         */
-        private const val PAGES_PER_RUN = 60
 
         /** 15 minutes is WorkManager's minimum periodic interval. */
         fun schedule(context: Context) {

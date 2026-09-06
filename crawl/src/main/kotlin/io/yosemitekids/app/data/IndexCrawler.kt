@@ -1,6 +1,5 @@
 package io.yosemitekids.app.data
 
-import io.yosemitekids.app.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import org.schabi.newpipe.extractor.Page
@@ -129,7 +128,7 @@ class IndexCrawler(
     private fun serializeCursor(handle: YouTubeRepository.FeedHandle, page: Page): String? =
         runCatching {
             JSONObject().apply {
-                put("xv", BuildConfig.EXTRACTOR_VERSION)
+                put("xv", ExtractorVersion.VALUE)
                 put("handle", when (handle) {
                     is YouTubeRepository.FeedHandle.Playlist ->
                         JSONObject().put("kind", "playlist").put("url", handle.url)
@@ -162,7 +161,7 @@ class IndexCrawler(
             // carried a "v" versionCode stamp; they lack "xv" and so are
             // rejected once, which is what the old scheme did on every update
             // anyway.
-            if (o.optString("xv") != BuildConfig.EXTRACTOR_VERSION) return@runCatching null
+            if (o.optString("xv") != ExtractorVersion.VALUE) return@runCatching null
             val h = o.getJSONObject("handle")
             val handle = if (h.getString("kind") == "playlist") {
                 YouTubeRepository.FeedHandle.Playlist(h.getString("url"))
