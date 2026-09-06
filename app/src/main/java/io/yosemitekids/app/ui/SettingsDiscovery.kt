@@ -1,16 +1,25 @@
 package io.yosemitekids.app.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import io.yosemitekids.app.data.SourceKind
 import io.yosemitekids.app.data.WhitelistEntry
@@ -51,6 +60,9 @@ internal fun AiDiscoverySection(
     var query by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    /** Whether [message] is the good news — the one line that reads in green. */
+    var messageOk by remember { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
     var cards by remember { mutableStateOf<List<DiscoveryCard>>(emptyList()) }
 
     val ready = ai.model.isNotBlank() && (ai.apiKey.isNotBlank() || ai.baseUrl.startsWith("http://"))
@@ -60,34 +72,76 @@ internal fun AiDiscoverySection(
                 "fill in \"AI connection\" above — endpoint, key and model. Content " +
                 "screening is a separate feature and can stay off.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // Off the divider above it, the same as the ready state's first line.
+            modifier = Modifier.padding(vertical = 12.dp)
         )
         return
     }
 
     Text(
-        "Describe what your kid loves — the AI suggests channels and playlists, " +
-            "each verified against YouTube. Inspect anything in the YouTube app " +
-            "before adding it.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        "Describe what your kid loves. Inspect anything in YouTube before adding it.",
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 20.sp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 12.dp)
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            placeholder = { Text("e.g. calm science videos for a dinosaur fan, age 7") },
-            singleLine = true,
-            modifier = Modifier.weight(1f)
-        )
-        Spacer(Modifier.width(8.dp))
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(top = 9.dp)
+    ) {
+        val fieldShape = RoundedCornerShape(8.dp)
+        Box(
+            contentAlignment = Alignment.CenterStart,
+            modifier = Modifier
+                .weight(1f)
+                .height(32.dp)
+                .clip(fieldShape)
+                .background(MaterialTheme.colorScheme.background)
+                .border(
+                    1.dp,
+                    if (focused) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.outline,
+                    fieldShape
+                )
+                .padding(horizontal = 14.dp)
+        ) {
+            BasicTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                // A bare BasicTextField draws black on black, and its caret
+                // with it: both colours have to be named here.
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 13.5.sp, color = MaterialTheme.colorScheme.onSurface
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { focused = it.isFocused || it.hasFocus },
+                decorationBox = { inner ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (query.isEmpty()) Text(
+                            "e.g. calm science videos for a dinosaur fan, age 7",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                            color = SettingsPlaceholder,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                        inner()
+                    }
+                }
+            )
+        }
+        Spacer(Modifier.width(7.dp))
         Button(
-            modifier = Modifier.tvFocusHighlight(),
+            shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+            modifier = Modifier.height(32.dp).tvFocusHighlight(cornerRadius = 8.dp),
             enabled = !busy && query.isNotBlank(),
             onClick = {
                 scope.launch {
                     busy = true
                     cards = emptyList()
+                    messageOk = false
                     message = "Asking ${ai.model}…"
                     val suggestions = runCatching {
                         io.yosemitekids.app.data.AiScreener.suggest(ai, query.trim())
@@ -110,64 +164,149 @@ internal fun AiDiscoverySection(
                     }.filterNotNull().distinctBy { it.entry.id }
 
                     cards = verified
+                    messageOk = verified.isNotEmpty()
                     message = when {
                         verified.isEmpty() -> "None of the suggestions could be verified on YouTube — try again"
                         else -> "Verified ${verified.size} of ${suggestions.size} — " +
-                            "inspect in YouTube, then add what you like"
+                            "inspect, then add what you like"
                     }
                     busy = false
                 }
             }
-        ) { Text(if (busy) "…" else "Suggest") }
+        ) {
+            Text(
+                if (busy) "…" else "Suggest",
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.5.sp),
+                fontWeight = FontWeight.Medium
+            )
+        }
     }
     message?.let {
-        Text(it, style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            it,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+            // Green only for the line that says it worked; everything else —
+            // asking, checking, nothing found — is a state, not good news.
+            color = if (messageOk) SettingsSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 11.dp)
+        )
     }
 
     cards.forEach { card ->
         val alreadyAdded = entries.any { it.id == card.entry.id || it.url == card.entry.url }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(vertical = 4.dp)
-        ) {
-            AsyncImage(
-                model = card.imageUrl,
-                contentDescription = card.name,
-                modifier = Modifier.size(40.dp).clip(CircleShape)
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(card.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    card.subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        SettingsDivider()
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(11.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                AsyncImage(
+                    model = card.imageUrl,
+                    contentDescription = card.name,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
                 )
-                if (card.why.isNotBlank()) {
+                Column(Modifier.weight(1f)) {
+                    // Neither the name nor the blurb is clamped: a channel a
+                    // parent has never heard of is exactly the one whose name
+                    // and reason they need in full.
                     Text(
-                        card.why,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
+                        card.name,
+                        style = MaterialTheme.typography.bodyMedium
+                            .copy(fontSize = 14.5.sp, lineHeight = 20.sp)
+                    )
+                    Text(
+                        card.subtitle,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
             }
-            CompactButton( onClick = {
-                runCatching {
-                    context.startActivity(
-                        android.content.Intent(
-                            android.content.Intent.ACTION_VIEW,
-                            android.net.Uri.parse(card.url)
-                        )
-                    )
-                }
-            }) { Text("YouTube") }
-            CompactButton(
-                enabled = !alreadyAdded,
-                onClick = { onAdd(card.entry) }
-            ) { Text(if (alreadyAdded) "Added ✓" else "Add") }
+            if (card.why.isNotBlank()) Text(
+                card.why,
+                style = MaterialTheme.typography.bodySmall
+                    .copy(fontSize = 12.5.sp, lineHeight = 19.sp),
+                // Not teal: the reason is prose, and teal here read as a link.
+                color = SettingsTextSecondary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier.padding(top = 9.dp)
+            ) {
+                DiscoveryButton(
+                    label = "Inspect",
+                    modifier = Modifier.weight(1f),
+                    border = SettingsStrongBorder,
+                    contentColor = SettingsTextSecondary,
+                    containerColor = MaterialTheme.colorScheme.background,
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(card.url)
+                                )
+                            )
+                        }
+                    }
+                )
+                DiscoveryButton(
+                    label = if (alreadyAdded) "Added ✓" else "Add",
+                    modifier = Modifier.weight(1f),
+                    enabled = !alreadyAdded,
+                    border = if (alreadyAdded) MaterialTheme.colorScheme.outline
+                        else MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    containerColor = SettingsAccentTint,
+                    onClick = { onAdd(card.entry) }
+                )
+            }
         }
+    }
+}
+
+/**
+ * One of a suggestion's two actions. Equal widths on purpose: inspecting is
+ * the step the design asks a parent to take first, so it is not the smaller
+ * of the two.
+ */
+@Composable
+private fun DiscoveryButton(
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    border: Color,
+    contentColor: Color,
+    containerColor: Color,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, border),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = containerColor,
+            contentColor = contentColor,
+            disabledContainerColor = Color.Transparent,
+            disabledContentColor = SettingsPlaceholder
+        ),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        // OutlinedButton's own minimum is 40dp, and only a fixed height
+        // overrides it.
+        modifier = modifier.height(32.dp).tvFocusHighlight(cornerRadius = 8.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
+        )
     }
 }
 
@@ -198,10 +337,12 @@ private suspend fun verifySuggestion(
                 name = r.name,
                 url = r.url,
                 imageUrl = r.thumbnailUrl,
+                // What it is, how much of it, then whose: the uploader reads
+                // as a name rather than as an attribution clause.
                 subtitle = listOfNotNull(
                     "Playlist",
-                    r.uploaderName?.let { "by $it" },
-                    r.videoCount.takeIf { it > 0 }?.let { "$it videos" }
+                    r.videoCount.takeIf { it > 0 }?.let { "$it videos" },
+                    r.uploaderName?.trim()?.takeIf { it.isNotEmpty() }
                 ).joinToString(" · "),
                 why = s.why
             )
@@ -384,7 +525,8 @@ internal fun DirectorySection(
                         d.note,
                         maxLines = 2, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
+                        // Prose, not a link: teal is for what a parent presses.
+                        color = SettingsTextSecondary
                     )
                 }
             }
