@@ -81,4 +81,14 @@ class MasterElectionTest {
         assertEquals(Decision.HEARTBEAT, MasterElection.decide(mine, hub, isHub = true, now = T, armed = true))
         assertEquals(Decision.NOTHING, MasterElection.decide(mine, hub, isHub = true, now = T, armed = false))
     }
+
+    @Test
+    fun `a holder that answered this sweep is live whatever its stamp says`() {
+        val staleHub = held(hub, T - 3 * 24 * H)
+        assertEquals(Decision.CLAIM, MasterElection.decide(staleHub, phone, isHub = false, now = T))
+        assertEquals(
+            Decision.NOTHING,
+            MasterElection.decide(staleHub, phone, isHub = false, now = T, holderSeen = true)
+        )
+    }
 }

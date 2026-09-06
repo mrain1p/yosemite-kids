@@ -1,5 +1,7 @@
 package io.yosemitekids.app
 
+import io.yosemitekids.app.data.IndexPull
+
 import java.io.File
 
 import io.yosemitekids.app.data.LanClient
@@ -395,5 +397,23 @@ class HubIntegrationTest {
         assertTrue("the pull header must reach HubTokens", tokens.armed(T))
         assertEquals(index.exportSourceWithState("UCaaa"), runBlocking { LanClient.fetchIndexSource(hub, "UCaaa") })
         assertEquals(null, runBlocking { LanClient.fetchIndexSource(hub, "UCzzz") })
+    }
+
+    @Test
+    fun aDevicePullsThroughTheRealClientAndArmsTheHub() {
+        val hub = joined("Living room TV")
+        index.addVideos(
+            "UCa",
+            listOf("v1", "v2").map { ChannelIndex.IndexedVideo(videoId = it, title = "t", channelName = "c", thumbnailUrl = null, durationSeconds = 60, sourceId = "UCa") },
+            complete = true
+        )
+        val device = ChannelIndex(File(tmp.newFolder("device"), "search-index"))
+        val n = runBlocking {
+            IndexPull.pull(device, setOf("UCa"), LanClient.indexStatus(hub, pull = true)) { LanClient.fetchIndexSource(hub, it) }
+        }
+        assertEquals(1, n)
+        assertEquals(2, device.state("UCa")!!.count)
+        assertTrue(device.state("UCa")!!.complete)
+        assertTrue("asking is what arms the hub", tokens.armed(T))
     }
 }

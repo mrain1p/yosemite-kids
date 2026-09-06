@@ -47,13 +47,19 @@ object MasterElection {
      *   that stopped pulling — every device back on an older build — gets
      *   its phone back as master after the stamp ages out. Ignored for a
      *   phone.
+     * @param holderSeen the holder answered a status call during this very
+     *   sweep. Then it is live whatever its stamp says: a hub whose clock is
+     *   a day out would otherwise read as vacant on every phone sweep, be
+     *   claimed, reclaim (it is armed), and be fought over every quarter
+     *   hour for as long as the clock stayed wrong.
      */
     fun decide(
         config: Whitelist,
         me: String,
         isHub: Boolean,
         now: Long,
-        armed: Boolean = true
+        armed: Boolean = true,
+        holderSeen: Boolean = false
     ): Decision {
         val holder = config.masterDeviceToken
         if (holder == me) {
@@ -61,7 +67,7 @@ object MasterElection {
             val at = stampedAt(config)
             return if (at == null || now - at >= HEARTBEAT_MS) Decision.HEARTBEAT else Decision.NOTHING
         }
-        val vacant = vacant(config, now)
+        val vacant = !holderSeen && vacant(config, now)
         if (isHub) {
             if (!armed) return Decision.NOTHING
             // A vacant slot, or one a phone holds: the hub is always on and

@@ -295,6 +295,27 @@ class ChannelIndex(private val dir: File) {
         return true
     }
 
+    /**
+     * Import a source pulled from a hub by union: the hub's videos are added
+     * to what this device holds, never replacing it, and "complete" is the
+     * stronger of the two claims. A phone that was master before the hub
+     * took over may hold more than the hub for a while, and a pull must not
+     * shrink it. Same wire format as [importSourceWithState], which the push
+     * path keeps: a master's push replaces, because the master is the
+     * authority; a pull merges, because the puller might be.
+     */
+    fun importSourceUnion(sourceId: String, body: String): Boolean {
+        val nl = body.indexOf('\n')
+        if (nl <= 0) return false
+        val head = runCatching { JSONObject(body.substring(0, nl)) }.getOrNull() ?: return false
+        val videos = parseSource(body.substring(nl + 1), sourceId)
+        // A body whose array will not parse must not land as an empty source.
+        if (videos.isEmpty() && head.optInt("count", 0) > 0) return false
+        val complete = head.optBoolean("complete", false) || (states[sourceId]?.complete ?: false)
+        addVideos(sourceId, videos, complete = complete)
+        return true
+    }
+
     private fun parseSource(json: String, sourceId: String): List<IndexedVideo> =
         runCatching {
             val arr = JSONArray(json)

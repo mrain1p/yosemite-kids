@@ -57,7 +57,9 @@ object ConfigSync {
         onConfigApplied: ((Whitelist, Whitelist) -> Unit)? = null,
         mergeLooks: (String) -> Boolean = { false },
         onChanged: () -> Unit = {},
-        onSweeping: (Boolean) -> Unit = {}
+        onSweeping: (Boolean) -> Unit = {},
+        /** This device's search index, for the pull from a hub. Null skips the pull. */
+        index: ChannelIndex? = null
     ): Boolean {
         val devices = pairing.paired()
         // Init and ON_START both fire this at launch — one reconcile is plenty.
@@ -66,7 +68,7 @@ object ConfigSync {
         onSweeping(true)
         try {
             withContext(Dispatchers.IO) {
-                sweep(store, pairing, devices, syncNotices, onConfigApplied, mergeLooks, onChanged)
+                sweep(store, pairing, devices, syncNotices, onConfigApplied, mergeLooks, onChanged, index)
             }
         } finally {
             // Cleared in a finally for the reason the old flag was: one
@@ -84,33 +86,16 @@ object ConfigSync {
         syncNotices: SyncNotices?,
         onConfigApplied: ((Whitelist, Whitelist) -> Unit)?,
         mergeLooks: (String) -> Boolean,
-        onChanged: () -> Unit
+        onChanged: () -> Unit,
+        index: ChannelIndex?
     ) {
-        // Master election: the first parent device to run with the slot
-        // empty claims it; only the master builds the search index (its
-        // crawl is rate-limit-expensive, so the family pays it once).
-        // Kid devices never claim it, no matter how empty the field is.
-        // Two co-parents CAN race this and both claim — harmless: the
-        // MS: term in the config hash makes the copies differ, the
-        // newest-wins reconcile below converges them, and the loser's
-        // next worker run sees it isn't master and stops crawling.
         val isParent = pairing.role() != PairingStore.Role.KID
-        val loaded = store.load()
-        // Not while the store is degraded: `save` here re-serializes
-        // the whole config, so claiming master on a config that only
-        // looks master-less because the file failed to parse would
-        // write the empty read over the real file, and the sweep below
-        // would then push that emptiness to every paired device.
-        if (loaded.masterDeviceToken == null && isParent && !store.degraded) {
-            val me = pairing.deviceToken()
-            // Locked read-modify-write: `loaded` is already stale by
-            // the time we get here, and handing a stale config to the
-            // stamper reads a merged-in channel as a fresh add — which
-            // clears its tombstone and resurrects a deleted channel.
-            // No log line: claiming the index is not a parent's action.
-            store.update { it.copy(masterDeviceToken = me) }
-            android.util.Log.i("YosemiteKids", "claimed master role (indexing)")
-        }
+        val me = pairing.deviceToken()
+        // Every peer that answered this sweep, for the election and the
+        // pull below. The master election used to run here, before the
+        // loop; it now runs after it, because a holder that answered is
+        // live whatever its stamp says (MasterElection.decide, holderSeen).
+        val answered = LinkedHashMap<PairedDevice, LanClient.DeviceStatus>()
         // A kid may have restyled themselves on a device. Adopt that
         // first, so the hash compared below already carries the new
         // look and the push that follows delivers it everywhere —
@@ -152,6 +137,7 @@ object ConfigSync {
                 device = device.copy(id = status.deviceToken)
                 pairing.replacePaired(stored, device)
             }
+            answered[device] = status
             // Read per iteration, not hoisted above the loop. With two
             // TVs, merging the first one lands a co-parent's channel —
             // and comparing the second against the pre-merge hash
@@ -259,6 +245,63 @@ object ConfigSync {
                     "config sync: ${device.name} differs (#$remoteHash) and is on a " +
                         "pre-merge build whose copy claims to be newer — leaving for Push/Pull"
                 )
+            }
+        }
+
+        // --- the search index -------------------------------------------
+        // The election (MasterElection): a parent claims a vacant slot —
+        // empty, or whose holder has not said it is alive for a day — and
+        // the holder heartbeats every six hours. Kid devices never claim,
+        // however empty the slot: only the master crawls, the crawl is
+        // rate-limit-expensive, and the family pays it once. Two co-parents
+        // can still both claim in one window; the merge's tie rule settles
+        // it and the loser's next worker run stops crawling.
+        //
+        // Never while the store is degraded: `update` re-serializes the
+        // whole config, and claiming on a config that only looks empty
+        // because the file failed to parse would write that emptiness over
+        // the real file and push it to every paired device.
+        if (isParent && !store.degraded) {
+            val config = store.load()
+            val holderSeen = config.masterDeviceToken != null &&
+                answered.values.any { it.deviceToken == config.masterDeviceToken }
+            val decision = MasterElection.decide(
+                config, me, isHub = false, now = System.currentTimeMillis(), holderSeen = holderSeen
+            )
+            val wrote = when (decision) {
+                MasterElection.Decision.CLAIM -> {
+                    // Locked read-modify-write inside update: a stale config
+                    // handed to the stamper reads a merged-in channel as a
+                    // fresh add, which clears its tombstone and resurrects a
+                    // deleted channel. No change-log line: claiming the
+                    // index is not a parent's action.
+                    store.update(refresh = setOf(ConfigStamp.MASTER)) { it.copy(masterDeviceToken = me) }
+                    android.util.Log.i("YosemiteKids", "claimed the search index (master)")
+                    true
+                }
+                MasterElection.Decision.HEARTBEAT -> {
+                    store.update(refresh = setOf(ConfigStamp.MASTER)) { it }
+                    true
+                }
+                MasterElection.Decision.NOTHING -> false
+            }
+            // Say so now rather than next sweep: the devices list would
+            // otherwise read "out of sync" for a quarter of an hour.
+            if (wrote) answered.keys.forEach { LanClient.pushConfig(it, store.rawJson()) }
+        }
+
+        // The pull. Every device, kid or parent, takes the index from a hub
+        // it is paired with, and asking is what arms the hub to build it
+        // (X-Index-Pull, HubTokens.armed). A phone that is still master
+        // pulls too, harmlessly, and that first pull is the handover: the
+        // hub claims on its next tick and this phone's worker stands down.
+        if (index != null) {
+            val wanted = store.load().sources.map { it.id }.toSet()
+            answered.filterValues { it.kind == "hub" }.keys.forEach { hub ->
+                val n = IndexPull.pull(index, wanted, LanClient.indexStatus(hub, pull = true)) {
+                    LanClient.fetchIndexSource(hub, it)
+                }
+                if (n > 0) android.util.Log.i("YosemiteKids", "index: pulled $n source(s) from ${hub.name}")
             }
         }
     }

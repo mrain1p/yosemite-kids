@@ -177,7 +177,8 @@ class MainViewModel(
                 onChanged = { refresh() },
                 // Surfaced as the ring round the avatar. All of this used to
                 // happen with nothing on screen to say so.
-                onSweeping = { _state.value = _state.value.copy(syncing = it) }
+                onSweeping = { _state.value = _state.value.copy(syncing = it) },
+                index = channelIndex
             )
         }
     }
@@ -245,10 +246,22 @@ class MainViewModel(
         indexSyncInFlight = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val me = pairingStore?.deviceToken()
+                val me = pairingStore?.deviceToken() ?: return@launch
                 val master = configStore?.load()?.masterDeviceToken
-                if (me == null || master != me) return@launch
-                devices.forEach { device ->
+                // The legacy relay. From IndexPull.FIRST_PULLING_VERSION_CODE
+                // a device pulls the index from the hub itself; older TVs
+                // still receive it by push. While a hub holds the slot, this
+                // phone relays what it pulled to those, and only to those.
+                // Never to the hub: it takes nobody's copy (no POST /index).
+                val isParent = pairingStore?.role() != io.yosemitekids.app.data.PairingStore.Role.KID
+                val relayForHub = master != null &&
+                    io.yosemitekids.app.data.MasterToken.isHub(master) && isParent
+                if (master != me && !relayForHub) return@launch
+                devices.filterNot { it.secretless }.forEach { device ->
+                    if (relayForHub) {
+                        val v = LanClient.fullStatus(device)?.versionCode ?: return@forEach
+                        if (v >= io.yosemitekids.app.data.IndexPull.FIRST_PULLING_VERSION_CODE) return@forEach
+                    }
                     val remoteStatus = LanClient.indexStatus(device) ?: return@forEach
                     val remote = runCatching { org.json.JSONObject(remoteStatus) }
                         .getOrNull() ?: return@forEach

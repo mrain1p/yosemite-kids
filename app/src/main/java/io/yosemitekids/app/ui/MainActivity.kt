@@ -176,7 +176,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 io.yosemitekids.app.data.ConfigSync.adoptLooks(
                                     configStore, pairingStore, json
                                 )
-                            }
+                            },
+                            index = io.yosemitekids.app.data.ChannelIndex(appContext)
                         )
                     }
                 },
