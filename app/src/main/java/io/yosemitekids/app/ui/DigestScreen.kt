@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.yosemitekids.app.data.AiScreener
 import io.yosemitekids.app.data.ConfigMerge
 import io.yosemitekids.app.data.ConfigStore
@@ -129,7 +130,7 @@ fun WeeklyDigestScreen(
         Spacer(Modifier.height(8.dp))
         Text(
             Digest.weekOfLabel(today),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
         )
         Text(
             "What each device reports, added up on this phone. Nothing leaves your network.",
@@ -181,11 +182,11 @@ fun WeeklyDigestScreen(
         if (aiEnabled || holds.isNotEmpty()) {
             SectionTitle("Screening")
             SettingsCard(padded = false) {
-                Column(Modifier.padding(horizontal = 16.dp)) {
+                Column(Modifier.padding(horizontal = 12.dp)) {
                     ValueRow(
                         "Waiting for your OK",
                         value = if (waiting > 0) waiting.toString() else "None",
-                        valueColor = if (waiting > 0) StatusAmber else null,
+                        valueColor = if (waiting > 0) WarningAmber else null,
                         onClick = onOpenReview
                     )
                     SettingsDivider()
@@ -233,24 +234,27 @@ private fun WatchingCard(
 ) {
     val scope = rememberCoroutineScope()
     SettingsCard(padded = false) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(12.dp)) {
             Row {
                 Text(
                     formatWatchTime(weekly.totalMin),
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    // Medium, not the scale's Bold: at 24sp the number is
+                    // already the loudest thing on the page.
+                    style = MaterialTheme.typography.headlineSmall
+                        .copy(fontWeight = FontWeight.Medium, letterSpacing = (-0.5).sp),
                     modifier = Modifier.alignByBaseline()
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(10.dp))
                 Text(
                     listOfNotNull(kidName, device.name).joinToString(" · "),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.alignByBaseline()
                 )
             }
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 digestWeekLine(weekly),
                 style = MaterialTheme.typography.bodySmall,
@@ -266,7 +270,7 @@ private fun WatchingCard(
             }
         }
         SettingsDivider()
-        Column(Modifier.padding(horizontal = 16.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp)) {
             val top = weekly.topChannels.firstOrNull()
             ValueRow(
                 "Most watched",
@@ -286,7 +290,7 @@ private fun WatchingCard(
             var summary by remember { mutableStateOf<String?>(null) }
             var busy by remember { mutableStateOf(false) }
             var error by remember { mutableStateOf<String?>(null) }
-            Column(Modifier.padding(16.dp)) {
+            Column(Modifier.padding(12.dp)) {
                 summary?.let {
                     Text(it, style = MaterialTheme.typography.bodyMedium)
                 } ?: CompactButton(
