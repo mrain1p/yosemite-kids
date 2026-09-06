@@ -46,6 +46,44 @@ and, if the device later changes address, by sweeping its own /24
 | `POST /player?cmd=pause\|play` | admin | — | `ok` / `409 nothing playing` | Parent's "come to dinner". |
 | `POST /play` | admin | JSON `{url,title,channel,thumb,timePercent}` | `playing` / `409 refused` / `400` | "Play this on the TV". Refused when the video is blocked for the kid on screen. |
 | `POST /grant?minutes=1..240[&profile=<8 hex>]` | admin | — | `granted` | Bonus minutes for today; `profile` unvalidated on purpose (may precede the push that introduces the kid). |
+| `POST /join-hub` | admin | JSON `{host, port, token}` | `joined` / `400 bad hub` | The phone hands this device a hub to sync with (a TV has nowhere to type one). Stored as an ordinary `secretless` peer. |
+| `POST /leave-hub` | admin | — | `left` | Drops every hub entry, so removing the hub on the phone undoes `/join-hub`. |
+| `POST /check-updates` | admin | `{}` (ignored) | `{"status": "offered"\|"up-to-date"\|"off"\|"failed"\|"busy"\|"not-on-screen", versionName, versionCode}` | "Update now" from the phone — see below. Always 200; the status is about the device, not the request. One in flight per device; a second ask during a download answers `busy`. A 404 means a build older than the route. |
+
+## `POST /check-updates` — starting a device's update from the phone
+
+The device runs its own update check (`Updater.checkDetailed`: fetch
+`version.json`, compare `versionCode`), and if a newer build is offered it
+downloads the APK and hands it to the system installer, whose prompt comes up
+on the device's screen. **The prompt is confirmed by whoever is at the
+device.** Nothing over the LAN can press it — Android hands the APK to its
+own installer, and an admin token gets to ask, not to change what is
+installed on the kids' TV without a person in front of it agreeing.
+
+The answer comes back only once the download is done, so `LanClient.checkUpdates`
+waits with a read timeout sized for a download (`UPDATE_READ_TIMEOUT_S`, 3 min)
+rather than the LAN client's 10 s — a device that gave up at 10 s would still
+finish and put the prompt up, and the phone would report "failed" about an
+install that was waiting on the TV. The route holds a LAN worker for that long;
+`RemoteUpdate`'s gate keeps it to one at a time.
+
+`versionName`/`versionCode` name the build the installer is about to install
+when the status is `offered`, and the running build for every other status.
+
+| Status | Meaning | The phone says |
+| --- | --- | --- |
+| `offered` | Downloaded; the install prompt is on the device's screen. | "The install prompt for X is on *name*. Confirm it there with the remote." |
+| `up-to-date` | The manifest names nothing newer than the running build. Can contradict the phone's own "behind" when the phone runs a build newer than the release. | explains that, then the row is re-read |
+| `off` | The build carries no manifest URL (`Updater.canCheck()` false — builds before `FIRST_SELF_UPDATING_VERSION_CODE`). Nothing was checked. | install by hand once |
+| `failed` | The manifest or the APK could not be fetched. | try again in a minute |
+| `busy` | Another ask is already checking or downloading. | give it a minute |
+| `not-on-screen` | An update exists, but the app has no visible window, and Android 10+ drops the installer start silently. Nothing was downloaded. Asked before the download and again after it. | open the app on the device first |
+| *404* | A build older than the route. Its own settings screen still offers the install from 1.0.3 on. | use Check for updates on the device, or install by hand once |
+
+The phone only offers "Update now" for a device that is answering, is behind,
+and reports a `versionCode` at or above `FIRST_SELF_UPDATING_VERSION_CODE`;
+older builds get the by-hand wording without a button that could only ever
+answer `off`.
 
 ## `X-Device-Port`, and why the hub only ever nudges
 

@@ -419,6 +419,20 @@ foreach ($copyLine in (Get-Content hub/Dockerfile | Where-Object { $_ -cmatch '^
     }
 }
 
+# 14. Every route LanServer answers has a row in docs/LAN-API.md.
+#     The table is where the phone side, the hub and a parent with curl learn
+#     what a device does; a route added to LanServer.handle and not to the
+#     table exists for nobody but its author. /join-hub and /leave-hub had
+#     been missing for a whole round before this guard existed.
+$lanApi = Get-Content docs/LAN-API.md -Raw
+$routes = Select-String -Path app/src/main/java/io/yosemitekids/app/data/Pairing.kt -Pattern 'path == "(/[a-z-]+)"' -AllMatches |
+    ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+foreach ($r in $routes) {
+    if ($lanApi -notmatch "(GET|POST) $([regex]::Escape($r))[^a-z-]") {
+        Fail-Guard "LanServer answers $r and docs/LAN-API.md has no row for it. Add it to the route table."
+    }
+}
+
 Write-Host "== 1/5 compile (assembleDebug)" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q assembleDebug
 if ($LASTEXITCODE -ne 0) { Write-Host "compile FAILED" -ForegroundColor Red; exit 1 }

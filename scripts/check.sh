@@ -370,6 +370,16 @@ for src in $(grep -E '^COPY ' hub/Dockerfile | grep -v -- '--from=' | sed -E 's/
     guard_fail "hub/Dockerfile copies '$src' but .dockerignore does not allow it (add '!$src') — the image build would fail with 'not found'."
 done
 
+# 14. Every route LanServer answers has a row in docs/LAN-API.md.
+#     The table is where the phone side, the hub and a parent with curl learn
+#     what a device does; a route added to LanServer.handle and not to the
+#     table exists for nobody but its author. /join-hub and /leave-hub had
+#     been missing for a whole round before this guard existed.
+for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z-]+' | sort -u); do
+  grep -qE "(GET|POST) $r[^a-z-]" docs/LAN-API.md ||
+    guard_fail "LanServer answers $r and docs/LAN-API.md has no row for it. Add it to the route table."
+done
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/5 compile (assembleDebug)"

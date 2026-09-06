@@ -55,6 +55,15 @@ object AppVisibility {
     var startedActivities: Int = 0
 
     val inForeground: Boolean get() = startedActivities > 0
+
+    /**
+     * Whether an activity started from this process right now would be
+     * shown. The rule the "Play on TV" refusal applies, named once so the
+     * update prompt from a phone (`POST /check-updates`) applies the same
+     * one rather than a second copy that drifts.
+     */
+    val canStartActivity: Boolean
+        get() = android.os.Build.VERSION.SDK_INT < 29 || inForeground
 }
 
 object RemotePlayerControl {

@@ -29,6 +29,7 @@ import io.yosemitekids.app.data.ConfigStore
 import io.yosemitekids.app.data.LanClient
 import io.yosemitekids.app.data.PairedDevice
 import io.yosemitekids.app.data.PairingStore
+import io.yosemitekids.app.data.RemoteUpdate
 import io.yosemitekids.app.data.Updater
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -203,6 +204,12 @@ internal class DeviceFleet(private val pairingStore: PairingStore) {
      *  discard its own result, so a device that never got the config looked
      *  exactly like one that did. */
     var pushMessage by mutableStateOf<Map<String, String>>(emptyMap())
+    /** device.key → what the last "Update now" said, in plain words. See [updateNow]. */
+    var updateMessage by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
+    /** Devices with an "Update now" in flight: the button waits rather than asks twice. */
+    var updating by mutableStateOf<Set<String>>(emptySet())
+        private set
     val myToken: String = pairingStore.deviceToken()
 
     /**
@@ -285,6 +292,40 @@ internal class DeviceFleet(private val pairingStore: PairingStore) {
     fun behind(): List<PairedDevice> = devices.filter { d -> lastAnswer[d.key]?.behind() == true }
 
     /**
+     * Whether to offer "Update now" for [device]: answering right now, and
+     * its last answer named a build that is behind and can be asked. Judged
+     * on the live state, not only the last answer, because the ask goes over
+     * the LAN this instant — a switched-off TV would just say "didn't answer".
+     */
+    fun canAskToUpdate(device: PairedDevice): Boolean =
+        syncStates[device.key] is DeviceSync.Reachable &&
+            lastAnswer[device.key]?.canBeAskedToUpdate() == true
+
+    /**
+     * "Update now": ask [device] to fetch its update and put its installer
+     * prompt up. The device answers only once its download is done, which
+     * can take a minute, so the message says so while it waits and the
+     * outcome then replaces it — [updateOutcomeText] has the words.
+     *
+     * An "up to date" answer contradicts the sweep that lit the button (the
+     * device compared itself with version.json; this phone compared it with
+     * itself), so the row is re-read to show which of the two is current.
+     */
+    fun updateNow(device: PairedDevice) {
+        if (device.key in updating) return
+        scope.launch {
+            updating = updating + device.key
+            updateMessage = updateMessage +
+                (device.key to "Asking ${device.name} to fetch the update — this can take a minute.")
+            val answer = LanClient.checkUpdates(device)
+            updateMessage = updateMessage +
+                (device.key to updateOutcomeText(device.name, answer, lastAnswer[device.key]?.kind))
+            if (answer?.status == RemoteUpdate.UP_TO_DATE) refreshOne(device)
+            updating = updating - device.key
+        }
+    }
+
+    /**
      * The other parents: every admin phone approved on any device this one
      * administers, except this one. A co-parent's phone is never paired
      * with this phone directly — the two only ever meet on a TV's admin list
@@ -328,6 +369,81 @@ internal fun DeviceSync.Reachable.versionText(): String? = versionName?.ifBlank 
  */
 internal fun DeviceSync.Reachable.behind(myVersionCode: Int = BuildConfig.VERSION_CODE): Boolean =
     versionCode != null && versionCode < myVersionCode
+
+/**
+ * Whether "Update now" is worth offering: behind this phone, AND on a build
+ * that has an update check to be sent to. A build older than
+ * [Updater.FIRST_SELF_UPDATING_VERSION_CODE] has no manifest URL, so asking
+ * it can only ever come back "off"; the banner and the page name those with
+ * the by-hand wording instead of a button that cannot work.
+ */
+internal fun DeviceSync.Reachable.canBeAskedToUpdate(myVersionCode: Int = BuildConfig.VERSION_CODE): Boolean =
+    behind(myVersionCode) && (versionCode ?: 0) >= Updater.FIRST_SELF_UPDATING_VERSION_CODE
+
+/**
+ * The one by-hand sentence, for the banner and the device page alike. Null
+ * when nobody needs it. "Once", because the build installed by hand is the
+ * first that can update itself, so the walk to the TV is not a routine.
+ */
+internal fun installByHandText(names: List<String>, myVersionName: String): String? = when (names.size) {
+    0 -> null
+    1 -> "${names.single()} is on a build with no update check: install $myVersionName on it " +
+        "by hand once, and every later version arrives on its own."
+    else -> "${names.joinToString(", ")} are on builds with no update check: install " +
+        "$myVersionName on them by hand once, and every later version arrives on its own."
+}
+
+/**
+ * What the phone says after "Update now", from what the device answered.
+ *
+ * Plain words per outcome, because the parent is looking at a phone and the
+ * thing that matters is on another screen across the room. Pure, so the
+ * wording for every branch — including the two a device never sends (null
+ * for unreachable, [LanClient.NO_ROUTE] for a build older than the route) —
+ * is pinned by a test rather than found by a parent.
+ *
+ * @param kind the device's [io.yosemitekids.app.data.DeviceKind], for "with
+ *   the remote": a kid's tablet has no remote, and being told to use one
+ *   reads as the phone not knowing what it is talking to.
+ */
+internal fun updateOutcomeText(
+    deviceName: String,
+    answer: LanClient.UpdateAnswer?,
+    kind: String? = null,
+    myVersionName: String = BuildConfig.VERSION_NAME
+): String {
+    val confirm = if (kind == io.yosemitekids.app.data.DeviceKind.TV) "there with the remote" else "there on its screen"
+    return when (answer?.status) {
+        null -> "$deviceName didn't answer. Is it awake and on this Wi-Fi?"
+        RemoteUpdate.OFFERED ->
+            "The install prompt" + (answer.versionName?.let { " for $it" } ?: "") +
+                " is on $deviceName. Confirm it $confirm."
+        // The device judged itself against version.json and this phone judged
+        // it against itself; when they disagree, the release is what is behind.
+        RemoteUpdate.UP_TO_DATE ->
+            "$deviceName checked and found nothing newer than " +
+                "${answer.versionName ?: "its build"} published yet — this phone's " +
+                "$myVersionName may be ahead of the release."
+        RemoteUpdate.OFF -> installByHandText(listOf(deviceName), myVersionName)!!
+        // A 404: the build predates the route. Not "off" — from 1.0.3 on the
+        // device's own settings screen offers the install, and a parent who
+        // is sent to sideload when a button on the TV would do wastes a walk.
+        LanClient.NO_ROUTE ->
+            "$deviceName's build can't start an update from this phone. On its own " +
+                "settings screen, Check for updates offers the install — or install " +
+                "$myVersionName on it by hand once."
+        RemoteUpdate.BUSY ->
+            "$deviceName is already fetching an update. Give it a minute, then look at its screen."
+        RemoteUpdate.NOT_ON_SCREEN ->
+            "Open Yosemite Kids on $deviceName first, then try again — the install " +
+                "prompt only shows while the app is on screen."
+        RemoteUpdate.FAILED ->
+            "$deviceName couldn't fetch the update. Is it online? Try again in a minute."
+        else ->
+            "$deviceName answered “${answer.status}”, which this phone doesn't " +
+                "understand — it may be on a newer build than this one."
+    }
+}
 
 /**
  * One device's line under its name — "In sync · 1.0.3", "Offline ·
@@ -530,7 +646,10 @@ internal fun PhoneDevicesSection(
                 dot = last?.behind() == true,
                 refreshing = fleet.syncStates[device.key] is DeviceSync.Checking,
                 onRefresh = { fleet.refresh(device) },
-                onClick = { onOpenDevice(device) }
+                onClick = { onOpenDevice(device) },
+                note = fleet.updateMessage[device.key],
+                onUpdate = if (fleet.canAskToUpdate(device)) ({ fleet.updateNow(device) }) else null,
+                updating = device.key in fleet.updating
             )
         }
 
@@ -562,13 +681,16 @@ internal fun PhoneDevicesSection(
 }
 
 /**
- * "2 devices behind on updates". No "Update all": a device installs an update
- * only from its own screen — Android hands the APK to its installer, which
- * asks the person holding the remote — and there is no LAN route that could
- * press that button for them. The banner says where the install is instead.
+ * "2 devices behind on updates". Still no "Update all": a phone can make a
+ * device fetch the release and put up its install prompt (Update now, on
+ * the row), but Android hands the APK to its own installer, which asks the
+ * person in front of the device — and no LAN route can press that button
+ * for them. Each prompt wants someone at that screen, so the banner points
+ * at the per-row action and says who finishes it.
  */
 @Composable
 private fun UpdateBanner(count: Int, cannotSelfUpdate: List<String>) {
+    val askable = count - cannotSelfUpdate.size
     Surface(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
         color = StatusAmber.copy(alpha = 0.12f),
@@ -582,18 +704,13 @@ private fun UpdateBanner(count: Int, cannotSelfUpdate: List<String>) {
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             Text(
-                "This phone has ${BuildConfig.VERSION_NAME}. " + when {
-                    cannotSelfUpdate.isEmpty() ->
-                        "Each device offers the install on its own settings screen."
-                    cannotSelfUpdate.size == 1 ->
-                        "${cannotSelfUpdate.single()} is on a build with no update check: " +
-                            "install ${BuildConfig.VERSION_NAME} on it by hand once, and every " +
-                            "later version arrives on its own."
-                    else ->
-                        "${cannotSelfUpdate.joinToString(", ")} are on builds with no update " +
-                            "check: install ${BuildConfig.VERSION_NAME} on them by hand once, " +
-                            "and every later version arrives on its own."
-                },
+                "This phone has ${BuildConfig.VERSION_NAME}. " + listOfNotNull(
+                    if (askable > 0)
+                        "Update now on a device's row has it fetch the release and put up " +
+                            "its install prompt; whoever is at that device confirms it there."
+                    else null,
+                    installByHandText(cannotSelfUpdate, BuildConfig.VERSION_NAME)
+                ).joinToString(" "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -639,7 +756,12 @@ private fun DeviceBadge(text: String) {
     )
 }
 
-/** One device: name + badge, status line, amber dot when behind, ⟳, chevron. */
+/**
+ * One device: name + badge, status line, amber dot when behind, ⟳, chevron.
+ * With [onUpdate], an "Update now" button stands in for the dot — the dot
+ * says "behind", the button says it and offers the fix — and [note] is the
+ * last thing that ask came back with, under the status line.
+ */
 @Composable
 private fun DeviceRow(
     name: String,
@@ -649,7 +771,10 @@ private fun DeviceRow(
     dot: Boolean,
     refreshing: Boolean,
     onRefresh: (() -> Unit)?,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    note: String? = null,
+    onUpdate: (() -> Unit)? = null,
+    updating: Boolean = false
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -677,8 +802,18 @@ private fun DeviceRow(
                 color = if (amber) StatusAmber else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
+            if (note != null) Text(
+                note,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
-        if (dot) {
+        if (onUpdate != null) {
+            Spacer(Modifier.width(4.dp))
+            CompactButton(enabled = !updating, onClick = onUpdate) {
+                Text(if (updating) "Updating…" else "Update now")
+            }
+        } else if (dot) {
             Spacer(Modifier.width(8.dp))
             Box(
                 Modifier
@@ -893,8 +1028,14 @@ internal fun DevicePage(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        // Where the install actually happens, in plain words: the phone can
+        // bring the prompt up, and only a person at the device can accept it.
         if (last?.behind() == true) Text(
-            "It offers the update on its own settings screen.",
+            if (last.canBeAskedToUpdate())
+                "Update now has it fetch the latest release and put up its install " +
+                    "prompt. Someone at ${device.name} still confirms the install on its " +
+                    "own screen — nothing on this phone can press that for them."
+            else installByHandText(listOf(device.name), BuildConfig.VERSION_NAME).orEmpty(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -902,6 +1043,15 @@ internal fun DevicePage(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.horizontalScroll(rememberScrollState())
         ) {
+            if (fleet.canAskToUpdate(device)) {
+                val busy = device.key in fleet.updating
+                Button(
+                    modifier = Modifier.tvFocusHighlight(),
+                    enabled = !busy,
+                    onClick = { fleet.updateNow(device) }
+                ) { Text(if (busy) "Updating…" else "Update now") }
+                Spacer(Modifier.width(4.dp))
+            }
             if (sync is DeviceSync.Reachable && (inSync != true || sync.syncV == null)) {
                 Button(modifier = Modifier.tvFocusHighlight(), onClick = {
                     // Push = "make the device match this screen": saves the
@@ -960,6 +1110,10 @@ internal fun DevicePage(
         pullMessage?.let {
             Text(it, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        fleet.updateMessage[device.key]?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary)
         }
     }
 
