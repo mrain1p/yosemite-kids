@@ -514,10 +514,10 @@ internal fun AiReviewSection(
         }
     val flagged = (localFlagged + remoteOnly).sortedByDescending { it.second.at }
 
-    // Two piles for the parent: "AI unsure — waiting on you" stays up top, and
-    // hard blocks (the title pass or the pre-play deep check, this device or a
-    // paired one) sit in their own collapsed section below — those are already
-    // ruled and hidden, listed only so a wrong call can be overruled.
+    // Two piles for the parent, a page each: what the AI held back and is
+    // waiting on them for, and the hard blocks (the title pass or the pre-play
+    // deep check, this device or a paired one) — already ruled and hidden,
+    // listed only so a wrong call can be overruled.
     val review = flagged.filter { it.second.verdict == io.yosemitekids.app.data.AiScreener.Verdict.REVIEW }
     val blockedList = flagged.filter { it.second.verdict == io.yosemitekids.app.data.AiScreener.Verdict.BLOCK }
 
