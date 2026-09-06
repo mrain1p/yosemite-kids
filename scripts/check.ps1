@@ -911,6 +911,38 @@ foreach ($word in @("yosemite-kids-backup", "pickwick-backup")) {
     }
 }
 
+
+# 29. A device route the hub answers is authenticated, every time.
+#     Guard 22 holds the hub to answering a device's routes or refusing them
+#     by name; this is the other half of the same decision. The moment a route
+#     moves off DEVICE_ONLY it stops being a 404 to the whole LAN and starts
+#     serving a body, and /verdicts is the first one whose body is about the
+#     family's VIEWING rather than their settings - a verdict carries the
+#     title, channel and thumbnail of something a child watched or was stopped
+#     from watching. Forgetting authorised(ex) in a new handler compiles,
+#     passes every other check here, and is invisible from outside unless
+#     someone thinks to call the route with no token.
+$hubSrvLines = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt"
+$hubSrvText = ($hubSrvLines -join "`n")
+$lanRoutes29 = @([regex]::Matches(
+    (Get-Content "app/src/main/java/io/yosemitekids/app/data/Pairing.kt" -Raw), 'path == "(/[a-z-]+)"') |
+    ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+foreach ($r in $lanRoutes29) {
+    $reg = @($hubSrvLines | Where-Object { $_.Contains('createContext("' + $r + '")') })
+    if ($reg.Count -eq 0) { continue }
+    $m = [regex]::Match(($reg -join ' '), 'guarded\(ex\) \{ ([a-zA-Z]+)\(ex\)')
+    if (-not $m.Success) {
+        Fail-Guard "the hub registers $r in a shape guard 29 cannot read. Keep it as createContext(""$r"") { ex -> guarded(ex) { <handler>(ex) } } so the handler can be found."
+    }
+    $fn = $m.Groups[1].Value
+    $body = [regex]::Match($hubSrvText, '(?sm)^    private fun ' + [regex]::Escape($fn) + '\(ex: HttpExchange\).*?^    \}')
+    if (-not $body.Success) {
+        Fail-Guard "guard 29 cannot find $fn(ex: HttpExchange) in HubServer.kt; it is blind."
+    }
+    if (-not $body.Value.Contains('authorised(ex)')) {
+        Fail-Guard "the hub answers $r in $fn() without calling authorised(ex). That route is open to every peer on the LAN - take it back to DEVICE_ONLY or gate it on an enrolled token."
+    }
+}
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan

@@ -803,6 +803,28 @@ for word in "yosemite-kids-backup" "pickwick-backup"; do
   fi
 done
 
+
+# 29. A device route the hub answers is authenticated, every time.
+#     Guard 22 holds the hub to answering a device's routes or refusing them
+#     by name; this is the other half of the same decision. The moment a route
+#     moves off DEVICE_ONLY it stops being a 404 to the whole LAN and starts
+#     serving a body, and `/verdicts` is the first one whose body is about the
+#     family's *viewing* rather than their settings — a verdict carries the
+#     title, channel and thumbnail of something a child watched or was stopped
+#     from watching. Forgetting `authorised(ex)` in a new handler compiles,
+#     passes every other check here, and is invisible from outside unless
+#     someone thinks to call the route with no token.
+hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
+for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z-]+' | sort -u); do
+  reg=$(grep -F "createContext(${q}$r${q})" "$hubsrv" || true)
+  [ -n "$reg" ] || continue
+  fn=$(printf "%s" "$reg" | sed -nE "s/.*guarded\(ex\) \{ ([a-zA-Z]+)\(ex\).*/\1/p")
+  [ -n "$fn" ] || guard_fail "the hub registers $r in a shape guard 29 cannot read. Keep it as createContext(${q}$r${q}) { ex -> guarded(ex) { <handler>(ex) } } so the handler can be found."
+  body=$(awk -v f="    private fun $fn(ex: HttpExchange)" 'index($0, f) == 1 { inside = 1 } inside { print; if (inside && /^    }$/) exit }' "$hubsrv")
+  [ -n "$body" ] || guard_fail "guard 29 cannot find $fn(ex: HttpExchange) in $hubsrv; it is blind."
+  printf "%s" "$body" | grep -q "authorised(ex)" ||
+    guard_fail "the hub answers $r in $fn() without calling authorised(ex). That route is open to every peer on the LAN — take it back to DEVICE_ONLY or gate it on an enrolled token."
+done
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"

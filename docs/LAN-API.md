@@ -206,9 +206,10 @@ new field.
 
 ## The hub's routes
 
-The hub answers `GET /status` and `GET|POST /config` like a device, and has
-`/enrol`, `/approve`, `/pending`, `/health`, `/setup`, `/password`, `/recovery`
-and the admin GUI of its own (see `docs/HUB.md`), and serves the search index.
+The hub answers `GET /status`, `GET|POST /config` and `GET|POST /verdicts` like
+a device, and has `/enrol`, `/approve`, `/pending`, `/health`, `/setup`,
+`/password`, `/recovery` and the admin GUI of its own (see `docs/HUB.md`), and
+serves the search index.
 The one place it does not behave like a device is the API key: the hub holds
 one in a file of its own and serves it only to a parent. Both rows below.
 Guard 14 covers the device table above; these are pinned by `HubServerTest` and
@@ -220,14 +221,19 @@ rather than a status code a parent has to interpret — right for a typo, and a
 lie to a device. A phone sweeps `/watchstate`, `/verdicts` and `/stats` across
 every paired peer including the hub; all three came back 200 with the page's
 HTML, the two mergers parsed it to nothing, and `StatsCache` wrote index.html
-into the phone's `files/stats_cache/` on every sweep. The refusal list is
-`HubServer.DEVICE_ONLY`, and guard 22 holds it to exactly the routes
-`LanServer` answers and the hub does not.
+into the phone's `files/stats_cache/` on every sweep. `/verdicts` has since
+moved out of the refusal list and into the table below, which is the shape that
+list is meant to have: a route sits there until the hub really answers it. The
+refusal list is `HubServer.DEVICE_ONLY`, and guard 22 holds it to exactly the
+routes `LanServer` answers and the hub does not — while guard 29 holds the
+other half, that every device route the hub *does* answer calls
+`authorised(ex)` first.
 
 | Route | Auth | Body | Reply | Notes |
 | --- | --- | --- | --- | --- |
 | `GET /status` | device token | — | as a device, plus `token`, `kind: "hub"`, `holdsKey` and (when that is true) `hashWithKey` | `token` is the hub's self token (`.hub` + 28 hex, minted once): an identity, never a credential. It is what `config.masterDeviceToken` holds while the hub builds the index, and how a phone backfills `PairedDevice.id`. `hash` is the **keyless** fingerprint for ever — a phone from before the hub could hold an API key has it recorded as keyless and compares its own keyless form against this one, so moving `hash` would put every such phone permanently out of sync with a hub it agrees with completely. `holdsKey` means "this hub holds the family's API key **and serves it to you**", so it is per caller and false to a kid device even when the box does hold one: a peer that will never be given the key must keep being judged on the keyless hash, or it reads as out of sync for ever and takes the merge arm on every sweep. The same predicate decides this and `GET /config`'s body, so the two cannot disagree. |
 | `GET /config` | device token | — | the stored document, 404 before the first write | The API key is put back **only for a `PARENT` enrolment** (`HubTokens.Kind`); a kid device is served the bytes on disk, which are keyless. A television is handed its key by a parent's phone — `ConfigSync` pushes `rawJson()`, secrets included — and has no reason to be handed one by a box on the network as well; this is the machine most likely to face the internet one day. |
+| `GET\|POST /verdicts` | device token | on POST, `ScreeningStore`'s verdict map | GET: this hub's verdicts for the family's current rules version. POST: `{"merged": <count>}`, or 400 when the body is not a verdict map | The same wire a device speaks, so the phone's existing sweep needed no change — and it is what makes the review queue on the admin page possible, because a queue entry carries its own title, channel, thumbnail and reason and needs no video cache on this box. The rules version is read from the config the hub already holds, so a device pushing under older rules is ignored rather than half-adopted. Import never overwrites a verdict already held (a peer's *deep* pre-play verdict over a title-only one is the single one-way exception), which is what makes a pull-then-push exchange settle instead of ping-ponging. This is the first hub route whose body is about the family's viewing rather than their settings, which is why guard 29 exists. |
 | `POST /approve` | admin secret | `{code, kind: "parent"\|"device"}` | `{token}` / `409 {refused}` | `kind` is recorded by the **approver** — whoever presented the admin secret — and never claimed by the thing joining, because `/enrol` is unauthenticated by necessity and nothing it says about itself is worth anything. `HubEnrolment.join` sends `parent` (a phone administering the family); `tokenFor`, which introduces a television, sends `device`. Absent or unrecognised is `device`: rows written before this existed fail closed, so a parent re-joins to be upgraded rather than a credential going somewhere nobody chose. Once a password is set the recovery token signs in but no longer approves. |
 | `GET /setup` | none | — | `{"password": true\|false}` | Whether this hub has been claimed, and **exactly one key** — it tells a LAN peer only what they can already infer from the sign-in form, and nothing they can act on without the container log. It is what decides the phone's field label and which card the GUI shows; a hub older than this route answers the admin page's HTML with a 200, so a caller reads the body and not the status. |
 | `POST /password` | `current` in the body | `{current, next}` | `{"ok": true, "recovery": <token>\|null}` | Set the first password or change it. `current` is the password or the recovery token, required **even inside a live session** (that session may be a browser on a kitchen counter). `recovery` is non-null on the first set only, is shown once, and retires the token from the log. 400 `{"error":"short"}` under `HubPassword.MIN_LENGTH`. Every other session is closed; the caller's survives. |

@@ -7,6 +7,7 @@ import io.yosemitekids.app.data.ChannelIndex
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import io.yosemitekids.app.data.BackupFile
+import io.yosemitekids.app.data.ScreeningStore
 import io.yosemitekids.app.data.SyncMeta
 import org.json.JSONObject
 import java.net.InetSocketAddress
@@ -45,6 +46,14 @@ class HubServer(
      * parent already backs up carries it.
      */
     private val index: ChannelIndex = ChannelIndex(File(dataDir, "search-index")),
+    /**
+     * The AI verdicts this hub holds, beside the index and under the same
+     * volume. Not screened here — the hub reaches YouTube and nothing else
+     * (guard 7) — but pushed here by every phone on every sweep, which is
+     * what the review queue on the admin page is built from. Same file name
+     * a device uses, so a copy taken off either box reads on the other.
+     */
+    private val screening: ScreeningStore = ScreeningStore(File(dataDir, "screening.json")),
     /** The election and the crawl, for the Devices page to report on. Null in tests that have neither. */
     private val master: HubMaster? = null,
     private val crawl: HubCrawl? = null,
@@ -128,6 +137,13 @@ class HubServer(
         // app's one importer reads both.
         s.createContext("/index-status") { ex -> guarded(ex) { indexStatus(ex) } }
         s.createContext("/index") { ex -> guarded(ex) { indexSource(ex) } }
+        // Verdict sharing, both ways, exactly as a device speaks it. A video
+        // is billed to the AI once per rules version by whichever device sees
+        // it first, and until now the hub was the one peer that answered the
+        // sweep with a page of HTML. Answering it properly is also what puts
+        // a review queue on the admin page: the entry carries its own title,
+        // channel, thumbnail and reason, so nothing else has to be held here.
+        s.createContext("/verdicts") { ex -> guarded(ex) { verdicts(ex) } }
         // Registered individually rather than under one prefix: a prefix
         // context would swallow every path beneath it, and "/" already
         // answers everything else with the page.
@@ -266,6 +282,37 @@ class HubServer(
             ?: return respond(ex, 400, "bad source")
         val json = index.exportSourceWithState(id) ?: return respond(ex, 404, "unknown source")
         respond(ex, 200, json)
+    }
+    /**
+     * This hub's verdicts for the rules the family is on now, and a peer's
+     * merged in.
+     *
+     * The rules version comes from the config this hub already holds, so the
+     * two faces cannot disagree about which verdicts are current: a device
+     * pushing under an older version is ignored by [ScreeningStore.importJson]
+     * rather than half-adopted.
+     *
+     * Import never overwrites a verdict already held, so a pull-then-push
+     * exchange settles instead of ping-ponging — the one exception being a
+     * peer's deep (pre-play) verdict over this box's title-only one, which is
+     * one-way and therefore cannot loop either.
+     */
+    private fun verdicts(ex: HttpExchange) {
+        if (!authorised(ex)) return
+        // A hub with no config yet has screened nothing and can serve nothing;
+        // rulesVersion 0 is what a family before any AI rules is on, which is
+        // the honest answer rather than a 500.
+        val rules = runCatching { store.load().ai.rulesVersion }.getOrDefault(0)
+        when (ex.requestMethod) {
+            "GET" -> respond(ex, 200, screening.exportJson(rules))
+            "POST" -> {
+                val body = readBody(ex) ?: return respond(ex, 413, "too large")
+                val fresh = screening.importJson(body, rules)
+                if (fresh < 0) respond(ex, 400, JSONObject().put("error", "bad verdicts").toString())
+                else respond(ex, 200, JSONObject().put("merged", fresh).toString())
+            }
+            else -> respond(ex, 405, "no")
+        }
     }
 
     private fun enrol(ex: HttpExchange) {
@@ -740,7 +787,12 @@ class HubServer(
          * app already handles — it is what a device on a build older than a
          * route replies.
          *
-         * This is `LanServer.handle`'s route list minus the four this file
+         * `/verdicts` has since left this list, which is the shape the list is
+         * meant to have: a route belongs here until the hub actually answers
+         * it, and then it belongs above. The other two are still refusals —
+         * `/watchstate` and `/stats` are device state, not family policy.
+         *
+         * This is `LanServer.handle`'s route list minus the ones this file
          * registers, and a guard in `scripts/check.*` holds it there: a route
          * added to a device and not thought about here would go quietly back
          * to being answered with the page.
@@ -750,7 +802,7 @@ class HubServer(
             "/grant", "/join-hub", "/leave-hub", "/looks",
             "/pair-approve", "/pair-deny", "/pair-pending", "/pair-request",
             "/pair-status", "/play", "/player", "/stats",
-            "/sync-now", "/verdicts", "/watchstate"
+            "/sync-now", "/watchstate"
         )
     }
 
