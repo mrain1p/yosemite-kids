@@ -2,8 +2,30 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Yosemite Kids hub</title>
+<!--
+  Installable, so a parent reaches the hub from their home screen rather than
+  by remembering an IP and a port. Everything below is static and carries no
+  family data, which is why it is served without a session (see HubServer).
+
+  Android needs a secure origin before it will offer to install: over plain
+  http://<nas>:8765 this degrades to an ordinary bookmark, and the service
+  worker never registers at all. iOS honours the Apple tags over http, so
+  Add to Home Screen already gives a standalone window there. docs/HUB.md
+  says how to put it behind the existing proxy for the full thing.
+-->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kids hub">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- Matches the sticky header, not the brand, so the status bar reads as
+     part of the page in both schemes. -->
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1c2024">
 <!--
   Everything is inline and nothing is fetched from the internet. A NAS often
   has no outbound access at all, and a page that half-loads because a CDN is
@@ -37,6 +59,12 @@
   header .saved { color: var(--brand); font-size: 13px; opacity: 0; transition: opacity .2s; }
   header .saved.on { opacity: 1; }
   main { max-width: 820px; margin: 0 auto; padding: 18px 16px 72px; }
+  /* Installed, there is no browser chrome to keep the page clear of the
+     notch and the home indicator, so the page does it itself. */
+  @media (display-mode: standalone) {
+    header { padding-top: calc(14px + env(safe-area-inset-top)); }
+    main { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  }
   .card { background: var(--card); border: 1px solid var(--line);
     border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
   h2 { margin: 0 0 4px; font-size: 15px; font-weight: 620; }
@@ -781,6 +809,14 @@
   // A live session survives a reload, so try the data first and fall back to
   // the sign-in form only when the hub says no.
   refresh().catch(showLogin);
+
+  // Only on a secure origin: on plain http the API does not exist and
+  // registering would throw in the console on every load for no gain. The
+  // page works identically either way — the worker buys the app window and
+  // an honest offline shell, never behaviour.
+  if (window.isSecureContext && "serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(function () {});
+  }
 })();
 </script>
 </body>

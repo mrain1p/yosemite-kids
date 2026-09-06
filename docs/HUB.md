@@ -156,6 +156,34 @@ Notes on the session:
   before writing and has no keystore, so a key typed here could not survive a
   restart. It stays on the phone.
 
+### Installing it on a phone
+
+The admin GUI is a progressive web app: a manifest, an icon and a service
+worker that caches the page shell — and only the shell. Nothing under
+`/api` is ever cached, because a browser's cache outlives the session and
+the sign-out, and everything there is the family's configuration.
+
+**On iPhone or iPad**, over plain `http://<nas>:8765`, Safari's *Share →
+Add to Home Screen* already gives an icon that opens in its own window with
+no address bar.
+
+**On Android**, Chrome offers to install an app only from a secure origin.
+Over plain http you get an ordinary bookmark, and the service worker does not
+register at all. To get the real thing, front the hub with the reverse proxy
+already on this NAS: a host such as `kids.<your domain>` with a certificate,
+forwarding to `192.168.1.245:8765`. The GUI's same-origin check compares the
+`Origin` header's host with `Host`, both of which the proxy passes through,
+so nothing in the hub needs to change. Then open that address and use
+*Install app*.
+
+Either way the page behaves identically; installing buys the home-screen
+icon, the app window, and a shell that still loads and says "can't reach the
+hub" when the container is down instead of a browser error page.
+
+The icons are generated, not drawn: `node scripts/make-hub-icons.js
+hub/src/main/resources/web` rewrites them, deterministically, so re-running
+it without an edit produces no diff.
+
 ## The port
 
 The hub publishes 8765. Both the `ports` line and `YOSEMITE_KIDS_PORT` in

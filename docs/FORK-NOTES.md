@@ -1181,3 +1181,29 @@ Design record: `docs/PLAN-crawl.md`. Eight commits, "Crawl step 1" to
 - **Guards 17 and 18.** One crawl loop and one extractor stamp; and each
   gate script now syntax-checks the other, because `check.ps1` had sat
   unparseable for a whole round while bash stayed green.
+
+### The hub's admin GUI installs as an app (1.0.6)
+
+A manifest, four generated icons, Apple's meta tags and a service worker.
+The GUI is one HTML file with no build step, so this is four static files
+and a route table in `HubServer`; nothing about how the page works changed.
+
+- **The service worker's SHELL is an allow-list** of four static paths, and
+  any request outside it is passed through untouched. This origin serves the
+  whole family configuration behind a session cookie, and Cache Storage
+  outlives the session, the sign-out and the tab, so caching `/api` even
+  once would write kids, rules and device names to disk in every browser
+  that opened the page. Guard 19 fails the build if the list grows anything
+  that is not a static asset, or if the pass-through goes.
+- **Guard 20** catches the other silent failure: `/` answers any path with
+  no route of its own, so a renamed icon returns the page's HTML with a 200
+  rather than a 404, and the app merely stops being installable.
+- **The icons are code** (`scripts/make-hub-icons.js`): a teal rounded
+  square, a white screen, a play triangle, drawn per pixel and encoded as
+  PNG by hand because this machine has no image library. Deterministic, so
+  a re-run with no edit produces no diff.
+- **Registration is gated on a secure context.** Over plain
+  `http://<nas>:8765` the worker never registers and Android offers a
+  bookmark rather than an install; iOS honours the Apple tags over http and
+  gives a standalone window today. `HUB.md` says how to front it with the
+  proxy already on the NAS for the full thing.

@@ -550,6 +550,41 @@ if ($bashExe) {
     if ($LASTEXITCODE -ne 0) { Fail-Guard "scripts/check.sh does not parse (bash -n)." }
 }
 
+# 19. The hub's service worker caches the shell and never the family.
+#     This origin serves a family's whole configuration behind a session
+#     cookie, and anything a worker caches lands in Cache Storage, which
+#     outlives the session, the sign-out and the tab. SHELL is therefore an
+#     allow-list of static assets, and every other request is passed through
+#     untouched — /api included.
+$swSrc = Get-Content "hub/src/main/resources/web/sw.js" -Raw
+$shellBlock = [regex]::Match($swSrc, '(?s)var SHELL = \[(.*?)\]').Groups[1].Value
+$shellPaths = @([regex]::Matches($shellBlock, '"(/[A-Za-z0-9./-]*)"') | ForEach-Object { $_.Groups[1].Value })
+if ($shellPaths.Count -eq 0) { Fail-Guard "cannot read SHELL out of sw.js; guard 19 is blind." }
+foreach ($p in $shellPaths) {
+    if ($p -ne "/" -and $p -ne "/manifest.webmanifest" -and $p -notmatch '^/icon-[A-Za-z0-9-]+\.png$') {
+        Fail-Guard "the hub's service worker caches $p. SHELL is a static-asset allow-list — caching anything else puts family data in Cache Storage."
+    }
+}
+if ($swSrc -notmatch [regex]::Escape("SHELL.indexOf(url.pathname) === -1")) {
+    Fail-Guard "the hub's service worker no longer skips paths outside SHELL, so every request would pass through its cache."
+}
+
+# 20. Every asset the GUI names is actually served.
+#     "/" answers anything with no route of its own, so a renamed icon does
+#     not 404 — it returns the page's HTML with a 200, and the app quietly
+#     stops being installable.
+$srvSrc = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt" -Raw
+$named = @()
+$named += [regex]::Matches((Get-Content "hub/src/main/resources/web/manifest.webmanifest" -Raw), '"src"\s*:\s*"(/[A-Za-z0-9.-]+)"') | ForEach-Object { $_.Groups[1].Value }
+$named += [regex]::Matches((Get-Content "hub/src/main/resources/web/index.html" -Raw), 'href="(/[A-Za-z0-9.-]+)"') | ForEach-Object { $_.Groups[1].Value }
+$named = @($named | Sort-Object -Unique)
+if ($named.Count -eq 0) { Fail-Guard "neither the manifest nor index.html names a single asset; guard 20 is blind." }
+foreach ($a in $named) {
+    if ($srvSrc -notmatch [regex]::Escape('"' + $a + '"')) {
+        Fail-Guard "the hub GUI references $a and HubServer serves no such route — the catch-all would answer it with the page HTML, and the icon or manifest would fail silently."
+    }
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan

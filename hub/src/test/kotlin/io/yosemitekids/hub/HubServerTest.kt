@@ -457,4 +457,82 @@ class HubServerTest {
         assertEquals(401, get("/index-status", "not-a-token", mapOf("X-Index-Pull" to "1")).first)
         assertFalse(tokens.armed(T))
     }
+
+    // --- the installable shell -------------------------------------------
+
+    /** Status, Content-Type + Cache-Control, and the raw bytes. */
+    private fun bytes(path: String): Triple<Int, String, ByteArray> {
+        val c = URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection
+        val code = c.responseCode
+        val meta = c.getHeaderField("Content-Type").orEmpty() + "|" + c.getHeaderField("Cache-Control").orEmpty()
+        val body = (if (code in 200..299) c.inputStream else c.errorStream)?.readBytes() ?: ByteArray(0)
+        c.disconnect()
+        return Triple(code, meta, body)
+    }
+
+    private val pngMagic = listOf<Byte>(-119, 80, 78, 71)
+
+    @Test
+    fun theAppShellIsInstallable() {
+        // No token: a browser fetches the manifest and the icons before any
+        // session exists. They carry no family data, which is what makes
+        // serving them unauthenticated safe.
+        val (code, meta, body) = bytes("/manifest.webmanifest")
+        assertEquals(200, code)
+        assertTrue(meta, meta.contains("application/manifest+json"))
+        val m = JSONObject(String(body, Charsets.UTF_8))
+        assertEquals("standalone", m.getString("display"))
+        assertEquals("/", m.getString("start_url"))
+        assertEquals("/", m.getString("scope"))
+    }
+
+    @Test
+    fun everyIconTheManifestNamesIsServedAndIsAPng() {
+        val icons = JSONObject(String(bytes("/manifest.webmanifest").third, Charsets.UTF_8)).getJSONArray("icons")
+        val sizes = (0 until icons.length()).map { icons.getJSONObject(it).getString("sizes") }
+        // Chrome offers no install without an icon of at least 192, and
+        // Android crops the launcher icon unless one is declared maskable.
+        assertTrue(sizes.toString(), sizes.any { it.startsWith("192") })
+        assertTrue(sizes.toString(), sizes.any { it.startsWith("512") })
+        assertTrue(
+            "one icon must be purpose=maskable",
+            (0 until icons.length()).any { icons.getJSONObject(it).optString("purpose") == "maskable" }
+        )
+        for (i in 0 until icons.length()) {
+            val src = icons.getJSONObject(i).getString("src")
+            val (code, meta, body) = bytes(src)
+            assertEquals("$src must be served", 200, code)
+            assertTrue(meta, meta.contains("image/png"))
+            // The magic bytes, not the status: "/" answers a path it does
+            // not know with the page's HTML and a 200, so a renamed icon
+            // would pass a status check while the app stopped installing.
+            assertEquals("$src is not a PNG", pngMagic, body.take(4))
+        }
+        val (appleCode, appleMeta, appleBody) = bytes("/apple-touch-icon.png")
+        assertEquals("iOS reads this one and never the manifest", 200, appleCode)
+        assertTrue(appleMeta, appleMeta.contains("image/png"))
+        assertEquals(pngMagic, appleBody.take(4))
+    }
+
+    @Test
+    fun theServiceWorkerIsServedUncachedAndCachesOnlyTheShell() {
+        val (code, meta, body) = bytes("/sw.js")
+        assertEquals(200, code)
+        assertTrue(meta, meta.contains("text/javascript"))
+        // A browser holding yesterday's worker serves yesterday's shell long
+        // after the container was rebuilt, and the usual cure is uninstalling.
+        assertTrue(meta, meta.contains("no-cache"))
+        val js = String(body, Charsets.UTF_8)
+        assertTrue("the worker must pass through anything outside SHELL", js.contains("SHELL.indexOf(url.pathname) === -1"))
+        // Cache Storage outlives the session and the sign-out. Guard 19 says
+        // the same thing about the source; this says it about what is served.
+        assertFalse("no family route may be cached", js.contains("\"/api"))
+    }
+
+    @Test
+    fun theStaticAssetsAnswerNothingButAGet() {
+        listOf("/manifest.webmanifest", "/sw.js", "/icon-192.png").forEach {
+            assertEquals("$it must be GET-only", 405, call(it, "POST", body = "{}").first)
+        }
+    }
 }

@@ -478,6 +478,41 @@ if [ -n "$ps" ]; then
   [ -z "$perr" ] || guard_fail "scripts/check.ps1 does not parse: $perr"
 fi
 
+# 19. The hub's service worker caches the shell and never the family.
+#     This origin serves a family's whole configuration behind a session
+#     cookie, and anything a worker caches lands in Cache Storage, which
+#     outlives the session, the sign-out and the tab. SHELL is therefore an
+#     allow-list of static assets, and every other request is passed through
+#     untouched — /api included. A one-line edit here would silently write
+#     kids, rules and device names to disk in every browser that ever opened
+#     the page.
+sw=hub/src/main/resources/web/sw.js
+shell_paths=$(sed -n "/^var SHELL/,/\]/p" "$sw" | grep -oE "$q/[A-Za-z0-9./-]*$q" | tr -d "$q" || true)
+[ -n "$shell_paths" ] || guard_fail "cannot read SHELL out of $sw; guard 19 is blind."
+for p in $shell_paths; do
+  case "$p" in
+    /|/manifest.webmanifest|/icon-*.png) ;;
+    *) guard_fail "the hub's service worker caches $p. SHELL is a static-asset allow-list — caching anything else puts family data in Cache Storage." ;;
+  esac
+done
+grep -q "SHELL.indexOf(url.pathname) === -1" "$sw" ||
+  guard_fail "the hub's service worker no longer skips paths outside SHELL, so every request would pass through its cache."
+
+# 20. Every asset the GUI names is actually served.
+#     "/" answers anything with no route of its own, so a renamed icon does
+#     not 404 — it returns the page's HTML with a 200, and the manifest is
+#     merely ignored. The app then stops being installable and nothing says
+#     why.
+srv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
+named=$( { grep -oE "${q}src${q}: ${q}/[A-Za-z0-9.-]+${q}" hub/src/main/resources/web/manifest.webmanifest || true;
+           grep -oE "href=${q}/[A-Za-z0-9.-]+${q}" hub/src/main/resources/web/index.html || true; } |
+         grep -oE "/[A-Za-z0-9.-]+" | sort -u || true)
+[ -n "$named" ] || guard_fail "neither the manifest nor index.html names a single asset; guard 20 is blind."
+for a in $named; do
+  grep -q "${q}$a${q}" "$srv" ||
+    guard_fail "the hub GUI references $a and HubServer serves no such route — the catch-all would answer it with the page HTML, and the icon or manifest would fail silently."
+done
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"

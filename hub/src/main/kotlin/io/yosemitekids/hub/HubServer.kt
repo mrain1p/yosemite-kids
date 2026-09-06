@@ -66,6 +66,24 @@ class HubServer(
     /** Bounded and anchored: the id names a file under the data dir. Same alphabet and length as a device's /index. */
     private val sourceId = Regex("(?:^|&)source=([A-Za-z0-9_-]{1,64})(?:&|$)")
 
+    /**
+     * The static half of the admin GUI: what makes it installable.
+     *
+     * Named here as literals and never built from a request, so no path a
+     * caller sends can reach anything else under resources. Unauthenticated
+     * for the same reason the page shell is — none of it carries family
+     * data, and a browser fetches the manifest and the icons before any
+     * session exists.
+     */
+    private val assets = mapOf(
+        "/manifest.webmanifest" to "application/manifest+json",
+        "/sw.js" to "text/javascript; charset=utf-8",
+        "/icon-192.png" to "image/png",
+        "/icon-512.png" to "image/png",
+        "/icon-maskable-512.png" to "image/png",
+        "/apple-touch-icon.png" to "image/png"
+    )
+
     fun start(): Int {
         val s = HttpServer.create(InetSocketAddress(port), 0)
         // A small fixed pool, like the app's LAN server. Unbounded threads on a
@@ -85,6 +103,12 @@ class HubServer(
         // app's one importer reads both.
         s.createContext("/index-status") { ex -> guarded(ex) { indexStatus(ex) } }
         s.createContext("/index") { ex -> guarded(ex) { indexSource(ex) } }
+        // Registered individually rather than under one prefix: a prefix
+        // context would swallow every path beneath it, and "/" already
+        // answers everything else with the page.
+        assets.forEach { (path, type) ->
+            s.createContext(path) { ex -> guarded(ex) { asset(ex, path, type) } }
+        }
 
         // The admin GUI. "/" is registered last and matches everything not
         // claimed above, so an unknown path lands on the page rather than on
@@ -249,6 +273,25 @@ class HubServer(
         ex.responseHeaders.add("Referrer-Policy", "no-referrer")
         ex.sendResponseHeaders(200, html.size.toLong())
         ex.responseBody.use { it.write(html) }
+    }
+
+    /** One of [assets], straight from the jar. */
+    private fun asset(ex: HttpExchange, path: String, type: String) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val bytes = javaClass.getResourceAsStream("/web${path}")?.readBytes()
+            ?: return respond(ex, 404, "missing from this build")
+        ex.responseHeaders.add("Content-Type", type)
+        ex.responseHeaders.add("X-Content-Type-Options", "nosniff")
+        // The worker is never cached: a browser holding yesterday's copy
+        // would keep serving yesterday's shell after the container is
+        // rebuilt, and the usual cure for that is uninstalling the app.
+        // The icons and the manifest change about once a year.
+        ex.responseHeaders.add(
+            "Cache-Control",
+            if (path == "/sw.js") "no-cache" else "max-age=86400"
+        )
+        ex.sendResponseHeaders(200, bytes.size.toLong())
+        ex.responseBody.use { it.write(bytes) }
     }
 
     /**
