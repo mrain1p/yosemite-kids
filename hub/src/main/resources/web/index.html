@@ -94,6 +94,12 @@
   label.row .grow { flex: 1; min-width: 0; }
   label.row .name { font-weight: 540; }
   .sub { color: var(--dim); font-size: 12.5px; overflow-wrap: anywhere; }
+  /* One generically-rendered control. Everything the manifest describes is
+     wrapped in one of these, so a card of mixed kinds still divides evenly —
+     and label.row's own first-of-type rule stays scoped to its wrapper. */
+  .ctl { padding: 10px 0; border-top: 1px solid var(--line); }
+  .ctl:first-child { border-top: 0; }
+  .ctl > .name + .sub { margin-bottom: 2px; }
   ul.rows { list-style: none; margin: 0; padding: 0; }
   ul.rows > li { padding: 11px 0; border-top: 1px solid var(--line); }
   ul.rows > li:first-child { border-top: 0; }
@@ -519,14 +525,385 @@
     return li;
   }
 
-  // --- pages ----------------------------------------------------------
+  function add(host, node) { if (node) host.appendChild(node); return host; }
+
+  // --- controls from the manifest --------------------------------------
+  //
+  // SettingsSurface in :core declares every settings control once — its id,
+  // the words both faces render, how it is drawn, and the config key it
+  // writes — and /api/state ships the ones this face is expected to have.
+  // Everything below builds those from the declaration alone, so a new toggle
+  // on a page the hub already serves is a line in Kotlin and nothing here.
+  //
+  // A control the manifest marks CUSTOM is deliberately NOT built here: the
+  // channel list, the device rows, the windows editor and the pause are
+  // hand-written and carry data-control="<id>", which is how guard 26(b) tells
+  // "built by hand" from "forgotten".
 
   var cfg = function () { return state.config || {}; };
   var kids = function () { return cfg().profiles || []; };
 
+  function controlsFor(group) {
+    return (state.controls || []).filter(function (c) { return c.group === group; });
+  }
+
+  /** Absent and null are the same answer everywhere in this config: no rule. */
+  function sameValue(a, b) {
+    return (a === undefined ? null : a) === (b === undefined ? null : b);
+  }
+
+  function readPath(obj, path) {
+    var parts = path.split(".");
+    var cur = obj;
+    for (var i = 0; i < parts.length; i++) {
+      if (cur == null) return undefined;
+      cur = cur[parts[i]];
+    }
+    return cur;
+  }
+
+  /**
+   * Where a control reads and writes. The root scope is the config document
+   * itself; a kid scope is one child's own `limits`, which is where
+   * Whitelist.limitsFor actually looks the moment a family has profiles — the
+   * family-wide block is the fallback for a family with none.
+   */
+  function rootScope() {
+    return {
+      get: function (c) { return readPath(cfg(), c.json); },
+      set: function (c, v) {
+        var parts = c.json.split(".");
+        var body = {};
+        if (parts.length === 1) {
+          // null on a root key means "remove it" on the hub's side, which is
+          // what Auto, All and Off are: the key's absence, not a JSON null.
+          body[parts[0]] = v;
+        } else {
+          var parent = Object.assign({}, cfg()[parts[0]] || {});
+          if (v === null) delete parent[parts[1]]; else parent[parts[1]] = v;
+          body[parts[0]] = parent;
+        }
+        return patch(body);
+      }
+    };
+  }
+
+  function kidScope(kid, idx) {
+    return {
+      get: function (c) { return readPath({ limits: kid.limits || {} }, c.json); },
+      set: function (c, v) {
+        var leaf = c.json.split(".")[1];
+        return patch({ profiles: withLimits(idx, function (lim) {
+          if (v === null) delete lim[leaf]; else lim[leaf] = v;
+        }) });
+      }
+    };
+  }
+
+  /** This kid's profiles array with their limits edited in place by [change]. */
+  function withLimits(idx, change) {
+    var next = kids().slice();
+    var lim = Object.assign({}, next[idx].limits || {});
+    change(lim);
+    next[idx] = Object.assign({}, next[idx], { limits: lim });
+    return next;
+  }
+
+  function controlHead(c) {
+    var box = el("div", "grow");
+    box.appendChild(el("div", "name", c.label));
+    if (c.sub) box.appendChild(el("div", "sub", c.sub));
+    return box;
+  }
+
+  function numberRow(c, value, commit) {
+    var l = el("label", "row");
+    l.appendChild(controlHead(c));
+    var i = el("input");
+    i.type = "number";
+    i.value = value == null ? "" : value;
+    if (c.min != null) i.min = c.min;
+    if (c.max != null) i.max = c.max;
+    // Empty is a value: it is how a rule is turned off, and a rule that could
+    // be set and never cleared is worse than no rule at all.
+    i.placeholder = "Off";
+    i.onchange = function () {
+      var raw = i.value.trim();
+      var n = raw === "" ? null : parseInt(raw, 10);
+      if (n !== null && isNaN(n)) return;
+      i.disabled = true;
+      commit(n).then(function () { i.disabled = false; });
+    };
+    l.appendChild(i);
+    if (c.unit) l.appendChild(el("span", "sub", c.unit));
+    return l;
+  }
+
+  function textRow(c, value, commit, multiline) {
+    var f = el("div");
+    f.appendChild(el("div", "name", c.label));
+    if (c.sub) f.appendChild(el("div", "sub", c.sub));
+    var i = el(multiline ? "textarea" : "input");
+    if (!multiline) i.type = "text";
+    i.value = value == null ? "" : value;
+    i.style.marginTop = "8px";
+    i.onchange = function () { commit(i.value); };
+    f.appendChild(i);
+    return f;
+  }
+
+  function chipsRow(c, value, commit) {
+    var f = el("div");
+    f.appendChild(el("div", "name", c.label));
+    if (c.sub) f.appendChild(el("div", "sub", c.sub));
+    var line = el("div", "line");
+    line.style.marginTop = "8px";
+    c.options.forEach(function (o) {
+      var b = el("button", "chip", o.label);
+      b.setAttribute("aria-pressed", String(sameValue(o.value, value)));
+      b.onclick = function () { commit(o.value); };
+      line.appendChild(b);
+    });
+    f.appendChild(line);
+    return f;
+  }
+
+  /** One control, drawn from its declaration. Null for anything CUSTOM. */
+  function renderControl(c, scope) {
+    var value = scope.get(c);
+    var commit = function (v) { return scope.set(c, v); };
+    var inner =
+      c.kind === "TOGGLE" ? toggleRow(c.label, c.sub, value, commit) :
+      c.kind === "NUMBER" ? numberRow(c, value, commit) :
+      c.kind === "TEXT" ? textRow(c, value, commit, false) :
+      c.kind === "TEXTAREA" ? textRow(c, value, commit, true) :
+      c.kind === "CHIPS" ? chipsRow(c, value, commit) :
+      null;
+    if (!inner) return null;
+    var wrap = el("div", "ctl");
+    wrap.appendChild(inner);
+    return wrap;
+  }
+
+  /** Every generic control of one manifest group, as a card. */
+  function groupCard(group, scope, title, hint, intro) {
+    var list = controlsFor(group).filter(function (c) { return c.kind !== "CUSTOM"; });
+    if (!list.length) return null;
+    var c = card(title, hint);
+    if (intro) c.appendChild(intro);
+    list.forEach(function (ctl) { add(c, renderControl(ctl, scope)); });
+    return c;
+  }
+
+  /** The same generic controls, without a card of their own. */
+  function groupControls(group, scope, host, only) {
+    controlsFor(group).forEach(function (c) {
+      if (c.kind === "CUSTOM") return;
+      if (only && c.json.indexOf(only) !== 0) return;
+      add(host, renderControl(c, scope));
+    });
+    return host;
+  }
+
+  // --- the two hand-written screen-time controls -----------------------
+  //
+  // Both are declared CUSTOM in the manifest and carry data-control, because
+  // neither is a value a generic renderer could draw: one is a moment in time
+  // and the other is a list of them.
+
+  function controlById(id) {
+    var all = state.controls || [];
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+    // A hub serving a page older than its manifest still renders something,
+    // rather than throwing halfway through building the Kids page.
+    return { id: id, label: id, sub: "", options: [] };
+  }
+
+  /**
+   * Midnight tonight, in the parent's own timezone.
+   *
+   * The hub reads no calendar on purpose: a container runs UTC and the family
+   * does not, so the one moment-in-time value on this page comes from the
+   * browser. The hub does not trust it either — it refuses a pause further out
+   * than HubWeb.PAUSE_MAX_AHEAD_MS.
+   */
+  function endOfTodayLocal() {
+    var d = new Date();
+    d.setHours(24, 0, 0, 0);
+    return d.getTime();
+  }
+
+  function pauseRow(sub, until, commit) {
+    var c = controlById("rules-pause");
+    var active = until != null && until > Date.now();
+    var row = el("div", "ctl");
+    row.dataset.control = "rules-pause";
+    row.appendChild(toggleRow(
+      c.label,
+      active ? "Paused until midnight" : (sub || c.sub),
+      active,
+      function (on) { return commit(on ? endOfTodayLocal() : null); }
+    ));
+    return row;
+  }
+
+  var DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
+
+  function clockValue(min) {
+    var h = Math.floor(min / 60), m = min % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+
+  function minuteOfDay(text) {
+    var p = String(text || "").split(":");
+    var h = parseInt(p[0], 10), m = parseInt(p[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return Math.max(0, Math.min(1439, h * 60 + m));
+  }
+
+  function clockField(min, onCommit) {
+    var i = el("input");
+    i.type = "time";
+    i.value = clockValue(min);
+    i.style.width = "auto";
+    i.onchange = function () {
+      var v = minuteOfDay(i.value);
+      if (v !== null) onCommit(v);
+    };
+    return i;
+  }
+
+  /** "w1", "w2" — the first free one, exactly as the phone mints them. */
+  function nextWindowId(list) {
+    var taken = {};
+    list.forEach(function (w) { taken[w.id] = true; });
+    for (var n = 1; ; n++) { if (!taken["w" + n]) return "w" + n; }
+  }
+
+  function replaceWindow(list, i, fields) {
+    return list.map(function (w, j) { return j === i ? Object.assign({}, w, fields) : w; });
+  }
+
+  /**
+   * Blocked times: bedtime, school hours, homework. A window may cross
+   * midnight and names the days it *starts* on; any window covering the moment
+   * blocks it, so overlapping ones need no reasoning about.
+   *
+   * The one-off "skip tonight" pass stays on the phone: it is another instant
+   * this hub would have to compute from a calendar it deliberately does not
+   * read, and it is taken in the room, in the minute it matters.
+   */
+  function windowsBlock(windows, commit) {
+    var c = controlById("blocked-times-windows");
+    var host = el("div", "ctl");
+    host.dataset.control = "blocked-times-windows";
+    host.appendChild(el("div", "name", c.label));
+    if (c.sub) host.appendChild(el("div", "sub", c.sub));
+    var list = windows || [];
+
+    var ul = el("ul", "rows");
+    ul.style.marginTop = "6px";
+    if (!list.length) {
+      ul.appendChild(emptyLi(
+        "No blocked times — watching is limited by minutes only, not by the clock."));
+    }
+    list.forEach(function (w, i) {
+      var li = el("li");
+      var head = el("div", "line");
+      var name = el("input");
+      name.type = "text";
+      name.value = w.label || "";
+      name.placeholder = "Quiet time";
+      name.style.maxWidth = "160px";
+      name.onchange = function () { commit(replaceWindow(list, i, { label: name.value })); };
+      head.appendChild(name);
+      head.appendChild(el("span", "sub", "from"));
+      head.appendChild(clockField(w.start, function (v) {
+        commit(replaceWindow(list, i, { start: v }));
+      }));
+      head.appendChild(el("span", "sub", "to"));
+      head.appendChild(clockField(w.end, function (v) {
+        commit(replaceWindow(list, i, { end: v }));
+      }));
+      head.appendChild(el("span", "grow"));
+      head.appendChild(button("Remove", "quiet", function () {
+        return commit(list.filter(function (_, j) { return j !== i; }));
+      }));
+      li.appendChild(head);
+
+      var days = el("div", "line");
+      days.style.marginTop = "8px";
+      var picked = w.days || ALL_DAYS;
+      DAY_LABELS.forEach(function (label, di) {
+        var day = di + 1;
+        var on = picked.indexOf(day) >= 0;
+        var b = el("button", "chip", label);
+        b.setAttribute("aria-pressed", String(on));
+        b.onclick = function () {
+          var next = on
+            ? picked.filter(function (d) { return d !== day; })
+            : picked.concat([day]).sort(function (x, y) { return x - y; });
+          // No days at all parses as a window that blocks nothing and is
+          // dropped on load, so the last day on stays on.
+          if (!next.length) return;
+          commit(replaceWindow(list, i, { days: next }));
+        };
+        days.appendChild(b);
+      });
+      var listen = el("button", "chip", "Allow listening");
+      listen.setAttribute("aria-pressed", String(!!w.allowListening));
+      listen.style.marginLeft = "10px";
+      listen.onclick = function () {
+        commit(replaceWindow(list, i, { allowListening: !w.allowListening }));
+      };
+      days.appendChild(listen);
+      li.appendChild(days);
+      ul.appendChild(li);
+    });
+    host.appendChild(ul);
+
+    // A window has to start with some times, and naming the two everyday
+    // shapes is more honest than a blank Add that invents a schedule.
+    var addRow = el("div", "line");
+    addRow.style.marginTop = "10px";
+    [["Bedtime", 19 * 60 + 30, 7 * 60, ALL_DAYS],
+     ["School hours", 8 * 60 + 30, 15 * 60, [2, 3, 4, 5, 6]],
+     ["Custom", 12 * 60, 14 * 60, ALL_DAYS]].forEach(function (preset) {
+      addRow.appendChild(button("+ " + preset[0], "quiet", function () {
+        return commit(list.concat([{
+          id: nextWindowId(list),
+          label: preset[0] === "Custom" ? "" : preset[0],
+          start: preset[1], end: preset[2], days: preset[3]
+        }]));
+      }));
+    });
+    host.appendChild(addRow);
+    return host;
+  }
+
+  /**
+   * One limits object's windows, written back whole.
+   *
+   * bedtimeStart/bedtimeEnd go with it. They are a legacy mirror of a single
+   * every-day window that ConfigJson re-derives on every write, and
+   * limitsFromJson falls back to them when `windows` is absent — so a stale
+   * pair left in the object would resurrect the window just deleted.
+   */
+  function withWindows(limits, next) {
+    var lim = Object.assign({}, limits || {});
+    lim.windows = next;
+    delete lim.bedtimeStart;
+    delete lim.bedtimeEnd;
+    return lim;
+  }
+
+  // --- pages ----------------------------------------------------------
+
   function pageKids() {
     var out = document.createDocumentFragment();
-    var c = card("Kids", "Each kid's profile and their screen-time rules.");
+    var c = card("Kids", "Each kid's profile, their screen-time rules and their blocked times.");
+    c.dataset.control = "kids-list";
     var ul = el("ul", "rows");
 
     if (!kids().length) ul.appendChild(emptyLi("No kids yet."));
@@ -557,21 +934,27 @@
       }, "🦄"));
       li.appendChild(grid);
 
-      var lim = k.limits || {};
-      var rules = el("div", "grid");
-      rules.style.marginTop = "10px";
-      function setLimit(field) {
-        return function (v) {
-          var next = kids().slice();
-          var l = Object.assign({}, lim); l[field] = v;
-          next[idx] = Object.assign({}, k, { limits: l });
-          patch({ profiles: next });
-        };
-      }
-      rules.appendChild(numberField("Minutes a session", lim.session == null ? "" : lim.session, setLimit("session"), 1, 240));
-      rules.appendChild(numberField("Weekday sessions", lim.weekdaySessions == null ? "" : lim.weekdaySessions, setLimit("weekdaySessions"), 0, 20));
-      rules.appendChild(numberField("Weekend sessions", lim.weekendSessions == null ? "" : lim.weekendSessions, setLimit("weekendSessions"), 0, 20));
-      rules.appendChild(numberField("Break minutes", lim.breakMinutes == null ? "" : lim.breakMinutes, setLimit("breakMinutes"), 0, 120));
+      // The kid's own rules, from the manifest: same names, same ranges and
+      // the same set as the phone's card, because both faces read one
+      // declaration. Their own limits and not the family block, because
+      // Whitelist.limitsFor takes a kid's outright the moment they exist.
+      var rules = el("div");
+      rules.style.marginTop = "6px";
+      groupControls("screen-time-rules", kidScope(k, idx), rules, "limits.");
+      rules.appendChild(pauseRow(
+        "Stops " + (k.name || "this kid") + " on every device.",
+        (k.limits || {}).pausedUntil,
+        function (until) {
+          return patch({ profiles: withLimits(idx, function (lim) {
+            if (until === null) delete lim.pausedUntil; else lim.pausedUntil = until;
+          }) });
+        }
+      ));
+      rules.appendChild(windowsBlock((k.limits || {}).windows, function (next) {
+        var edited = kids().slice();
+        edited[idx] = Object.assign({}, k, { limits: withWindows(k.limits, next) });
+        return patch({ profiles: edited });
+      }));
       li.appendChild(rules);
       ul.appendChild(li);
     });
@@ -597,6 +980,40 @@
     }));
     c.appendChild(add);
     out.appendChild(c);
+
+    // The family-wide block, and only while it is the one in force: with no
+    // kids added, Whitelist.limitsFor falls back to it for the whole house.
+    // With kids, it is dead except for the pause below — so rendering it then
+    // would be a card that looks like it works and changes nothing.
+    if (!kids().length) {
+      var family = groupCard(
+        "screen-time-rules", rootScope(), "Screen time",
+        "The rules for this house until kids are added. Add a kid and they get " +
+          "their own, which take over from these."
+      );
+      family.appendChild(windowsBlock((cfg().limits || {}).windows, function (next) {
+        return patch({ limits: withWindows(cfg().limits, next) });
+      }));
+      out.appendChild(family);
+    }
+
+    // Always: the family pause outranks nothing and undoes nothing — a kid's
+    // page and this one can both be on, and the later of the two wins.
+    var everyone = card(
+      "Everyone at once",
+      "Bonus minutes and a single kid's pause are on that kid's card. This one " +
+        "stops every kid at once, until midnight."
+    );
+    everyone.appendChild(pauseRow(
+      "Every kid, every device.",
+      (cfg().limits || {}).pausedUntil,
+      function (until) {
+        var lim = Object.assign({}, cfg().limits || {});
+        if (until === null) delete lim.pausedUntil; else lim.pausedUntil = until;
+        return patch({ limits: lim });
+      }
+    ));
+    out.appendChild(everyone);
     return out;
   }
 
@@ -628,6 +1045,7 @@
     out.appendChild(addCard);
 
     var c = card("Channels & playlists", "What the kids can watch. Removing one takes it off every device.");
+    c.dataset.control = "channels-list";
     var ul = el("ul", "rows");
     var entries = cfg().entries || [];
     if (!entries.length) ul.appendChild(emptyLi("Nothing added yet."));
@@ -697,6 +1115,7 @@
     out.appendChild(c);
 
     var b = card("Blocked videos", "Individual videos hidden even inside an allowed channel.");
+    b.dataset.control = "channels-blocked";
     var bul = el("ul", "rows");
     var blocked = cfg().blocked || [];
     if (!blocked.length) bul.appendChild(emptyLi("No videos blocked."));
@@ -718,74 +1137,40 @@
 
   function pageListing() {
     var out = document.createDocumentFragment();
-    var shelf = card("How videos are listed", "How the kid's home screen is laid out.");
-    shelf.appendChild(toggleRow("Show when a video came out", null, cfg().showVideoAge, function (v) {
-      return patch({ showVideoAge: v });
-    }));
-    var sizes = el("div");
-    sizes.style.marginTop = "10px";
-    sizes.appendChild(el("div", "sub", "Videos before “Show more”"));
-    sizes.appendChild(chips([12, 24, 48], ["12", "24", "48"], cfg().pageSize || 24, function (v) {
-      patch({ pageSize: v });
-    }));
-    shelf.appendChild(sizes);
-    var layout = el("div");
-    layout.style.marginTop = "10px";
-    layout.appendChild(el("div", "sub", "Channel page layout"));
-    layout.appendChild(chips(["GRID", "PLAYLIST"], ["Grid", "By playlist"], cfg().channelLayout || "GRID", function (v) {
-      patch({ channelLayout: v });
-    }));
-    shelf.appendChild(layout);
-    var order = el("div");
-    order.style.marginTop = "10px";
-    order.appendChild(el("div", "sub", "Channel row order"));
-    order.appendChild(chips(["ADDED", "AZ"], ["As added", "A to Z"], cfg().channelOrder || "ADDED", function (v) {
-      patch({ channelOrder: v });
-    }));
-    shelf.appendChild(order);
-    out.appendChild(shelf);
+    // Every control here came from the manifest the moment this page stopped
+    // being hand-written, and three of the four were wrong before it did: page
+    // sizes of 12/24/48 against the app's 10/20/30 and All, layouts of
+    // GRID/PLAYLIST against newest/popular, and an order of ADDED/AZ against
+    // four the app actually has. A parent set them and nothing happened.
+    add(out, groupCard(
+      "kid-shelves", rootScope(),
+      "How videos are listed", "How the kid's home screen is laid out."
+    ));
     return out;
   }
 
   function pageScreening() {
     var out = document.createDocumentFragment();
-    var ai = cfg().ai || {};
+    var s = rootScope();
 
-    var conn = card("AI connection",
-      "Where Yosemite Kids talks to an AI, and which model. Screening and channel discovery each switch on separately.");
-    conn.appendChild(el("p", "note",
-      "The API key is set on a phone, not here. The hub strips secrets before writing and has no keystore, so a key typed here could not survive a restart."));
-    var grid = el("div", "grid");
-    grid.appendChild(textField("API base URL", ai.baseUrl, function (v) {
-      patch({ ai: Object.assign({}, ai, { baseUrl: v }) });
-    }, "https://openrouter.ai/api/v1"));
-    grid.appendChild(textField("Model", ai.model, function (v) {
-      patch({ ai: Object.assign({}, ai, { model: v }) });
-    }));
-    conn.appendChild(grid);
-    out.appendChild(conn);
-
-    var scr = card("AI screening",
-      "New videos on allowed channels are checked against your rules before a kid can see them. Only titles and channel names are sent — never watch history.");
-    scr.appendChild(toggleRow("Screen new videos with AI", null, ai.enabled, function (v) {
-      return patch({ ai: Object.assign({}, ai, { enabled: v }) });
-    }));
-    var rules = el("label", "field");
-    rules.style.marginTop = "10px";
-    rules.appendChild(el("span", null, "What to allow, in your words"));
-    var rt = el("textarea");
-    rt.value = ai.rules || "";
-    rt.placeholder = "No violence, nothing scary, nothing about dieting.";
-    rt.onchange = function () { patch({ ai: Object.assign({}, ai, { rules: rt.value }) }); };
-    rules.appendChild(rt);
-    scr.appendChild(rules);
-    var age = el("div", "grid");
-    age.style.marginTop = "10px";
-    age.appendChild(numberField("Child age the AI screens for", ai.childAge == null ? "" : ai.childAge, function (v) {
-      patch({ ai: Object.assign({}, ai, { childAge: v }) });
-    }, 1, 18));
-    scr.appendChild(age);
-    out.appendChild(scr);
+    // The key is the one field in the whole manifest that is a credential. It
+    // is declared PHONE there, with this as its recorded reason, so it is not
+    // in the control list this page was shipped and cannot be rendered by
+    // accident.
+    var keyNote = el("p", "note",
+      "The API key is set on a phone, not here. The hub strips secrets before " +
+      "writing and has no keystore, so a key typed here could not survive a restart.");
+    add(out, groupCard(
+      "ai-connection", s, "AI connection",
+      "Where Yosemite Kids talks to an AI, and which model. Screening and " +
+        "channel discovery each switch on separately.",
+      keyNote
+    ));
+    add(out, groupCard(
+      "ai-screening", s, "AI screening",
+      "New videos on allowed channels are checked against your rules before a " +
+        "kid can see them."
+    ));
 
     out.appendChild(phoneOnlyNote("Content screening"));
     return out;
@@ -847,8 +1232,9 @@
           "Open Yosemite Kids on it once."));
       } else if (kids().length) {
         var row = el("div", "line");
+        row.dataset.control = "devices-kid";
         row.style.marginTop = "8px";
-        row.appendChild(el("span", "sub", "This device is for"));
+        row.appendChild(el("span", "sub", controlById("devices-kid").label));
         var shared = el("button", "chip", "Anyone");
         shared.setAttribute("aria-pressed", String(!dev.kid));
         shared.onclick = function () {
@@ -910,39 +1296,19 @@
 
   function pagePlayback() {
     var out = document.createDocumentFragment();
-    var c = card("Playback", null);
-    c.appendChild(toggleRow("Skip sponsors & intros",
-      "Skips the parts the SponsorBlock community has marked. Lookups send only an anonymous fingerprint.",
-      cfg().sponsorSkip, function (v) { return patch({ sponsorSkip: v }); }));
-    c.appendChild(toggleRow("Autoplay the next video",
-      "When a video ends, the next unwatched one from the same channel lines up behind a short countdown.",
-      cfg().autoplay, function (v) { return patch({ autoplay: v }); }));
-    c.appendChild(toggleRow("More like what you watch",
-      "A home row of older videos from channels you have already added.",
-      cfg().suggest, function (v) { return patch({ suggest: v }); }));
-    out.appendChild(c);
-
-    var q = card("Video quality", "Set separately for televisions and phones.");
-    var tv = el("div");
-    tv.appendChild(el("div", "sub", "On televisions"));
-    tv.appendChild(chips([0, 720, 1080], ["Auto", "720p", "1080p"], cfg().qualityTv || 0, function (v) {
-      patch({ qualityTv: v });
-    }));
-    q.appendChild(tv);
-    var ph = el("div");
-    ph.style.marginTop = "10px";
-    ph.appendChild(el("div", "sub", "On phones"));
-    ph.appendChild(chips([0, 480, 720], ["Auto", "480p", "720p"], cfg().qualityPhone || 0, function (v) {
-      patch({ qualityPhone: v });
-    }));
-    q.appendChild(ph);
-    out.appendChild(q);
-
-    var l = card("Listening", "Whether playback continues with the screen off. Affects phones only.");
-    l.appendChild(chips([0, 50, 100], ["Off", "Half volume", "On"], cfg().listen || 0, function (v) {
-      patch({ listen: v });
-    }));
-    out.appendChild(l);
+    var s = rootScope();
+    add(out, groupCard("playback", s, "While a video plays", null));
+    add(out, groupCard(
+      "quality", s, "Picture quality",
+      "Auto follows the connection and the device, with no cap. Pick a number " +
+        "to set a ceiling instead — a kid can still change it for the video " +
+        "they are watching."
+    ));
+    add(out, groupCard(
+      "listening", s, "Listening",
+      "Whether playback continues with the screen off. Affects phones only — a " +
+        "TV cannot play with its panel off."
+    ));
     return out;
   }
 

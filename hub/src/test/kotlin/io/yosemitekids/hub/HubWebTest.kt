@@ -278,6 +278,95 @@ class HubWebTest {
         }
     }
 
+    @Test
+    fun theBrowserIsShippedExactlyTheControlsTheManifestDeclaresForThisFace() {
+        // The bridge guard 26(b) rests on. It proves a control is generically
+        // rendered *or* hand-built by reading index.html; that only means
+        // anything if the page is handed the same list this manifest declares
+        // — one short and a control renders nowhere with nothing failing.
+        val session = signIn()!!
+        val shipped = JSONObject(call("/api/state", cookie = session).second)
+            .getJSONArray("controls")
+        val ids = (0 until shipped.length()).map { shipped.getJSONObject(it).getString("id") }
+        assertEquals(SettingsSurface.hubControls().map { it.id }, ids)
+
+        (0 until shipped.length()).forEach { i ->
+            val c = shipped.getJSONObject(i)
+            assertTrue("${c.getString("id")} has no label", c.getString("label").isNotBlank())
+            assertTrue("${c.getString("id")} has no group", c.getString("group").isNotBlank())
+            assertTrue("${c.getString("id")} has no page", c.getString("page").isNotBlank())
+        }
+        // And nothing phone-only travels: the API key is the case that matters.
+        assertFalse("a phone-only control reached the browser", ids.contains("ai-api-key"))
+    }
+
+    @Test
+    fun aControlCanClearItsValueFromTheBrowser() {
+        // "Off", "Auto" and "All" are the key's ABSENCE, not a JSON null:
+        // ConfigJson asks has() before getInt in half a dozen places. A page
+        // that could set a rule and never clear it is worse than no page.
+        val session = signIn()!!
+        assertEquals(200, post("/api/config", JSONObject().put("pageSize", 20).toString(), session).first)
+        assertEquals(20, store.load().pageSize)
+
+        assertEquals(
+            200,
+            post("/api/config", JSONObject().put("pageSize", JSONObject.NULL).toString(), session).first
+        )
+        assertEquals(null, store.load().pageSize)
+    }
+
+    @Test
+    fun aRuleClearedFromTheBrowserComesBackAsNoRule() {
+        val session = signIn()!!
+        val limits = JSONObject().put("session", 30).put("minVideoMinutes", 4)
+        post("/api/config", JSONObject().put("limits", limits).toString(), session)
+        assertEquals(4, store.load().limits.minVideoMinutes)
+
+        // The browser rebuilds the object without the key, which is what the
+        // generic renderer does for an emptied number field.
+        post("/api/config", JSONObject().put("limits", JSONObject().put("session", 30)).toString(), session)
+        assertEquals(null, store.load().limits.minVideoMinutes)
+        assertEquals(30, store.load().limits.sessionMinutes)
+    }
+
+    @Test
+    fun aPauseFurtherOutThanTheBoundIsRefusedAndANormalOneIsNot() {
+        // The hub reads no calendar: "until midnight" is computed in the
+        // parent's browser and arrives as an instant, so the hub bounds what it
+        // will accept rather than trusting it.
+        val session = signIn()!!
+        val tooFar = clock + 10L * 24 * 60 * 60 * 1000
+        post(
+            "/api/config",
+            JSONObject().put("limits", JSONObject().put("pausedUntil", tooFar)).toString(),
+            session
+        )
+        assertEquals(null, store.load().limits.pausedUntilMillis)
+
+        val tonight = clock + 6L * 60 * 60 * 1000
+        post(
+            "/api/config",
+            JSONObject().put("limits", JSONObject().put("pausedUntil", tonight)).toString(),
+            session
+        )
+        assertEquals(tonight, store.load().limits.pausedUntilMillis)
+    }
+
+    @Test
+    fun aPauseAlreadyInTheConfigIsNotJudgedByThisContainersClock() {
+        // The bound applies to what the browser just changed, never to the
+        // whole document. A phone sets a pause against its own clock, and a
+        // blanket clamp would mean an unrelated edit made on the NAS silently
+        // un-paused a family.
+        val session = signIn()!!
+        val far = clock + 10L * 24 * 60 * 60 * 1000
+        store.edit("test", clock) { it.copy(limits = it.limits.copy(pausedUntilMillis = far)) }
+
+        post("/api/config", JSONObject().put("sponsorSkip", false).toString(), session)
+        assertEquals(far, store.load().limits.pausedUntilMillis)
+    }
+
     // --- editing plain config ---------------------------------------------
 
     @Test

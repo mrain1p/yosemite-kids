@@ -142,6 +142,11 @@ object HubWeb {
 
         return JSONObject()
             .put("pages", JSONArray().also { arr -> pages.forEach { arr.put(JSONObject().put("id", it.id).put("title", it.title)) } })
+            // Every control this face is expected to render, with the words to
+            // render it with. The page builds the plain ones from this alone —
+            // which is the whole point: a new toggle on an existing page is one
+            // declaration in :core and nothing at all in index.html.
+            .put("controls", controlsJson())
             // The document itself, minus its bookkeeping. The page renders from
             // this, so a control is only ever as stale as the last fetch.
             .put("config", raw.apply { remove("sync") })
@@ -165,6 +170,51 @@ object HubWeb {
     }
 
     /**
+     * The manifest's controls, as the browser needs them.
+     *
+     * Exactly [SettingsSurface.hubControls] — no more, because a control from a
+     * group the manifest says is not ready here would render an edit that is
+     * not meant to exist yet, and no less, because guard 26(b) checks the same
+     * list from the other end.
+     *
+     * `null` is a real option value (Off, Auto, All) and travels as JSON null,
+     * which the patch path reads as "unset this key" — see [applyPatch].
+     */
+    private fun controlsJson(): JSONArray {
+        val groupOf = SettingsSurface.sections.flatMap { s -> s.controls.map { it.id to s } }.toMap()
+        return JSONArray().also { arr ->
+            SettingsSurface.hubControls().forEach { c ->
+                val section = groupOf.getValue(c.id)
+                arr.put(
+                    JSONObject()
+                        .put("id", c.id)
+                        .put("group", section.id)
+                        .put("page", pageIdOf(section.page))
+                        .put("label", c.label)
+                        .put("sub", c.sub)
+                        .put("kind", c.kind.name)
+                        .put("json", c.json)
+                        .put("unit", c.unit)
+                        .put("min", c.min ?: JSONObject.NULL)
+                        .put("max", c.max ?: JSONObject.NULL)
+                        .put(
+                            "options",
+                            JSONArray().also { opts ->
+                                c.options.forEach { o ->
+                                    opts.put(
+                                        JSONObject()
+                                            .put("value", o.value ?: JSONObject.NULL)
+                                            .put("label", o.label)
+                                    )
+                                }
+                            }
+                        )
+                )
+            }
+        }
+    }
+
+    /**
      * A device's stable short reference. Enough to tell two devices apart and
      * to name one, without handing the browser a credential.
      */
@@ -175,6 +225,13 @@ object HubWeb {
      *
      * Returns false when the patch names nothing settable, so the caller can
      * answer 400 rather than reporting a successful no-op.
+     *
+     * A key sent as JSON `null` is **removed**, not set to null. That is what
+     * "no rule", "Auto" and "All" are on this wire: `ConfigJson` asks `has()`
+     * before `getInt` in half a dozen places, so a literal null would throw
+     * where absence means the default. Turning a rule off from the browser is
+     * therefore a delete, and it has to be — the alternative is a control that
+     * can be set and never cleared.
      */
     fun applyPatch(store: HubStore, who: String, now: Long, patch: JSONObject): Boolean {
         val keys = patch.keys().asSequence().filter { it in PATCHABLE }.toList()
@@ -182,11 +239,51 @@ object HubWeb {
 
         store.edit(who, now) { current ->
             val doc = JSONObject(ConfigJson.toJson(current))
-            keys.forEach { doc.put(it, patch.get(it)) }
+            keys.forEach { if (patch.isNull(it)) doc.remove(it) else doc.put(it, patch.get(it)) }
             mintKidIds(doc)
+            refuseDistantPauses(doc, current, now)
             ConfigJson.fromJson(scrubPatch(doc).toString())
         }
         return true
+    }
+
+    /**
+     * How far ahead of the hub's own clock a browser may put a pause.
+     *
+     * The hub reads no calendar: a container runs UTC and the family does not,
+     * so "until midnight" is computed in the parent's browser and arrives as an
+     * instant. Generous enough for any timezone plus a day, tight enough that a
+     * mistyped or hostile value cannot pause a household for a month.
+     */
+    internal const val PAUSE_MAX_AHEAD_MS = 36L * 60 * 60 * 1000
+
+    /**
+     * Refuse a pause the browser has just pushed further out than
+     * [PAUSE_MAX_AHEAD_MS], and leave every other pause exactly as it was.
+     *
+     * Comparing against what is already stored is the whole subtlety. A blanket
+     * clamp over the document would also judge pauses a *phone* set against a
+     * clock this container may not agree with — so an unrelated edit made on
+     * the NAS would quietly un-pause a family. Only a value this patch changed
+     * is bounded.
+     */
+    private fun refuseDistantPauses(doc: JSONObject, current: Whitelist, now: Long) {
+        fun keep(limits: JSONObject?, was: Long?) {
+            limits ?: return
+            if (!limits.has("pausedUntil")) return
+            val until = limits.optLong("pausedUntil", 0L)
+            if (until <= now + PAUSE_MAX_AHEAD_MS || until == was) return
+            if (was == null) limits.remove("pausedUntil") else limits.put("pausedUntil", was)
+        }
+        keep(doc.optJSONObject("limits"), current.limits.pausedUntilMillis)
+        val kids = doc.optJSONArray("profiles") ?: return
+        for (i in 0 until kids.length()) {
+            val kid = kids.optJSONObject(i) ?: continue
+            keep(
+                kid.optJSONObject("limits"),
+                current.profile(kid.optString("id"))?.limits?.pausedUntilMillis
+            )
+        }
     }
 
     /**
