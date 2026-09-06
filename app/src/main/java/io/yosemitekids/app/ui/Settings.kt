@@ -2,6 +2,7 @@ package io.yosemitekids.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
@@ -1003,19 +1004,46 @@ private fun AdminScreen(
             SectionTitle("Called")
             SettingsCard {
                 var myName by remember { mutableStateOf(pairingStore.myName()) }
-                OutlinedTextField(
-                    value = myName,
-                    onValueChange = { myName = it; pairingStore.setMyName(it) },
-                    singleLine = true,
+                // A plain 40dp field on the page colour, not Material's 56dp
+                // outlined one: the card is already a container, and a second
+                // one inside it at the same tone read as a form control that
+                // had wandered in. Built from BasicTextField because the
+                // height is the point and OutlinedTextField's is fixed.
+                Box(
+                    contentAlignment = Alignment.CenterStart,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.background)
+                        .border(
+                            1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp)
+                        )
+                        .tvFocusHighlight(cornerRadius = 10.dp)
+                        .padding(horizontal = 11.dp, vertical = 12.dp)
+                ) {
                     // The title above the card already says "Called"; a
                     // floating label would say it twice.
-                    placeholder = { Text("Mum's phone") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    if (myName.isEmpty()) Text(
+                        "Mum's phone", fontSize = 14.sp, color = SettingsPlaceholder
+                    )
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = myName,
+                        onValueChange = { myName = it; pairingStore.setMyName(it) },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(
+                            MaterialTheme.colorScheme.primary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 Text(
                     "Shown beside the changes this phone makes, so the other " +
                         "parent can tell who did what.",
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 12.sp,
+                    lineHeight = 19.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 // A phone can be a kid's own device too — dedicate it and it
@@ -2648,24 +2676,26 @@ private fun SearchIndexSection(
     val totalVideos = whitelistedStates.sumOf { it.count }
     val complete = whitelistedStates.count { it.complete }
     val channels = if (entries.size == 1) "1 channel" else "${entries.size} channels"
-    // raw-phone.png: the totals as a headline, then one amber line carrying
-    // how complete the index is and who is building it.
+    // full-12-phone.png: the totals as a headline, then one amber line
+    // carrying how complete the index is and who is building it. The hub is
+    // named rather than lumped in with "another device", because "the hub is
+    // the master" is the answer to why this phone has stopped crawling.
     Text(
         "${java.text.NumberFormat.getIntegerInstance().format(totalVideos)} videos " +
             "across $channels",
-        style = MaterialTheme.typography.titleMedium
+        style = MaterialTheme.typography.bodyMedium
     )
     Text(
         "$complete fully indexed  ·  " + when {
-            isMaster -> "this device builds it"
-            hubIsMaster -> "the hub builds it"
-            masterToken != null -> "another device builds it"
-            else -> "nobody builds it yet"
+            isMaster -> "this device is the master"
+            hubIsMaster -> "the hub is the master"
+            masterToken != null -> "another device is the master"
+            else -> "no master yet"
         },
-        style = MaterialTheme.typography.bodySmall,
-        color = StatusAmber
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
+        color = WarningAmber
     )
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(11.dp))
     // The design's button here says "Rebuild index", but nothing on the phone
     // can start a crawl: the master's WorkManager job runs every 15 minutes on
     // its own and there is no route or entry point that presses it early. What
@@ -2673,6 +2703,8 @@ private fun SearchIndexSection(
     // process-local, so a crawl that ran in the worker process (or before this
     // screen opened) only shows up after one. Labelled for what it does.
     var refreshing by remember { mutableStateOf(false) }
+    // Neutral, not teal: teal on this page is the accent for a primary
+    // action, and this button re-reads a file.
     OutlinedButton(
         onClick = {
             refreshing = true
@@ -2682,32 +2714,54 @@ private fun SearchIndexSection(
             }
         },
         enabled = !refreshing,
-        modifier = Modifier.fillMaxWidth().tvFocusHighlight()
-    ) { Text(if (refreshing) "Working…" else "Refresh counts") }
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, SettingsStrongBorder),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        modifier = Modifier.fillMaxWidth().height(32.dp).tvFocusHighlight(cornerRadius = 8.dp)
+    ) {
+        Text(
+            if (refreshing) "Working…" else "Refresh counts",
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.5.sp)
+        )
+    }
+    Spacer(Modifier.height(9.dp))
+    // One sentence on the card, the four state paragraphs behind "Read more".
+    // Which device is the master is already on the amber line above; what the
+    // master DOES is the one thing that line leaves unsaid.
     Text(
-        when {
-            isMaster ->
-                "This phone builds the index — every channel's full list of videos, " +
-                    "so search on the TVs answers without asking YouTube — and shares it " +
-                    "with the other devices. If a hub is connected, it takes over as soon " +
-                    "as any device has pulled from it: the hub is always on and this phone is not."
-            hubIsMaster ->
-                "The hub builds the index because it is always on. Every device pulls it " +
-                    "from the hub when it syncs, so the counts above climb on their own. " +
-                    "This phone takes over if the hub is off for a day."
-            masterToken != null ->
-                "Another phone builds the index; it arrives here over your home network."
-            else ->
-                "Nobody builds it yet — the first parent phone to sync claims the job, " +
-                    "and a connected hub takes it over once a device has pulled from it."
-        },
-        style = MaterialTheme.typography.bodySmall,
+        "The master builds the index and shares it with the other devices.",
+        fontSize = 12.sp,
+        lineHeight = 19.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
     if (!expanded) {
         CompactButton(onClick = { expanded = true }) { Text("Read more") }
     } else {
+        Text(
+            when {
+                isMaster ->
+                    "This phone builds the index — every channel's full list of videos, " +
+                        "so search on the TVs answers without asking YouTube — and shares it " +
+                        "with the other devices. If a hub is connected, it takes over as soon " +
+                        "as any device has pulled from it: the hub is always on and this phone is not."
+                hubIsMaster ->
+                    "The hub builds the index because it is always on. Every device pulls it " +
+                        "from the hub when it syncs, so the counts above climb on their own. " +
+                        "This phone takes over if the hub is off for a day."
+                masterToken != null ->
+                    "Another phone builds the index; it arrives here over your home network."
+                else ->
+                    "Nobody builds it yet — the first parent phone to sync claims the job, " +
+                        "and a connected hub takes it over once a device has pulled from it."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         // Run diagnostics: when the master last crawled and when the next
         // background run fires, so "is it stuck?" is answerable on screen.
         if (isMaster) {
