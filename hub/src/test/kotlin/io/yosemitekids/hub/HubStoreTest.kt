@@ -362,6 +362,44 @@ class HubStoreTest {
         assertFalse(getAs("/config", legacy).second.contains(oldKey))
     }
 
+    // --- what the admin page may do with it --------------------------------
+
+    @Test
+    fun theAdminPageSetsTheKeyAndIsToldOnlyItsLastFour() {
+        val session = signIn()!!
+        val (code, body) = post("/api/ai-key", JSONObject().put("key", newKey).toString(), session)
+        assertEquals(200, code)
+        assertFalse("the route echoed the key back to the browser", body.contains(newKey))
+        assertEquals(newKey.takeLast(4), JSONObject(body).getString("tail"))
+        assertEquals(newKey, secrets.apiKey())
+
+        // And the page, on its next load, is told the same four characters and
+        // nothing else. A field that rendered the value back would put a
+        // credential in a browser, in its autofill and in every screenshot.
+        val state = JSONObject(get("/api/state", session).second).getJSONObject("hub")
+        assertTrue(state.getBoolean("holdsKey"))
+        assertEquals(newKey.takeLast(4), state.getString("keyTail"))
+        assertFalse(get("/api/state", session).second.contains(newKey))
+    }
+
+    @Test
+    fun theAdminPageCanTakeTheKeyOffTheBox() {
+        val session = signIn()!!
+        post("/api/ai-key", JSONObject().put("key", newKey).toString(), session)
+        assertEquals(200, post("/api/ai-key", JSONObject().put("key", "").toString(), session).first)
+        assertFalse(store.holdsKey())
+        assertEquals("", JSONObject(get("/api/state", session).second).getJSONObject("hub").getString("keyTail"))
+    }
+
+    @Test
+    fun theKeyRouteIsNotAWayIn() {
+        // Session-gated like everything else under /api, and a body that names
+        // nothing is a 400 rather than a successful no-op.
+        assertEquals(401, post("/api/ai-key", JSONObject().put("key", newKey).toString(), null).first)
+        assertFalse(store.holdsKey())
+        assertEquals(400, post("/api/ai-key", JSONObject().toString(), signIn()!!).first)
+    }
+
     // --- plumbing ---------------------------------------------------------
 
     /** An enrolled token of a given kind, the way the approver records it. */
@@ -414,6 +452,20 @@ class HubStoreTest {
         c.outputStream.use { it.write(JSONObject().put("secret", admin).toString().toByteArray()) }
         if (c.responseCode != 200) return null
         return c.getHeaderField("Set-Cookie")?.substringAfter("yk_session=")?.substringBefore(";")
+    }
+
+    private fun post(path: String, body: String, cookie: String?): Pair<Int, String> {
+        val c = (URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json")
+            cookie?.let { setRequestProperty("Cookie", "yk_session=$it") }
+        }
+        c.outputStream.use { it.write(body.toByteArray()) }
+        val code = c.responseCode
+        val text = (if (code in 200..299) c.inputStream else c.errorStream)
+            ?.bufferedReader()?.readText().orEmpty()
+        return code to text
     }
 
     /** As an enrolled device, which is how a phone and a television both call. */

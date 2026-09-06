@@ -827,7 +827,7 @@ foreach ($t in [regex]::Matches($sectionsBlock, '(?s)(SettingsSection|SettingsCo
         $ready = $body -match 'Where\.(BOTH|HUB), true,'
         continue
     }
-    $idMatch = [regex]::Match($body, '^\s*"([a-z0-9-]+)"')
+    $idMatch = [regex]::Match($body, '"([a-z0-9-]+)"')
     if (-not $idMatch.Success) { Fail-Guard "guard 26 cannot read a control id out of SettingsSurface." }
     $id = $idMatch.Groups[1].Value
     $declared += $id

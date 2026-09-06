@@ -191,6 +191,12 @@ object HubWeb {
                     .put("hash", store.fingerprint())
                     .put("updatedAt", store.updatedAt())
                     .put("dataDir", dataDir)
+                    // Whether this box holds the AI key, and the most the page
+                    // may ever be shown of it. Never the value: a field that
+                    // rendered it back would put a credential into a browser,
+                    // its autofill and every screenshot of this page.
+                    .put("holdsKey", store.holdsKey())
+                    .put("keyTail", store.keyTail())
                     .put("deviceCount", tokens.devices().size)
                     .put("startedAt", startedAt)
                     // The one health number a NAS actually needs. A volume

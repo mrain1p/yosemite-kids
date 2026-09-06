@@ -313,10 +313,10 @@ object SettingsSurface {
         // --- Content screening --------------------------------------------
         SettingsSection("ai-connection", "AI connection", Page.SCREENING, "AiConnectionSection",
             listOf("ai"), Where.BOTH, true,
-            "Provider, base URL and model yes; the API key no. The hub strips " +
-                "secrets before writing and has no keystore, so a key entered " +
-                "there could not survive a restart. The hub's page says so " +
-                "rather than offering a field that silently forgets.",
+            "Provider, base URL, model and the key. Both faces store the key " +
+                "outside config.json — the phone in its Keystore-backed " +
+                "SecretStore, the hub in HubSecrets — and neither ever renders " +
+                "it back; the most either shows is the last four characters.",
             controls = listOf(
                 SettingsControl(
                     "ai-base-url", "API base URL",
@@ -327,16 +327,16 @@ object SettingsSurface {
                     "ai-model", "Model",
                     kind = ControlKind.TEXT, writes = "ai.model"
                 ),
+                // The only field in this manifest that is a credential, and the
+                // only one neither face may render back: both store it outside
+                // config.json (SecretStore on the phone, HubSecrets on the NAS)
+                // and both show at most its last four characters. CUSTOM for
+                // that reason alone — a generic TEXT control would put the
+                // value into a page and into a patch.
                 SettingsControl(
                     "ai-api-key", "API key",
                     sub = "Leave empty for a local server.",
-                    kind = ControlKind.CUSTOM, writes = "ai.apiKey", where = Where.PHONE,
-                    why = "The only field in this manifest that is a credential. It lives " +
-                        "in the phone's Keystore-backed SecretStore, never in config.json, " +
-                        "and ConfigStore strips it from every copy that reaches disk — so " +
-                        "a key typed on the NAS would appear to work, ride out to every " +
-                        "device, and be gone after a restart. Giving the hub a store of " +
-                        "its own is PLAN-hub-parity step 10."
+                    kind = ControlKind.CUSTOM, writes = "ai.apiKey"
                 )
             )),
         SettingsSection("ai-screening", "AI screening", Page.SCREENING, "AiScreeningSection",

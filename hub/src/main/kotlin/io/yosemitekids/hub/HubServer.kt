@@ -525,6 +525,32 @@ class HubServer(
                     .put("why", outcome.name)
             }
 
+            /**
+             * The AI key: set it, replace it, or clear it with a blank.
+             *
+             * A route of its own rather than a field of `/api/config`, for the
+             * reason `ai.apiKey` is scrubbed out of every patch: the key is
+             * not in the config document on this box and must not be put
+             * there. It lands in `HubSecrets`, and `HubStore.setApiKey` moves
+             * the `ai` unit's stamp so the merge can tell this rotation from
+             * the copy a sleeping television still holds.
+             *
+             * The reply carries the last four characters and nothing else. The
+             * value never comes back out of this hub except to a parent's
+             * phone through `GET /config`.
+             */
+            "/api/ai-key" -> mutate(ex) { body ->
+                if (!body.has("key")) null
+                else {
+                    // Bounded like anything else off the wire. A provider key
+                    // is a couple of hundred characters at most, and the file
+                    // this lands in is read on every merge.
+                    val key = body.getString("key").trim().take(512)
+                    store.setApiKey(key, WHO, now())
+                    JSONObject().put("saved", true).put("tail", store.keyTail())
+                }
+            }
+
             "/api/versions" -> mutate(ex) { body ->
                 if (!body.has("restore")) null
                 else JSONObject().put(

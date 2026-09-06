@@ -1637,23 +1637,116 @@
     return out;
   }
 
+  /**
+   * The API key: set it, replace it, or clear it. Never render it.
+   *
+   * The one control on this page that is hand-written rather than drawn from
+   * the manifest, and the reason is the whole card: a generic TEXT control
+   * would put the value into the page, into /api/state on the way there, and
+   * into the browser's autofill. So the page is told only whether a key is
+   * set and its last four characters — enough to answer "is this the one I
+   * pasted?", which is the only question a parent has — and the value travels
+   * one way, into POST /api/ai-key.
+   *
+   * It is stored on the volume in plain text, because a NAS has no hardware
+   * keystore and this container has no secret of its own to key one with. The
+   * card says so rather than implying a safety it does not have; docs/HUB.md
+   * carries the longer version and the advice that goes with it.
+   */
+  function cardApiKey() {
+    var c = el("div", "card");
+    c.dataset.control = "ai-api-key";
+    var ctl = controlById("ai-api-key");
+    c.appendChild(el("h2", null, ctl.label));
+    c.appendChild(el("p", "hint",
+      state.hub.holdsKey
+        ? "A key is set on this hub. Every parent's phone that joins it is given the key, so " +
+          "screening works without anyone typing it again."
+        : "Set it here and every parent's phone that joins this hub is given it. " +
+          "Leave it empty if your AI runs on your own network and needs no key."));
+
+    if (state.hub.holdsKey) {
+      var have = el("div");
+      have.appendChild(el("div", "name", "Key set"));
+      have.appendChild(el("div", "sub",
+        state.hub.keyTail
+          ? "Ends " + state.hub.keyTail + ". The key itself is never shown again, here or anywhere else."
+          : "The key itself is never shown again, here or anywhere else."));
+      c.appendChild(have);
+    }
+
+    var field = secretField(
+      state.hub.holdsKey ? "Replace it" : "API key",
+      "sk-…",
+      "off"
+    );
+    field.node.style.marginTop = "10px";
+    c.appendChild(field.node);
+
+    // Two nodes, because "saved" and "that did not work" are not the same
+    // colour. The password card carries its note across the re-render the same
+    // way, and for the same reason: written onto a node this render made, it
+    // would land on one already thrown away.
+    var err = el("p", "error");
+    var said = el("p", "sub");
+    if (keyNote) {
+      (keyNote.bad ? err : said).textContent = keyNote.text;
+      keyNote = null;
+    }
+
+    var row = el("div", "line");
+    row.style.marginTop = "12px";
+    row.appendChild(button(state.hub.holdsKey ? "Replace the key" : "Save the key", "primary", function () {
+      err.textContent = "";
+      var typed = field.input.value.trim();
+      if (!typed) {
+        err.textContent = "Nothing typed. To take the key off this hub, use Remove.";
+        return Promise.resolve();
+      }
+      return saveKey(typed, "Saved. Devices are being told.");
+    }));
+    if (state.hub.holdsKey) {
+      row.appendChild(button("Remove", "quiet", function () {
+        return saveKey("", "Removed. Phones keep the copy they already hold; nothing on this hub does.");
+      }));
+    }
+    c.appendChild(row);
+    c.appendChild(err);
+    c.appendChild(said);
+
+    c.appendChild(el("p", "note",
+      "Stored on this box in plain text. A NAS has no hardware keystore, so anything with " +
+      "root, anything sharing this volume, and any backup of it can read the key. Use a " +
+      "separate key with a spending cap, and if someone gets into the NAS, rotate it."));
+    return c;
+  }
+
+  /** Carried across the re-render that rebuilds the card. See cardPassword. */
+  var keyNote = null;
+
+  function saveKey(value, message) {
+    return api("/api/ai-key", { key: value })
+      .then(function () {
+        keyNote = { text: message, bad: false };
+        flashSaved();
+        return refresh();
+      })
+      .catch(function () {
+        keyNote = { text: "The hub could not save that.", bad: true };
+        render();
+      });
+  }
+
   function pageScreening() {
     var out = document.createDocumentFragment();
     var s = rootScope();
 
-    // The key is the one field in the whole manifest that is a credential. It
-    // is declared PHONE there, with this as its recorded reason, so it is not
-    // in the control list this page was shipped and cannot be rendered by
-    // accident.
-    var keyNote = el("p", "note",
-      "The API key is set on a phone, not here. The hub strips secrets before " +
-      "writing and has no keystore, so a key typed here could not survive a restart.");
     add(out, groupCard(
       "ai-connection", s, "AI connection",
       "Where Yosemite Kids talks to an AI, and which model. Screening and " +
-        "channel discovery each switch on separately.",
-      keyNote
+        "channel discovery each switch on separately."
     ));
+    out.appendChild(cardApiKey());
     add(out, groupCard(
       "ai-screening", s, "AI screening",
       "New videos on allowed channels are checked against your rules before a " +

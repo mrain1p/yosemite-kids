@@ -296,8 +296,19 @@ class HubWebTest {
             assertTrue("${c.getString("id")} has no group", c.getString("group").isNotBlank())
             assertTrue("${c.getString("id")} has no page", c.getString("page").isNotBlank())
         }
-        // And nothing phone-only travels: the API key is the case that matters.
-        assertFalse("a phone-only control reached the browser", ids.contains("ai-api-key"))
+        // The API key is the case that matters, and what travels is the
+        // DECLARATION, never the value. It has to be CUSTOM: the generic
+        // renderer reads a control's value straight out of `config`, so a
+        // TEXT control here would be a field asking to be filled in with a
+        // credential the page must never hold.
+        val key = (0 until shipped.length()).map { shipped.getJSONObject(it) }
+            .single { it.getString("id") == "ai-api-key" }
+        assertEquals("CUSTOM", key.getString("kind"))
+        assertFalse(
+            "the config shipped to the browser names an apiKey field at all",
+            JSONObject(call("/api/state", cookie = session).second)
+                .getJSONObject("config").getJSONObject("ai").has("apiKey")
+        )
     }
 
     @Test

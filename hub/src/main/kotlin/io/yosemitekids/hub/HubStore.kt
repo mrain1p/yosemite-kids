@@ -129,6 +129,17 @@ class HubStore(
     /** Whether this hub holds a key of its own, for `/status` and the page. */
     fun holdsKey(): Boolean = secrets?.hasKey() == true
 
+    /**
+     * The last four characters of that key, and never more.
+     *
+     * The most the admin page is ever shown. It answers the only question a
+     * parent has once a key is set — "is this the one I pasted?" — and it is
+     * the whole reason the page needs nothing else: a field that rendered the
+     * value back would put a credential in a browser, in its autofill, and in
+     * whatever the page is later screenshotted into.
+     */
+    fun keyTail(): String = secrets?.tail().orEmpty()
+
     fun syncHash(): String = runCatching { ConfigMerge.syncHash(load().sync) }
         .getOrDefault(ConfigMerge.syncHash(SyncMeta.EMPTY))
 
