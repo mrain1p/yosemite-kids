@@ -345,11 +345,34 @@ object ConfigSync {
         // finds out by hitting it. Judged on this device's own kid, so a change
         // to their sibling's rules stays quiet here.
         val kid = kidHere(context, after)
+        val guard = SessionGuard(context, ProfileNamespace(context).suffixFor(kid))
+
+        // Grants travel in the config so a device that was asleep when the
+        // parent tapped "Add time" still finds the minutes when it wakes.
+        // Nothing was reading them: Whitelist.grantsFor had no caller
+        // anywhere, and every path that computes a budget passes the default
+        // empty list, so only the granting phone itself and the LAN fast path
+        // ever applied one. A television that missed the call simply never
+        // got its time, which is exactly the case config-carried grants were
+        // added for.
+        //
+        // Here rather than at each budget read: this runs on every arrival
+        // path (the worker, an inbound push, a merge), applyGrants is
+        // idempotent by grant id so the fast path cannot double-count, and a
+        // read path that quietly writes preferences is a worse shape.
+        val granted = guard.applyGrants(
+            after.grantsFor(kid, Grants.dateOf(System.currentTimeMillis()))
+        )
+
         val fresh = after.limitsFor(kid)
         KidNotices.configChange(
-            before.limitsFor(kid), fresh,
-            SessionGuard(context, ProfileNamespace(context).suffixFor(kid)).remainingTodayMin(fresh)
+            before.limitsFor(kid), fresh, guard.remainingTodayMin(fresh)
         )?.let { KidNotices.post(it) }
+
+        // Same sentence the fast path posts, so a kid cannot tell which route
+        // the minutes took. Only when something was actually new here.
+        val minutes = granted.sumOf { it.minutes }
+        if (minutes > 0) KidNotices.post(KidNotices.grant(minutes))
     }
 
     /**

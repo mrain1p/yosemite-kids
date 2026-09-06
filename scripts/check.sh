@@ -513,6 +513,22 @@ for a in $named; do
     guard_fail "the hub GUI references $a and HubServer serves no such route — the catch-all would answer it with the page HTML, and the icon or manifest would fail silently."
 done
 
+# 21. A grant that arrives in the config has to be applied by the device
+#     that receives it.
+#     Grants were moved into the merged config so a television asleep when a
+#     parent tapped "Add time" would find the minutes when it woke. Nothing
+#     read them: Whitelist.grantsFor had no caller anywhere, and every path
+#     that computes a budget takes grants as a defaulted empty list, so only
+#     the granting phone and the LAN fast path ever applied one. The feature
+#     was shipped, documented and dead. Nothing failed, because a function
+#     with no caller breaks no test.
+if ! grep -q "applyGrants(" app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt; then
+  guard_fail "ConfigSync no longer applies the config's grants on arrival — a device that was asleep when the parent granted time silently never gets it."
+fi
+if ! grep -rq "grantsFor(" app/src/main/java; then
+  guard_fail "nothing in the app reads Whitelist.grantsFor, so config-carried grants reach every device and are applied by none."
+fi
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"
