@@ -19,7 +19,7 @@ fi
 # --- 0/4 invariants a test cannot state ------------------------------------
 # Each is a property that holds across a whole file, so no assertion can pin
 # it. See docs/PLAN-sync.md.
-echo "== 0/5 source invariants"
+echo "== 0/6 source invariants"
 guard_fail() { echo "guard FAILED: $1" >&2; exit 1; }
 
 # A literal double quote, for the guards that have to look for one inside a
@@ -51,18 +51,18 @@ for f in app/src/main/java/io/yosemitekids/app/ui/Settings.kt app/src/main/java/
   fi
 done
 
-# :core is the code the Android app and the Docker hub both run. The moment it
-# imports Android, the hub stops building — and the failure would surface in
-# the hub's build, a long way from the edit that caused it.
-androidInCore=$(grep -rlE "^import (android|androidx)\." core/src/main/kotlin || true)
+# :core and :crawl are the code the Android app and the Docker hub both run.
+# The moment either imports Android, the hub stops building — and the failure
+# would surface in the hub's build, a long way from the edit that caused it.
+androidInCore=$(grep -rlE "^import (android|androidx)\." core/src/main/kotlin crawl/src/main/kotlin || true)
 if [ -n "$androidInCore" ]; then
-  guard_fail ":core imports Android ($androidInCore). It must stay plain JVM so the hub can use it."
+  guard_fail "a shared module imports Android ($androidInCore). :core and :crawl must stay plain JVM so the hub can use them."
 fi
 
 # The same rule, one level up: the Android plugin in :core would let the above
 # slip in without tripping the import check.
-if grep -qE "com\.android|kotlin-android|libs\.plugins\.android" core/build.gradle.kts; then
-  guard_fail ":core applies an Android plugin. It must stay a plain JVM module."
+if grep -qE "com\.android|kotlin-android|libs\.plugins\.android" core/build.gradle.kts crawl/build.gradle.kts; then
+  guard_fail ":core or :crawl applies an Android plugin. Both must stay plain JVM modules."
 fi
 
 # The merge's tests must live in :core, not :app. In :app they still pass, but
@@ -76,8 +76,14 @@ done
 # The hub must not depend on :app. :app is Android, and the whole reason the
 # hub can share this logic is that the shared half was lifted into :core. A
 # dependency here would drag the Android SDK into a container build.
-if grep -qE "project\(\":app\"\)" hub/build.gradle.kts; then
-  guard_fail ":hub depends on :app. Anything it needs belongs in :core."
+if grep -qE "project\(\":app\"\)" hub/build.gradle.kts crawl/build.gradle.kts; then
+  guard_fail ":hub or :crawl depends on :app. Anything they need belongs in :core or :crawl."
+fi
+# And the layering inside the shared code: :crawl (network, disk, clock)
+# builds on :core (the pure rules), never the reverse. A rule that needed the
+# crawler would drag the extractor into the merge.
+if grep -qE "project\(\":crawl\"\)" core/build.gradle.kts; then
+  guard_fail ":core depends on :crawl. The rules must not depend on the crawler; move the shared piece down into :core."
 fi
 
 # The hub answers /status with the keys LanClient.fullStatus parses. The hub
@@ -133,7 +139,7 @@ fi
 
 # A doc path named in source is a promise. Renaming the doc leaves the
 # pointer behind, and the place it is read is a container log at 3am.
-for d in $(grep -rhoE 'docs/[A-Za-z0-9_.-]+[.]md' app/src core/src hub/src scripts 2>/dev/null | sort -u); do
+for d in $(grep -rhoE 'docs/[A-Za-z0-9_.-]+[.]md' app/src core/src crawl/src hub/src scripts 2>/dev/null | sort -u); do
   [ -f "$d" ] || guard_fail "source points at $d, which does not exist."
 done
 
@@ -279,7 +285,7 @@ if [ -f "$roadmap" ]; then
     case "$k" in
       path) [ -e "$a" ] || ls "$a" >/dev/null 2>&1 ||
         guard_fail "ROADMAP.md item$item cites $a, which no longer exists. Is that item done? Delete it and its anchor row." ;;
-      code) grep -rqF "$a" app/src core/src hub/src scripts 2>/dev/null ||
+      code) grep -rqF "$a" app/src core/src crawl/src hub/src scripts 2>/dev/null ||
         guard_fail "ROADMAP.md item$item cites \`$a\`, which is gone from the codebase. Is that item done? Delete it and its anchor row." ;;
     esac
   done < <(grep -E "^\| §" "$roadmap" || true)
@@ -338,7 +344,7 @@ for id in $(grep -hoE "HubPage[(]$q[^$q]+$q" "$hubweb" | sed -E "s/HubPage[(]$q/
 done
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.
-misnamed=$(find app/src/test/java/io/yosemitekids/app core/src/test/kotlin/io/yosemitekids/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
+misnamed=$(find app/src/test/java/io/yosemitekids/app core/src/test/kotlin/io/yosemitekids/app crawl/src/test/kotlin/io/yosemitekids/app -maxdepth 1 -type f ! -name '*Test.kt' | tr '\n' ' ')
 if [ -n "$misnamed" ]; then
   guard_fail "these test files will never run: $misnamed — rename to *Test.kt"
 fi
@@ -419,18 +425,21 @@ done
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
-echo "== 1/5 compile (assembleDebug)"
+echo "== 1/6 compile (assembleDebug)"
 ./gradlew --no-daemon -q assembleDebug
 
 if [ "${1:-}" = "--quick" ]; then echo "compile OK (quick mode)"; exit 0; fi
 
-echo "== 2/5 core tests (no Android — the hub runs this exact code)"
+echo "== 2/6 core tests (no Android — the hub runs this exact code)"
 ./gradlew --no-daemon -q :core:test
 
-echo "== 3/5 hub tests"
+echo "== 3/6 crawl tests (plain JVM — the hub runs this crawler too)"
+./gradlew --no-daemon -q :crawl:test
+
+echo "== 4/6 hub tests"
 ./gradlew --no-daemon -q :hub:test
 
-echo "== 4/5 app unit tests (offline)"
+echo "== 5/6 app unit tests (offline)"
 # Every test class except the live-YouTube canaries. Both reach real YouTube
 # unguarded, so a bot wall fails this gate for unrelated reasons.
 args=()
@@ -441,7 +450,7 @@ for f in app/src/test/java/io/yosemitekids/app/*Test.kt; do
 done
 ./gradlew --no-daemon -q :app:testDebugUnitTest "${args[@]}"
 
-echo "== 5/5 worker tests"
+echo "== 6/6 worker tests"
 if command -v node >/dev/null 2>&1; then
   node --test worker/test/*.test.mjs
 else

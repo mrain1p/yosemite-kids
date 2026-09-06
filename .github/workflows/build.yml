@@ -56,6 +56,9 @@ jobs:
       - name: Core tests (no Android)
         run: ./gradlew :core:test
 
+      - name: Crawl tests (plain JVM, shared with the hub)
+        run: ./gradlew :crawl:test
+
       - name: Hub tests (the container's routes and enrolment)
         run: ./gradlew :hub:test
 

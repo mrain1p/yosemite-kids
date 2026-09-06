@@ -14,7 +14,7 @@ if (-not (Test-Path "local.properties")) {
 # --- 0/4 invariants a test cannot state ------------------------------------
 # Each of these is a property that has to hold across a whole file, so no
 # assertion can pin it. See docs/PLAN-sync.md.
-Write-Host "== 0/5 source invariants" -ForegroundColor Cyan
+Write-Host "== 0/6 source invariants" -ForegroundColor Cyan
 
 function Fail-Guard($message) {
     Write-Host "guard FAILED: $message" -ForegroundColor Red
@@ -53,16 +53,16 @@ foreach ($formFile in @("app\src\main\java\io\yosemitekids\app\ui\Settings.kt", 
 # :core is the code the Android app and the Docker hub both run. The moment it
 # imports Android the hub cannot build it — and that failure would surface in
 # the hub's build, a long way from the edit that caused it.
-$androidInCore = Select-String -Path "core\src\main\kotlin\io\yosemitekids\app\data\*.kt" `
-    -Pattern '^import (android|androidx)\.' -List | ForEach-Object { $_.Path }
+$androidInCore = Get-ChildItem -Recurse -File -Filter *.kt core\src\main\kotlin, crawl\src\main\kotlin |
+    Select-String -Pattern '^import (android|androidx)\.' -List | ForEach-Object { $_.Path }
 if ($androidInCore) {
-    Fail-Guard ":core imports Android ($androidInCore). It must stay plain JVM so the hub can use it."
+    Fail-Guard "a shared module imports Android ($androidInCore). :core and :crawl must stay plain JVM so the hub can use them."
 }
 
 # The same rule one level up: an Android plugin here would let the above in
 # without tripping the import check.
-if (Select-String -Path "core\build.gradle.kts" -Pattern 'com\.android|kotlin-android' -Quiet) {
-    Fail-Guard ":core applies an Android plugin. It must stay a plain JVM module."
+if (Select-String -Path "core\build.gradle.kts", "crawl\build.gradle.kts" -Pattern 'com\.android|kotlin-android|libs\.plugins\.android' -Quiet) {
+    Fail-Guard ":core or :crawl applies an Android plugin. Both must stay plain JVM modules."
 }
 
 # The merge's tests belong in :core. In :app they still pass, but they prove
@@ -77,8 +77,13 @@ foreach ($t in @("ConfigMergeTest", "ConfigStampTest", "ConfigSyncFormatTest", "
 # The hub must not depend on :app. :app is Android, and the whole reason the
 # hub can share this logic is that the shared half was lifted into :core. A
 # dependency here would drag the Android SDK into a container build.
-if (Select-String -Path "hub\build.gradle.kts" -Pattern 'project\(":app"\)' -Quiet) {
-    Fail-Guard ":hub depends on :app. Anything it needs belongs in :core."
+if (Select-String -Path "hub\build.gradle.kts", "crawl\build.gradle.kts" -Pattern 'project\(":app"\)' -Quiet) {
+    Fail-Guard ":hub or :crawl depends on :app. Anything they need belongs in :core or :crawl."
+}
+# And the layering inside the shared code: :crawl (network, disk, clock)
+# builds on :core (the pure rules), never the reverse.
+if (Select-String -Path "core\build.gradle.kts" -Pattern 'project\(":crawl"\)' -Quiet) {
+    Fail-Guard ":core depends on :crawl. The rules must not depend on the crawler; move the shared piece down into :core."
 }
 
 # The hub answers /status with the keys LanClient.fullStatus parses. The hub
@@ -122,7 +127,7 @@ if (-not (Select-String -Path hub/docker-entrypoint.sh -Pattern 'can_write' -Sim
 
 # A doc path named in source is a promise. Renaming the doc leaves the
 # pointer behind, and the place it is read is a container log at 3am.
-$docRefs = Get-ChildItem -Recurse -File app/src, core/src, hub/src, scripts |
+$docRefs = Get-ChildItem -Recurse -File app/src, core/src, crawl/src, hub/src, scripts |
     Select-String -Pattern 'docs/[A-Za-z0-9_.-]+[.]md' -AllMatches |
     ForEach-Object { $_.Matches.Value } | Sort-Object -Unique
 foreach ($d in $docRefs) {
@@ -301,7 +306,7 @@ if (Test-Path "docs/ROADMAP.md") {
             }
         } elseif ($kind -eq "code") {
             if ($null -eq $haystack) {
-                $haystack = Get-ChildItem -Path "app/src","core/src","hub/src","scripts" -Recurse -File |
+                $haystack = Get-ChildItem -Path "app/src","core/src","crawl/src","hub/src","scripts" -Recurse -File |
                     ForEach-Object { Get-Content $_.FullName -Raw }
             }
             $found = $false
@@ -378,7 +383,7 @@ foreach ($id in $hubPages) {
 }
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and
 # CI alike. A file named anything else is skipped by all three and looks green.
-$misnamed = Get-ChildItem app\src\test\java\io\yosemitekids\app, core\src\test\kotlin\io\yosemitekids\app -File |
+$misnamed = Get-ChildItem app\src\test\java\io\yosemitekids\app, core\src\test\kotlin\io\yosemitekids\app, crawl\src\test\kotlin\io\yosemitekids\app -File |
     Where-Object { $_.Name -notlike "*Test.kt" }
 if ($misnamed) {
     Fail-Guard "these test files will never run: $($misnamed.Name -join ', ') — rename to *Test.kt"
@@ -470,21 +475,25 @@ foreach ($pair in @('getLong("bonusMs"', 'getString("grants"')) {
     }
 }
 
-Write-Host "== 1/5 compile (assembleDebug)" -ForegroundColor Cyan
+Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q assembleDebug
 if ($LASTEXITCODE -ne 0) { Write-Host "compile FAILED" -ForegroundColor Red; exit 1 }
 
 if ($Quick) { Write-Host "compile OK (quick mode)" -ForegroundColor Green; exit 0 }
 
-Write-Host "== 2/5 core tests (no Android — the hub runs this exact code)" -ForegroundColor Cyan
+Write-Host "== 2/6 core tests (no Android — the hub runs this exact code)" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q :core:test
 if ($LASTEXITCODE -ne 0) { Write-Host "core tests FAILED" -ForegroundColor Red; exit 1 }
 
-Write-Host "== 3/5 hub tests" -ForegroundColor Cyan
+Write-Host "== 3/6 crawl tests (plain JVM — the hub runs this crawler too)" -ForegroundColor Cyan
+& .\gradlew.bat --no-daemon -q :crawl:test
+if ($LASTEXITCODE -ne 0) { Write-Host "crawl tests FAILED" -ForegroundColor Red; exit 1 }
+
+Write-Host "== 4/6 hub tests" -ForegroundColor Cyan
 & .\gradlew.bat --no-daemon -q :hub:test
 if ($LASTEXITCODE -ne 0) { Write-Host "hub tests FAILED" -ForegroundColor Red; exit 1 }
 
-Write-Host "== 4/5 app unit tests (offline)" -ForegroundColor Cyan
+Write-Host "== 5/6 app unit tests (offline)" -ForegroundColor Cyan
 # Every test class except the live-YouTube canaries. Gradle's --tests takes
 # patterns, not exclusions, so the list is built from the source tree.
 # SingleChannelProbeTest calls ChannelInfo.getInfo with no runCatching and no
@@ -497,7 +506,7 @@ $tests = Get-ChildItem app\src\test\java\io\yosemitekids\app -Filter *Test.kt |
 & .\gradlew.bat --no-daemon -q :app:testDebugUnitTest @tests
 if ($LASTEXITCODE -ne 0) { Write-Host "unit tests FAILED — see app\build\reports\tests\testDebugUnitTest\index.html" -ForegroundColor Red; exit 1 }
 
-Write-Host "== 5/5 worker tests" -ForegroundColor Cyan
+Write-Host "== 6/6 worker tests" -ForegroundColor Cyan
 if (Get-Command node -ErrorAction SilentlyContinue) {
     & node --test (Get-ChildItem "worker\test\*.test.mjs" | ForEach-Object { $_.FullName })
     if ($LASTEXITCODE -ne 0) { Write-Host "worker tests FAILED" -ForegroundColor Red; exit 1 }

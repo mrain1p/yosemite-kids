@@ -21,6 +21,7 @@ on:
       # The build context allow-list: a change there is a change to the image.
       - ".dockerignore"
       - "core/**"
+      - "crawl/**"
       - "gradle/**"
       - "gradlew"
       - "settings.gradle.kts"

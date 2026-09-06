@@ -14,6 +14,8 @@
 !gradle
 !core/build.gradle.kts
 !core/src
+!crawl/build.gradle.kts
+!crawl/src
 !hub/build.gradle.kts
 !hub/src
 !hub/docker-entrypoint.sh

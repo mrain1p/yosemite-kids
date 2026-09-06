@@ -30,6 +30,9 @@ dependencies {
     // The merge, the stamper, the serializers — shared verbatim with the app so
     // there is one implementation of the rules rather than two that drift.
     implementation(project(":core"))
+    // The crawler and the search index: the hub builds the index the phone
+    // used to build alone (docs/PLAN-crawl.md).
+    implementation(project(":crawl"))
     // Android supplies org.json in the platform; here it has to be brought.
     implementation(libs.json)
 

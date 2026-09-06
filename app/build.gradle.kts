@@ -187,6 +187,8 @@ dependencies {
     // The merge, the stamper and the sync decision — shared verbatim with the
     // Docker hub so there is one implementation of the rules, not two.
     implementation(project(":core"))
+    // The crawler and the search index, shared with the hub (docs/PLAN-crawl.md).
+    implementation(project(":crawl"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
