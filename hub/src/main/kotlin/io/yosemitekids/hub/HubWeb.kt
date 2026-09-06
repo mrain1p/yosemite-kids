@@ -15,6 +15,7 @@ import io.yosemitekids.app.data.Whitelist
 import io.yosemitekids.app.data.WhitelistParser
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
  * The admin GUI's data layer: which pages exist, what they render, and what an
@@ -89,7 +90,9 @@ object HubWeb {
         now: Long,
         index: ChannelIndex? = null,
         master: HubMaster? = null,
-        crawl: HubCrawl? = null
+        crawl: HubCrawl? = null,
+        /** When this process started, for the health block. 0 when nobody said. */
+        startedAt: Long = 0L
     ): String {
         val config = runCatching { store.load() }.getOrElse { Whitelist(emptyList(), emptySet()) }
         val raw = runCatching { JSONObject(ConfigJson.toJson(config)) }.getOrElse { JSONObject() }
@@ -129,6 +132,13 @@ object HubWeb {
                     .put("ref", deviceRef(it.token))
                     .put("name", it.name)
                     .put("enrolledAt", it.enrolledAt)
+                    // Where it called from and when — the two facts the hub
+                    // actually knows about a device, and the two a parent asks
+                    // for when one has gone quiet. Learned on authenticated
+                    // calls only (HubServer.authorised); the hub never goes
+                    // looking, which is what guard 7 is about.
+                    .put("address", it.address ?: "")
+                    .put("lastSeenAt", it.lastSeenAt)
                     // By the device's own identity, which is the key every
                     // device reads this map by — see [assignDevice].
                     .put("kid", it.deviceId?.let { id -> config.deviceProfiles[id] } ?: "")
@@ -160,6 +170,10 @@ object HubWeb {
             // The document itself, minus its bookkeeping. The page renders from
             // this, so a control is only ever as stale as the last fetch.
             .put("config", raw.apply { remove("sync") })
+            // Which is why the feed is lifted out first: it lives inside that
+            // bookkeeping, and until now nothing rendered it anywhere but the
+            // phone. See [changesJson].
+            .put("changes", changesJson(config))
             .put("devices", devices)
             .put("pending", pending)
             .put("versions", HubVersions.list(store))
@@ -171,6 +185,16 @@ object HubWeb {
                     .put("updatedAt", store.updatedAt())
                     .put("dataDir", dataDir)
                     .put("deviceCount", tokens.devices().size)
+                    .put("startedAt", startedAt)
+                    // The one health number a NAS actually needs. A volume
+                    // that fills up takes the atomic write with it — the
+                    // temp file is written, the rename never happens — and
+                    // the symptom is settings that stop sticking with
+                    // nothing on screen to explain it. Best effort: a bind
+                    // mount whose backing store cannot be queried answers 0,
+                    // which the page renders as nothing rather than as "no
+                    // space left".
+                    .put("freeBytes", runCatching { File(dataDir).usableSpace }.getOrDefault(0L))
                     // Named, not counted. "Six groups still to come" tells a
                     // parent nothing; the list tells them whether the one they
                     // want is among them.
@@ -178,6 +202,36 @@ object HubWeb {
             )
             .toString()
     }
+
+    /**
+     * The change feed, newest first.
+     *
+     * Nothing here is computed: every stamped edit and every merge already
+     * appends a line through `ConfigMerge.describe`'s own vocabulary, and the
+     * config this hub is holding carries the last `SyncMeta.MAX_LOG` of them.
+     * They had simply never been rendered anywhere but the phone — so "why
+     * did the TV change?" was unanswerable on the one box in the house that
+     * had the answer sitting on its disk.
+     *
+     * Both stamps travel. `at` is forced monotonic (see `ConfigStamp.stamped`)
+     * so a device whose clock came back wrong can still win its own edit, and
+     * showing that value would hand a parent a time that never happened; the
+     * page prefers `shownAt` for exactly the reason the phone's `ChangeRow`
+     * does, and falls back when an older build minted no `shownAt`.
+     */
+    private fun changesJson(config: Whitelist): JSONArray =
+        JSONArray().also { arr ->
+            config.sync.log.asReversed().forEach { c ->
+                arr.put(
+                    JSONObject()
+                        .put("code", c.code)
+                        .put("text", c.text)
+                        .put("who", c.who)
+                        .put("at", c.at)
+                        .put("shownAt", c.shownAt)
+                )
+            }
+        }
 
     /**
      * The manifest's controls, as the browser needs them.

@@ -1,5 +1,6 @@
 package io.yosemitekids.hub
 
+import io.yosemitekids.app.data.BackupFile
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.Whitelist
 import org.json.JSONArray
@@ -125,10 +126,41 @@ object HubVersions {
      */
     fun restore(store: HubStore, who: String, now: Long, id: String): Boolean {
         val snapshot = read(store, id) ?: return false
+        return apply(store, who, now, snapshot)
+    }
+
+    /**
+     * Restore from a file a parent uploaded — a backup taken here, or one a
+     * phone exported. Returns false when the text is not a backup at all, so
+     * the caller can say so rather than reporting a successful wipe.
+     *
+     * The same [apply] as the version ring on purpose. A file is exactly as
+     * stale as a snapshot and loses exactly the same four arguments with the
+     * merge if it is written as bytes, so there is one restore primitive here
+     * and it is a stamped edit. [BackupFile.configIn] is what refuses an
+     * unrelated JSON file: an empty document parses as a perfectly valid
+     * config meaning "no channels, no kids, no rules".
+     */
+    fun restoreFile(store: HubStore, who: String, now: Long, text: String): Boolean {
+        val document = BackupFile.configIn(text) ?: return false
+        // A phone's `GET /config` carries the API key, so a file made from one
+        // can too. It would be stripped on the way to disk anyway; taking it
+        // out here means it never enters the document this hub is holding.
+        val snapshot = runCatching { ConfigJson.fromJson(ConfigJson.stripSecrets(document)) }
+            .getOrNull() ?: return false
+        return apply(store, who, now, snapshot)
+    }
+
+    /**
+     * The one restore primitive: content from [snapshot], bookkeeping from
+     * the live document. See the four arguments a byte copy loses, above.
+     */
+    private fun apply(store: HubStore, who: String, now: Long, snapshot: Whitelist): Boolean {
         store.edit(who, now) { current ->
-            // Content from the snapshot; bookkeeping is replaced wholesale by
-            // ConfigStamp.stamped from the live document, so nothing of the
-            // snapshot's own sync block survives.
+            // Bookkeeping is replaced wholesale by ConfigStamp.stamped from
+            // the live document, so nothing of the snapshot's own sync block
+            // survives — not its stamps, not its tombstones, and not its
+            // change feed.
             snapshot.copy(sync = current.sync)
         }
         return true

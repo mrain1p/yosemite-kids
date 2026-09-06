@@ -6,6 +6,7 @@ import io.yosemitekids.app.data.ChannelIndex
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import io.yosemitekids.app.data.BackupFile
 import io.yosemitekids.app.data.SyncMeta
 import org.json.JSONObject
 import java.net.InetSocketAddress
@@ -64,6 +65,16 @@ class HubServer(
      * which is the trailing-lambda trap described above.
      */
     private val sessions = HubSessions(now)
+
+    /**
+     * When this process came up, for the health block on "This hub".
+     *
+     * Taken here rather than passed in for the same reason [sessions] is
+     * built here: it needs [now], and a constructor parameter defaulting to
+     * another parameter would have to sit after it, which is the
+     * trailing-lambda trap described above.
+     */
+    private val startedAt = now()
 
     private var server: HttpServer? = null
 
@@ -373,7 +384,49 @@ class HubServer(
         }
 
         when (ex.requestURI.path) {
-            "/api/state" -> respond(ex, 200, HubWeb.state(store, tokens, dataDir, now(), index, master, crawl))
+            "/api/state" -> respond(
+                ex, 200,
+                HubWeb.state(store, tokens, dataDir, now(), index, master, crawl, startedAt)
+            )
+
+            /**
+             * A backup a parent can take off the box.
+             *
+             * The stored document verbatim, in the same envelope the phone's
+             * own export writes, because the day this file is wanted is the
+             * day the NAS is gone and a phone is what is left. Verbatim and
+             * not rebuilt: a field a newer build added and this one does not
+             * model rides through, which is the same property the merge is
+             * defined at the JSON level for.
+             *
+             * Keyless by construction rather than by a strip here —
+             * `HubStore.commit` takes the API key out on every write, so
+             * these are the bytes on disk. `HubBackupTest` asserts that from
+             * the outside, at every depth, because "the hub's disk holds no
+             * credential" is a claim a route like this can quietly break.
+             *
+             * The file is named by the browser: a filename with a date in it
+             * would need a calendar, which the container deliberately does
+             * not read (guard 27).
+             */
+            "/api/backup" -> {
+                if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+                val raw = store.raw()
+                    ?: return respond(ex, 404, JSONObject().put("error", "no config yet").toString())
+                respond(ex, 200, BackupFile.wrap(raw, now(), "hub"))
+            }
+
+            /**
+             * And back again — as a stamped edit, never a byte copy. See
+             * `HubVersions`' own KDoc for the four separate arguments with the
+             * merge a byte restore loses, silently, on the next sync.
+             */
+            "/api/restore" -> mutate(ex) { body ->
+                JSONObject().put(
+                    "restored",
+                    HubVersions.restoreFile(store, WHO, now(), body.toString())
+                )
+            }
 
             "/api/channels" -> mutate(ex) { body ->
                 when {

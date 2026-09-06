@@ -503,9 +503,12 @@ object SettingsSurface {
         // --- Backup & app ---------------------------------------------------
         SettingsSection("export", "Import, export & backup", Page.BACKUP, "ExportSection",
             emptyList(), Where.BOTH, true,
-            "Reads config rather than writing it. On the phone this is a file " +
-                "picker; the hub's equivalent is its own versioned local " +
-                "backup, which a file picker cannot give you."),
+            "Reads config rather than writing it. Both faces write the same " +
+                "envelope (BackupFile) and read each other's, which is the " +
+                "point: the day a backup is wanted is the day the box that " +
+                "made it is gone. The hub adds the five-slot version ring a " +
+                "file picker cannot give you, and on either face a restore is " +
+                "a stamped edit rather than a byte copy."),
         SettingsSection("app-update", "App", Page.BACKUP, "UpdateSection",
             emptyList(), Where.PHONE, false,
             "The app self-updates from a release APK; the hub updates by " +

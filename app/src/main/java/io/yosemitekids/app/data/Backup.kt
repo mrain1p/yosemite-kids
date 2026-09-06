@@ -13,12 +13,11 @@ import org.json.JSONObject
  */
 object Backup {
 
-    const val SCHEMA = 1
-    private const val KIND = "yosemite-kids-backup"
-    // Written by every build before the rename. Read forever: moving a family
-    // to the new package id is "full backup on the old app, restore here",
-    // and that file says pickwick-backup.
-    private const val LEGACY_KIND = "pickwick-backup"
+    // The envelope itself is declared in :core, because the hub writes one
+    // too and a file from either face has to be readable by the other.
+    const val SCHEMA = BackupFile.SCHEMA
+    private const val KIND = BackupFile.KIND
+    private const val LEGACY_KIND = BackupFile.LEGACY_KIND
 
     data class Summary(val channels: Int, val kids: Int, val verdicts: Int, val exportedAt: Long)
 

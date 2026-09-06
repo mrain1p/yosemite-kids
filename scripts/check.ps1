@@ -861,6 +861,24 @@ foreach ($cal in @("LocalDate", "Calendar", "SimpleDateFormat", "ZoneId.systemDe
     }
 }
 
+# 28. One backup envelope, because two faces write it and two faces read it.
+#     The phone exports through Backup and the hub serves GET /api/backup, and
+#     the whole point of taking a file off the NAS is the day the NAS is gone
+#     and a phone is all that is left. Two copies of `kind` and `schema` drift
+#     in one release and the file silently stops crossing - with the symptom
+#     arriving on the worst day it could. So the envelope is declared once, in
+#     :core, and every other file reads the constants from there.
+$envelope = "core/src/main/kotlin/io/yosemitekids/app/data/BackupFile.kt"
+foreach ($word in @("yosemite-kids-backup", "pickwick-backup")) {
+    $homes = @(Get-ChildItem "app/src/main", "core/src/main", "crawl/src/main", "hub/src/main" -Recurse -File |
+        Select-String -Pattern ('"' + $word + '"') -SimpleMatch |
+        ForEach-Object { (Resolve-Path -Relative $_.Path) -replace '\\', '/' -replace '^\./', '' } |
+        Sort-Object -Unique)
+    if ($homes.Count -ne 1 -or $homes[0] -ne $envelope) {
+        Fail-Guard "the backup envelope's ""$word"" is spelled out in [$($homes -join ' ')]. It belongs in $envelope alone - a phone must be able to open a file the hub wrote, and the reverse."
+    }
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan
