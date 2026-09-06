@@ -286,7 +286,7 @@ internal fun ExportSection(
                     "Last backup " + java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault())
                         .format(java.util.Date(lastBackupAt))
                 } else "Never backed up",
-                summaryColor = if (lastBackupAt > 0L) null else StatusAmber,
+                summaryColor = if (lastBackupAt > 0L) null else WarningAmber,
                 onClick = {
                     val stamp = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
                         .format(java.util.Date())
