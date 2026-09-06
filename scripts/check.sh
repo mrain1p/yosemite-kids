@@ -665,6 +665,20 @@ for cls in "Whitelist:" "Limits:limits." "AiConfig:ai."; do
       guard_fail "$path is claimed by $claimed control and exempted $exempt times in SettingsSurface — want exactly one. Give it a SettingsControl with writes = $q$path$q, or add it to NOT_A_CONTROL with the reason there is nothing to set it."
   done
 done
+#    (e) Every kind the manifest can declare has a branch in the generic
+#        renderer. Clause (b) asks only CUSTOM controls to prove themselves,
+#        because everything else is supposed to be drawn from the declaration —
+#        so a kind added to the enum and not to renderControl() falls through
+#        to null and the control is absent from a page that still passes every
+#        other check here.
+kinds=$(awk -F'[{}]' '/^enum class ControlKind/ { print $2 }' "$manifest" | tr -d " " | tr "," " " || true)
+[ -n "$kinds" ] || guard_fail "guard 26 cannot read ControlKind out of $manifest; it is blind."
+for k in $kinds; do
+  if [ "$k" != "CUSTOM" ]; then
+    grep -qF "c.kind === $q$k$q" "$hubhtml" ||
+      guard_fail "ControlKind.$k has no branch in renderControl() in $hubhtml, so a control of that kind draws nothing at all. Give it one — the manifest must not be able to declare something the hub silently drops."
+  fi
+done
 #    (b)-(d), per control, read in file order: a control belongs to the section
 #        declared above it, which is what lets the section's own where/hubReady
 #        decide whether the hub owes it anything.

@@ -764,6 +764,21 @@ foreach ($cls in @(@("Whitelist", ""), @("Limits", "limits."), @("AiConfig", "ai
     }
 }
 
+#    (e) Every kind the manifest can declare has a branch in the generic
+#        renderer. Clause (b) asks only CUSTOM controls to prove themselves,
+#        because everything else is supposed to be drawn from the declaration -
+#        so a kind added to the enum and not to renderControl() falls through
+#        to null and the control is absent from a page that still passes every
+#        other check here.
+$kindLine = [regex]::Match($manifest, '(?m)^enum class ControlKind \{([^}]*)\}')
+if (-not $kindLine.Success) { Fail-Guard "guard 26 cannot read ControlKind out of SettingsSurface.kt; it is blind." }
+foreach ($k in ($kindLine.Groups[1].Value -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+    if ($k -eq "CUSTOM") { continue }
+    if (-not $hubHtml.Contains('c.kind === "' + $k + '"')) {
+        Fail-Guard "ControlKind.$k has no branch in renderControl() in index.html, so a control of that kind draws nothing at all. Give it one - the manifest must not be able to declare something the hub silently drops."
+    }
+}
+
 #    (b)-(d), per control, read in file order: a control belongs to the section
 #        declared above it, which is what lets the section's own where/hubReady
 #        decide whether the hub owes it anything.
