@@ -31,6 +31,29 @@ val YosemiteDarkColors = darkColorScheme(
     secondaryContainer = Color(0xFF334B47),
     onSecondaryContainer = Color(0xFFCCE8E3),
     tertiary = Color(0xFFA5C8E4),
+    // The ground is Material's own dark baseline, kept to the byte: it is what
+    // families are looking at today and it is not the thing that needed fixing.
+    background = Color(0xFF141218),
+    onBackground = Color(0xFFE6E0E9),
+    surface = Color(0xFF141218),
+    onSurface = Color(0xFFE6E0E9),
+    // The steps above the ground, which previously were *not* ours — they fell
+    // through to Material's baseline, so every card, chip and tab pill was a
+    // stock purple-grey the theme had no say in. Naming them is what lets
+    // [kidColorScheme] tint them; until it could, "My colour" washed the page
+    // and left the cards on it grey.
+    surfaceContainerLowest = Color(0xFF0E0D11),
+    surfaceContainerLow = Color(0xFF1A1820),
+    surfaceContainer = Color(0xFF1E1C25),
+    surfaceContainerHigh = Color(0xFF26232D),
+    surfaceContainerHighest = Color(0xFF2E2A36),
+    surfaceVariant = Color(0xFF2E2A36),
+    onSurfaceVariant = Color(0xFFB4AEBD),
+    // Two greys one step apart, and which is which matters: `outline` is a
+    // card or field border, `outlineVariant` the divider between rows inside
+    // one — deliberately darker, so a card reads as a single block.
+    outline = Color(0xFF38333F),
+    outlineVariant = Color(0xFF272430),
     // Not Material's "elevation tint" here: this app uses surfaceTint purely
     // as the carrier for the kid's own colour, and transparent means "no
     // wash". See [kidColorScheme] and [Modifier.kidBackdrop].
@@ -65,9 +88,55 @@ val YosemiteLightColors = androidx.compose.material3.lightColorScheme(
     onSurface = Color(0xFF191C1B),
     surfaceVariant = Color(0xFFDAE5E1),
     onSurfaceVariant = Color(0xFF3F4947),
+    // The same steps the dark scheme now names, going the other way: paper,
+    // then progressively less of it. Left at Material's baseline these were
+    // the light theme's version of the same bug — stock greys the theme did
+    // not choose and "My colour" could not reach.
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF3F5F4),
+    surfaceContainer = Color(0xFFEDF0EF),
+    surfaceContainerHigh = Color(0xFFE7EBEA),
+    surfaceContainerHighest = Color(0xFFE1E6E5),
+    outline = Color(0xFF6F7B78),
     outlineVariant = Color(0xFFBEC9C6),
     surfaceTint = Color.Transparent
 )
+
+/** WCAG contrast between two opaque colours, 1:1 (identical) to 21:1. */
+private fun ratio(a: Color, b: Color): Float {
+    val la = a.luminance()
+    val lb = b.luminance()
+    return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f)
+}
+
+/** Near-black or white, whichever can actually be read on [bg]. */
+private fun readableOn(bg: Color): Color {
+    val ink = Color(0xFF1B1B1B)
+    return if (ratio(ink, bg) >= ratio(Color.White, bg)) ink else Color.White
+}
+
+/**
+ * Darken or lighten [bg] until [fg] clears [min]:1 against it.
+ *
+ * A kid may pick any colour — the picker offers eight but any ARGB survives
+ * sync — and some of them land in the band where neither black nor white is
+ * legible on the blend. Amber is the one in the shipped palette: as a chip
+ * fill it reached 3.39:1, under the 4.5:1 a label needs. Rather than drop the
+ * swatch, the blend gets moved until the label works, which also covers the
+ * colours a parent can set that the picker never offers.
+ */
+private fun legible(bg: Color, fg: Color, min: Float = 4.5f): Color {
+    if (ratio(fg, bg) >= min) return bg
+    val away = if (fg.luminance() > 0.5f) Color.Black else Color.White
+    var t = 0.06f
+    var out = bg
+    while (t <= 1f) {
+        out = androidx.compose.ui.graphics.lerp(bg, away, t)
+        if (ratio(fg, out) >= min) return out
+        t += 0.06f
+    }
+    return out
+}
 
 /**
  * The scheme a kid is actually looking at: their pick, tinted with their own
@@ -94,7 +163,14 @@ fun kidColorScheme(
     // The rest of the effect is the wash in [kidBackdrop], which is a
     // gradient and therefore reads as light rather than as paint.
     fun ground(c: Color) = androidx.compose.ui.graphics.lerp(c, tint, 0.07f)
-    val secondary = androidx.compose.ui.graphics.lerp(base.secondaryContainer, tint, 0.55f)
+    // Cards carry a touch more of the kid's colour than the page behind them,
+    // which is what keeps them legible as separate objects once the ground is
+    // tinted — the alternative is outlining every card, which the wash was
+    // chosen to avoid.
+    fun card(c: Color) = androidx.compose.ui.graphics.lerp(c, tint, 0.10f)
+    val secondaryRaw = androidx.compose.ui.graphics.lerp(base.secondaryContainer, tint, 0.55f)
+    val onSecondary = readableOn(secondaryRaw)
+    val secondary = legible(secondaryRaw, onSecondary)
     return base.copy(
         primary = light,
         onPrimary = Color(0xFF1B1B1B),
@@ -103,14 +179,29 @@ fun kidColorScheme(
         background = ground(base.background),
         surface = ground(base.surface),
         // Cards sit on the tinted ground; left neutral they read as grey
-        // patches on a coloured page.
-        surfaceVariant = androidx.compose.ui.graphics.lerp(base.surfaceVariant, tint, 0.10f),
+        // patches on a coloured page. This is every step a card, chip, sheet
+        // or tab pill can be drawn from — a filled Card takes
+        // surfaceContainerHighest, a chip surfaceContainerHigh and the tab bar
+        // surfaceContainer, so tinting only surfaceVariant (as this did) left
+        // all three grey and the wash looking like a mistake.
+        surfaceVariant = card(base.surfaceVariant),
+        surfaceContainerLowest = card(base.surfaceContainerLowest),
+        surfaceContainerLow = card(base.surfaceContainerLow),
+        surfaceContainer = card(base.surfaceContainer),
+        surfaceContainerHigh = card(base.surfaceContainerHigh),
+        surfaceContainerHighest = card(base.surfaceContainerHighest),
+        // The borders travel with the surfaces they outline, or a tinted card
+        // ends up ringed in grey.
+        outline = card(base.outline),
+        outlineVariant = card(base.outlineVariant),
         // The bottom tab's selected pill and the settings chips are drawn from
         // this. Left on the brand teal they were the one green thing on an
-        // otherwise pink page. Its label picks black or white by the blend's
-        // own luminance, because a kid may pick pale yellow as readily as navy.
+        // otherwise pink page. Its label picks whichever of black and white
+        // reads better on the blend, and the blend then moves until that label
+        // clears 4.5:1 — a kid may pick pale yellow as readily as navy, and
+        // amber landed at 3.39:1 before [legible] was doing this.
         secondaryContainer = secondary,
-        onSecondaryContainer = if (secondary.luminance() > 0.5f) Color(0xFF1B1B1B) else Color.White,
+        onSecondaryContainer = onSecondary,
         // Carries the kid's colour to [kidBackdrop]. Transparent on the two
         // brand themes, which is how the wash knows to stay off.
         surfaceTint = tint
