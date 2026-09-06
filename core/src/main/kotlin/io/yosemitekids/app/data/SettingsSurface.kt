@@ -306,9 +306,16 @@ object SettingsSurface {
             )),
         SettingsSection("directory", "Suggested channels", Page.CHANNELS, "DirectorySection",
             listOf("sources"), Where.PHONE, false,
-            "Fetches the shared directory through :app's Directory client. The " +
-                "hub could do this — it is plain HTTP — but :hub has no HTTP " +
-                "client dependency today and adding one is its own decision."),
+            "Two reasons, and the one recorded here until 1.0.7 — that :hub has " +
+                "no HTTP client — stopped being true when the crawl moved into " +
+                ":crawl, which the hub depends on and which api-exposes OkHttp. " +
+                "What actually holds: guard 7 lets the hub reach YouTube's hosts " +
+                "and the devices' /sync-now and nothing else, so browsing a " +
+                "directory means widening the allow-list on the box most likely " +
+                "to face the internet one day. And the directory it browses is " +
+                "upstream's (BuildConfig.DIRECTORY_URL), while this fork removed " +
+                "its own publishing surface — so the question to ask the owner " +
+                "first is whether to keep the group at all, not where to put it."),
 
         // --- Content screening --------------------------------------------
         SettingsSection("ai-connection", "AI connection", Page.SCREENING, "AiConnectionSection",
@@ -393,8 +400,17 @@ object SettingsSurface {
             )),
         SettingsSection("ai-discovery", "Discover with AI", Page.SCREENING, "AiDiscoverySection",
             listOf("sources"), Where.PHONE, false,
-            "Verifies each suggested channel against YouTube through " +
-                "NewPipeExtractor, which :hub does not depend on."),
+            "The reason recorded here until 1.0.7 — that verification needs " +
+                "NewPipeExtractor and :hub does not depend on it — has been " +
+                "false since the crawl moved to :crawl: the hub extracts from " +
+                "YouTube all day, and AiScreener sits on its classpath too. The " +
+                "real blocker is the other half. Asking a model for candidates " +
+                "means the hub calling whatever host a parent typed into " +
+                "ai.baseUrl, and guard 7 holds it to YouTube and the devices' " +
+                "/sync-now in four negative-tested clauses. That is the one " +
+                "genuine widening in the whole parity list, and holding a key " +
+                "since 1.0.7 makes it more tempting, not less: it stays a " +
+                "decision of its own with its own record (PLAN-hub-parity §8)."),
 
         // --- Devices --------------------------------------------------------
         SettingsSection("devices", "Devices", Page.DEVICES, "PhoneDevicesSection",
@@ -413,13 +429,20 @@ object SettingsSurface {
         SettingsSection("stats", "Stats", Page.DEVICES, "StatsSection",
             emptyList(), Where.BOTH, false,
             "What a kid actually watched on one device, reached from its row on " +
-                "the Devices page. Reads rather than writes, and the hub cannot " +
-                "show it yet: the numbers live on each device and arrive over " +
-                "GET /stats, which the hub never calls because it never " +
-                "initiates. Worth having — an always-on box is the natural " +
-                "place to collect them. Left false deliberately: the ledger " +
-                "that would carry the numbers is PLAN-hub-parity steps 5-7, " +
-                "which the owner has tabled."),
+                "the Devices page. Reads rather than writes, and the last " +
+                "Where.BOTH group the hub does not have. Two stale reasons have " +
+                "stood here: that the hub never initiates (it nudges and it " +
+                "crawls), and that the ledger of PLAN-hub-parity steps 5-7 was " +
+                "about to arrive. What it is waiting for now is a device→hub " +
+                "PUSH of the numbers, and nothing owns that. The numbers live " +
+                "in each device's prefs and only ever leave over GET /stats, " +
+                "which the hub cannot call: guard 7 lets it reach YouTube and " +
+                "the devices' /sync-now, and polling a device would need it " +
+                "to hold a credential there — the shape that guard exists to " +
+                "refuse. So the direction is settled (ROADMAP §4: push, not " +
+                "poll) and the work is not scheduled; the owner tabled the " +
+                "budget round that would have carried it. Worth having — an " +
+                "always-on box is the natural place to collect them."),
         SettingsSection("search-index", "Search index", Page.DEVICES, "SearchIndexSection",
             emptyList(), Where.BOTH, true,
             "Progress of the crawl that makes search work, and which peer is " +
