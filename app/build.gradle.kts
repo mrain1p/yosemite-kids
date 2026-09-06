@@ -41,8 +41,13 @@ android {
         // with the update manifest URL, so the last one installed by hand.
         // 1.0.4: the Settings fixes from the first real fleet, and the first
         // release delivered through the app's own update check.
-        versionCode = 7
-        versionName = "1.0.6"
+        // 1.0.7 is mostly the hub — a password, parity per control, the AI key
+        // on the NAS — but it ships as an app release because the phone's half
+        // travels with it: config-carried grants are finally applied on
+        // arrival, the settings screens take their words from the shared
+        // manifest, and a phone asks a hub what to call its secret.
+        versionCode = 8
+        versionName = "1.0.7"
 
         // Every outbound URL the app talks to, overridable per build so a fork
         // never phones upstream by accident. Set in local.properties or the
