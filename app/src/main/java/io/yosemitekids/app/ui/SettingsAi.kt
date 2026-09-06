@@ -589,14 +589,12 @@ internal fun AiReviewSection(
     }
 
     /**
-     * One held-back video: thumbnail and title, the AI's reason quoted in its
-     * own block, then YouTube / Block / Allow.
-     *
-     * [bulk] adds the "Allow all N from <channel>" link under the buttons —
-     * only the queue has a whole channel left to rule on.
+     * One held-back video, as the queue draws it: thumbnail and title, the AI's
+     * reason quoted in its own block, then YouTube / Block / Allow. The blocked
+     * pile is a list of rows instead — see `blockedRow`.
      */
     @Composable
-    fun flaggedCard(videoId: String, e: ScreeningStore.Entry, bulk: Boolean = false) {
+    fun flaggedCard(videoId: String, e: ScreeningStore.Entry) {
         OutlinedCard(
             shape = RoundedCornerShape(10.dp),
             colors = CardDefaults.outlinedCardColors(
@@ -748,7 +746,7 @@ internal fun AiReviewSection(
                 }
                 // One channel's whole queue at once: a parent who has allowed
                 // two of a channel's videos is really ruling on the channel.
-                val sameChannel = if (bulk && e.channel.isNotBlank()) {
+                val sameChannel = if (e.channel.isNotBlank()) {
                     review.filter { it.second.channel == e.channel }
                 } else emptyList()
                 if (sameChannel.size > 1) {
@@ -771,6 +769,134 @@ internal fun AiReviewSection(
                             .wrapContentHeight()
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * The blocked page's button: an outline the width of its label, 28dp tall
+     * at radius 6. Quieter than the queue's filled three on purpose — this page
+     * is a list to scan, and a row of solid buttons down it reads as an errand.
+     */
+    @Composable
+    fun outlineRowButton(
+        label: String,
+        labelColor: androidx.compose.ui.graphics.Color,
+        borderColor: androidx.compose.ui.graphics.Color,
+        horizontal: androidx.compose.ui.unit.Dp = 9.dp,
+        /** Null where there is nothing per-kid to choose (the YouTube link). */
+        onLongClick: (() -> Unit)? = null,
+        onClick: () -> Unit
+    ) {
+        val shape = RoundedCornerShape(6.dp)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .heightIn(min = 28.dp)
+                .clip(shape)
+                .border(1.dp, borderColor, shape)
+                .tvFocusHighlight(cornerRadius = 6.dp)
+                .then(
+                    if (onLongClick != null) Modifier.dpadLongPress(onLongClick) else Modifier
+                )
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .padding(horizontal = horizontal)
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                fontWeight = FontWeight.Medium,
+                color = labelColor
+            )
+        }
+    }
+
+    /**
+     * One already-blocked video, as a row rather than a card: thumbnail, title
+     * and channel, then why it is here with the ruling that undoes it beside
+     * the reason. The list is a list; the cards belong to the queue.
+     */
+    @Composable
+    fun blockedRow(videoId: String, e: ScreeningStore.Entry) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 11.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                val thumbShape = RoundedCornerShape(5.dp)
+                AsyncImage(
+                    model = e.thumb,
+                    contentDescription = e.title,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.size(width = 56.dp, height = 34.dp)
+                        .clip(thumbShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, thumbShape)
+                )
+                Spacer(Modifier.width(11.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        e.title,
+                        style = MaterialTheme.typography.bodyMedium
+                            .copy(fontSize = 14.sp, lineHeight = 20.sp),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (e.channel.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            e.channel,
+                            style = MaterialTheme.typography.bodySmall
+                                .copy(fontSize = 12.sp, lineHeight = 17.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            // Who blocked it and why, with the ruling that undoes it beside the
+            // sentence — not in teal: the accent is for what you can press.
+            val split =
+                if (profiles.size >= 2 && e.perProfile.isNotEmpty()) verdictLabel(e) else null
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 9.dp)
+            ) {
+                Text(
+                    listOfNotNull(
+                        "AI blocked this",
+                        split?.takeIf { it.isNotBlank() },
+                        e.reason.takeIf { it.isNotBlank() }
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall
+                        .copy(fontSize = 12.sp, lineHeight = 17.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                outlineRowButton(
+                    "Allow",
+                    labelColor = MaterialTheme.colorScheme.primary,
+                    borderColor = MaterialTheme.colorScheme.outline,
+                    onLongClick = { if (profiles.size >= 2) perKid = videoId to true }
+                ) { onAllow(videoId, null) }
+            }
+            // Both kept from before the redesign, on a quieter second row:
+            // watching it is how a parent checks the AI's call, and Block pins
+            // an AI verdict so it survives the next rules change.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier.padding(top = 7.dp)
+            ) {
+                outlineRowButton(
+                    "YouTube",
+                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    borderColor = MaterialTheme.colorScheme.outline,
+                    horizontal = 11.dp
+                ) { openInYouTube(videoId) }
+                outlineRowButton(
+                    "Block",
+                    labelColor = MaterialTheme.colorScheme.error,
+                    borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
+                    horizontal = 11.dp,
+                    onLongClick = { if (profiles.size >= 2) perKid = videoId to false }
+                ) { onBlock(videoId, null) }
             }
         }
     }
@@ -855,7 +981,7 @@ internal fun AiReviewSection(
                 // queue, not a batch that refills after each round trip. The cap only
                 // exists so a runaway store can't build thousands of cards into one
                 // scrolling Column.
-                shown.take(300).forEach { (videoId, e) -> flaggedCard(videoId, e, bulk = true) }
+                shown.take(300).forEach { (videoId, e) -> flaggedCard(videoId, e) }
                 perKidHint()
                 if (shown.size > 300) {
                     Text(
@@ -871,44 +997,83 @@ internal fun AiReviewSection(
     if (show != ReviewHalf.QUEUE) {
         // No SectionTitle on its own page — the app bar already says it.
         if (show == ReviewHalf.BOTH) SectionTitle("Blocked videos")
-    }
-    if (show != ReviewHalf.QUEUE) if (blockedList.isEmpty()) {
-        Text(
-            "Nothing blocked right now. Videos the AI blocks — at screening, or in " +
-                "the final check just before one plays — collect here so you can " +
-                "overrule a wrong call.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    } else {
-        // Collapsed by default: these are already ruled and hidden — routine
-        // visits are about the queue above, not re-reading old blocks.
-        var blockedExpanded by remember { mutableStateOf(false) }
-        Text(
-            if (blockedExpanded) "▾ ${blockedList.size} video(s) blocked and hidden — hide list"
-            else "▸ ${blockedList.size} video(s) blocked and hidden — show",
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier
-                .tvFocusHighlight()
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                .combinedClickable(onClick = { blockedExpanded = !blockedExpanded })
-                .padding(horizontal = 4.dp, vertical = 8.dp)
-        )
-        if (blockedExpanded) {
+        // One Column, so this half owns its own rhythm: the caller spaces its
+        // children apart, and these rows are separated by a line instead.
+        Column(Modifier.fillMaxWidth()) {
+            // The count and what blocking means, at the top of the page rather
+            // than behind the disclosure it used to hide the whole list behind.
+            // On its own page the list is the only thing the parent came for.
             Text(
-                "Allow overrules the AI — the video reappears on every device.",
-                style = MaterialTheme.typography.bodySmall,
+                "${blockedList.size} blocked video${if (blockedList.size == 1) "" else "s"}",
+                fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Never shown to the kids. Allowing one puts it back on their shelves, " +
+                    "on every device.",
+                fontSize = 12.5.sp, lineHeight = 20.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            blockedList.take(300).forEach { (videoId, e) -> flaggedCard(videoId, e) }
+            if (profiles.size >= 2) Spacer(Modifier.height(6.dp))
             perKidHint()
-            if (blockedList.size > 300) {
-                Text(
-                    "…and ${blockedList.size - 300} more — they appear as you rule on these.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            val byChannel = blockedList.map { it.second.channel }
+                .filter { it.isNotBlank() }
+                .groupingBy { it }.eachCount()
+            // An Allow can empty the channel the list is filtered to, and a tab
+            // that is no longer in the row must not go on hiding the rest.
+            LaunchedEffect(byChannel.keys.toList()) {
+                val picked = blockedChannel
+                if (picked != null && !byChannel.containsKey(picked)) blockedChannel = null
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Bottom,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp)
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                filterTab("All ${blockedList.size}", blockedChannel == null) {
+                    blockedChannel = null
+                }
+                byChannel.forEach { (name, count) ->
+                    filterTab("$name $count", blockedChannel == name) { blockedChannel = name }
+                }
+            }
+            SettingsDivider()
+            val shown = blockedList.filter {
+                blockedChannel == null || it.second.channel == blockedChannel
+            }
+            if (shown.isEmpty()) {
+                Column(Modifier.padding(horizontal = 18.dp, vertical = 22.dp)) {
+                    Text(
+                        "Nothing is blocked.",
+                        fontSize = 13.sp, lineHeight = 21.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Videos the AI blocks — at screening, or in the final check just " +
+                            "before one plays — collect here so you can overrule a wrong call.",
+                        fontSize = 12.5.sp, lineHeight = 20.sp,
+                        color = SettingsPlaceholder
+                    )
+                }
+            } else {
+                // Same cap as the queue, and the same reason.
+                shown.take(300).forEachIndexed { i, (videoId, e) ->
+                    if (i > 0) SettingsDivider()
+                    blockedRow(videoId, e)
+                }
+                if (shown.size > 300) {
+                    Text(
+                        "…and ${shown.size - 300} more — they appear as you rule on these.",
+                        fontSize = 12.sp, lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 11.dp)
+                    )
+                }
             }
         }
     }
