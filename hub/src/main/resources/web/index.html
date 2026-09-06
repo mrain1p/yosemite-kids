@@ -608,7 +608,23 @@
       }));
       li.appendChild(line);
 
-      if (kids().length) {
+      if (dev.idConflict) {
+        // First one wins, so an assignment a parent already made is never
+        // silently re-pointed at another device.
+        li.appendChild(el("div", "sub",
+          "Two devices have called in under this enrolment. The hub kept the first. " +
+          "If this row is the wrong one, remove it and enrol that device again."));
+      }
+
+      if (kids().length && !dev.known) {
+        // It has never announced its own identity, so there is no key to
+        // file an assignment under. Saying so beats offering chips that
+        // would appear to work and do nothing — which is exactly what this
+        // card used to do, for every device.
+        li.appendChild(el("div", "sub",
+          "This device has not synced with the hub yet, so it cannot be given to a kid here. " +
+          "Open Yosemite Kids on it once."));
+      } else if (kids().length) {
         var row = el("div", "line");
         row.style.marginTop = "8px";
         row.appendChild(el("span", "sub", "This device is for"));

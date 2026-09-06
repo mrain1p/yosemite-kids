@@ -119,7 +119,14 @@ object HubWeb {
                     .put("ref", deviceRef(it.token))
                     .put("name", it.name)
                     .put("enrolledAt", it.enrolledAt)
-                    .put("kid", config.deviceProfiles[it.token] ?: "")
+                    // By the device's own identity, which is the key every
+                    // device reads this map by — see [assignDevice].
+                    .put("kid", it.deviceId?.let { id -> config.deviceProfiles[id] } ?: "")
+                    // Whether it has ever said who it is. Until it has, the
+                    // page offers no kid chips rather than offering an
+                    // assignment that would be filed nowhere.
+                    .put("known", it.deviceId != null)
+                    .put("idConflict", it.idConflict)
             )
         }
 
@@ -292,7 +299,26 @@ object HubWeb {
         return found
     }
 
-    /** Dedicate a device to one kid, or hand it back to the picker with "". */
+    /** What an assignment did, so the page can say something true when it did nothing. */
+    enum class Assigned { OK, NO_SUCH_DEVICE, NEVER_CALLED }
+
+    /**
+     * Dedicate a device to one kid, or hand it back to the picker with "".
+     *
+     * Keyed by the device's **own** pairing token, which it announces on every
+     * authenticated call (`X-Device-Id` → [HubTokens.noteSeen]) — never by
+     * [HubTokens.Device.token], the enrolment token this hub minted. That was
+     * the bug: every device resolves `config.deviceProfiles` by its own
+     * pairing token (`ConfigSync.kidHere`, `Stats`, `SettingsDevices`), so an
+     * assignment filed under the enrolment token was filed where nothing
+     * would ever look. "This device is for Emma", set here, did nothing at
+     * all — and it failed silently, because a map lookup that misses is
+     * indistinguishable from a device nobody assigned.
+     *
+     * A device that has never called has not said who it is, so there is no
+     * key to file under. That is [Assigned.NEVER_CALLED] and the page says
+     * so: unavailable is recoverable, silently wrong is not.
+     */
     fun assignDevice(
         store: HubStore,
         tokens: HubTokens,
@@ -300,15 +326,21 @@ object HubWeb {
         now: Long,
         ref: String,
         kidId: String
-    ): Boolean {
-        val device = tokens.devices().singleOrNull { deviceRef(it.token) == ref } ?: return false
+    ): Assigned {
+        val device = tokens.devices().singleOrNull { deviceRef(it.token) == ref }
+            ?: return Assigned.NO_SUCH_DEVICE
+        val id = device.deviceId ?: return Assigned.NEVER_CALLED
         store.edit(who, now) { current ->
+            // The enrolment token comes off with it. Entries this hub wrote
+            // under that key before the fix name no device and are inert, but
+            // they are a `dev|<token>` unit in the sync blob for ever
+            // otherwise, propagated to the whole fleet.
+            val cleared = current.deviceProfiles - device.token - id
             current.copy(
-                deviceProfiles = if (kidId.isBlank()) current.deviceProfiles - device.token
-                else current.deviceProfiles + (device.token to kidId)
+                deviceProfiles = if (kidId.isBlank()) cleared else cleared + (id to kidId)
             )
         }
-        return true
+        return Assigned.OK
     }
 
     /** Revoke by the short reference the page was given, never by a raw token. */

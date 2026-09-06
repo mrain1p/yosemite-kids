@@ -28,7 +28,7 @@ class HubNudgeTest {
         devices.forEach { (name, host, port) ->
             val code = t.startEnrolment(name, 0L)
             val token = t.approve(code, 0L).getOrThrow()
-            if (host != null) t.noteSeen(token, host, port, 1L)
+            if (host != null) t.noteSeen(token, host, port, deviceId = null, now = 1L)
         }
         return t
     }

@@ -85,18 +85,41 @@ and reports a `versionCode` at or above `FIRST_SELF_UPDATING_VERSION_CODE`;
 older builds get the by-hand wording without a button that could only ever
 answer `off`.
 
-## `X-Device-Port`, and why the hub only ever nudges
+## `X-Device-Port`, `X-Device-Id`, and why the hub only ever nudges
 
-Every outbound LAN call a device makes carries `X-Device-Port: <port>` — the
-port its own `LanServer` bound. A peer's address can be observed from the
-socket; its *listening* port cannot, because an inbound connection's source
-port is ephemeral. So the device states it and the hub records it against the
-token (`HubTokens.noteSeen`), which is how the hub learns where to call back.
+Every outbound LAN call a device makes carries two headers about itself, both
+stamped in `LanClient.raw`:
 
-It is a claim, not a credential. The only thing ever sent there is a nudge
-carrying no data, so the worst a lie achieves is that the liar is told
+| Header | Value | What it is for |
+| --- | --- | --- |
+| `X-Device-Port` | the port its own `LanServer` bound, omitted before it has | where to nudge it |
+| `X-Device-Id` | its own **pairing token** (`PairingStore.deviceToken()`) | who it is |
+
+A peer's address can be observed from the socket; its *listening* port cannot,
+because an inbound connection's source port is ephemeral. So the device states
+it and the hub records it against the token (`HubTokens.noteSeen`), which is
+how the hub learns where to call back.
+
+The identity is there for a sharper reason. The hub authenticates a device by
+the **enrolment token it minted itself** at `/approve` — a token no device has
+ever seen. Every device resolves `config.deviceProfiles` by its own pairing
+token. Without `X-Device-Id` those two never meet, and the hub's "this device
+is for Emma" was written under a key nothing would ever look up: it saved, it
+synced, and every device ignored it. `noteSeen` records the announced identity
+**first-writer-wins** — a pairing token is minted once per install and a
+reinstall loses the enrolment too, so one enrolment maps to one identity for
+its whole life, and a second one is a restored backup or a lie. Overwriting
+would re-point an assignment a parent already made at a different device, so
+the first is kept and the row is flagged for the GUI. A device that has never
+called cannot be assigned at all, and the hub's Devices page says so rather
+than offering chips that would do nothing.
+
+Both are claims, not credentials. The only thing ever sent to the port is a
+nudge carrying no data, so the worst a lie achieves is that the liar is told
 "something changed" and the real device is not — and the real device's own
-reconcile still catches up on its next tick.
+reconcile still catches up on its next tick. A lie about the identity buys
+nothing either: the liar is already holding an enrolment token, which can
+rewrite the whole config.
 
 **The hub announces; it never commands.** It could not push config even if it
 wanted to: it holds no token any device would accept, and giving it one would

@@ -133,11 +133,19 @@ class PairingStore(context: Context) {
     }
 
     /** This device's stable identity token (a phone presents it when pairing). */
-    fun deviceToken(): String =
-        prefs.getString("device_token", null) ?: ByteArray(16)
+    fun deviceToken(): String {
+        val token = prefs.getString("device_token", null) ?: ByteArray(16)
             .also { SecureRandom().nextBytes(it) }
             .joinToString("") { "%02x".format(it) }
             .also { prefs.edit().putString("device_token", it).apply() }
+        // Published for LanClient, which has no Context and stamps this on
+        // every outbound call (X-Device-Id). Here rather than at the call
+        // sites because this is the one place the identity is resolved, so
+        // nothing that reaches a peer can forget to say who it is — the
+        // background worker has no Activity to be told by.
+        LanClient.selfId = token
+        return token
+    }
 
     /**
      * This device's short identity in the change log. Derived from the pairing
@@ -1158,6 +1166,24 @@ object DeviceKind {
 /** Phone side: pushes to paired TVs. */
 object LanClient {
 
+    /**
+     * This device's own pairing token, stamped on every outbound call as
+     * `X-Device-Id`.
+     *
+     * Published by [PairingStore.deviceToken] rather than injected, for the
+     * same reason [LanServer.boundPort] is: this object has no Context, there
+     * is one identity per process, and a caller that had to be handed it is a
+     * caller that can forget.
+     *
+     * A hub needs this because the token it authenticates us by is one **it**
+     * minted at enrolment, which no device has ever heard of — while every
+     * device reads `config.deviceProfiles` by the token here. Without it the
+     * hub could record a device→kid assignment only under a key nothing would
+     * ever look up, and "this device is for Emma" did nothing at all.
+     */
+    @Volatile
+    internal var selfId: String? = null
+
     data class DeviceStatus(
         val hash: String,
         val updatedAt: Long,
@@ -1716,6 +1742,16 @@ object LanClient {
             .apply {
                 LanServer.boundPort.takeIf { it > 0 }
                     ?.let { header("X-Device-Port", it.toString()) }
+                // And who we are. Same shape and the same kind of claim as
+                // the port: the hub authenticates us by a token it minted
+                // itself, so this is the only way it can learn the identity
+                // every device actually reads deviceProfiles by. A liar
+                // holding an enrolment token could already rewrite the whole
+                // config, so claiming another device's id buys nothing it
+                // did not already have; the hub keeps the first identity it
+                // hears under an enrolment and flags a second.
+                selfId?.takeIf { it.isNotBlank() }
+                    ?.let { header("X-Device-Id", it) }
             }
             .method(method, body?.toRequestBody("application/json".toMediaType()))
             .build()

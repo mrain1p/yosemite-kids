@@ -566,6 +566,21 @@ done
 grep -q "Profile.newId(" hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt ||
   guard_fail "HubWeb no longer mints kid ids with Profile.newId(). Something has to: the browser deliberately sends a kid with no id at all."
 
+# 24. A device tells the hub who it is, and the hub reads the same header.
+#     The hub authenticates a device by a token IT minted at enrolment, which
+#     no device has ever heard of; every device resolves
+#     config.deviceProfiles by its own pairing token. X-Device-Id is the only
+#     bridge between the two, and it spans two modules with nothing tying the
+#     spelling together — rename it on one side and everything still
+#     compiles, every test still passes, and "this device is for Emma" goes
+#     back to doing nothing at all, silently, because a map lookup that
+#     misses is indistinguishable from a device nobody assigned.
+for f in app/src/main/java/io/yosemitekids/app/data/Pairing.kt \
+         hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt; do
+  grep -qF "${q}X-Device-Id${q}" "$f" ||
+    guard_fail "$f no longer names ${q}X-Device-Id${q}. Both ends must spell it the same, or the hub cannot key a device→kid assignment by anything the device will ever read."
+done
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"

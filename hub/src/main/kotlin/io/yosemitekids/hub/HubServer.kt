@@ -436,13 +436,17 @@ class HubServer(
                         .put("revoked", HubWeb.revokeDevice(tokens, body.getString("revoke")))
                     body.has("assign") -> {
                         val a = body.getJSONObject("assign")
-                        JSONObject().put(
-                            "assigned",
-                            HubWeb.assignDevice(
-                                store, tokens, WHO, now(),
-                                a.getString("ref"), a.optString("kid")
-                            )
+                        val outcome = HubWeb.assignDevice(
+                            store, tokens, WHO, now(),
+                            a.getString("ref"), a.optString("kid")
                         )
+                        // Named, not just refused: "that device has never
+                        // called here" and "there is no such device" send a
+                        // parent to different places, and the failure this
+                        // replaces was one that said nothing at all.
+                        JSONObject()
+                            .put("assigned", outcome == HubWeb.Assigned.OK)
+                            .put("why", outcome.name)
                     }
                     else -> null
                 }
@@ -637,6 +641,11 @@ class HubServer(
                 token,
                 ex.remoteAddress?.address?.hostAddress,
                 ex.requestHeaders.getFirst("X-Device-Port")?.toIntOrNull() ?: 0,
+                // And who it is. The token above is one this hub minted at
+                // enrolment; this is the one the device itself resolves
+                // config.deviceProfiles by, and the only way the hub can
+                // learn it. Bounded, because it comes off the wire.
+                ex.requestHeaders.getFirst("X-Device-Id")?.take(64),
                 now()
             )
             return true

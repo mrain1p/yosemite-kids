@@ -39,7 +39,20 @@ class HubTokens(dataDir: File) {
         val port: Int = 0,
         val lastSeenAt: Long = 0L,
         /** When it last asked this hub for the search index. See [armed]. */
-        val pulledAt: Long = 0L
+        val pulledAt: Long = 0L,
+        /**
+         * The device's **own** pairing token, as it announced it
+         * (`X-Device-Id`), or null until it has called from a build that says.
+         *
+         * Emphatically not [token]. That one was minted here at enrolment and
+         * no device has ever heard of it, while every device resolves
+         * `config.deviceProfiles` by the token in this field. Writing an
+         * assignment under the enrolment token — which is what the hub did —
+         * files it where nothing will ever look.
+         */
+        val deviceId: String? = null,
+        /** Two different identities have announced themselves under this enrolment. See [noteSeen]. */
+        val idConflict: Boolean = false
     ) {
         /** Where to reach it, or null when it has never said. */
         val address: String? get() = if (host != null && port in 1..65535) "$host:$port" else null
@@ -95,15 +108,17 @@ class HubTokens(dataDir: File) {
                     it.optString("token"), it.optString("name"), it.optLong("enrolledAt"),
                     it.optString("host").ifBlank { null },
                     it.optInt("port"), it.optLong("lastSeenAt"),
-                    it.optLong("pulledAt")
+                    it.optLong("pulledAt"),
+                    it.optString("deviceId").ifBlank { null },
+                    it.optBoolean("idConflict")
                 )
             }
         }
     }
 
     /**
-     * Record where an enrolled device just called from, so the hub can call
-     * it back.
+     * Record what an enrolled device just told the hub about itself: where it
+     * can be called back, and which identity it is.
      *
      * The address is observed, not claimed — it is the socket's own peer
      * address. The port cannot be: an inbound connection's source port is
@@ -113,20 +128,49 @@ class HubTokens(dataDir: File) {
      * carrying no data — the worst a lie achieves is that the liar receives
      * "something changed" and the real device does not.
      *
+     * [deviceId] is **first-writer-wins**, and that is a decision rather than
+     * a convenience. A device's pairing token is minted once per install and
+     * never changes; a reinstall wipes it, and with it the enrolment this row
+     * holds, so the device has to enrol again and gets a new row. One
+     * enrolment therefore maps to exactly one identity for its whole life,
+     * and a second, different one is either a restored backup or a lie.
+     * Overwriting would silently re-point an assignment a parent already made
+     * ("this device is for Emma") at a different device — the quiet failure
+     * this whole fix exists to end — so the first is kept and the disagreement
+     * is recorded for the page to show.
+     *
+     * Each fact is recorded independently: a device whose own LAN server has
+     * not bound sends no port, and must still be able to say who it is.
+     *
      * Written only when something actually moved. Every sync would otherwise
      * rewrite devices.json on a fixed schedule for the life of the hub.
      */
-    fun noteSeen(token: String?, host: String?, port: Int, now: Long) {
-        if (token.isNullOrBlank() || host.isNullOrBlank() || port !in 1..65535) return
+    fun noteSeen(token: String?, host: String?, port: Int, deviceId: String?, now: Long) {
+        if (token.isNullOrBlank()) return
         synchronized(lock) {
             val root = read()
             val arr = root.optJSONArray("devices") ?: return
             for (i in 0 until arr.length()) {
                 val d = arr.optJSONObject(i) ?: continue
                 if (d.optString("token") != token) continue
-                if (d.optString("host") == host && d.optInt("port") == port) return
-                d.put("host", host).put("port", port).put("lastSeenAt", now)
-                write(root)
+                var moved = false
+                if (!host.isNullOrBlank() && port in 1..65535 &&
+                    (d.optString("host") != host || d.optInt("port") != port)
+                ) {
+                    d.put("host", host).put("port", port).put("lastSeenAt", now)
+                    moved = true
+                }
+                if (!deviceId.isNullOrBlank()) {
+                    val known = d.optString("deviceId")
+                    if (known.isBlank()) {
+                        d.put("deviceId", deviceId)
+                        moved = true
+                    } else if (known != deviceId && !d.optBoolean("idConflict")) {
+                        d.put("idConflict", true)
+                        moved = true
+                    }
+                }
+                if (moved) write(root)
                 return
             }
         }
