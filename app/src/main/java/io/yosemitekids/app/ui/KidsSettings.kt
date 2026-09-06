@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,9 +31,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.yosemitekids.app.data.Limits
 import io.yosemitekids.app.data.PROFILE_AVATARS
 import io.yosemitekids.app.data.PROFILE_COLORS
@@ -60,29 +62,38 @@ fun KidsSection(
     profiles.forEach { profile ->
         Row(
             verticalAlignment = Alignment.CenterVertically,
+            // heightIn before the padding, so 68dp is the row's outer height
+            // whether the summary takes one line or wraps to two.
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 68.dp)
                 .tvFocusHighlight()
                 .clickable { onOpen(profile, false) }
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 12.dp, vertical = 11.dp)
         ) {
-            ProfileAvatar(profile, size = 40)
+            ProfileAvatar(profile, size = 38)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    profile.name, fontWeight = FontWeight.SemiBold,
+                    profile.name,
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
+                Spacer(Modifier.height(2.dp))
+                // Wraps rather than ellipsising: all three facts are the point
+                // of the line, and the last one is the one most often missing.
                 Text(
                     kidSummary(profile),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodySmall
+                        .copy(fontSize = 12.5.sp, lineHeight = 17.5.sp),
+                    color = SettingsTextTertiary
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(12.dp))
             Icon(
                 YosemiteIcons.ChevronRight, contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = SettingsPlaceholder,
+                modifier = Modifier.size(18.dp)
             )
         }
         SettingsDivider()
@@ -92,6 +103,7 @@ fun KidsSection(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 56.dp)
             .tvFocusHighlight()
             .clickable {
                 onOpen(
@@ -104,18 +116,24 @@ fun KidsSection(
                     true
                 )
             }
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         // Centred under the avatars above, so the column of icons reads as one.
-        Box(Modifier.width(40.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.width(38.dp), contentAlignment = Alignment.Center) {
             Icon(
                 Icons.Filled.Add, contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp)
+                // 20dp of box for an 11dp glyph: Material's Add fills 14 of
+                // its 24dp viewport, so the drawn plus is the design's size.
+                modifier = Modifier.size(20.dp)
             )
         }
-        Spacer(Modifier.width(12.dp))
-        Text("Add a kid", color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "Add a kid",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 }
 
@@ -135,10 +153,18 @@ internal fun rulesSet(l: Limits): Int = listOf(
  * "Age 7 · 2 of 5 rules set · no profile code" — the three things a parent
  * checks a kid's row for, always all three, so the rows line up and a missing
  * one reads as a gap to fill rather than as nothing to say.
+ *
+ * With no rule set at all the middle segment says what that *means* rather
+ * than counting to zero: "Age 7 · No limits set — unlimited watching · no
+ * profile code". "0 of 5" reads as a setup step not yet reached, and
+ * unlimited watching is the one state a parent should not scroll past.
  */
 internal fun kidSummary(p: Profile): String = listOf(
     p.age?.let { "Age $it" } ?: "No age set",
-    "${rulesSet(p.limits)} of $KID_RULE_COUNT rules set",
+    rulesSet(p.limits).let {
+        if (it == 0) "No limits set — unlimited watching"
+        else "$it of $KID_RULE_COUNT rules set"
+    },
     if (p.pin != null) "profile code set" else "no profile code"
 ).joinToString(" \u00B7 ")
 

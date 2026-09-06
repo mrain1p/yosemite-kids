@@ -44,8 +44,10 @@ class KidSummaryTest {
             kidSummary(Profile(id = "a", name = "Amelia", age = 7,
                 limits = Limits(sessionMinutes = 30, breakMinutes = 10)))
         )
+        // Zero rules is spelled out rather than counted: "0 of 5" reads as an
+        // unfinished setup step, unlimited watching is a state.
         assertEquals(
-            "No age set · 0 of 5 rules set · profile code set",
+            "No age set · No limits set — unlimited watching · profile code set",
             kidSummary(Profile(id = "b", name = "Ben", pin = "UDLR"))
         )
     }
