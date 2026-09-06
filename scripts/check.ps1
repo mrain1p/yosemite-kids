@@ -416,7 +416,22 @@ if ($shNums -ne $psNums) {
 $hubHtml = Get-Content "hub/src/main/resources/web/index.html" -Raw
 foreach ($id in $hubPages) {
     if ($hubHtml -notmatch "(^|[ ,{])$id`: page") {
-        Fail-Guard "the hub serves a page called $id with no renderer in index.html PAGES - it would silently show the Kids page."
+        Fail-Guard "the hub serves a page called $id with no renderer in index.html ROUTES - it would silently show the root."
+    }
+}
+#     And every hash route the page links to, which is the same failure from
+#     the other end. The GUI navigates by location.hash now, because it is
+#     installed and the system Back button is the only navigation an installed
+#     page has; an unknown route falls through to the root, so a parent taps a
+#     row and lands back where they started with nothing to read. The root is
+#     a key of its own, or the page cannot answer its own front door.
+if ($hubHtml -notmatch '""\s*: page') {
+    Fail-Guard "index.html has no ROUTES entry for the root (a """" key). Every unknown route falls back to it, including #/."
+}
+$linked = @([regex]::Matches($hubHtml, '"#/([a-z]+)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+foreach ($seg in $linked) {
+    if ($hubHtml -notmatch "(^|[ ,{])$seg`: page") {
+        Fail-Guard "index.html links to #/$seg and ROUTES has no renderer for it. The route falls back to the root, so the row appears to do nothing."
     }
 }
 # The gate discovers tests by globbing *Test.kt, in this script, check.sh and

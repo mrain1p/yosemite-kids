@@ -369,7 +369,19 @@ fi
 hubhtml=hub/src/main/resources/web/index.html
 for id in $(grep -hoE "HubPage[(]$q[^$q]+$q" "$hubweb" | sed -E "s/HubPage[(]$q//; s/$q//" | sort -u); do
   grep -qE "(^|[ ,{])$id: page" "$hubhtml" ||
-    guard_fail "the hub serves a page called $id with no renderer in index.html PAGES — it would silently show the Kids page."
+    guard_fail "the hub serves a page called $id with no renderer in index.html ROUTES — it would silently show the root."
+done
+#     And every hash route the page links to, which is the same failure from
+#     the other end. The GUI navigates by location.hash now, because it is
+#     installed and the system Back button is the only navigation an installed
+#     page has; an unknown route falls through to the root, so a parent taps a
+#     row and lands back where they started with nothing to read. The root is
+#     a key of its own, or the page cannot answer its own front door.
+grep -qF "$q$q: page" "$hubhtml" ||
+  guard_fail "index.html has no ROUTES entry for the root (a $q$q key). Every unknown route falls back to it, including #/."
+for seg in $(grep -ohE "$q#/[a-z]+" "$hubhtml" | sed "s|.*#/||" | sort -u); do
+  grep -qE "(^|[ ,{])$seg: page" "$hubhtml" ||
+    guard_fail "index.html links to #/$seg and ROUTES has no renderer for it. The route falls back to the root, so the row appears to do nothing."
 done
 # The gate globs *Test.kt here, in check.ps1 and in CI. Anything else is
 # skipped by all three and looks green.

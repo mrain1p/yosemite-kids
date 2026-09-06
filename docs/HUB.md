@@ -211,6 +211,20 @@ From there you can manage channels and blocked videos, approve or remove
 devices, give a kid bonus minutes or turn watching off until midnight, set or
 change the password, and see what the hub holds.
 
+It opens on a home page rather than a row of tabs: the kids at the top with
+what each one's rules currently say, two status tiles, then the settings
+grouped, each row's second line stating what that page says right now. A kid
+and a device are each a page of their own — `#/kids/<id>`, `#/devices/<ref>` —
+and the browser's Back button is what comes out of them, because when this is
+installed on a phone Back is the only navigation there is.
+
+The **change feed** at the bottom of the home page is the same feed the phone
+shows under Recent changes, in the same sentences. Nothing on the hub computes
+it: every stamped edit and every merge writes a line, the lines ride inside the
+config, and the last thirty arrive here with the next sync. So "why did the TV
+change?" is answerable on the box in the cupboard as well as on a phone that
+happens to be in the house.
+
 Bonus minutes and the pause are worth one sentence about *when* they land,
 because the hub is not a phone. A phone calls each device it can see, so a
 television that is awake stops or gains time as the parent's thumb comes off
@@ -236,6 +250,29 @@ cannot call the same rule by two different names. A handful of controls are too
 particular for that (the channel list, the device rows, the blocked-times
 editor); those are hand-written and marked `data-control="<id>"`, which is how
 guard 26 tells a control that was built from one that was only claimed.
+
+### Backups
+
+*App, hub & backup* has two different things with similar names, and the
+difference matters on the day you need one.
+
+**Version history** is the hub's own five-slot ring, kept automatically each
+time the settings change. It is for undoing something you just did.
+
+**Download a backup** is one file you keep somewhere that is not this NAS. It
+is the same envelope the phone's own export writes, so the file opens on a
+phone — which on the day the NAS is gone is the only thing left to open it
+with. It carries no API key: the hub strips secrets on every write, so what is
+served is what is on disk, and a test asserts that at every depth of the file.
+
+Restoring either one is a **deliberate edit, never a file copy**, and the
+distinction is not cosmetic. A restored document carries the stamps it had when
+it was taken, so writing those bytes would hand every peer that has edited
+since a newer stamp than yours: the restore would quietly undo itself on the
+next sync, and the tombstones this hub had learned would go with it — meaning
+every channel anyone had removed would come back. So a restore is applied as a
+fresh change on top of what is here now. It outranks every device, its
+deletions propagate, and a co-parent's bookkeeping survives it.
 
 Notes on the session:
 

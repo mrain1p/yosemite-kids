@@ -40,12 +40,13 @@
     color-scheme: light dark;
     --bg: #f6f7f8; --card: #fff; --sunk: #eef1f3; --line: #dfe3e6;
     --text: #16191c; --dim: #5d666e; --brand: #2f8f83; --brand-ink: #fff;
-    --danger: #b3261e; --radius: 10px;
+    --danger: #b3261e; --warn: #8a5a00; --radius: 10px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #14171a; --card: #1c2024; --sunk: #23282d; --line: #2c3237;
       --text: #e7eaed; --dim: #98a2ab; --brand: #5ec5b6; --brand-ink: #10201d;
+      --warn: #e0b055;
     }
   }
   * { box-sizing: border-box; }
@@ -71,10 +72,27 @@
   h3 { margin: 18px 0 8px; font-size: 13px; font-weight: 620; color: var(--brand);
     text-transform: none; letter-spacing: 0; }
   .hint { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
-  nav { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
-  nav button { background: transparent; border: 1px solid var(--line); color: var(--text);
-    padding: 7px 13px; border-radius: 999px; cursor: pointer; font-size: 14px; }
-  nav button[aria-current="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+  /* Back, and nothing else: this is installed on a home screen, and an
+     installed page's only navigation is the system Back button. See go(). */
+  header button.back { background: transparent; border: 0; color: var(--text);
+    font-size: 26px; line-height: 1; padding: 0 4px; margin-left: -4px; cursor: pointer; }
+  /* Two status tiles, exactly the phone's: a state a parent can read without
+     opening anything, in the state's own tone. */
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  button.tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 12px 14px; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+  button.tile .cap { font-size: 12px; color: var(--dim); }
+  button.tile .state { font-size: 15px; font-weight: 620; margin-top: 3px; }
+  button.tile .state.good { color: var(--brand); }
+  /* Not `.warn`: that class is the block-level warning banner, and a tone
+     word that also carries a box is how a two-word state grew a border. */
+  button.tile .state.amber { color: var(--warn); }
+  /* A row that goes somewhere. The li keeps the divider so these sit in the
+     same rhythm as the rows that do not. */
+  ul.rows > li.tap { padding: 0; }
+  button.row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    background: transparent; border: 0; padding: 12px 0; font: inherit; color: inherit; cursor: pointer; }
+  .chev { color: var(--dim); flex: none; font-size: 18px; line-height: 1; }
   button.primary { background: var(--brand); color: var(--brand-ink); border: 1px solid var(--brand);
     padding: 8px 15px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 560; }
   button.quiet { background: transparent; color: var(--dim); border: 1px solid var(--line);
@@ -200,7 +218,8 @@
 
 <div id="app" hidden>
   <header>
-    <h1>Yosemite Kids hub</h1>
+    <button class="back" id="back" hidden aria-label="Back">&#8249;</button>
+    <h1 id="title">Yosemite Kids hub</h1>
     <span class="saved" id="saved">Saved</span>
     <span class="spacer"></span>
     <button class="quiet" id="signout">Sign out</button>
@@ -212,7 +231,6 @@
       token is printed there on every restart.
       <div class="line"><button class="primary" id="nopassGo">Set a password</button></div>
     </div>
-    <nav id="tabs"></nav>
     <div id="page"></div>
   </main>
 </div>
@@ -222,7 +240,9 @@
   "use strict";
 
   var state = null;
-  var current = "kids";
+  // The route the page is currently showing, so a re-render after a save does
+  // not scroll a parent back to the top of a page they were halfway down.
+  var shown = null;
   // GET /setup, which says only whether this hub has been claimed. Refreshed
   // on load, after a password change, and on sign-out, because it decides
   // which card the signed-out page shows and what the field is called.
@@ -526,6 +546,103 @@
   }
 
   function add(host, node) { if (node) host.appendChild(node); return host; }
+
+  /** A row that goes somewhere, with its live state on the second line. */
+  function rowLi(name, sub, hash) {
+    var li = el("li", "tap");
+    var b = el("button", "row");
+    var box = el("div", "grow");
+    box.appendChild(el("div", "name", name));
+    if (sub) box.appendChild(el("div", "sub", sub));
+    b.appendChild(box);
+    b.appendChild(el("span", "chev", "›"));
+    b.onclick = function () { go(hash); };
+    li.appendChild(b);
+    return li;
+  }
+
+  function tile(cap, stateText, tone, hash) {
+    var b = el("button", "tile");
+    b.appendChild(el("div", "cap", cap));
+    b.appendChild(el("div", "state" + (tone ? " " + tone : ""), stateText));
+    b.onclick = function () { go(hash); };
+    return b;
+  }
+
+  // --- where the parent is ---------------------------------------------
+  //
+  // Routes, not tabs. This page is installed on a home screen, and an
+  // installed page has exactly one navigation control: the system Back
+  // button. Hash routes are what make that work — every move pushes a
+  // history entry and `hashchange` brings it back — and they are also what
+  // lets a kid be a *place* rather than a card somebody scrolled to, which
+  // is what a flat seven-tab strip could never survive at three kids with
+  // rules, blocked times, a pause and bonus minutes each.
+
+  /** `#/kids/ab12cd34` -> { page: "kids", arg: "ab12cd34" }. Root is "". */
+  function currentRoute() {
+    var parts = (location.hash || "").replace(/^#\/?/, "").split("/");
+    return {
+      page: decodeURIComponent(parts[0] || ""),
+      arg: parts.length > 1 ? decodeURIComponent(parts[1]) : ""
+    };
+  }
+
+  /** Go somewhere. Same route means re-render, since no hashchange fires. */
+  function go(hash) {
+    if (location.hash === hash) render();
+    else location.hash = hash;
+  }
+
+  /**
+   * One level up. Deliberately not `history.back()`: a page opened from a
+   * home-screen shortcut, or a link a parent sent themselves, has nothing
+   * behind it, and Back would leave the app instead of going up.
+   */
+  function upFrom(route) { return route.arg ? "#/" + route.page : "#/"; }
+
+  /** A page's name, taken from the list HubWeb.pages serves. */
+  function pageTitle(id) {
+    var found = (state.pages || []).filter(function (p) { return p.id === id; })[0];
+    return found ? found.title : "Yosemite Kids hub";
+  }
+
+  function titleFor(route) {
+    if (!route.page) return "Yosemite Kids hub";
+    if (route.page === "changes") return "Recent changes";
+    if (route.arg && route.page === "kids") {
+      var k = kidById(route.arg);
+      return k ? k.name : "Kid";
+    }
+    if (route.arg && route.page === "devices") {
+      var d = deviceByRef(route.arg);
+      return d ? d.name : "Device";
+    }
+    return pageTitle(route.page);
+  }
+
+  function kidById(id) {
+    return kids().filter(function (k) { return k.id === id; })[0] || null;
+  }
+
+  function kidIndex(id) {
+    var list = kids();
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return i;
+    return -1;
+  }
+
+  function deviceByRef(ref) {
+    return state.devices.filter(function (d) { return d.ref === ref; })[0] || null;
+  }
+
+  /** Somewhere that no longer exists — a removed kid, a revoked device. */
+  function goneCard(what, back) {
+    var c = card(what, null);
+    var line = el("div", "line");
+    line.appendChild(button("Back", "quiet", function () { go(back); return Promise.resolve(); }));
+    c.appendChild(line);
+    return c;
+  }
 
   // --- controls from the manifest --------------------------------------
   //
@@ -993,68 +1110,271 @@
     return lim;
   }
 
+  // --- the root -------------------------------------------------------
+  //
+  // The phone's own settings root, and for the phone's own reason: every
+  // row's second line is what the setting currently *says*, not a list of
+  // what is inside the page. "Autoplay on · TVs up to 1080p" answers the
+  // question a parent opened this to answer; "Autoplay, quality, listening"
+  // only promises to.
+
+  function pageRoot() {
+    var out = document.createDocumentFragment();
+
+    // The kids first. A parent opening this at teatime came to act on one of
+    // them, not to read the settings.
+    if (kids().length) {
+      var kc = card(null, null);
+      var kul = el("ul", "rows");
+      kids().forEach(function (k) {
+        kul.appendChild(rowLi(
+          (k.avatar ? k.avatar + "  " : "") + k.name, kidLine(k), "#/kids/" + k.id
+        ));
+      });
+      kc.appendChild(kul);
+      out.appendChild(kc);
+    }
+
+    out.appendChild(statusTiles());
+
+    out.appendChild(el("h3", null, "Kids & content"));
+    var content = card(null, null);
+    var cul = el("ul", "rows");
+    cul.appendChild(rowLi("Kids", kidsLine(), "#/kids"));
+    cul.appendChild(rowLi(pageTitle("channels"), channelsLine(), "#/channels"));
+    cul.appendChild(rowLi(pageTitle("screening"), screeningLine(), "#/screening"));
+    content.appendChild(cul);
+    out.appendChild(content);
+
+    out.appendChild(el("h3", null, "App & devices"));
+    var app = card(null, null);
+    var aul = el("ul", "rows");
+    aul.appendChild(rowLi(pageTitle("playback"), playbackLine(), "#/playback"));
+    aul.appendChild(rowLi(pageTitle("listing"), listingLine(), "#/listing"));
+    aul.appendChild(rowLi(pageTitle("devices"), devicesLine(), "#/devices"));
+    aul.appendChild(rowLi(pageTitle("backup"), hubLine(), "#/backup"));
+    app.appendChild(aul);
+    out.appendChild(app);
+
+    // The family pause. It outranks nothing and undoes nothing — a kid's own
+    // pause and this one can both be on, and the later of the two wins.
+    var everyone = card(
+      "Everyone at once",
+      (kids().length
+        ? "Bonus minutes and a single kid's pause are on that kid's page. "
+        : "") + "This one stops every kid at once, until midnight."
+    );
+    everyone.appendChild(pauseRow(
+      "Every kid, every device.",
+      (cfg().limits || {}).pausedUntil,
+      function (until) {
+        var lim = Object.assign({}, cfg().limits || {});
+        if (until === null) delete lim.pausedUntil; else lim.pausedUntil = until;
+        return patch({ limits: lim });
+      }
+    ));
+    out.appendChild(everyone);
+
+    out.appendChild(feedCard(4));
+    return out;
+  }
+
+  /**
+   * The two status tiles.
+   *
+   * The phone's Devices tile counts what is in sync, which it can only say
+   * because it asks every device. This one cannot and never will: the hub
+   * holds no credential on any device and initiates nothing but a nudge, so
+   * everything it knows about a device it learned when that device called
+   * *here*. The tile says that instead of guessing.
+   */
+  function statusTiles() {
+    var wrap = el("div", "tiles");
+    var enrolled = state.devices.length;
+    var waiting = state.pending.length;
+    var quiet = state.devices.filter(function (d) {
+      return !d.lastSeenAt || Date.now() - d.lastSeenAt > 7 * 24 * 60 * 60 * 1000;
+    }).length;
+    wrap.appendChild(tile(
+      "Devices",
+      enrolled === 0 ? "Nothing enrolled"
+        : waiting > 0 ? waiting + " waiting to join"
+        : quiet > 0 ? quiet + " of " + enrolled + " quiet"
+        : enrolled + " in touch",
+      enrolled === 0 || waiting > 0 || quiet > 0 ? "amber" : "good",
+      "#/devices"
+    ));
+    var ai = cfg().ai || {};
+    wrap.appendChild(tile(
+      "AI screening", ai.enabled ? "On" : "Off", ai.enabled ? "good" : "", "#/screening"
+    ));
+    return wrap;
+  }
+
+  /** What a kid's row says without opening it: the rule in force right now. */
+  function kidLine(k) {
+    var lim = k.limits || {};
+    if ((lim.pausedUntil || 0) > Date.now()) return "Paused until midnight";
+    var parts = [];
+    if (lim.session) parts.push(lim.session + " min a sitting");
+    if (lim.weekdaySessions || lim.weekendSessions) {
+      parts.push(
+        lim.weekdaySessions === lim.weekendSessions || !lim.weekendSessions || !lim.weekdaySessions
+          ? (lim.weekdaySessions || lim.weekendSessions) + " a day"
+          : lim.weekdaySessions + " on weekdays, " + lim.weekendSessions + " at weekends"
+      );
+    }
+    var windows = (lim.windows || []).length;
+    if (windows) parts.push(windows === 1 ? "1 blocked time" : windows + " blocked times");
+    var bonus = bonusToday(k.id);
+    if (bonus > 0) parts.push("+" + bonus + " min today");
+    return parts.length ? parts.join(" · ") : "No limits set";
+  }
+
+  function kidsLine() {
+    if (!kids().length) return "No kids yet";
+    return kids().map(function (k) { return k.name; }).join(", ");
+  }
+
+  function channelsLine() {
+    var n = (cfg().entries || []).length;
+    var blocked = (cfg().blocked || []).length;
+    return n + (n === 1 ? " source" : " sources") +
+      (blocked ? " · " + blocked + " blocked" : "");
+  }
+
+  function screeningLine() {
+    var ai = cfg().ai || {};
+    if (!ai.enabled) return "Off";
+    return "On" + (ai.model ? " · " + ai.model : " · no model set");
+  }
+
+  function playbackLine() {
+    var q = optionLabel("quality-tv", cfg().qualityTv);
+    return [
+      cfg().autoplay === false ? "Autoplay off" : "Autoplay on",
+      q ? "TVs " + q.toLowerCase() : null
+    ].filter(Boolean).join(" · ");
+  }
+
+  function listingLine() {
+    return [
+      cfg().showVideoAge ? "Dates on" : "Dates off",
+      optionLabel("listing-channel-layout", cfg().channelLayout),
+      optionLabel("listing-channel-order", cfg().channelOrder)
+    ].filter(Boolean).join(" · ");
+  }
+
+  function devicesLine() {
+    var enrolled = state.devices.length;
+    var waiting = state.pending.length;
+    if (!enrolled && !waiting) return "Nothing enrolled yet";
+    return enrolled + " enrolled" +
+      (waiting ? " · " + waiting + " waiting" : "");
+  }
+
+  function hubLine() {
+    var age = changeAge(state.hub.updatedAt);
+    return "#" + state.hub.hash + (age ? " · changed " + age : "");
+  }
+
+  /** The manifest's own word for a value, so both faces say the same one. */
+  function optionLabel(id, value) {
+    var options = controlById(id).options || [];
+    for (var i = 0; i < options.length; i++) {
+      if (sameValue(options[i].value, value)) return options[i].label;
+    }
+    return null;
+  }
+
+  // --- the change feed --------------------------------------------------
+  //
+  // The highest value per line on this page, because none of it is new: every
+  // stamped edit and every merge already writes a line through
+  // ConfigMerge.describe, the lines ride inside the config, and the hub has
+  // been holding the last thirty of them on disk the whole time with nothing
+  // rendering them. So the hub says exactly what the phone says — same
+  // sentences, same vocabulary — for the price of reading them out.
+
+  /** How long ago, at the granularity this answers a question at. */
+  function changeAge(stamp) {
+    if (!stamp) return null;
+    // A stamp in the future means the minting device's clock is ahead, which
+    // is that device's notice to give, not a negative age to render here.
+    var mins = Math.floor((Date.now() - stamp) / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return mins + "m ago";
+    if (mins < 24 * 60) return Math.floor(mins / 60) + "h ago";
+    if (mins < 7 * 24 * 60) return Math.floor(mins / (24 * 60)) + "d ago";
+    return Math.floor(mins / (7 * 24 * 60)) + "w ago";
+  }
+
+  function feedList(limit) {
+    var ul = el("ul", "rows");
+    var all = state.changes || [];
+    if (!all.length) {
+      ul.appendChild(emptyLi(
+        "Nothing yet. Changes show up here once someone edits these settings — " +
+        "on any phone in the family, or on this hub."));
+      return ul;
+    }
+    all.slice(0, limit).forEach(function (c) {
+      var li = el("li");
+      // "Dad's phone renames Emma to Em" reads as one sentence, which is the
+      // only form anybody scans without effort.
+      li.appendChild(el("div", null, [c.who, c.text].filter(Boolean).join(" ").trim()));
+      // shownAt, not at: `at` is forced monotonic so a device with a wrong
+      // clock can still win an edit, and it can be a time that never happened.
+      var age = changeAge(c.shownAt || c.at);
+      if (age) li.appendChild(el("div", "sub", age));
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  function feedCard(limit) {
+    var c = card("Recent changes", null);
+    c.appendChild(feedList(limit));
+    if ((state.changes || []).length > limit) {
+      var line = el("div", "line");
+      line.style.marginTop = "10px";
+      line.appendChild(button("See all", "quiet", function () {
+        go("#/changes");
+        return Promise.resolve();
+      }));
+      c.appendChild(line);
+    }
+    return c;
+  }
+
+  function pageChanges() {
+    var out = document.createDocumentFragment();
+    var c = card(
+      null,
+      "Settings changes made on any phone in the family, or here, newest " +
+      "first. Times are the clock of the device that made the change. The " +
+      "list is the last thirty; it is a feed, not an audit trail."
+    );
+    c.appendChild(feedList(100));
+    out.appendChild(c);
+    return out;
+  }
+
   // --- pages ----------------------------------------------------------
 
-  function pageKids() {
+  function pageKids(id) { return id ? kidPage(id) : kidsList(); }
+
+  function kidsList() {
     var out = document.createDocumentFragment();
     var c = card("Kids", "Each kid's profile, their screen-time rules and their blocked times.");
     c.dataset.control = "kids-list";
     var ul = el("ul", "rows");
 
     if (!kids().length) ul.appendChild(emptyLi("No kids yet."));
-    kids().forEach(function (k, idx) {
-      var li = el("li");
-      var head = el("div", "line");
-      head.appendChild(el("div", "name grow", (k.avatar ? k.avatar + " " : "") + k.name));
-      head.appendChild(button("Remove", "quiet", function () {
-        var next = kids().slice();
-        next.splice(idx, 1);
-        return patch({ profiles: next });
-      }));
-      li.appendChild(head);
-
-      var grid = el("div", "grid");
-      grid.style.marginTop = "10px";
-      grid.appendChild(textField("Name", k.name, function (v) {
-        var next = kids().slice(); next[idx] = Object.assign({}, k, { name: v });
-        patch({ profiles: next });
-      }));
-      grid.appendChild(numberField("Age", k.age == null ? "" : k.age, function (v) {
-        var next = kids().slice(); next[idx] = Object.assign({}, k, { age: v });
-        patch({ profiles: next });
-      }, 1, 18));
-      grid.appendChild(textField("Avatar", k.avatar, function (v) {
-        var next = kids().slice(); next[idx] = Object.assign({}, k, { avatar: v });
-        patch({ profiles: next });
-      }, "🦄"));
-      li.appendChild(grid);
-
-      // The kid's own rules, from the manifest: same names, same ranges and
-      // the same set as the phone's card, because both faces read one
-      // declaration. Their own limits and not the family block, because
-      // Whitelist.limitsFor takes a kid's outright the moment they exist.
-      var rules = el("div");
-      rules.style.marginTop = "6px";
-      groupControls("screen-time-rules", kidScope(k, idx), rules, "limits.");
-      rules.appendChild(pauseRow(
-        "Stops " + (k.name || "this kid") + " on every device.",
-        (k.limits || {}).pausedUntil,
-        function (until) {
-          return patch({ profiles: withLimits(idx, function (lim) {
-            if (until === null) delete lim.pausedUntil; else lim.pausedUntil = until;
-          }) });
-        }
+    kids().forEach(function (k) {
+      ul.appendChild(rowLi(
+        (k.avatar ? k.avatar + "  " : "") + k.name, kidLine(k), "#/kids/" + k.id
       ));
-      // Beside the pause, which is where a parent reaches when they are
-      // thinking about this evening rather than about the rules.
-      rules.appendChild(grantRow(k.id, k.name));
-      rules.appendChild(windowsBlock((k.limits || {}).windows, function (next) {
-        var edited = kids().slice();
-        edited[idx] = Object.assign({}, k, { limits: withWindows(k.limits, next) });
-        return patch({ profiles: edited });
-      }));
-      li.appendChild(rules);
-      ul.appendChild(li);
     });
     c.appendChild(ul);
 
@@ -1081,8 +1401,8 @@
 
     // The family-wide block, and only while it is the one in force: with no
     // kids added, Whitelist.limitsFor falls back to it for the whole house.
-    // With kids, it is dead except for the pause below — so rendering it then
-    // would be a card that looks like it works and changes nothing.
+    // With kids, it is dead except for the pause on the root — so rendering
+    // it then would be a card that looks like it works and changes nothing.
     if (!kids().length) {
       var family = groupCard(
         "screen-time-rules", rootScope(), "Screen time",
@@ -1098,25 +1418,90 @@
       family.appendChild(grantRow("", null));
       out.appendChild(family);
     }
+    return out;
+  }
 
-    // Always: the family pause outranks nothing and undoes nothing — a kid's
-    // page and this one can both be on, and the later of the two wins.
-    var everyone = card(
-      "Everyone at once",
-      (kids().length
-        ? "Bonus minutes and a single kid's pause are on that kid's card. "
-        : "") + "This one stops every kid at once, until midnight."
-    );
-    everyone.appendChild(pauseRow(
-      "Every kid, every device.",
-      (cfg().limits || {}).pausedUntil,
+  /**
+   * One kid: their profile, their rules, tonight's pause and bonus minutes,
+   * and their blocked times.
+   *
+   * A page of their own rather than a card in a list, because the list had
+   * every kid expanded with every control at once — unreadable at three kids,
+   * and that was before pause, grants and blocked times were on it.
+   */
+  function kidPage(id) {
+    var out = document.createDocumentFragment();
+    var idx = kidIndex(id);
+    if (idx < 0) {
+      out.appendChild(goneCard("That kid is not on this hub any more.", "#/kids"));
+      return out;
+    }
+    var k = kids()[idx];
+
+    var who = card(null, null);
+    var grid = el("div", "grid");
+    grid.appendChild(textField("Name", k.name, function (v) {
+      var next = kids().slice(); next[idx] = Object.assign({}, k, { name: v });
+      patch({ profiles: next });
+    }));
+    grid.appendChild(numberField("Age", k.age == null ? "" : k.age, function (v) {
+      var next = kids().slice(); next[idx] = Object.assign({}, k, { age: v });
+      patch({ profiles: next });
+    }, 1, 18));
+    grid.appendChild(textField("Avatar", k.avatar, function (v) {
+      var next = kids().slice(); next[idx] = Object.assign({}, k, { avatar: v });
+      patch({ profiles: next });
+    }, "🦄"));
+    who.appendChild(grid);
+    out.appendChild(who);
+
+    // Tonight before the rules: a parent on this page at teatime is deciding
+    // about this evening, not rewriting the schedule.
+    var tonight = card("Tonight", null);
+    tonight.appendChild(pauseRow(
+      "Stops " + (k.name || "this kid") + " on every device.",
+      (k.limits || {}).pausedUntil,
       function (until) {
-        var lim = Object.assign({}, cfg().limits || {});
-        if (until === null) delete lim.pausedUntil; else lim.pausedUntil = until;
-        return patch({ limits: lim });
+        return patch({ profiles: withLimits(idx, function (lim) {
+          if (until === null) delete lim.pausedUntil; else lim.pausedUntil = until;
+        }) });
       }
     ));
-    out.appendChild(everyone);
+    tonight.appendChild(grantRow(k.id, k.name));
+    out.appendChild(tonight);
+
+    // The kid's own rules, from the manifest: same names, same ranges and the
+    // same set as the phone's card, because both faces read one declaration.
+    // Their own limits and not the family block, because Whitelist.limitsFor
+    // takes a kid's outright the moment they exist.
+    var rules = card("Screen time", null);
+    groupControls("screen-time-rules", kidScope(k, idx), rules, "limits.");
+    out.appendChild(rules);
+
+    var blocked = card(null, null);
+    blocked.appendChild(windowsBlock((k.limits || {}).windows, function (next) {
+      var edited = kids().slice();
+      edited[idx] = Object.assign({}, k, { limits: withWindows(k.limits, next) });
+      return patch({ profiles: edited });
+    }));
+    out.appendChild(blocked);
+
+    var danger = card(null, null);
+    var line = el("div", "line");
+    line.appendChild(el("div", "sub grow",
+      "Removing " + (k.name || "this kid") + " takes their rules, their bonus " +
+      "minutes and their blocked times with them, on every device."));
+    line.appendChild(button("Remove", "quiet", function () {
+      if (!window.confirm("Remove " + (k.name || "this kid") + " from every device?")) {
+        return Promise.resolve();
+      }
+      var next = kids().slice();
+      next.splice(idx, 1);
+      // Back first: this page is about to be about a kid who is gone.
+      return patch({ profiles: next }).then(function () { go("#/kids"); });
+    }));
+    danger.appendChild(line);
+    out.appendChild(danger);
     return out;
   }
 
@@ -1279,122 +1664,191 @@
     return out;
   }
 
-  function pageDevices() {
+  function pageDevices(ref) { return ref ? devicePage(ref) : devicesList(); }
+
+  function devicesList() {
     var out = document.createDocumentFragment();
 
-    var p = card("Waiting to join", "A device showing a code is asking to be added. Approving one is what lets it sync.");
-    var pul = el("ul", "rows");
-    if (!state.pending.length) pul.appendChild(emptyLi("Nothing waiting."));
-    state.pending.forEach(function (x) {
-      var li = el("li");
-      var line = el("div", "line");
-      var box = el("div", "grow");
-      box.appendChild(el("div", "name", x.name));
-      box.appendChild(el("div", "sub", "Code " + x.code));
-      line.appendChild(box);
-      line.appendChild(button("Approve", "primary", function () {
-        return api("/api/devices", { approve: x.code }).then(refresh);
-      }));
-      li.appendChild(line);
-      pul.appendChild(li);
-    });
-    p.appendChild(pul);
-    out.appendChild(p);
+    // Only when there is something to approve. An always-present "Nothing
+    // waiting" card is a card a parent learns to scroll past, and this is the
+    // one thing on the page that needs an answer today.
+    if (state.pending.length) {
+      var p = card("Waiting to join", "A device showing a code is asking to be added. Approving one is what lets it sync.");
+      var pul = el("ul", "rows");
+      state.pending.forEach(function (x) {
+        var li = el("li");
+        var line = el("div", "line");
+        var box = el("div", "grow");
+        box.appendChild(el("div", "name", x.name));
+        box.appendChild(el("div", "sub", "Code " + x.code));
+        line.appendChild(box);
+        line.appendChild(button("Approve", "primary", function () {
+          return api("/api/devices", { approve: x.code }).then(refresh);
+        }));
+        li.appendChild(line);
+        pul.appendChild(li);
+      });
+      p.appendChild(pul);
+      out.appendChild(p);
+    }
 
-    var d = card("Enrolled devices", "Removing a device stops it syncing. It keeps whatever it already has.");
+    var d = card("Enrolled devices", "Everything that syncs with this hub. Open one to give it to a kid, or to remove it.");
     var dul = el("ul", "rows");
-    if (!state.devices.length) dul.appendChild(emptyLi("No devices enrolled yet."));
+    if (!state.devices.length) {
+      dul.appendChild(emptyLi(
+        "Nothing enrolled yet. On a phone, add this hub under App, hub & backup; " +
+        "a television is introduced to it from a phone that has already joined."));
+    }
     state.devices.forEach(function (dev) {
-      var li = el("li");
-      var line = el("div", "line");
-      var box = el("div", "grow");
-      box.appendChild(el("div", "name", dev.name));
-      box.appendChild(el("div", "sub", "Joined " + new Date(dev.enrolledAt).toLocaleDateString()));
-      line.appendChild(box);
-      line.appendChild(el("span", "tag", dev.ref));
-      line.appendChild(button("Remove", "quiet", function () {
-        return api("/api/devices", { revoke: dev.ref }).then(refresh);
-      }));
-      li.appendChild(line);
-
-      if (dev.idConflict) {
-        // First one wins, so an assignment a parent already made is never
-        // silently re-pointed at another device.
-        li.appendChild(el("div", "sub",
-          "Two devices have called in under this enrolment. The hub kept the first. " +
-          "If this row is the wrong one, remove it and enrol that device again."));
-      }
-
-      if (kids().length && !dev.known) {
-        // It has never announced its own identity, so there is no key to
-        // file an assignment under. Saying so beats offering chips that
-        // would appear to work and do nothing — which is exactly what this
-        // card used to do, for every device.
-        li.appendChild(el("div", "sub",
-          "This device has not synced with the hub yet, so it cannot be given to a kid here. " +
-          "Open Yosemite Kids on it once."));
-      } else if (kids().length) {
-        var row = el("div", "line");
-        row.dataset.control = "devices-kid";
-        row.style.marginTop = "8px";
-        row.appendChild(el("span", "sub", controlById("devices-kid").label));
-        var shared = el("button", "chip", "Anyone");
-        shared.setAttribute("aria-pressed", String(!dev.kid));
-        shared.onclick = function () {
-          api("/api/devices", { assign: { ref: dev.ref, kid: "" } }).then(function () { flashSaved(); return refresh(); });
-        };
-        row.appendChild(shared);
-        kids().forEach(function (k) {
-          var b = el("button", "chip", k.name);
-          b.setAttribute("aria-pressed", String(dev.kid === k.id));
-          b.onclick = function () {
-            api("/api/devices", { assign: { ref: dev.ref, kid: k.id } }).then(function () { flashSaved(); return refresh(); });
-          };
-          row.appendChild(b);
-        });
-        li.appendChild(row);
-      }
-      dul.appendChild(li);
+      dul.appendChild(rowLi(dev.name, deviceLine(dev), "#/devices/" + dev.ref));
     });
     d.appendChild(dul);
     out.appendChild(d);
 
-    var ix = state.index;
-    if (ix) {
-      var s = card("Search index",
-        "Every video on every channel, listed once, so search on a TV answers at once instead of asking YouTube each time. " +
-        "The hub builds it because it is always on; a phone takes over if the hub is off for a day.");
-      var sul = el("ul", "rows");
-      var ixRow = function (name, sub) {
-        var li = el("li");
-        var box = el("div", "grow");
-        box.appendChild(el("div", "name", name));
-        if (sub) box.appendChild(el("div", "sub", sub));
-        li.appendChild(box);
-        return li;
-      };
-      var who = ix.masterIsMe ? "This hub builds the index"
-        : !ix.master ? "Nobody is building the index yet"
-        : ix.masterIsHub ? "Another hub builds the index"
-        : "A phone builds the index";
-      sul.appendChild(ixRow(who, ix.election));
-      sul.appendChild(ixRow(ix.complete + " of " + ix.sources + " channels fully indexed", ix.videos + " videos listed"));
-      sul.appendChild(ixRow(
-        ix.lastRun
-          ? "Last crawl " + new Date(ix.lastRun.at).toLocaleString() + ", " + ix.lastRun.pages + " pages" + (ix.lastRun.failed ? " (failed)" : "")
-          : "No crawl from this hub yet",
-        ix.crawl));
-      sul.appendChild(ixRow(
-        ix.armed ? "Devices are pulling the index from this hub" : "No device has pulled the index from this hub in the last day",
-        ix.lastPullAt
-          ? "Last pull " + new Date(ix.lastPullAt).toLocaleString()
-          : "Devices on 1.0.5 or later pull it on their own. Until one does, the hub leaves the crawl to the phone."));
-      s.appendChild(sul);
-      out.appendChild(s);
-    }
-
     out.appendChild(phoneOnlyNote("Devices"));
     return out;
+  }
+
+  /** A device's row: who it is for, and when the hub last heard from it. */
+  function deviceLine(dev) {
+    var parts = [];
+    var kid = dev.kid ? kidById(dev.kid) : null;
+    if (kid) parts.push("For " + kid.name);
+    if (dev.idConflict) parts.push("two devices under one enrolment");
+    else if (!dev.known) parts.push("has not synced yet");
+    else parts.push(dev.lastSeenAt ? "last here " + changeAge(dev.lastSeenAt) : "never called here");
+    return parts.join(" · ");
+  }
+
+  /**
+   * One device.
+   *
+   * Everything on this page is something the device told the hub when it
+   * called: its address, when that was, and the identity it resolves
+   * `deviceProfiles` by. The hub asks a device nothing and holds no
+   * credential on one, so there is no "check now" here and there will not be
+   * — see guard 7.
+   */
+  function devicePage(ref) {
+    var out = document.createDocumentFragment();
+    var dev = deviceByRef(ref);
+    if (!dev) {
+      out.appendChild(goneCard("That device is not enrolled here any more.", "#/devices"));
+      return out;
+    }
+
+    var c = card(null, null);
+    var dl = el("dl", "kv");
+    var facts = [
+      ["Enrolment", dev.ref],
+      ["Joined", new Date(dev.enrolledAt).toLocaleDateString()],
+      ["Last here", dev.lastSeenAt ? new Date(dev.lastSeenAt).toLocaleString() : "never"],
+      ["Address", dev.address || "not known yet"]
+    ];
+    facts.forEach(function (pair) {
+      dl.appendChild(el("dt", null, pair[0]));
+      dl.appendChild(el("dd", null, pair[1]));
+    });
+    c.appendChild(dl);
+    out.appendChild(c);
+
+    if (dev.idConflict) {
+      // First one wins, so an assignment a parent already made is never
+      // silently re-pointed at another device.
+      var conflict = el("p", "warn",
+        "Two devices have called in under this enrolment. The hub kept the first. " +
+        "If this is the wrong one, remove it and enrol that device again.");
+      out.appendChild(conflict);
+    }
+
+    var kidCard = card(controlById("devices-kid").label, controlById("devices-kid").sub);
+    kidCard.dataset.control = "devices-kid";
+    if (!kids().length) {
+      kidCard.appendChild(el("p", "sub", "Add a kid first and this device can be given to them."));
+    } else if (!dev.known) {
+      // It has never announced its own identity, so there is no key to file
+      // an assignment under. Saying so beats offering chips that would appear
+      // to work and do nothing — which is what this card used to do, for
+      // every device.
+      kidCard.appendChild(el("p", "sub",
+        "This device has not synced with the hub yet, so it cannot be given to a kid here. " +
+        "Open Yosemite Kids on it once."));
+    } else {
+      var row = el("div", "line");
+      var shared = el("button", "chip", "Anyone");
+      shared.setAttribute("aria-pressed", String(!dev.kid));
+      shared.onclick = function () {
+        api("/api/devices", { assign: { ref: dev.ref, kid: "" } }).then(function () { flashSaved(); return refresh(); });
+      };
+      row.appendChild(shared);
+      kids().forEach(function (k) {
+        var b = el("button", "chip", k.name);
+        b.setAttribute("aria-pressed", String(dev.kid === k.id));
+        b.onclick = function () {
+          api("/api/devices", { assign: { ref: dev.ref, kid: k.id } }).then(function () { flashSaved(); return refresh(); });
+        };
+        row.appendChild(b);
+      });
+      kidCard.appendChild(row);
+    }
+    out.appendChild(kidCard);
+
+    var danger = card(null, null);
+    var line = el("div", "line");
+    line.appendChild(el("div", "sub grow",
+      "Removing it stops it syncing with this hub. It keeps whatever settings it already has."));
+    line.appendChild(button("Remove", "quiet", function () {
+      if (!window.confirm("Stop " + dev.name + " syncing with this hub?")) return Promise.resolve();
+      return api("/api/devices", { revoke: dev.ref }).then(function () {
+        return refresh().then(function () { go("#/devices"); });
+      });
+    }));
+    danger.appendChild(line);
+    out.appendChild(danger);
+    return out;
+  }
+
+  /**
+   * The crawl, which is about this hub rather than about the devices.
+   *
+   * It sat on the Devices page because the phone's Search index card does,
+   * and on the phone that is right — the phone is one device among several
+   * and the card is about which of them is building. Here it is a job this
+   * box is or is not doing, which is what "This hub" means.
+   */
+  function cardSearchIndex() {
+    var ix = state.index;
+    if (!ix) return null;
+    var s = card("Search index",
+      "Every video on every channel, listed once, so search on a TV answers at once instead of asking YouTube each time. " +
+      "The hub builds it because it is always on; a phone takes over if the hub is off for a day.");
+    var sul = el("ul", "rows");
+    var ixRow = function (name, sub) {
+      var li = el("li");
+      var box = el("div", "grow");
+      box.appendChild(el("div", "name", name));
+      if (sub) box.appendChild(el("div", "sub", sub));
+      li.appendChild(box);
+      return li;
+    };
+    var who = ix.masterIsMe ? "This hub builds the index"
+      : !ix.master ? "Nobody is building the index yet"
+      : ix.masterIsHub ? "Another hub builds the index"
+      : "A phone builds the index";
+    sul.appendChild(ixRow(who, ix.election));
+    sul.appendChild(ixRow(ix.complete + " of " + ix.sources + " channels fully indexed", ix.videos + " videos listed"));
+    sul.appendChild(ixRow(
+      ix.lastRun
+        ? "Last crawl " + new Date(ix.lastRun.at).toLocaleString() + ", " + ix.lastRun.pages + " pages" + (ix.lastRun.failed ? " (failed)" : "")
+        : "No crawl from this hub yet",
+      ix.crawl));
+    sul.appendChild(ixRow(
+      ix.armed ? "Devices are pulling the index from this hub" : "No device has pulled the index from this hub in the last day",
+      ix.lastPullAt
+        ? "Last pull " + new Date(ix.lastPullAt).toLocaleString()
+        : "Devices on 1.0.5 or later pull it on their own. Until one does, the hub leaves the crawl to the phone."));
+    s.appendChild(sul);
+    return s;
   }
 
   function pagePlayback() {
@@ -1542,22 +1996,157 @@
     return c;
   }
 
-  function pageBackup() {
-    var out = document.createDocumentFragment();
-
-    out.appendChild(cardPassword());
-
+  /**
+   * What this box is and whether it is well.
+   *
+   * The free-space line is the one health number a NAS actually needs. A full
+   * volume takes the atomic write with it — the temp file lands, the rename
+   * never happens — and the symptom is settings that stop sticking with
+   * nothing on any screen to explain it. Zero means the container could not
+   * ask, so the row is left off rather than reading as "no space left".
+   */
+  function cardThisHub() {
     var h = card("This hub", null);
     var dl = el("dl", "kv");
-    [["Settings", "#" + state.hub.hash],
-     ["Last changed", state.hub.updatedAt ? new Date(state.hub.updatedAt).toLocaleString() : "never"],
-     ["Devices", String(state.hub.deviceCount)],
-     ["Data", state.hub.dataDir]].forEach(function (pair) {
+    var rows = [
+      ["Settings", "#" + state.hub.hash],
+      ["Last changed", state.hub.updatedAt
+        ? new Date(state.hub.updatedAt).toLocaleString() + " · " + changeAge(state.hub.updatedAt)
+        : "never"],
+      ["Devices", String(state.hub.deviceCount)],
+      ["Running since", state.hub.startedAt
+        ? new Date(state.hub.startedAt).toLocaleString() + " · " + changeAge(state.hub.startedAt)
+        : "unknown"],
+      ["Data", state.hub.dataDir]
+    ];
+    if (state.hub.freeBytes) rows.push(["Free space", gigabytes(state.hub.freeBytes)]);
+    rows.forEach(function (pair) {
       dl.appendChild(el("dt", null, pair[0]));
       dl.appendChild(el("dd", null, pair[1]));
     });
     h.appendChild(dl);
-    out.appendChild(h);
+    return h;
+  }
+
+  function gigabytes(bytes) {
+    var gb = bytes / (1024 * 1024 * 1024);
+    if (gb >= 10) return Math.round(gb) + " GB";
+    if (gb >= 1) return (Math.round(gb * 10) / 10) + " GB";
+    return Math.max(1, Math.round(bytes / (1024 * 1024))) + " MB";
+  }
+
+  /**
+   * A copy of the settings a parent can keep somewhere else.
+   *
+   * The version ring below is for undoing a mistake made here; this is for
+   * the day the box is gone. Same envelope as the phone's own export, so the
+   * file opens on a phone — which on that day is the only thing left.
+   *
+   * Restoring goes through POST /api/restore, which applies the file as a
+   * stamped edit rather than writing the bytes. See HubVersions: a byte
+   * restore carries the file's OLD stamps, so the first peer that has edited
+   * since wins its unit straight back and the parent watches the restore undo
+   * itself with nothing reporting it.
+   */
+  function cardBackupFile() {
+    var c = card(
+      "Backup",
+      "Every setting on this hub, as one file. Keep it somewhere that is not " +
+      "this box — it is what a phone restores from if the hub is ever gone."
+    );
+    var err = el("p", "error");
+
+    var row = el("div", "line");
+    row.appendChild(button("Download a backup", "primary", function () {
+      err.textContent = "";
+      return fetch("/api/backup", { credentials: "same-origin" }).then(function (r) {
+        if (r.status === 401) { signedOut(); return; }
+        if (r.status === 404) {
+          err.textContent = "There are no settings on this hub yet.";
+          return;
+        }
+        if (!r.ok) { err.textContent = "The hub said no (HTTP " + r.status + ")."; return; }
+        return r.text().then(function (text) {
+          // Named by the browser, because a date in the filename needs a
+          // calendar and the container deliberately reads none.
+          var url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+          var a = el("a");
+          a.href = url;
+          a.download = "yosemite-kids-hub-" + todayLocal() + ".json";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          // Not revoked synchronously: that races the download in Safari.
+          setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+        });
+      }).catch(function () { err.textContent = "Could not reach the hub."; });
+    }));
+    c.appendChild(row);
+
+    var restore = el("div");
+    restore.style.marginTop = "16px";
+    restore.appendChild(el("div", "name", "Restore from a file"));
+    restore.appendChild(el("div", "sub",
+      "A backup from this hub, or one exported from a phone. It replaces every " +
+      "setting here and then reaches every device, so it is applied as a " +
+      "deliberate change rather than as a file copy."));
+    var file = el("input");
+    file.type = "file";
+    file.accept = "application/json,.json";
+    file.style.marginTop = "10px";
+    file.onchange = function () {
+      err.textContent = "";
+      var chosen = file.files && file.files[0];
+      if (!chosen) return;
+      // The hub refuses a body over a megabyte, and a config is a few tens of
+      // kilobytes. Saying so here beats a 413 the page would have to guess at.
+      if (chosen.size > 900000) {
+        err.textContent = "That file is far too big to be a Yosemite Kids backup.";
+        file.value = "";
+        return;
+      }
+      var reader = new FileReader();
+      reader.onerror = function () {
+        err.textContent = "That file could not be read.";
+        file.value = "";
+      };
+      reader.onload = function () {
+        var doc = null;
+        try { doc = JSON.parse(String(reader.result)); } catch (e) { doc = null; }
+        file.value = "";
+        if (!doc || typeof doc !== "object" || doc instanceof Array) {
+          err.textContent = "That file is not a Yosemite Kids backup.";
+          return;
+        }
+        if (!window.confirm(
+          "Restore every setting on this hub from " + chosen.name + "?\n\n" +
+          "Channels, kids, rules and blocked times are replaced, here and then " +
+          "on every device. The version history below keeps what is there now."
+        )) return;
+        api("/api/restore", doc).then(function (r) {
+          if (!r.restored) {
+            err.textContent = "That file is not a Yosemite Kids backup — nothing was changed.";
+            return;
+          }
+          flashSaved();
+          return refresh();
+        }).catch(function () { err.textContent = "The hub would not take that file."; });
+      };
+      reader.readAsText(chosen);
+    };
+    restore.appendChild(file);
+    restore.appendChild(err);
+    c.appendChild(restore);
+    return c;
+  }
+
+  function pageBackup() {
+    var out = document.createDocumentFragment();
+
+    out.appendChild(cardPassword());
+    out.appendChild(cardThisHub());
+    add(out, cardSearchIndex());
+    out.appendChild(cardBackupFile());
 
     var v = card("Version history",
       "The hub keeps the last few versions of your settings. Restoring one is a deliberate change, not a file copy — it is applied as a fresh edit, so it wins against every device rather than being undone by the next sync.");
@@ -1592,8 +2181,8 @@
   }
 
   /** What this page still sends a parent to their phone for, and why. */
-  function phoneOnlyNote(pageTitle) {
-    var mine = (state.hub.outstanding || []).filter(function (o) { return o.page === pageTitle; });
+  function phoneOnlyNote(pageName) {
+    var mine = (state.hub.outstanding || []).filter(function (o) { return o.page === pageName; });
     if (!mine.length) return document.createDocumentFragment();
     var c = card("Still on the phone", "These are not here yet. Use a phone for them.");
     var ul = el("ul", "rows");
@@ -1609,30 +2198,46 @@
     return c;
   }
 
-  var PAGES = {
+  /**
+   * Every hash route this page answers, keyed on the first segment. "" is the
+   * root; a second segment is the thing being drilled into, and the renderer
+   * is handed it.
+   *
+   * Guard 11 reads this map from both directions — every page `HubWeb.pages`
+   * serves must have a renderer here, and every "#/…" link in this file must
+   * resolve to one — because an unknown route falls back to the root, which
+   * shows a parent the WRONG PAGE rather than an error.
+   */
+  var ROUTES = {
+    "": pageRoot,
     kids: pageKids, channels: pageChannels, screening: pageScreening,
     playback: pagePlayback, listing: pageListing,
-    devices: pageDevices, backup: pageBackup
+    devices: pageDevices, backup: pageBackup,
+    changes: pageChanges
   };
 
-  function renderTabs() {
-    var nav = $("tabs");
-    nav.innerHTML = "";
-    state.pages.forEach(function (p) {
-      var b = el("button", null, p.title);
-      b.dataset.id = p.id;
-      b.setAttribute("aria-current", String(p.id === current));
-      b.onclick = function () { current = p.id; render(); };
-      nav.appendChild(b);
-    });
-  }
-
   function render() {
-    renderTabs();
+    var route = currentRoute();
+    // An unknown route is the root, and has to *read* as the root: a back
+    // chevron over the root's own content is a button that goes nowhere.
+    if (!ROUTES[route.page]) route = { page: "", arg: "" };
     var host = $("page");
     host.innerHTML = "";
-    var build = PAGES[current] || PAGES.kids;
-    host.appendChild(build());
+    host.appendChild(ROUTES[route.page](route.arg));
+
+    $("title").textContent = titleFor(route);
+    var back = $("back");
+    back.hidden = !route.page;
+    back.onclick = function () { go(upFrom(route)); };
+
+    // Only when the page actually changed. render() also runs after every
+    // save, and scrolling a parent back to the top on every toggle is how a
+    // settings page becomes unusable.
+    var here = route.page + "/" + route.arg;
+    if (here !== shown) {
+      shown = here;
+      window.scrollTo(0, 0);
+    }
   }
 
   function refresh() {
@@ -1663,7 +2268,14 @@
     revealThen = null;
     if (then) then();
   };
-  $("nopassGo").onclick = function () { current = "backup"; render(); showApp(); };
+  $("nopassGo").onclick = function () { go("#/backup"); showApp(); };
+
+  // The system Back button, which on an installed page is the only navigation
+  // there is. Guarded on the signed-out cards: a parent pressing Back on the
+  // login screen must not put a page together out of no state at all.
+  window.addEventListener("hashchange", function () {
+    if (state && !$("app").hidden) render();
+  });
 
   // A live session survives a reload, so try the data first and fall back to
   // the signed-out cards only when the hub says no. /setup first, because it
