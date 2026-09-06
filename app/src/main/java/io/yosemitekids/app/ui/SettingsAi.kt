@@ -53,6 +53,17 @@ internal fun aiProviderName(baseUrl: String): String? {
         ?.takeIf { it.isNotBlank() } ?: "Custom provider"
 }
 
+/**
+ * The reason the screener stores when the model answered but dropped an id —
+ * the one "held back" that says nothing about the video, and the only one the
+ * card draws in amber with an apology instead of quoting it.
+ *
+ * Spelled in `AiScreener.kt` too (the `Verdict.REVIEW` fallback). If that
+ * string moves, this card quietly loses its amber and nothing fails, so fold
+ * the two into one const the next time that file is open.
+ */
+private const val NO_VERDICT_REASON = "model returned no verdict"
+
 private val DEFAULT_AI_RULES = """
     No scary, violent, or disturbing content.
     No adult themes, romance, or innuendo.
@@ -413,6 +424,13 @@ internal fun AiReviewSection(
             }
         )
     }
+    // Each half filters by channel with its own tab row, so each keeps its own
+    // pick: ruling on the queue must not silently re-filter the blocked page.
+    /** Channel the queue is narrowed to, null = All. */
+    var queueChannel by remember { mutableStateOf<String?>(null) }
+    /** The same, for the blocked page. */
+    var blockedChannel by remember { mutableStateOf<String?>(null) }
+
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { io.yosemitekids.app.data.ScreeningStore(context.applicationContext) }
     var all by remember { mutableStateOf<List<Pair<String, ScreeningStore.Entry>>>(emptyList()) }
@@ -503,100 +521,255 @@ internal fun AiReviewSection(
     val review = flagged.filter { it.second.verdict == io.yosemitekids.app.data.AiScreener.Verdict.REVIEW }
     val blockedList = flagged.filter { it.second.verdict == io.yosemitekids.app.data.AiScreener.Verdict.BLOCK }
 
+    /**
+     * Who a card is held for. With per-kid verdicts that is the whole point —
+     * "held for Dave · fine for Katy". Without them, the page's own word for
+     * it: on the queue every card was held, on the blocked pile every card was
+     * blocked, so the label only has to say which page you are on.
+     */
+    fun verdictLabel(e: ScreeningStore.Entry): String =
+        if (profiles.isNotEmpty() && e.perProfile.isNotEmpty()) {
+            val held = profiles.filter {
+                e.perProfile[it.id] != io.yosemitekids.app.data.AiScreener.Verdict.ALLOW
+            }
+            val fine = profiles.filter {
+                e.perProfile[it.id] == io.yosemitekids.app.data.AiScreener.Verdict.ALLOW
+            }
+            listOfNotNull(
+                held.takeIf { it.isNotEmpty() }
+                    ?.joinToString(", ") { it.name }?.let { "held for $it" },
+                fine.takeIf { it.isNotEmpty() }
+                    ?.joinToString(", ") { it.name }?.let { "fine for $it" }
+            ).joinToString(" · ")
+        } else if (e.verdict == io.yosemitekids.app.data.AiScreener.Verdict.REVIEW) {
+            "held back"
+        } else "AI blocked"
+
+    /** Opens the video where the parent can actually watch it before ruling. */
+    fun openInYouTube(videoId: String) {
+        runCatching {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://www.youtube.com/watch?v=$videoId")
+                )
+            )
+        }
+    }
+
+    /**
+     * The quiet row of words each half filters by channel with — the active
+     * one in teal over a 2dp underline of its own width, the rest grey. The
+     * same shape as the channel list's tabs, which are private to that file.
+     */
     @Composable
-    fun flaggedCard(videoId: String, e: ScreeningStore.Entry) {
-        Card(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+    fun filterTab(label: String, selected: Boolean, onPick: () -> Unit) {
+        val accent = MaterialTheme.colorScheme.primary
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
+            fontWeight = FontWeight.Medium,
+            color = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier
+                .tvFocusHighlight(cornerRadius = 8.dp)
+                .clickable(onClick = onPick)
+                // Drawn rather than laid out: the underline is exactly the
+                // label's width, which a Box child in a Row cannot be without
+                // measuring the text twice.
+                .drawBehind {
+                    if (selected) drawRect(
+                        color = accent,
+                        topLeft = Offset(0f, size.height - 2.dp.toPx()),
+                        size = Size(size.width, 2.dp.toPx())
+                    )
+                }
+                .padding(top = 2.dp, bottom = 7.dp)
+        )
+    }
+
+    /**
+     * One held-back video: thumbnail and title, the AI's reason quoted in its
+     * own block, then YouTube / Block / Allow.
+     *
+     * [bulk] adds the "Allow all N from <channel>" link under the buttons —
+     * only the queue has a whole channel left to rule on.
+     */
+    @Composable
+    fun flaggedCard(videoId: String, e: ScreeningStore.Entry, bulk: Boolean = false) {
+        OutlinedCard(
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.outlinedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp, MaterialTheme.colorScheme.outline
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.Top) {
+                    val thumbShape = RoundedCornerShape(6.dp)
                     AsyncImage(
                         model = e.thumb,
                         contentDescription = e.title,
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.size(width = 104.dp, height = 58.dp)
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                        // The slot is drawn whether or not the image arrives: a
+                        // card whose thumbnail never loaded still reads as a card.
+                        modifier = Modifier.size(width = 72.dp, height = 44.dp)
+                            .clip(thumbShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .border(1.dp, MaterialTheme.colorScheme.outline, thumbShape)
                     )
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(11.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(e.title, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(2.dp))
-                        // With per-kid verdicts, say who it's held for — "held
-                        // for Dave · fine for Katy" is the whole point.
-                        val verdictLabel = if (profiles.isNotEmpty() && e.perProfile.isNotEmpty()) {
-                            val held = profiles.filter {
-                                e.perProfile[it.id] != io.yosemitekids.app.data.AiScreener.Verdict.ALLOW
-                            }
-                            val fine = profiles.filter {
-                                e.perProfile[it.id] == io.yosemitekids.app.data.AiScreener.Verdict.ALLOW
-                            }
-                            listOfNotNull(
-                                held.takeIf { it.isNotEmpty() }
-                                    ?.joinToString(", ") { it.name }?.let { "held for $it" },
-                                fine.takeIf { it.isNotEmpty() }
-                                    ?.joinToString(", ") { it.name }?.let { "fine for $it" }
-                            ).joinToString(" · ")
-                        } else if (e.verdict == io.yosemitekids.app.data.AiScreener.Verdict.REVIEW) {
-                            "AI unsure"
-                        } else "AI blocked"
+                        Text(
+                            e.title,
+                            style = MaterialTheme.typography.bodyMedium
+                                .copy(fontSize = 14.sp, lineHeight = 20.sp),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.height(3.dp))
                         Text(
                             listOfNotNull(
                                 e.channel.takeIf { it.isNotBlank() },
-                                verdictLabel
+                                verdictLabel(e)
                             ).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodySmall
+                                .copy(fontSize = 12.sp, lineHeight = 17.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
+                // The model dropping an id is not a judgement on the video, so
+                // it gets the warning tone and an apology rather than a quote
+                // the parent would read as the AI's opinion.
+                val noVerdict = e.reason == NO_VERDICT_REASON
                 if (e.reason.isNotBlank()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "AI: ${e.reason}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    // Watch it yourself before ruling on the AI's call.
-                    CompactButton( onClick = {
-                        runCatching {
-                            context.startActivity(
-                                android.content.Intent(
-                                    android.content.Intent.ACTION_VIEW,
-                                    android.net.Uri.parse("https://www.youtube.com/watch?v=$videoId")
-                                )
-                            )
-                        }
-                    }) { Text("View in YouTube") }
-                    Spacer(Modifier.weight(1f))
-                    // Tap rules for everyone; with 2+ kids a long-press picks who —
-                    // TextButton owns its click, so these are hand-rolled buttons.
-                    @Composable
-                    fun rulingButton(label: String, isAllow: Boolean) {
+                    Spacer(Modifier.height(12.dp))
+                    val tone =
+                        if (noVerdict) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            // So the bar is exactly as tall as the quote.
+                            .height(IntrinsicSize.Min)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.background)
+                    ) {
+                        Box(Modifier.width(2.dp).fillMaxHeight().background(tone))
                         Text(
-                            label,
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier
-                                .tvFocusHighlight()
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
-                                .dpadLongPress {
-                                    if (profiles.size >= 2) perKid = videoId to isAllow
-                                }
-                                .combinedClickable(
-                                    onClick = {
-                                        if (isAllow) onAllow(videoId, null)
-                                        else onBlock(videoId, null)
-                                    },
-                                    onLongClick = {
-                                        if (profiles.size >= 2) perKid = videoId to isAllow
-                                    }
-                                )
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                            if (noVerdict) "The model returned no verdict." else e.reason,
+                            style = MaterialTheme.typography.bodySmall
+                                .copy(fontSize = 12.5.sp, lineHeight = 19.sp),
+                            color = tone,
+                            modifier = Modifier.padding(vertical = 9.dp, horizontal = 11.dp)
                         )
                     }
-                    rulingButton("Allow", isAllow = true)
-                    Spacer(Modifier.width(8.dp))
-                    rulingButton("Block", isAllow = false)
+                    if (noVerdict) {
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            "Nothing is wrong with the video — the model failed to answer. " +
+                                "It is screened again when you change the rules.",
+                            fontSize = 12.sp, lineHeight = 18.sp,
+                            color = SettingsPlaceholder
+                        )
+                    }
+                }
+                val buttonShape = RoundedCornerShape(7.dp)
+                // Tap rules for everyone; with 2+ kids a long-press picks who —
+                // TextButton owns its click, so these are hand-rolled buttons.
+                @Composable
+                fun rulingButton(label: String, isAllow: Boolean, modifier: Modifier) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = modifier
+                            .height(32.dp)
+                            .clip(buttonShape)
+                            .then(
+                                if (isAllow) Modifier.background(MaterialTheme.colorScheme.primary)
+                                else Modifier.border(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
+                                    buttonShape
+                                )
+                            )
+                            .tvFocusHighlight(cornerRadius = 7.dp)
+                            .dpadLongPress {
+                                if (profiles.size >= 2) perKid = videoId to isAllow
+                            }
+                            .combinedClickable(
+                                onClick = {
+                                    if (isAllow) onAllow(videoId, null)
+                                    else onBlock(videoId, null)
+                                },
+                                onLongClick = {
+                                    if (profiles.size >= 2) perKid = videoId to isAllow
+                                }
+                            )
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
+                            fontWeight = FontWeight.Medium,
+                            color = if (isAllow) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 9.dp)
+                ) {
+                    // Watch it yourself before ruling on the AI's call. Hugs its
+                    // label; the two rulings split what is left.
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .height(32.dp)
+                            .clip(buttonShape)
+                            .background(MaterialTheme.colorScheme.background)
+                            .border(1.dp, SettingsStrongBorder, buttonShape)
+                            .tvFocusHighlight(cornerRadius = 7.dp)
+                            .clickable { openInYouTube(videoId) }
+                            .padding(horizontal = 11.dp)
+                    ) {
+                        Text(
+                            "YouTube",
+                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
+                            fontWeight = FontWeight.Medium,
+                            color = SettingsTextSecondary
+                        )
+                    }
+                    rulingButton("Block", isAllow = false, Modifier.weight(1f))
+                    rulingButton("Allow", isAllow = true, Modifier.weight(1f))
+                }
+                // One channel's whole queue at once: a parent who has allowed
+                // two of a channel's videos is really ruling on the channel.
+                val sameChannel = if (bulk && e.channel.isNotBlank()) {
+                    review.filter { it.second.channel == e.channel }
+                } else emptyList()
+                if (sameChannel.size > 1) {
+                    Text(
+                        "Allow all ${sameChannel.size} from ${e.channel}",
+                        style = MaterialTheme.typography.labelMedium
+                            .copy(fontSize = 12.5.sp, lineHeight = 18.sp),
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .padding(top = 10.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .tvFocusHighlight(cornerRadius = 8.dp)
+                            .clickable {
+                                sameChannel.forEach { (id, _) -> onAllow(id, null) }
+                                // Nothing is left to filter to.
+                                queueChannel = null
+                            }
+                            .heightIn(min = 44.dp)
+                            .wrapContentHeight()
+                    )
                 }
             }
         }
@@ -607,41 +780,91 @@ internal fun AiReviewSection(
         if (profiles.size >= 2) {
             Text(
                 "Tap Allow/Block for all kids — hold to choose which kids.",
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp, lineHeight = 18.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 
-    val screeningNote = if (stillScreening > 0) {
-        " $stillScreening more still being screened — they'll appear here as the AI finishes."
-    } else ""
-
-    if (show != ReviewHalf.BLOCKED) if (review.isEmpty()) {
-        Text(
-            "Nothing waiting for you. Videos the AI is unsure about " +
-                "appear here for your decision." + screeningNote,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    } else {
-        Text(
-            "${review.size} video(s) held back — hidden from the kid until you decide. " +
-                "Each Allow/Block is saved as you tap it." + screeningNote,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        // No pagination: a parent asked to rule on a queue wants the whole queue, not
-        // a batch that refills after each round trip. The cap only exists so a runaway
-        // store can't build thousands of cards into one scrolling Column.
-        review.take(300).forEach { (videoId, e) -> flaggedCard(videoId, e) }
-        perKidHint()
-        if (review.size > 300) {
+    if (show != ReviewHalf.BLOCKED) {
+        // The page's own header, in the empty state too: "0 held back" is an
+        // answer, a blank page is not.
+        Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
             Text(
-                "…and ${review.size - 300} more — they appear as you rule on these.",
-                style = MaterialTheme.typography.bodySmall,
+                "${review.size} held back",
+                fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Hidden from the kid until you decide. Each Allow or Block is saved " +
+                    "as you tap it.",
+                fontSize = 12.5.sp, lineHeight = 20.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // Its own line, in amber: "still being screened" is a queue that is
+            // not finished growing, not part of the sentence above it.
+            if (stillScreening > 0) {
+                Spacer(Modifier.height(9.dp))
+                Text(
+                    "$stillScreening more still being screened — they'll appear here " +
+                        "as the AI finishes.",
+                    fontSize = 12.5.sp, lineHeight = 19.sp,
+                    color = WarningAmber
+                )
+            }
+        }
+        // One tab per channel with something in the queue, in the order the
+        // queue shows them. A queue is usually a handful of channels behaving
+        // the same way, so ruling on one channel at a time is the shortest way
+        // through it.
+        val byChannel = review.map { it.second.channel }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }.eachCount()
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.Bottom,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 14.dp)
+                .horizontalScroll(rememberScrollState())
+        ) {
+            filterTab("All ${review.size}", queueChannel == null) { queueChannel = null }
+            byChannel.forEach { (name, count) ->
+                filterTab("$name $count", queueChannel == name) { queueChannel = name }
+            }
+        }
+        SettingsDivider()
+        val shown = review.filter { queueChannel == null || it.second.channel == queueChannel }
+        if (shown.isEmpty()) {
+            Text(
+                if (review.isEmpty()) "Nothing waiting — the kid sees everything the AI approved."
+                // The filter outlived its channel: say so rather than reading
+                // as an empty queue.
+                else "Nothing left from $queueChannel.",
+                fontSize = 13.sp, lineHeight = 21.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 22.dp, horizontal = 18.dp)
+            )
+        } else {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            ) {
+                // No pagination: a parent asked to rule on a queue wants the whole
+                // queue, not a batch that refills after each round trip. The cap only
+                // exists so a runaway store can't build thousands of cards into one
+                // scrolling Column.
+                shown.take(300).forEach { (videoId, e) -> flaggedCard(videoId, e, bulk = true) }
+                perKidHint()
+                if (shown.size > 300) {
+                    Text(
+                        "…and ${shown.size - 300} more — they appear as you rule on these.",
+                        fontSize = 12.sp, lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 
