@@ -825,6 +825,39 @@ for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/d
   printf "%s" "$body" | grep -q "authorised(ex)" ||
     guard_fail "the hub answers $r in $fn() without calling authorised(ex). That route is open to every peer on the LAN — take it back to DEVICE_ONLY or gate it on an enrolled token."
 done
+
+# 30. Every route the HUB registers has a row in docs/LAN-API.md too.
+#     Guard 14 does this for LanServer by reading Pairing.kt, and has done
+#     since /join-hub went a whole round undocumented. The hub's own routes
+#     were never covered by it, and the omission is not academic: /enrol,
+#     /pending, /health, /login, /logout and "/" had all been live for rounds
+#     with five of them named in one sentence of prose and one not mentioned
+#     at all. The hub is the half a second implementer and a parent with curl
+#     meet first, because it is the box with a URL.
+#
+#     Scoped to the hub's own section, so a hub route cannot be excused by a
+#     device row that happens to share its path — /status, /config and
+#     /verdicts all appear in both tables and mean different things.
+hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
+#
+#     Table ROWS only, not the whole section: /status, /config and /verdicts
+#     are all named in the paragraph introducing the table, so a section-wide
+#     grep would count the sentence that says a route exists as documentation
+#     of what it answers, which is the thing this guard is for.
+hubdoc=$(awk '/^## The hub.s routes/ { f = 1 } f && /^[|] / { print }' docs/LAN-API.md)
+[ -n "$hubdoc" ] ||
+  guard_fail "docs/LAN-API.md has no \"## The hub's routes\" heading with a route table under it; guard 30 is blind."
+hub_routes=$(grep -oE "createContext\(${q}/[a-z/-]*${q}" "$hubsrv" | grep -oE "/[a-z/-]*" | sort -u || true)
+[ -n "$hub_routes" ] ||
+  guard_fail "guard 30 read no createContext(${q}/…${q}) routes out of $hubsrv; it is blind."
+for r in $hub_routes; do
+  # A prefix context ("/api/") is documented by the routes underneath it, so
+  # match on the stem. "/" is the page and the catch-all, and has a row of its
+  # own saying exactly that.
+  [ "$r" = "/" ] || r=${r%/}
+  printf "%s" "$hubdoc" | grep -qE "(GET|POST) $r[^a-z-]" ||
+    guard_fail "the hub registers $r and docs/LAN-API.md's hub section has no row for it. Add it to the route table — that table is the only place the hub's wire is written down."
+done
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"

@@ -206,13 +206,18 @@ new field.
 
 ## The hub's routes
 
-The hub answers `GET /status`, `GET|POST /config` and `GET|POST /verdicts` like
-a device, and has `/enrol`, `/approve`, `/pending`, `/health`, `/setup`,
-`/password`, `/recovery` and the admin GUI of its own (see `docs/HUB.md`), and
-serves the search index.
+The hub answers `GET /status`, `GET|POST /config`, `GET|POST /verdicts` and the
+two index reads like a device, and has enrolment, the password routes and an
+admin GUI of its own (see `docs/HUB.md`). Every one of them is a row below.
 The one place it does not behave like a device is the API key: the hub holds
-one in a file of its own and serves it only to a parent. Both rows below.
-Guard 14 covers the device table above; these are pinned by `HubServerTest` and
+one in a file of its own and serves it only to a parent.
+
+Guard 14 keeps the device table above honest by reading `LanServer`; **guard 30
+does the same for this one by reading `HubServer.start()`** — every literal
+`createContext("…")` there needs a row here. That half had never been covered
+by anything: `/enrol`, `/pending`, `/health`, `/login`, `/logout` and `/` had
+all been live for rounds, five of them named in a sentence of prose and one not
+mentioned at all. The wire shapes themselves are pinned by `HubServerTest` and
 `HubIntegrationTest`.
 
 **Everything else in the device table above is a JSON 404 on the hub.**
@@ -238,6 +243,21 @@ other half, that every device route the hub *does* answer calls
 | `GET /setup` | none | — | `{"password": true\|false}` | Whether this hub has been claimed, and **exactly one key** — it tells a LAN peer only what they can already infer from the sign-in form, and nothing they can act on without the container log. It is what decides the phone's field label and which card the GUI shows; a hub older than this route answers the admin page's HTML with a 200, so a caller reads the body and not the status. |
 | `POST /password` | `current` in the body | `{current, next}` | `{"ok": true, "recovery": <token>\|null}` | Set the first password or change it. `current` is the password or the recovery token, required **even inside a live session** (that session may be a browser on a kitchen counter). `recovery` is non-null on the first set only, is shown once, and retires the token from the log. 400 `{"error":"short"}` under `HubPassword.MIN_LENGTH`. Every other session is closed; the caller's survives. |
 | `POST /recovery` | `current` in the body | `{current}` | `{"token": <24 hex>}` | A fresh recovery token, shown once. The previous one stops working immediately. |
+| `GET /index-status` | device token | — | `{sourceId:{count,complete,hash}}`, byte-for-byte a device's | `X-Index-Pull: 1` says the caller takes its index from this hub. That **arms** the hub to claim the master slot (`HubTokens.armed`, 24 h window); a plain read arms nothing. |
+| `GET /index?source=<id>` | device token | — | `{count,newest,complete}\n[…videos]` / 404 | id `[A-Za-z0-9_-]{1,64}`, else 400. Anything but GET is 405: there is deliberately **no `POST /index` on the hub**. It takes nobody's copy, because a device that could push could truncate a source the hub had crawled further. |
+| `POST /enrol` | none | `{name}` | `{"code": "<8 chars>"}` | A device asking to join, and the only hub route gated by neither a token nor a session. It hands back a code to show on the joining device's own screen; the code proves someone is standing in front of it and `POST /approve` proves whoever approves holds the admin secret. Neither alone enrols anything. Codes are 8 characters from an alphabet with no O/0/I/1, expire in ten minutes, and expired ones are dropped on the next call so abandoned attempts cannot grow the file. |
+| `GET /pending` | admin secret | — | `{"pending": [{code, name, createdAt}]}` | What is waiting to be approved. Through `adminGate()` like every other presentation of the secret, so it is throttled — it used to be an unmetered oracle, which behind a password KDF is also a way to keep all four worker threads busy. |
+| `GET /health` | none | — | `ok` | A liveness probe for the container runtime, answered without reading the data directory. It says nothing about the family: a hub that is up and holds no config still answers `ok`, which is what a restart policy wants to know. |
+
+The GUI's front door sits outside `/api`, because on a hub nobody has claimed
+there is no session yet to gate it with — and because `/` has to answer a
+browser that has never signed in with something a parent can read.
+
+| Route | Auth | Body | Reply | Notes |
+| --- | --- | --- | --- | --- |
+| `POST /login` | the admin secret in the body | `{secret}`, or `{token}` from a page an older service worker cached | `{"ok": true}` and a `HttpOnly; SameSite=Strict` session cookie | Both field names are read on purpose: `sw.js` caches `/`, so a browser can be posting a stale shell's body shape at a rebuilt container, and accepting both is cheaper than telling a parent to reinstall the app. No `Secure` flag — this is plain HTTP on a home LAN and the flag would stop the cookie being sent at all. Refusals and lockouts are `adminGate()`'s, below. |
+| `POST /logout` | session cookie | — | `{"ok": true}` and an expired cookie | Closes this one session. `POST /password` is what closes all the others. |
+| `GET /` | none | — | the admin page | Registered **last**, so it answers every path nothing above claimed — right for a parent who mistyped, a lie to a device, which is why `HubServer.DEVICE_ONLY` is checked first and those paths answer a JSON 404 (guard 22). The page itself carries no family data; every byte of that arrives later over `/api`, behind a session. Anything but GET is 405. |
 
 The admin GUI's own routes are under `/api` and are session-gated, not token
 gated; they are not in this table because no device speaks them. Three of their
@@ -278,5 +298,3 @@ lockout answers `429 {"retryAfter": <seconds>}` with a `Retry-After` header.
 The recovery token is exempt from the lockout, or an attacker who only wants
 the family locked out simply fails ten times a window. Guard 25 holds the gate
 to one door; see `docs/HUB.md` for what a parent does with it.
-| `GET /index-status` | device token | — | `{sourceId:{count,complete,hash}}`, byte-for-byte a device's | `X-Index-Pull: 1` says the caller takes its index from this hub. That **arms** the hub to claim the master slot (`HubTokens.armed`, 24 h window); a plain read arms nothing. |
-| `GET /index?source=<id>` | device token | — | `{count,newest,complete}\n[…videos]` / 404 | id `[A-Za-z0-9_-]{1,64}`, else 400. Anything but GET is 405: there is deliberately **no `POST /index` on the hub**. It takes nobody's copy, because a device that could push could truncate a source the hub had crawled further. |

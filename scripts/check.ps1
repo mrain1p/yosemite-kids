@@ -943,6 +943,48 @@ foreach ($r in $lanRoutes29) {
         Fail-Guard "the hub answers $r in $fn() without calling authorised(ex). That route is open to every peer on the LAN - take it back to DEVICE_ONLY or gate it on an enrolled token."
     }
 }
+# 30. Every route the HUB registers has a row in docs/LAN-API.md too.
+#     Guard 14 does this for LanServer by reading Pairing.kt, and has done
+#     since /join-hub went a whole round undocumented. The hub's own routes
+#     were never covered by it, and the omission is not academic: /enrol,
+#     /pending, /health, /login, /logout and "/" had all been live for rounds
+#     with five of them named in one sentence of prose and one not mentioned
+#     at all. The hub is the half a second implementer and a parent with curl
+#     meet first, because it is the box with a URL.
+#
+#     Scoped to the hub's own section, so a hub route cannot be excused by a
+#     device row that happens to share its path - /status, /config and
+#     /verdicts all appear in both tables and mean different things.
+#
+#     Table ROWS only, not the whole section: /status, /config and /verdicts
+#     are all named in the paragraph introducing the table, so a section-wide
+#     grep would count the sentence that says a route exists as documentation
+#     of what it answers, which is the thing this guard is for.
+$hubApiLines = Get-Content "docs/LAN-API.md"
+$hubApiStart = -1
+for ($i = 0; $i -lt $hubApiLines.Count; $i++) {
+    if ($hubApiLines[$i] -match "^## The hub.s routes") { $hubApiStart = $i; break }
+}
+if ($hubApiStart -lt 0) {
+    Fail-Guard "docs/LAN-API.md has no ""## The hub's routes"" heading with a route table under it; guard 30 is blind."
+}
+$hubDoc = (($hubApiLines[$hubApiStart..($hubApiLines.Count - 1)] |
+    Where-Object { $_ -like "| *" }) -join "`n")
+$hubRoutes = @([regex]::Matches($hubSrvText, 'createContext\("(/[a-z/-]*)"') |
+    ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+if ($hubRoutes.Count -eq 0) {
+    Fail-Guard "guard 30 read no createContext(""/..."") routes out of HubServer.kt; it is blind."
+}
+foreach ($r in $hubRoutes) {
+    # A prefix context ("/api/") is documented by the routes underneath it, so
+    # match on the stem. "/" is the page and the catch-all, and has a row of
+    # its own saying exactly that.
+    $stem = if ($r -eq "/") { $r } else { $r.TrimEnd("/") }
+    if ($hubDoc -notmatch "(GET|POST) $([regex]::Escape($stem))[^a-z-]") {
+        Fail-Guard "the hub registers $r and docs/LAN-API.md's hub section has no row for it. Add it to the route table - that table is the only place the hub's wire is written down."
+    }
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan
