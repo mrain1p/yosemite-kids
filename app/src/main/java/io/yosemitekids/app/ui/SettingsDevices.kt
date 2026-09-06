@@ -581,9 +581,13 @@ internal fun PhoneDevicesSection(
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(
             "Devices",
-            fontSize = 12.5.sp,
-            lineHeight = 12.5.sp,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+            // The same spelling of the section label as SectionTitle, which
+            // every other group on this page is titled with.
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontSize = 12.5.sp,
+                lineHeight = 14.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+            ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp)
         )
