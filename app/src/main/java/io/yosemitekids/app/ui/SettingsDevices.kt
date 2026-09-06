@@ -1570,6 +1570,13 @@ internal fun UpdateSection(tv: Boolean = false, onUpdateFound: () -> Unit = {}) 
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var update by remember { mutableStateOf<Updater.UpdateInfo?>(null) }
+    /**
+     * What the button says once a manual check has come back clean: the answer
+     * belongs on the control that asked the question. Only [checkNow] sets it,
+     * never the check that runs on open — arriving at the page and being told
+     * "Up to date" would claim the parent asked something they did not.
+     */
+    var settled by remember { mutableStateOf<String?>(null) }
 
     // Check the moment the screen opens — the parent shouldn't need to know
     // there's a button to press to find out. Offline falls back to the cached
@@ -1592,21 +1599,24 @@ internal fun UpdateSection(tv: Boolean = false, onUpdateFound: () -> Unit = {}) 
     fun checkNow() {
         scope.launch {
             busy = true
-            message = "Checking…"
+            // The button says "Checking…" on its own; a second copy of the
+            // word under it is not a second piece of news.
+            message = null
+            settled = null
             val found = updater.check()
             update = found
-            message = when {
-                // Not "You're up to date". UPDATE_MANIFEST_URL is blank in
-                // every build shipped so far, and check() returns null for
-                // that without making a request — so the reassuring message
-                // was reporting the result of a check that never happened.
-                // It matters most in the one case this exists for:
-                // extraction breaks, and a parent presses this to find out
-                // whether a fix is waiting.
+            when {
+                // Not "Up to date". UPDATE_MANIFEST_URL is blank in every
+                // build shipped so far, and check() returns null for that
+                // without making a request — so the reassuring answer was
+                // reporting the result of a check that never happened. It
+                // matters most in the one case this exists for: extraction
+                // breaks, and a parent presses this to find out whether a fix
+                // is waiting.
                 !io.yosemitekids.app.data.Updater.canCheck() ->
-                    "Updates aren't set up for this build"
-                found == null -> "You're up to date"
-                else -> "Version ${found.versionName} is available"
+                    message = "Updates aren't set up for this build"
+                found == null -> settled = "Up to date"
+                else -> message = "Version ${found.versionName} is available"
             }
             busy = false
         }
@@ -1628,32 +1638,55 @@ internal fun UpdateSection(tv: Boolean = false, onUpdateFound: () -> Unit = {}) 
         // it, and one full-width button — Check, or Install once a version is
         // known. The old row put "Yosemite Kids 0.12" on the left and a text
         // button on the right, which read as a caption with a link in it.
-        Text("Yosemite Kids ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
+        Text("Yosemite Kids ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
         Text(
             "Build ${BuildConfig.VERSION_CODE}",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp)
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(11.dp))
         val pending = update
+        // .height, not heightIn: M3's own defaultMinSize(40.dp) wins over a
+        // smaller minimum, and only an exact incoming constraint moves it.
         if (pending == null) {
             OutlinedButton(
-                modifier = Modifier.fillMaxWidth().tvFocusHighlight(),
+                modifier = Modifier.fillMaxWidth().height(32.dp).tvFocusHighlight(cornerRadius = 8.dp),
                 enabled = !busy,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                // Darker than the card it sits on, as the design draws it.
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, SettingsStrongBorder),
+                contentPadding = PaddingValues(horizontal = 12.dp),
                 onClick = { checkNow() }
-            ) { Text(if (busy) "Checking…" else "Check for updates") }
+            ) {
+                Text(
+                    if (busy) "Checking…" else settled ?: "Check for updates",
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.5.sp)
+                )
+            }
         } else {
             // Same red as the settings-gear dot, so the nudge that got the
             // parent here and the button that resolves it read as one thing.
             Button(
-                modifier = Modifier.fillMaxWidth().tvFocusHighlight(),
+                modifier = Modifier.fillMaxWidth().height(32.dp).tvFocusHighlight(cornerRadius = 8.dp),
                 enabled = !busy,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = UpdateDot,
                     contentColor = Color.White
                 ),
+                contentPadding = PaddingValues(horizontal = 12.dp),
                 onClick = { install(pending) }
-            ) { Text(if (busy) "Downloading…" else "Install ${pending.versionName}") }
+            ) {
+                Text(
+                    if (busy) "Downloading…" else "Install ${pending.versionName}",
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.5.sp)
+                )
+            }
         }
         message?.let {
             Text(it, style = MaterialTheme.typography.bodySmall,
