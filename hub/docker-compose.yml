@@ -76,4 +76,7 @@ services:
       # heap from the NAS's total RAM and reserves far more than this will use.
       - JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=50
 
-    mem_limit: 256m
+    # 384m, up from 256m: the crawl holds NewPipe's parsed pages and one
+    # source's video list in memory while a batch runs. Measure the first full
+    # crawl with `docker stats` and put the number in docs/HUB.md.
+    mem_limit: 384m

@@ -1,5 +1,9 @@
 package io.yosemitekids.hub
 
+import io.yosemitekids.app.data.MasterToken
+
+import io.yosemitekids.app.data.ChannelIndex
+
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.Page
 import io.yosemitekids.app.data.SettingsSurface
@@ -67,9 +71,43 @@ object HubWeb {
     )
 
     /** Everything the page renders, in one round trip. */
-    fun state(store: HubStore, tokens: HubTokens, dataDir: String, now: Long): String {
+    fun state(
+        store: HubStore,
+        tokens: HubTokens,
+        dataDir: String,
+        now: Long,
+        index: ChannelIndex? = null,
+        master: HubMaster? = null,
+        crawl: HubCrawl? = null
+    ): String {
         val config = runCatching { store.load() }.getOrElse { Whitelist(emptyList(), emptySet()) }
         val raw = runCatching { JSONObject(ConfigJson.toJson(config)) }.getOrElse { JSONObject() }
+
+        // The search index as the Devices page tells it: who builds it, how
+        // far it is, whether anyone is pulling it. Counted against the
+        // config's channels, not the index's files, so a channel added an
+        // hour ago reads as "not yet indexed" rather than not at all.
+        val indexJson = index?.let { ix ->
+            val states = ix.allStates()
+            val holder = config.masterDeviceToken
+            val lastRun = ix.lastRunInfo()
+            JSONObject()
+                .put("sources", config.sources.size)
+                .put("complete", config.sources.count { states[it.id]?.complete == true })
+                .put("videos", config.sources.sumOf { states[it.id]?.count ?: 0 })
+                .put(
+                    "lastRun",
+                    lastRun?.let { r -> JSONObject().put("at", r.atMillis).put("pages", r.pages).put("failed", r.failed) }
+                        ?: JSONObject.NULL
+                )
+                .put("master", holder ?: "")
+                .put("masterIsMe", holder != null && holder == tokens.selfToken())
+                .put("masterIsHub", MasterToken.isHub(holder))
+                .put("armed", tokens.armed(now))
+                .put("lastPullAt", tokens.devices().maxOfOrNull { it.pulledAt } ?: 0L)
+                .put("election", master?.last ?: "")
+                .put("crawl", crawl?.last ?: "")
+        }
 
         val devices = JSONArray()
         tokens.devices().forEach {
@@ -102,6 +140,7 @@ object HubWeb {
             .put("devices", devices)
             .put("pending", pending)
             .put("versions", HubVersions.list(store))
+            .put("index", indexJson ?: JSONObject.NULL)
             .put(
                 "hub",
                 JSONObject()

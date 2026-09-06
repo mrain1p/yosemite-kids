@@ -151,10 +151,13 @@ object SettingsSurface {
                 "initiates. Worth having — an always-on box is the natural " +
                 "place to collect them."),
         SettingsSection("search-index", "Search index", Page.DEVICES, "SearchIndexSection",
-            emptyList(), Where.PHONE, false,
-            "Progress of the crawl that makes search work, and which device is " +
-                "running it. The hub builds no index and elects no master, so " +
-                "it has nothing to show here."),
+            emptyList(), Where.BOTH, true,
+            "Progress of the crawl that makes search work, and which peer is " +
+                "running it. The hub is the natural builder, always on, on the " +
+                "NAS, so its Devices page shows what it has crawled and whether " +
+                "a device is pulling; the phone shows the same and takes over " +
+                "when the hub is off for a day (MasterElection). Read-only on " +
+                "both faces: the master is elected, not chosen."),
         SettingsSection("downloads", "Downloads", Page.DEVICES, "DownloadsSection",
             emptyList(), Where.PHONE, false,
             "The platform download manager and this device's storage."),

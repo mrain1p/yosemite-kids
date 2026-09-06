@@ -44,10 +44,18 @@ fun main() {
     // Beside config.json, on the volume a parent already backs up. Devices
     // pull it from here; HubCrawl fills it once this hub holds the slot.
     val index = io.yosemitekids.app.data.ChannelIndex(File(dataDir, "search-index"))
-    val server = HubServer(store, tokens, port, admin, index = index)
+    // The crawl and the election. The hub takes the search index over from
+    // the phone only once a device has pulled from here (HubTokens.armed)
+    // and only if YouTube answers from this box (the probe); until then it
+    // serves whatever it has and leaves the crawl to the phone.
+    val crawl = HubCrawl.real(store, index, tokens.selfToken())
+    val master = HubMaster(store, tokens, probe = HubCrawl::probeYouTube)
+    val server = HubServer(store, tokens, port, admin, index = index, master = master, crawl = crawl)
 
     val bound = server.start()
     println("Yosemite Kids hub listening on $bound, data in ${dataDir.absolutePath}")
+    master.start()
+    crawl.start()
     println("Devices enrolled: ${tokens.devices().size}")
     // Printed because the container log is the one place a parent can reach
     // without already holding a credential. Set YOSEMITE_KIDS_ADMIN_TOKEN in the
@@ -64,6 +72,10 @@ fun main() {
         Thread {
             println("stopping")
             server.stop()
+            // A crawl cut mid-page loses at most that page: cursors are
+            // written per page and the next run resumes from the last one.
+            crawl.stop()
+            master.stop()
             // Nothing in flight matters — a nudge is pure latency and the
             // devices' own reconcile covers whatever it would have said.
             nudge.stop()

@@ -37,6 +37,9 @@ class HubServer(
      * parent already backs up carries it.
      */
     private val index: ChannelIndex = ChannelIndex(File(dataDir, "search-index")),
+    /** The election and the crawl, for the Devices page to report on. Null in tests that have neither. */
+    private val master: HubMaster? = null,
+    private val crawl: HubCrawl? = null,
     /**
      * Passed in so tests need no clock and the merge stays clock-free.
      *
@@ -300,7 +303,7 @@ class HubServer(
         }
 
         when (ex.requestURI.path) {
-            "/api/state" -> respond(ex, 200, HubWeb.state(store, tokens, dataDir, now()))
+            "/api/state" -> respond(ex, 200, HubWeb.state(store, tokens, dataDir, now(), index, master, crawl))
 
             "/api/channels" -> mutate(ex) { body ->
                 when {

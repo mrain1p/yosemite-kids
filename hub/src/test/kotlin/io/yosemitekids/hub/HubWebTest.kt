@@ -1,5 +1,9 @@
 package io.yosemitekids.hub
 
+import java.io.File
+
+import io.yosemitekids.app.data.ChannelIndex
+
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.ConfigMerge
 import io.yosemitekids.app.data.Page
@@ -434,5 +438,38 @@ class HubWebTest {
         val text = (if (code in 200..299) c.inputStream else c.errorStream)
             ?.bufferedReader()?.readText().orEmpty()
         return code to text
+    }
+
+    // --- the search index on the Devices page --------------------------
+
+    @Test
+    fun theStateTellsTheDevicesPageWhoBuildsTheIndexAndHowFarItIs() {
+        val dir = tmp.newFolder("index")
+        val index = ChannelIndex(File(dir, "search-index"))
+        val master = HubMaster(store, tokens, probe = { true }) { clock }
+        val crawl = HubCrawl(store, index, tokens.selfToken(), crawlOnce = { false }, dropSource = {}) { clock }
+
+        // Nothing enrolled, nothing pulled: the hub reports itself idle.
+        var ix = JSONObject(HubWeb.state(store, tokens, "/data", clock, index, master, crawl)).getJSONObject("index")
+        assertEquals(0, ix.getInt("sources"))
+        assertFalse(ix.getBoolean("armed"))
+        assertFalse(ix.getBoolean("masterIsMe"))
+        assertTrue(ix.isNull("lastRun"))
+
+        // A device pulls, the tick claims, a crawl pass stamps a run.
+        val token = tokens.approve(tokens.startEnrolment("TV", clock), clock).getOrThrow()
+        tokens.notePull(token, clock)
+        master.tick()
+        crawl.runOnce()
+        ix = JSONObject(HubWeb.state(store, tokens, "/data", clock, index, master, crawl)).getJSONObject("index")
+        assertTrue(ix.getBoolean("armed"))
+        assertTrue(ix.getBoolean("masterIsMe"))
+        assertTrue(ix.getBoolean("masterIsHub"))
+        assertEquals(tokens.selfToken(), ix.getString("master"))
+        assertEquals(clock, ix.getLong("lastPullAt"))
+        assertEquals(0, ix.getJSONObject("lastRun").getInt("pages"))
+        assertTrue(ix.getString("election").contains("builds the search index"))
+        // The page renders these words; the state must not be blank on the day it matters.
+        assertTrue(ix.getString("crawl").isNotBlank())
     }
 }

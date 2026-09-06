@@ -603,6 +603,40 @@
     d.appendChild(dul);
     out.appendChild(d);
 
+    var ix = state.index;
+    if (ix) {
+      var s = card("Search index",
+        "Every video on every channel, listed once, so search on a TV answers at once instead of asking YouTube each time. " +
+        "The hub builds it because it is always on; a phone takes over if the hub is off for a day.");
+      var sul = el("ul", "rows");
+      var ixRow = function (name, sub) {
+        var li = el("li");
+        var box = el("div", "grow");
+        box.appendChild(el("div", "name", name));
+        if (sub) box.appendChild(el("div", "sub", sub));
+        li.appendChild(box);
+        return li;
+      };
+      var who = ix.masterIsMe ? "This hub builds the index"
+        : !ix.master ? "Nobody is building the index yet"
+        : ix.masterIsHub ? "Another hub builds the index"
+        : "A phone builds the index";
+      sul.appendChild(ixRow(who, ix.election));
+      sul.appendChild(ixRow(ix.complete + " of " + ix.sources + " channels fully indexed", ix.videos + " videos listed"));
+      sul.appendChild(ixRow(
+        ix.lastRun
+          ? "Last crawl " + new Date(ix.lastRun.at).toLocaleString() + ", " + ix.lastRun.pages + " pages" + (ix.lastRun.failed ? " (failed)" : "")
+          : "No crawl from this hub yet",
+        ix.crawl));
+      sul.appendChild(ixRow(
+        ix.armed ? "Devices are pulling the index from this hub" : "No device has pulled the index from this hub in the last day",
+        ix.lastPullAt
+          ? "Last pull " + new Date(ix.lastPullAt).toLocaleString()
+          : "Devices on 1.0.5 or later pull it on their own. Until one does, the hub leaves the crawl to the phone."));
+      s.appendChild(sul);
+      out.appendChild(s);
+    }
+
     out.appendChild(phoneOnlyNote("Devices"));
     return out;
   }
