@@ -39,16 +39,11 @@ import io.yosemitekids.app.data.PairingWindow
 import io.yosemitekids.app.data.SettingsStore
 import io.yosemitekids.app.data.SourceCache
 import io.yosemitekids.app.data.Whitelist
-import io.yosemitekids.app.data.CHANNEL_LAYOUT_NEWEST
 import io.yosemitekids.app.data.CHANNEL_LAYOUT_PLAYLISTS
 import io.yosemitekids.app.data.CHANNEL_LAYOUT_POPULAR
 import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA
 import io.yosemitekids.app.data.CHANNEL_ORDER_RANDOM
-import io.yosemitekids.app.data.CHANNEL_ORDER_WATCHED
 import io.yosemitekids.app.data.CHANNEL_ORDER_LATEST
-import io.yosemitekids.app.data.PLAYBACK_QUALITIES
-import io.yosemitekids.app.data.PAGE_SIZES
-import io.yosemitekids.app.data.qualityLabel
 import io.yosemitekids.app.data.YouTubeRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1241,8 +1236,8 @@ private fun AdminScreen(
                     // of the border on both sides.
                     SettingsCard(padded = false) {
                         ToggleRow(
-                            "Show when a video came out",
-                            "“3 days ago” beside the channel name",
+                            ctl("listing-video-age").label,
+                            ctl("listing-video-age").sub,
                             checked = showVideoAge,
                             onCheckedChange = { showVideoAge = it },
                             help = "Adds “3 days ago” beside the channel name under a " +
@@ -1255,16 +1250,22 @@ private fun AdminScreen(
                             verticalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
                             Text(
-                                "Videos before “Show more”",
+                                ctl("listing-page-size").label,
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
-                                PAGE_SIZES.forEach { n ->
+                                // Chips from the manifest, not from PAGE_SIZES:
+                                // the hub renders the same list from the same
+                                // declaration, and its hand-written copy had
+                                // been offering 12/24/48 — three sizes this app
+                                // has never had.
+                                ctl("listing-page-size").options.forEach { o ->
+                                    val n = o.value as Int?
                                     SegmentChip(
-                                        n?.toString() ?: "All",
+                                        o.label,
                                         selected = pageSize == n,
                                         onClick = { pageSize = n },
                                         modifier = Modifier.weight(1f),
@@ -1285,17 +1286,15 @@ private fun AdminScreen(
                             Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
-                            Text("Channel page layout", style = MaterialTheme.typography.bodyMedium)
+                            Text(ctl("listing-channel-layout").label, style = MaterialTheme.typography.bodyMedium)
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
-                                listOf(
-                                    CHANNEL_LAYOUT_NEWEST to "Newest first",
-                                    CHANNEL_LAYOUT_POPULAR to "Popular first"
-                                ).forEach { (value, label) ->
+                                ctl("listing-channel-layout").options.forEach { o ->
+                                    val value = o.value as String
                                     SegmentChip(
-                                        label,
+                                        o.label,
                                         selected = channelLayout == value,
                                         onClick = { channelLayout = value },
                                         modifier = Modifier.weight(1f),
@@ -1322,21 +1321,17 @@ private fun AdminScreen(
                             Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
-                            Text("Channel row order", style = MaterialTheme.typography.bodyMedium)
+                            Text(ctl("listing-channel-order").label, style = MaterialTheme.typography.bodyMedium)
                             // Flow, not Row: four chips overflow a phone width and the
                             // last one collapsed to a column of single letters.
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
-                                listOf(
-                                    CHANNEL_ORDER_WATCHED to "Most watched",
-                                    CHANNEL_ORDER_ALPHA to "A to Z",
-                                    CHANNEL_ORDER_RANDOM to "Random",
-                                    CHANNEL_ORDER_LATEST to "Latest video"
-                                ).forEach { (value, label) ->
+                                ctl("listing-channel-order").options.forEach { o ->
+                                    val value = o.value as String
                                     SegmentChip(
-                                        label,
+                                        o.label,
                                         selected = channelOrder == value,
                                         onClick = { channelOrder = value }
                                     )
@@ -1557,8 +1552,8 @@ private fun AdminScreen(
                         // the dividers between them span the card.
                         Column(Modifier.fillMaxWidth()) {
                             ToggleRow(
-                                "Skip sponsors & intros",
-                                "Using SponsorBlock community markers",
+                                ctl("playback-sponsor-skip").label,
+                                ctl("playback-sponsor-skip").sub,
                                 sponsorSkip, { sponsorSkip = it },
                                 help = "Skips the parts of a video the SponsorBlock community " +
                                     "has marked: sponsor messages, merch plugs, intros/outros " +
@@ -1575,8 +1570,8 @@ private fun AdminScreen(
                             }
                             SettingsDivider()
                             ToggleRow(
-                                "Autoplay the next video",
-                                "Behind a short countdown",
+                                ctl("playback-autoplay").label,
+                                ctl("playback-autoplay").sub,
                                 autoplayNext, { autoplayNext = it },
                                 help = "When a video the kid picked ends, the next unwatched one " +
                                     "from the same channel lines up behind a short countdown " +
@@ -1585,8 +1580,8 @@ private fun AdminScreen(
                             )
                             SettingsDivider()
                             ToggleRow(
-                                "More like what you watch",
-                                "A home row of older videos",
+                                ctl("playback-suggest").label,
+                                ctl("playback-suggest").sub,
                                 suggestSimilar, { suggestSimilar = it },
                                 help = "A home row of older videos from the channels you have " +
                                     "already added, matched to what this kid actually watched. " +
@@ -1612,15 +1607,16 @@ private fun AdminScreen(
                         }
                         SettingsDivider()
                         Column(Modifier.padding(12.dp)) {
-                            Text("On TVs", style = MaterialTheme.typography.bodyMedium)
+                            Text(ctl("quality-tv").label, style = MaterialTheme.typography.bodyMedium)
                             Spacer(Modifier.height(11.dp))
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
-                                PLAYBACK_QUALITIES.forEach { h ->
+                                ctl("quality-tv").options.forEach { o ->
+                                    val h = o.value as Int?
                                     SegmentChip(
-                                        qualityLabel(h),
+                                        o.label,
                                         selected = qualityTv == h,
                                         onClick = { qualityTv = h }
                                     )
@@ -1629,15 +1625,16 @@ private fun AdminScreen(
                         }
                         SettingsDivider()
                         Column(Modifier.padding(12.dp)) {
-                            Text("On phones & tablets", style = MaterialTheme.typography.bodyMedium)
+                            Text(ctl("quality-phone").label, style = MaterialTheme.typography.bodyMedium)
                             Spacer(Modifier.height(11.dp))
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
-                                PLAYBACK_QUALITIES.forEach { h ->
+                                ctl("quality-phone").options.forEach { o ->
+                                    val h = o.value as Int?
                                     SegmentChip(
-                                        qualityLabel(h),
+                                        o.label,
                                         selected = qualityPhone == h,
                                         onClick = { qualityPhone = h }
                                     )

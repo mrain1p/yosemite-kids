@@ -33,6 +33,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.yosemitekids.app.data.SettingsControl
+import io.yosemitekids.app.data.SettingsSurface
 
 /**
  * The two rows the redesigned settings pages are built from.
@@ -51,6 +53,22 @@ import androidx.compose.ui.unit.sp
  * See docs/design/parent-settings/screens/full-10-playback.png and
  * full-07-screening.png.
  */
+
+/**
+ * The words for one control, from the manifest both faces read.
+ *
+ * A label typed here and typed again in `index.html` is two labels, and they
+ * drifted: "Time per session" on the phone was "Minutes a session" on the hub,
+ * and the hub offered page sizes and quality steps this app has never had.
+ * Taking the words from [SettingsSurface] is also what makes guard 26(c) real
+ * rather than ceremonial — a control the phone does not name is a control the
+ * phone cannot render, so the reference is load-bearing.
+ *
+ * Spelled `ctl("id")` on purpose: the guard reads that shape out of these
+ * files, in both directions — every control the manifest declares for this
+ * face is asked for somewhere, and every id asked for is declared.
+ */
+internal fun ctl(id: String): SettingsControl = SettingsSurface.control(id)
 
 /** A switch with a summary line, and its full explanation behind a **?**. */
 @Composable

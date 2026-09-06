@@ -136,7 +136,9 @@ internal fun AiConnectionSection(
     OutlinedTextField(
         value = ai.baseUrl,
         onValueChange = { onChanged(ai.copy(baseUrl = it.trim())) },
-        label = { Text("API base URL (OpenAI-compatible)") },
+        // The parenthetical moved into the manifest's `sub`, where the hub
+        // renders it too — the phone's floating label has no room for it.
+        label = { Text(ctl("ai-base-url").label) },
         singleLine = true,
         isError = !endpointSafe,
         modifier = Modifier.fillMaxWidth()
@@ -167,7 +169,7 @@ internal fun AiConnectionSection(
         OutlinedTextField(
             value = ai.model,
             onValueChange = { onChanged(ai.copy(model = it.trim())) },
-            label = { Text("Model") },
+            label = { Text(ctl("ai-model").label) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
@@ -276,10 +278,10 @@ internal fun AiScreeningSection(
         modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(vertical = 10.dp)
     ) {
         Column(Modifier.weight(1f).padding(end = 8.dp)) {
-            Text("Screen new videos with AI", style = MaterialTheme.typography.bodyMedium)
+            Text(ctl("ai-enabled").label, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(2.dp))
             Text(
-                "Titles and channel names only — never watch history",
+                ctl("ai-enabled").sub,
                 style = MaterialTheme.typography.bodySmall
                     .copy(fontSize = 12.sp, lineHeight = 17.sp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -335,14 +337,15 @@ internal fun AiScreeningSection(
     )
     Spacer(Modifier.height(9.dp))
     Text(
-        "Rough notes are fine — the AI understands shorthand. One rule per line.",
+        ctl("ai-rules").sub,
         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 19.sp),
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     if (profiles.isEmpty()) {
         StepperRow(
-            label = "Child age",
-            value = ai.childAge, step = 1, min = 2, max = 16,
+            label = ctl("ai-child-age").label,
+            value = ai.childAge, step = 1,
+            min = ctl("ai-child-age").min ?: 2, max = ctl("ai-child-age").max ?: 16,
             format = { "$it" },
             onChanged = { onChanged(ai.copy(childAge = it)) }
         )

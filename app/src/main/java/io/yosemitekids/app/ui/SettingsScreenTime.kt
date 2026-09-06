@@ -30,6 +30,7 @@ import io.yosemitekids.app.data.LanClient
 import io.yosemitekids.app.data.Limits
 import io.yosemitekids.app.data.PairingStore
 import io.yosemitekids.app.data.SessionGuard
+import io.yosemitekids.app.data.SettingsControl
 import io.yosemitekids.app.data.TimeWindow
 import io.yosemitekids.app.data.TimeWindows
 import io.yosemitekids.app.data.WEEKDAYS
@@ -61,29 +62,33 @@ internal fun RulesSection(
             "as regular videos."
     )
     SettingsCard(padded = false) {
+        // Label, range and unit from the manifest, so the hub's number fields
+        // are the same rule with the same name and the same bounds. They were
+        // not: "Time per session" was "Minutes a session" over there, with a
+        // different ceiling.
         RuleRow(
-            label = "Time per session",
-            value = limits.sessionMinutes, min = 5, max = 240, unit = "min",
+            control = ctl("rules-session"),
+            value = limits.sessionMinutes,
             onChanged = { onChanged(limits.copy(sessionMinutes = it)) }
         )
         SettingsDivider()
         RuleRow(
-            label = "Sessions on weekdays",
-            value = limits.weekdaySessions, min = 1, max = 12, unit = "",
+            control = ctl("rules-weekday-sessions"),
+            value = limits.weekdaySessions,
             hint = "1–12 sessions",
             onChanged = { onChanged(limits.copy(weekdaySessions = it)) }
         )
         SettingsDivider()
         RuleRow(
-            label = "Sessions on weekends",
-            value = limits.weekendSessions, min = 1, max = 12, unit = "",
+            control = ctl("rules-weekend-sessions"),
+            value = limits.weekendSessions,
             hint = "1–12 sessions",
             onChanged = { onChanged(limits.copy(weekendSessions = it)) }
         )
         SettingsDivider()
         RuleRow(
-            label = "Break between sessions",
-            value = limits.breakMinutes, min = 15, max = 240, unit = "min",
+            control = ctl("rules-break"),
+            value = limits.breakMinutes,
             onChanged = { onChanged(limits.copy(breakMinutes = it)) }
         )
         // Only while there's a break rule to skip — no rule, no row.
@@ -99,8 +104,8 @@ internal fun RulesSection(
         }
         SettingsDivider()
         RuleRow(
-            label = "Hide videos shorter than",
-            value = limits.minVideoMinutes, min = 1, max = 60, unit = "min",
+            control = ctl("rules-min-video"),
+            value = limits.minVideoMinutes,
             onChanged = { onChanged(limits.copy(minVideoMinutes = it)) }
         )
         Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) { trailing() }
@@ -145,15 +150,21 @@ internal fun RulesSection(
  */
 @Composable
 private fun RuleRow(
-    label: String,
+    /**
+     * The rule itself, from the shared manifest: its name, its range and the
+     * unit after the number. The hub renders the same declaration, which is
+     * the only reason the two faces can be trusted to mean the same thing by
+     * "Break between sessions".
+     */
+    control: SettingsControl,
     value: Int?,
-    min: Int,
-    max: Int,
-    /** Printed after the number, and used as the keypad's suffix. "" for a count. */
-    unit: String,
-    hint: String = "$min–$max minutes",
+    hint: String = "${control.min}–${control.max} minutes",
     onChanged: (Int?) -> Unit
 ) {
+    val label = control.label
+    val min = control.min ?: 1
+    val max = control.max ?: Int.MAX_VALUE
+    val unit = control.unit
     var editing by remember { mutableStateOf(false) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -220,7 +231,7 @@ internal fun BlockedTimesSection(
     onPassCommitted: ((windowId: String, passUntil: Long?) -> Unit)? = null,
     onChanged: (List<TimeWindow>) -> Unit
 ) {
-    SectionTitle("Blocked times")
+    SectionTitle(ctl("blocked-times-windows").label)
     SettingsCard(padded = false) {
         var expandedId by remember { mutableStateOf<String?>(null) }
         var adding by remember { mutableStateOf(false) }
@@ -564,7 +575,7 @@ internal fun ListenRateRow(percent: Int?, onChange: (Int?) -> Unit) {
         ) {
             Column(Modifier.weight(1f).padding(end = 4.dp)) {
                 Text(
-                    "Keep playing when the phone locks",
+                    ctl("listening-rate").label,
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(2.dp))
@@ -1047,7 +1058,7 @@ internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChange
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                if (kidName == null) "Turn off all watching" else "Turn off $kidName's watching",
+                if (kidName == null) ctl("rules-pause").label else "Turn off $kidName's watching",
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(Modifier.height(2.dp))
