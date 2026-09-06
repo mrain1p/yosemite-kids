@@ -779,6 +779,30 @@ included — those are what a later reader would otherwise re-investigate.
   builds with no update check (below 1.0.3) and says to sideload once. The
   hub's page had two editors for its name; one remains. Version codes are
   no longer shown beside version names.
+- **The settings form adopts what it saved (after 1.0.4).** A save returns
+  the *stamped* document, which is not the form: the stamper carries in any
+  unit a co-parent's push landed under the open form, and keeps the disk's
+  copy of a section the editor left alone. The screen took that as its
+  baseline and kept its own lists — so on the next tap the stamper saw a
+  unit in `base` and not in `next`, which is what a deletion looks like. A
+  co-parent's channel that arrived under an open form was tombstoned by this
+  phone's second tap and the tombstone propagated; and `ai` re-minted on
+  every tap ("changed screening" in the feed, nobody touching screening),
+  the rules-version bump regressing each time. Now every save runs
+  `saveForm` and the screen's `adopt`, which takes the stamped result into
+  both the baseline and the form's state in one snapshot; `SettingsForm` is
+  the form's Compose-free half so `SettingsFormSaveTest` can drive three
+  saves of an unchanged form and prove nothing moves. Three smaller things
+  the same trace found: the stamper wrote the form's copy of the loose
+  settings toggles over a co-parent's merged-in value under the co-parent's
+  own stamp (they follow the three-way rule now, like the sections); a key
+  typed before the model was picked read back blank from disk and could be
+  stored over; and Push judged the device's answer against the
+  composition-time `syncHash`, one save behind, so a Push carrying an
+  unsaved edit said "still holds different settings" while the tile said in
+  sync — it now reads the hashes from the bytes it sent. Guard 14 keeps
+  `baseline` assigned in `adopt` and nowhere else. Not yet walked through
+  the emulator with two phones' edits under one open form.
 
 ## Next up, in order
 

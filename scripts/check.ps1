@@ -42,9 +42,12 @@ if ($writers -gt 2) {
 # buildCurrentConfig must copy the baseline, never construct a Whitelist: a
 # positional constructor silently defaults out any field the form does not
 # name, which would erase the sync blob from every save and every push.
+# The shaping lives in SettingsForm.toConfig now, so both files are held to it.
 $settingsSrc = Get-Content "app\src\main\java\io\yosemitekids\app\ui\Settings.kt" -Raw
-if ($settingsSrc -match "return Whitelist\(") {
-    Fail-Guard "Settings.kt constructs a Whitelist. Use baseline.copy(...) so new fields are inherited."
+foreach ($formFile in @("app\src\main\java\io\yosemitekids\app\ui\Settings.kt", "app\src\main\java\io\yosemitekids\app\ui\SettingsForm.kt")) {
+    if ((Get-Content $formFile -Raw) -match "return Whitelist\(") {
+        Fail-Guard "$formFile constructs a Whitelist. Use baseline.copy(...) so new fields are inherited."
+    }
 }
 
 # :core is the code the Android app and the Docker hub both run. The moment it
@@ -417,6 +420,27 @@ foreach ($copyLine in (Get-Content hub/Dockerfile | Where-Object { $_ -cmatch '^
             Fail-Guard "hub/Dockerfile copies '$src' but .dockerignore does not allow it (add '!$src') - the image build would fail with 'not found'."
         }
     }
+}
+
+# 14. The settings form adopts the whole of what it saved.
+#     A save returns the STAMPED document, which is not the form: it carries
+#     units a co-parent's push landed under the open form and keeps the
+#     disk's copy of sections the editor left alone. Adopt that as the
+#     baseline while the form keeps its own lists, and the next save shows
+#     the stamper a unit in `base` and not in `next` - a deletion. A
+#     co-parent's channel was tombstoned by this phone's second tap, and
+#     every tap re-minted the AI unit. So `baseline` is assigned in exactly
+#     one place, adopt(), which moves the form's fields in the same snapshot.
+#     SettingsFormSaveTest proves the path is idempotent; this proves the
+#     screen still goes through it.
+$settingsLines = Get-Content "app/src/main/java/io/yosemitekids/app/ui/Settings.kt"
+$baselineWrites = @($settingsLines | Where-Object { $_ -cmatch '^\s*baseline = ' }).Count
+if ($baselineWrites -ne 1 -or -not ($settingsSrc -match 'fun adopt\(result: FormSave\)')) {
+    Fail-Guard "Settings.kt assigns baseline in $baselineWrites places (must be exactly one, inside adopt(result: FormSave)). Route every save through saveForm() and adopt(), so the form takes the carried units too."
+}
+$directSaves = @($settingsLines | Where-Object { $_ -cmatch 'configStore\.save\(' }).Count
+if ($directSaves -gt 1) {
+    Fail-Guard "Settings.kt calls configStore.save() directly $directSaves times (the kid migration before the form exists is the one allowed). The form's saves go through saveForm() so the stamped result is adopted."
 }
 
 Write-Host "== 1/5 compile (assembleDebug)" -ForegroundColor Cyan

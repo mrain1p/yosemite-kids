@@ -652,45 +652,23 @@ private fun AdminScreen(
     /**
      * The form as a config: what the auto-apply below and Push both deliver.
      * `baseline` is what disk holds as far as this form knows — the open-time
-     * snapshot until the first auto-save, then whatever was last written — so
-     * a second judging change after an auto-save gets its own version bump.
+     * snapshot until the first save, then whatever was last written. The
+     * fields are listed here one per line because guard 1 reads this body to
+     * check that every field the form writes is claimed by a settings group;
+     * the shaping (the rules-version bump, the removed-kid scrub) is
+     * [SettingsForm.toConfig], where a JVM test can reach it.
      */
     fun buildCurrentConfig(): Whitelist {
-        // Changed rules/age/model mean old verdicts no longer apply — bumping the
-        // version makes every device re-screen its catalog against the new rules.
-        // Measured against the baseline, so building twice between saves yields
-        // the same version, not two bumps.
-        val judgingChanged = ai.rules != baseline.ai.rules ||
-            ai.childAge != baseline.ai.childAge ||
-            ai.model != baseline.ai.model ||
-            ai.baseUrl != baseline.ai.baseUrl ||
-            io.yosemitekids.app.data.screeningJudgmentChanged(baseline.profiles, profiles)
-        val finalAi = if (judgingChanged) ai.copy(rulesVersion = baseline.ai.rulesVersion + 1) else ai
-        // A removed kid must not linger: entries owned only by them fall back
-        // to everyone, their per-video rulings and device assignment are dropped.
-        val validIds = profiles.map { it.id }.toSet()
-        fun scrub(overlay: Map<String, Set<String>>) = overlay
-            .mapValues { (_, pids) -> pids.intersect(validIds) }
-            .filterValues { it.isNotEmpty() }
-        // baseline.copy, never a fresh Whitelist(...). A positional constructor
-        // silently defaults out any field this form does not name, and the form
-        // does not name the sync blob — so every autosave, every close and
-        // every Push would have shipped a config with its bookkeeping erased,
-        // and the merge would never have run on the primary path. Copying
-        // inherits whatever the model grows next, too.
-        return baseline.copy(
-            sources = entries.map { e ->
-                if (e.profileIds.isEmpty()) e
-                else e.copy(profileIds = e.profileIds.intersect(validIds))
-            },
+        return SettingsForm(
+            sources = entries,
             blockedVideoIds = blocked,
             limits = limits,
-            ai = finalAi,
+            ai = ai,
             aiAllowedVideoIds = aiAllowed,
             profiles = profiles,
-            blockedFor = scrub(blockedFor),
-            allowedFor = scrub(allowedFor),
-            deviceProfiles = deviceProfiles.filterValues { it in validIds },
+            blockedFor = blockedFor,
+            allowedFor = allowedFor,
+            deviceProfiles = deviceProfiles,
             masterDeviceToken = masterToken,
             sponsorSkip = sponsorSkip,
             autoplayNext = autoplayNext,
@@ -702,7 +680,48 @@ private fun AdminScreen(
             qualityPhone = qualityPhone,
             pageSize = pageSize,
             showVideoAge = showVideoAge
-        )
+        ).toConfig(baseline)
+    }
+
+    /**
+     * How every save ends: the stamped result becomes the baseline AND the
+     * form's own state. Stamping carries forward whatever a co-parent's push
+     * landed under the open form and keeps the disk's copy of any section
+     * the editor left alone. Adopt only the baseline and the form still lacks
+     * those, so the next save shows the stamper a unit in `base` and not in
+     * `next` — which is exactly what a deletion looks like. A co-parent's
+     * channel was tombstoned by this phone's second tap, and every tap
+     * re-minted the AI unit ("changed screening", nobody touching screening).
+     * One snapshot for all of it, because Push calls this from an IO thread
+     * and a composition that saw half the fields adopted would auto-save a
+     * torn form against the old baseline. Guard 14 keeps `baseline` assigned
+     * here and nowhere else.
+     */
+    fun adopt(result: FormSave) {
+        val f = result.form
+        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+            entries = f.sources
+            blocked = f.blockedVideoIds
+            limits = f.limits
+            ai = f.ai
+            aiAllowed = f.aiAllowedVideoIds
+            profiles = f.profiles
+            blockedFor = f.blockedFor
+            allowedFor = f.allowedFor
+            deviceProfiles = f.deviceProfiles
+            masterToken = f.masterDeviceToken
+            sponsorSkip = f.sponsorSkip
+            autoplayNext = f.autoplayNext
+            suggestSimilar = f.suggestSimilar
+            channelLayout = f.channelLayout
+            channelOrder = f.channelOrder
+            listenPercent = f.listenPercent
+            qualityTv = f.qualityTv
+            qualityPhone = f.qualityPhone
+            pageSize = f.pageSize
+            showVideoAge = f.showVideoAge
+            baseline = result.baseline
+        }
     }
 
     /**
@@ -758,15 +777,11 @@ private fun AdminScreen(
     LaunchedEffect(currentHash) {
         if (currentHash == baselineHash) return@LaunchedEffect
         delay(1_500)
-        val saved = withContext(kotlinx.coroutines.Dispatchers.IO) {
-            configStore.save(current, base = baseline, who = pairingStore.myName(), by = pairingStore.by())
+        val result = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            saveForm(configStore, current, baseline, who = pairingStore.myName(), by = pairingStore.by())
         }
-        // The stamped result, not `current`: stamping carries forward anything
-        // a co-parent's push landed under the open form, and adopting the
-        // form's own value as the baseline would read those as fresh adds on
-        // the next save — clearing their tombstones.
-        baseline = saved?.config ?: current
-        saved?.let { pushAll(it.json) }
+        adopt(result)
+        result.json?.let { pushAll(it) }
     }
     // Leaving mid-debounce must not lose the last tap: flush on the way out.
     // The save lands before onDone, because closing makes MainActivity
@@ -774,11 +789,11 @@ private fun AdminScreen(
     fun close() {
         if (currentHash == baselineHash) { onDone(true); return }
         scope.launch {
-            val saved = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                configStore.save(current, base = baseline, who = pairingStore.myName(), by = pairingStore.by())
+            val result = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                saveForm(configStore, current, baseline, who = pairingStore.myName(), by = pairingStore.by())
             }
-            baseline = saved?.config ?: current
-            saved?.let { pushAll(it.json) }
+            adopt(result)
+            result.json?.let { pushAll(it) }
             onDone(true)
         }
     }
@@ -930,13 +945,12 @@ private fun AdminScreen(
                 localSyncHash = localSyncHash,
                 // Push must deliver what the parent is LOOKING AT.
                 saveCurrent = {
-                    val config = buildCurrentConfig()
-                    val saved = configStore.save(
-                        config, base = baseline,
+                    val result = saveForm(
+                        configStore, buildCurrentConfig(), baseline,
                         who = pairingStore.myName(), by = pairingStore.by()
                     )
-                    baseline = saved?.config ?: config
-                    saved?.json ?: ConfigJson.toJson(config)
+                    adopt(result)
+                    result.json ?: ConfigJson.toJson(result.baseline)
                 },
                 onAssign = { token, profileId ->
                     deviceProfiles =

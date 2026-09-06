@@ -258,7 +258,19 @@ object ConfigStamp {
             touch(SETTINGS)
             changes += line("settings", "changed app settings", who, by, mint)
         }
+        // The loose scalars follow the same three-way rule as the sections
+        // above. Taken from `next` unconditionally, a co-parent's toggle that
+        // had merged in under the open form was written back over with the
+        // form's copy — under the co-parent's own stamp, since nothing here
+        // touched SETTINGS — and the next merge broke that tie by string
+        // order. Their edit survived on a coin flip.
+        val scalars = if (settingsDiffer(base, next)) next else previous
 
+        // Nothing minted means the bookkeeping is untouched, docAt included:
+        // it is "the highest stamp this document carries", and a save that
+        // stamped nothing did not raise it. A Push with nothing to say must
+        // leave a document a peer already holds byte-for-byte alone.
+        val minted = at != prevSync.at || gone != prevSync.gone
         val out = next.copy(
             sources = sources,
             profiles = profiles,
@@ -270,10 +282,20 @@ object ConfigStamp {
             limits = limits,
             ai = ai,
             masterDeviceToken = master,
+            sponsorSkip = scalars.sponsorSkip,
+            autoplayNext = scalars.autoplayNext,
+            suggestSimilar = scalars.suggestSimilar,
+            channelLayout = scalars.channelLayout,
+            channelOrder = scalars.channelOrder,
+            listenPercent = scalars.listenPercent,
+            qualityTv = scalars.qualityTv,
+            qualityPhone = scalars.qualityPhone,
+            pageSize = scalars.pageSize,
+            showVideoAge = scalars.showVideoAge,
             sync = prune(
                 SyncMeta(
                     v = SyncMeta.VERSION,
-                    docAt = maxOf(mint, prevSync.docAt),
+                    docAt = if (minted) maxOf(mint, prevSync.docAt) else prevSync.docAt,
                     at = at,
                     gone = gone,
                     floor = prevSync.floor,
