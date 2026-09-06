@@ -16,6 +16,14 @@ There is no cloud. The only network services are YouTube itself, SponsorBlock
 tiny Cloudflare Worker that turns website/app suggestions into GitHub PRs for
 the community channel directory.
 
+Optionally there is a **hub**: the same config, the same merge, in a Docker
+container on something that stays powered. It is a peer, not a server — a
+family that never runs one sees no difference — and it is administered from a
+browser rather than from the phone, which is why `SettingsSurface` exists to
+keep the two faces saying the same thing. It holds no credential on any device
+by design: it answers, and it nudges. `docs/HUB.md` is the deployment and
+parent-facing half.
+
 ## Source layout
 
 Four Gradle modules. `:app` is the Android app. `:core` is the pure config
@@ -93,11 +101,58 @@ app/src/main/java/io/yosemitekids/app/
     └── Theme.kt              Colors, formatClock, remainingLabel
 ```
 
+The three modules the app shares with the container. `:core` and `:crawl` keep
+the app's own package name (`io.yosemitekids.app.data`) because the classes
+moved out of it and a package rename would have been a merge conflict in every
+file that imports one.
+
+```
+core/src/main/kotlin/io/yosemitekids/app/data/     the pure rules: no disk, no clock, no Android
+├── Whitelist.kt        The family config model: WhitelistEntry, Source, Limits,
+│                       TimeWindow, Profile, AiConfig
+├── ConfigJson.kt       (de)serialization + the fingerprint both faces compare
+├── ConfigMerge.kt      Two documents in, one out. Unit by unit, at the JSON
+│                       level, and it reads no clock (guard, and the sync skill)
+├── ConfigStamp.kt      What a save records: per-unit stamp, tombstone, log line
+├── SyncDecision.kt     What the sweep does about one peer
+├── SettingsSurface.kt  The settings manifest: groups, controls, words, and
+│                       which face each belongs to. Guards 1-3, 11 and 26 read it
+├── Grants.kt / KidChoices.kt / Profile.kt / TimeWindows.kt / Tsv.kt
+├── MasterElection.kt / MasterToken.kt   Who builds the search index (clock passed in)
+└── BackupFile.kt       The backup envelope, so the phone and the hub write one shape
+
+crawl/src/main/kotlin/io/yosemitekids/app/data/    network, disk, clock — plain JVM
+├── Http.kt             The one OkHttpClient, and restrictTo() — the hub arms it
+│                       at startup so the crawler can reach YouTube and nothing else
+├── YouTubeRepository.kt / Extractor.kt / OkHttpDownloader.kt   NewPipeExtractor
+├── ChannelIndex.kt / IndexCrawler.kt / IndexCrawlRun.kt / IndexPull.kt
+├── AiScreener.kt / ScreeningStore.kt   The screener and the verdict store
+└── QualityTargets.kt / PlaylistRef.kt / LocalUrls.kt / CrawlModule.kt
+
+hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container
+├── Main.kt             Boot: data dir, arm the host allow-list, wire the store
+│                       to the nudge, print (or withhold) the admin token
+├── HubServer.kt        Every route — see docs/LAN-API.md, and guard 30
+├── HubStore.kt         config.json on the volume. Stamped writes, key stripped
+├── HubSecrets.kt       secrets.json: the AI key, served to a parent, never merged
+├── HubTokens.kt        devices.json: enrolments, their kind, address, last seen
+├── HubPassword.kt      PBKDF2 verify/derive, shared shape with the phone's PIN
+├── HubSessions.kt      Browser sessions and the escalating sign-in lockout
+├── HubWeb.kt           The GUI's data layer: /api/state, the patch allow-list
+├── HubVersions.kt      The five-snapshot restore ring
+├── HubNudge.kt         POST /sync-now — the only outbound call in this module
+├── HubCrawl.kt / HubMaster.kt   The crawl on a timer, and claiming the master slot
+└── DataDir.kt
+hub/src/main/resources/web/index.html              the whole GUI: one file, no
+                                                   build step, nothing from a CDN
+```
+
 Other top-level directories:
 
 | Path | What |
 | --- | --- |
 | `app/src/test/` | JVM unit tests (pure logic, org.json real impl). `ExtractorSmokeTest` hits live YouTube — excluded from the PR gate. |
+| `core/src/test/`, `crawl/src/test/`, `hub/src/test/` | The shared rules' tests, each its own gate step. The merge's tests live in `:core` on purpose: in `:app` they would prove it works *on Android* and leave the container's copy uncovered. |
 | `worker/` | Cloudflare Worker: suggestion form → PR, contact form → issue/discussion, app whole-list submission. `worker/test/` is `node --test`. |
 | `site/` | pickwick.tv static site + `site/directory/*.json` (the community directory the app reads). |
 | `whitelists/` | Importable themed channel lists. |
@@ -110,8 +165,9 @@ Other top-level directories:
 Role is stored in `pairing.xml` (`PairingStore.role()`):
 
 - **PARENT** — administers kid devices. Has the full settings editor, pushes
-  `config.json`, pulls `/stats`, runs the watch-state/verdict sync as the hub,
-  and (if elected master) crawls the search index.
+  `config.json`, pulls `/stats`, is the courier for the watch-state and
+  verdict sync between devices, and (if elected master) crawls the search
+  index. ("Courier", not "hub" — that word now names the container.)
 - **KID** — a TV, or a phone/tablet the parent dedicated. Shows only a pairing
   QR in settings; everything else is pushed to it.
 
@@ -242,6 +298,10 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Change when the phone shrinks to PiP, or what the window does | `PlayerActivity.pipEligible` / `enterPip` / `onPictureInPictureModeChanged` |
 | Add a screen-time rule | `Whitelist.Limits` + `ConfigStore` (de)serializers + `SessionGuard` + settings section |
 | Add a LAN route | `LanServer.handle` (bound every read!) + `LanClient` + `docs/LAN-API.md` (guard 14 checks the row is there) |
+| Add a route to the **hub** | `HubServer.start` + a `private fun <name>(ex)` beside the others + `docs/LAN-API.md`'s hub table (guard 30). If it is a route a device also answers, `authorised(ex)` first (guard 29) and take it off `DEVICE_ONLY` (guard 22) |
+| Change what the hub's page shows | `HubWeb.state` (what `GET /api/state` carries) then `hub/src/main/resources/web/index.html` — one file, no build step, nothing fetched from a CDN, because a NAS may have no outbound access. Pages are the `ROUTES` map (guard 11); a control drawn from the manifest needs no markup at all |
+| Change how the hub is signed in to | `HubPassword` (the KDF), `HubTokens.hasPassword`/`setPassword`/`verifyAdminSecret`, `HubSessions` (the escalating lockout), and the one `HubServer.adminGate()` every presentation of the secret goes through (guard 25) |
+| Change where the hub keeps the AI key | `HubSecrets` (`/data/secrets.json`) and the two functions that overlay it, `HubStore.forPeers`/`fingerprintWithKey`. It is deliberately *not* in the config document: `HubStore.commit` strips it on every write, which is what keeps it out of `versions/`, `/api/state` and a downloaded backup |
 | Change what "Update now" does to a device, or says on the phone | `RemoteUpdate` in `data/Updater.kt` (the device's decision, over lambdas) + `POST /check-updates` + `LanClient.checkUpdates`; on the phone `DeviceFleet.updateNow` and `updateOutcomeText` in `SettingsDevices.kt` |
 | Add a parent setting | See "Adding one setting" below — eight steps, and the build fails on any of them you skip |
 | Change kid-facing wording | grep the string; every kid string is inline (no `strings.xml` yet) |
