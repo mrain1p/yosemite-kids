@@ -1,7 +1,8 @@
 package io.yosemitekids.app.data
 
 /**
- * Every settings group, which page it sits on, and which faces it belongs to.
+ * Every settings group, every control inside it, which page it sits on, and
+ * which faces it belongs to.
  *
  * The hub's GUI mirrors the phone's Settings. Two UIs meant to mirror each
  * other drift the moment one gains a feature, silently: nothing about a Compose
@@ -14,13 +15,33 @@ package io.yosemitekids.app.data
  * moment the "does this belong on the hub?" decision gets made, rather than
  * something that can be skipped.
  *
- * **Keyed on [fields], not on composables.** The first version listed
- * `...Section(` functions, which misses two whole categories: the Playback page
- * has no section composable at all — it is inline cards — and the "Kid's
- * shelves" card on Channels is inline too. A guard that counts composables
- * cannot see either, so an entire page was invisible to it. Every field
- * `Settings.buildCurrentConfig` writes must appear here, which is a property no
- * amount of inlining can hide from.
+ * **Keyed on [SettingsSection.fields], not on composables.** The first version
+ * listed `...Section(` functions, which misses two whole categories: the
+ * Playback page has no section composable at all — it is inline cards — and the
+ * "Kid's shelves" card on Channels is inline too. A guard that counts
+ * composables cannot see either, so an entire page was invisible to it. Every
+ * field `Settings.buildCurrentConfig` writes must appear here, which is a
+ * property no amount of inlining can hide from.
+ *
+ * **And keyed on [SettingsControl], not only on groups.** A group is too coarse
+ * to be a promise: `hubReady = true` is permanent, so a new toggle inside a
+ * group the hub already renders slipped through unnoticed. That was not
+ * hypothetical — it had happened twice and both were live. `screen-time-rules`
+ * claimed the hub while the hub rendered four of a kid's seven rules, no
+ * `minVideoMinutes` and no pause; `blocked-times` claimed the hub with no
+ * windows editor at all. Guard 26 now reads the control list from both ends:
+ * every leaf of [Whitelist], [Limits] and [AiConfig] is claimed by exactly one
+ * control or listed in [NOT_A_CONTROL], and every control that says it is on
+ * the hub is either rendered generically from this manifest or built by hand
+ * with a `data-control` attribute the guard can find.
+ *
+ * **The manifest owns the parent-facing words.** Both faces read [label] and
+ * [sub] from here, which is what makes the phone-side half of the guard real
+ * rather than a rubber stamp: a control that is not declared has no label to
+ * render. It also removes a class of drift nobody was watching — the two faces
+ * describing the same switch differently, which they did: the phone's "Time per
+ * session" was the hub's "Minutes a session", and the hub offered page sizes
+ * (12/24/48) and quality steps the app has never had.
  *
  * It lives in :core because both consumers must read the same list; in :app it
  * would be invisible to the hub, and in :hub invisible to the app.
@@ -45,6 +66,60 @@ enum class Where {
     /** Both faces. The default expectation for anything that is family policy. */
     BOTH
 }
+
+/**
+ * How a control is drawn. Everything but [CUSTOM] the hub renders from this
+ * manifest alone, which is the whole point: a new toggle on an existing page
+ * is one declaration here and *nothing* in `index.html`.
+ *
+ * [CUSTOM] is for a control no generic renderer could do justice to — the
+ * channel list with its per-kid chips, the device rows, the windows editor.
+ * Those stay hand-written and carry `data-control="<id>"` so the guard can
+ * still tell built from promised.
+ */
+enum class ControlKind { TOGGLE, NUMBER, TEXT, TEXTAREA, CHIPS, CUSTOM }
+
+/** One choice of a [ControlKind.CHIPS] control. `null` is a real value: Off, Auto, All. */
+data class ControlOption(val value: Any?, val label: String)
+
+data class SettingsControl(
+    /** Stable id. Both faces address the control by exactly this string. */
+    val id: String,
+    /** The words the parent reads, on both faces. */
+    val label: String,
+    /** The line under the label. Blank for a control that needs none. */
+    val sub: String = "",
+    val kind: ControlKind,
+    /**
+     * The Kotlin property path this control sets — `"sponsorSkip"`,
+     * `"limits.minVideoMinutes"`, `"ai.model"`. Empty for a control that
+     * writes no config at all. This is what guard 26(a) matches against the
+     * declared properties of [Whitelist], [Limits] and [AiConfig], and what
+     * `SettingsSurfaceTest` resolves by reflection — so a field renamed in
+     * one place and not the other fails rather than drifting.
+     */
+    val writes: String = "",
+    /**
+     * The JSON leaf path a browser patches, when [ConfigJson] spells it
+     * differently from the property (`autoplayNext` is `autoplay` on the
+     * wire). Defaults to [writes] because they are usually the same word.
+     */
+    val json: String = writes,
+    /** For [ControlKind.CHIPS]: the choices, in the order the phone offers them. */
+    val options: List<ControlOption> = emptyList(),
+    /** For [ControlKind.NUMBER]: the range the phone enforces, mirrored by the hub. */
+    val min: Int? = null,
+    val max: Int? = null,
+    /** "min" — shown after a number, on both faces. */
+    val unit: String = "",
+    val where: Where = Where.BOTH,
+    /**
+     * Why this control is on one face only. Guard 26(d) requires it whenever
+     * [where] is not [Where.BOTH]: "specific to each" is a decision, and a
+     * decision with no recorded reason is re-litigated every round.
+     */
+    val why: String = ""
+)
 
 data class SettingsSection(
     /** Stable id. The hub's page registry uses exactly this string. */
@@ -72,7 +147,9 @@ data class SettingsSection(
      */
     val hubReady: Boolean,
     /** Why it is placed this way. The part a future session cannot re-derive. */
-    val why: String
+    val why: String,
+    /** Every control inside this group. See [SettingsControl]. */
+    val controls: List<SettingsControl> = emptyList()
 )
 
 object SettingsSurface {
@@ -82,31 +159,151 @@ object SettingsSurface {
         // --- Kids ---------------------------------------------------------
         SettingsSection("kids", "Kids", Page.KIDS, "KidsSection", listOf("profiles"),
             Where.BOTH, true,
-            "Who the kids are: name, age, avatar, colour, profile lock. Pure config."),
+            "Who the kids are: name, age, avatar, colour, profile lock. Pure config.",
+            controls = listOf(
+                SettingsControl(
+                    "kids-list", "Kids",
+                    sub = "Name, age, avatar and the profile lock.",
+                    kind = ControlKind.CUSTOM, writes = "profiles"
+                )
+            )),
         SettingsSection("screen-time-rules", "Screen time", Page.KIDS, "RulesSection",
             listOf("limits", "profiles"), Where.BOTH, true,
-            "Family policy, not device state. Per kid and for everyone."),
+            "Family policy, not device state. Per kid and for everyone.",
+            controls = listOf(
+                // The five recurring rules. Per kid through Profile.limits and,
+                // for a family with no kids added yet, through Whitelist.limits
+                // — Whitelist.limitsFor picks between them, and neither face
+                // gets to have its own opinion about which.
+                SettingsControl(
+                    "rules-session", "Time per session",
+                    kind = ControlKind.NUMBER, writes = "limits.sessionMinutes",
+                    json = "limits.session", min = 5, max = 240, unit = "min"
+                ),
+                SettingsControl(
+                    "rules-weekday-sessions", "Sessions on weekdays",
+                    kind = ControlKind.NUMBER, writes = "limits.weekdaySessions",
+                    min = 1, max = 12
+                ),
+                SettingsControl(
+                    "rules-weekend-sessions", "Sessions on weekends",
+                    kind = ControlKind.NUMBER, writes = "limits.weekendSessions",
+                    min = 1, max = 12
+                ),
+                SettingsControl(
+                    "rules-break", "Break between sessions",
+                    kind = ControlKind.NUMBER, writes = "limits.breakMinutes",
+                    min = 15, max = 240, unit = "min"
+                ),
+                SettingsControl(
+                    "rules-min-video", "Hide videos shorter than",
+                    kind = ControlKind.NUMBER, writes = "limits.minVideoMinutes",
+                    min = 1, max = 60, unit = "min"
+                ),
+                SettingsControl(
+                    "rules-break-pass", "Skip the next break",
+                    sub = "Waives one break, once.",
+                    kind = ControlKind.CUSTOM, writes = "limits.breakPassUntilMillis",
+                    json = "limits.breakPassUntil", where = Where.PHONE,
+                    why = "A pass over the break happening now, taken on the device in " +
+                        "the room in the minute it matters. The hub could write the same " +
+                        "field, but it cannot call a device — it edits and nudges — so a " +
+                        "pass set on the NAS would reach a sleeping television after the " +
+                        "break it was meant to skip."
+                ),
+                SettingsControl(
+                    "rules-pause", "Turn off all watching",
+                    sub = "Until midnight.",
+                    kind = ControlKind.CUSTOM, writes = "limits.pausedUntilMillis",
+                    json = "limits.pausedUntil"
+                )
+            )),
         SettingsSection("blocked-times", "Blocked times", Page.KIDS, "BlockedTimesSection",
             listOf("limits", "profiles"), Where.BOTH, true,
-            "Merge-carried like the rest of limits."),
+            "Merge-carried like the rest of limits.",
+            controls = listOf(
+                SettingsControl(
+                    "blocked-times-windows", "Blocked times",
+                    sub = "Bedtime, school hours — a stretch of the clock when watching is off.",
+                    kind = ControlKind.CUSTOM, writes = "limits.windows"
+                )
+            )),
         SettingsSection("grant-time", "Grant extra time", Page.KIDS, "GrantTimeSection",
             emptyList(), Where.PHONE, false,
             "Writes no config at all. A grant is device-local session state held " +
                 "in SessionGuard's preferences and delivered by a LAN call, so " +
                 "there is no config edit the hub could make to express one. " +
-                "Giving the hub this needs an outbound grant call of its own."),
+                "Giving the hub this needs an outbound grant call of its own.",
+            controls = listOf(
+                SettingsControl(
+                    "grant-time-minutes", "Bonus watch time",
+                    sub = "Extra minutes for today, for one kid.",
+                    kind = ControlKind.CUSTOM, writes = "grants", where = Where.PHONE,
+                    why = "The field is merged config, so the hub could write it — but a " +
+                        "grant minted on the NAS needs an id, a local date and a bounds " +
+                        "check on both, which is PLAN-hub-parity step 8, not this one."
+                )
+            )),
 
         // --- Channels & playlists -----------------------------------------
         SettingsSection("channels", "Channels & playlists", Page.CHANNELS, "ChannelsSection",
-            listOf("sources"), Where.BOTH, true,
+            listOf("sources", "blockedVideoIds"), Where.BOTH, true,
             "The curation itself. Includes each channel's time multiplier, its " +
-                "screening note, and which kids can see it."),
+                "screening note, and which kids can see it — and the individual " +
+                "videos blocked inside an allowed channel, which both faces " +
+                "already list here.",
+            controls = listOf(
+                SettingsControl(
+                    "channels-list", "Channels & playlists",
+                    sub = "What the kids can watch, how fast it spends screen time, " +
+                        "and which kids see it.",
+                    kind = ControlKind.CUSTOM, writes = "sources", json = "entries"
+                ),
+                SettingsControl(
+                    "channels-blocked", "Blocked videos",
+                    sub = "Individual videos hidden even inside an allowed channel.",
+                    kind = ControlKind.CUSTOM, writes = "blockedVideoIds", json = "blocked"
+                )
+            )),
         SettingsSection("kid-shelves", "How videos are listed", Page.LISTING, "",
             listOf("showVideoAge", "pageSize", "channelLayout", "channelOrder"),
             Where.BOTH, true,
             "How the kid's home is laid out. Inline on the phone with no " +
                 "composable of its own, which is exactly why this manifest is " +
-                "keyed on fields."),
+                "keyed on fields.",
+            controls = listOf(
+                SettingsControl(
+                    "listing-video-age", "Show when a video came out",
+                    sub = "“3 days ago” beside the channel name",
+                    kind = ControlKind.TOGGLE, writes = "showVideoAge"
+                ),
+                SettingsControl(
+                    "listing-page-size", "Videos before “Show more”",
+                    kind = ControlKind.CHIPS, writes = "pageSize",
+                    options = PAGE_SIZES.map { ControlOption(it, it?.toString() ?: "All") }
+                ),
+                SettingsControl(
+                    "listing-channel-layout", "Channel page layout",
+                    kind = ControlKind.CHIPS, writes = "channelLayout",
+                    // The two the phone offers. CHANNEL_LAYOUTS carries a third
+                    // the settings screen has never shown; a face that offered
+                    // it would be offering something the other cannot.
+                    options = listOf(
+                        ControlOption(CHANNEL_LAYOUT_NEWEST, "Newest first"),
+                        ControlOption(CHANNEL_LAYOUT_POPULAR, "Popular first")
+                    )
+                ),
+                SettingsControl(
+                    "listing-channel-order", "Channel row order",
+                    kind = ControlKind.CHIPS, writes = "channelOrder",
+                    options = listOf(
+                        ControlOption(CHANNEL_ORDER_WATCHED, "Most watched"),
+                        ControlOption(CHANNEL_ORDER_ALPHA, "A to Z"),
+                        ControlOption(CHANNEL_ORDER_RANDOM, "Random"),
+                        ControlOption(CHANNEL_ORDER_LATEST, "Latest video")
+                    )
+                )
+            )),
         SettingsSection("directory", "Suggested channels", Page.CHANNELS, "DirectorySection",
             listOf("sources"), Where.PHONE, false,
             "Fetches the shared directory through :app's Directory client. The " +
@@ -119,17 +316,80 @@ object SettingsSurface {
             "Provider, base URL and model yes; the API key no. The hub strips " +
                 "secrets before writing and has no keystore, so a key entered " +
                 "there could not survive a restart. The hub's page says so " +
-                "rather than offering a field that silently forgets."),
+                "rather than offering a field that silently forgets.",
+            controls = listOf(
+                SettingsControl(
+                    "ai-base-url", "API base URL",
+                    sub = "Any OpenAI-compatible endpoint.",
+                    kind = ControlKind.TEXT, writes = "ai.baseUrl"
+                ),
+                SettingsControl(
+                    "ai-model", "Model",
+                    kind = ControlKind.TEXT, writes = "ai.model"
+                ),
+                SettingsControl(
+                    "ai-api-key", "API key",
+                    sub = "Leave empty for a local server.",
+                    kind = ControlKind.CUSTOM, writes = "ai.apiKey", where = Where.PHONE,
+                    why = "The only field in this manifest that is a credential. It lives " +
+                        "in the phone's Keystore-backed SecretStore, never in config.json, " +
+                        "and ConfigStore strips it from every copy that reaches disk — so " +
+                        "a key typed on the NAS would appear to work, ride out to every " +
+                        "device, and be gone after a restart. Giving the hub a store of " +
+                        "its own is PLAN-hub-parity step 10."
+                )
+            )),
         SettingsSection("ai-screening", "AI screening", Page.SCREENING, "AiScreeningSection",
             listOf("ai", "profiles"), Where.BOTH, true,
-            "The rules text and the switch. Policy, carried by the merge."),
+            "The rules text and the switch. Policy, carried by the merge.",
+            controls = listOf(
+                SettingsControl(
+                    "ai-enabled", "Screen new videos with AI",
+                    sub = "Titles and channel names only — never watch history",
+                    kind = ControlKind.TOGGLE, writes = "ai.enabled"
+                ),
+                SettingsControl(
+                    "ai-rules", "What to allow, in your words",
+                    sub = "Rough notes are fine — the AI understands shorthand. " +
+                        "One rule per line.",
+                    kind = ControlKind.TEXTAREA, writes = "ai.rules"
+                ),
+                SettingsControl(
+                    "ai-child-age", "Child age",
+                    sub = "What the AI screens against when there are no kid profiles.",
+                    kind = ControlKind.NUMBER, writes = "ai.childAge", min = 2, max = 16
+                )
+            )),
         SettingsSection("ai-review", "Waiting for your OK", Page.SCREENING, "AiReviewSection",
-            listOf("blockedVideoIds", "blockedFor", "allowedFor", "aiAllowedVideoIds"),
+            listOf("blockedFor", "allowedFor", "aiAllowedVideoIds"),
             Where.PHONE, false,
             "The rulings are config, but the queue is not: it is built from " +
                 "ScreeningStore verdicts and the video cache, neither of which " +
                 "the hub holds. It would render an empty list until devices " +
-                "push verdicts to it."),
+                "push verdicts to it.",
+            controls = listOf(
+                SettingsControl(
+                    "review-allowed", "Allowed anyway",
+                    sub = "Videos the AI blocked and a parent let through.",
+                    kind = ControlKind.CUSTOM, writes = "aiAllowedVideoIds", json = "aiAllowed",
+                    where = Where.PHONE,
+                    why = "A ruling is made against the queue, and the queue is " +
+                        "ScreeningStore's verdicts plus the video cache — neither of " +
+                        "which the hub holds. It would render an empty list."
+                ),
+                SettingsControl(
+                    "review-blocked-for", "Blocked for one kid",
+                    sub = "A long-press ruling that applies to one child, not the family.",
+                    kind = ControlKind.CUSTOM, writes = "blockedFor", where = Where.PHONE,
+                    why = "Same queue, same reason as review-allowed."
+                ),
+                SettingsControl(
+                    "review-allowed-for", "Allowed for one kid",
+                    sub = "Fine for the older one, not the younger.",
+                    kind = ControlKind.CUSTOM, writes = "allowedFor", where = Where.PHONE,
+                    why = "Same queue, same reason as review-allowed."
+                )
+            )),
         SettingsSection("ai-discovery", "Discover with AI", Page.SCREENING, "AiDiscoverySection",
             listOf("sources"), Where.PHONE, false,
             "Verifies each suggested channel against YouTube through " +
@@ -141,7 +401,14 @@ object SettingsSurface {
             "Both faces list devices, but they are not the same page: the phone " +
                 "lists what it paired, the hub lists everything enrolled with it " +
                 "and approves or revokes. Dedicating a device to one kid is " +
-                "config, so it belongs on both."),
+                "config, so it belongs on both.",
+            controls = listOf(
+                SettingsControl(
+                    "devices-kid", "This device is for",
+                    sub = "One kid, or anyone — which decides whether the picker shows.",
+                    kind = ControlKind.CUSTOM, writes = "deviceProfiles"
+                )
+            )),
         SettingsSection("stats", "Stats", Page.DEVICES, "StatsSection",
             emptyList(), Where.BOTH, false,
             "What a kid actually watched on one device, reached from its row on " +
@@ -149,7 +416,9 @@ object SettingsSurface {
                 "show it yet: the numbers live on each device and arrive over " +
                 "GET /stats, which the hub never calls because it never " +
                 "initiates. Worth having — an always-on box is the natural " +
-                "place to collect them."),
+                "place to collect them. Left false deliberately: the ledger " +
+                "that would carry the numbers is PLAN-hub-parity steps 5-7, " +
+                "which the owner has tabled."),
         SettingsSection("search-index", "Search index", Page.DEVICES, "SearchIndexSection",
             emptyList(), Where.BOTH, true,
             "Progress of the crawl that makes search work, and which peer is " +
@@ -174,16 +443,62 @@ object SettingsSurface {
         SettingsSection("playback", "Playback", Page.PLAYBACK, "",
             listOf("sponsorSkip", "autoplayNext", "suggestSimilar"), Where.BOTH, true,
             "Skip sponsors, autoplay the next video, suggest similar. All " +
-                "config, all inline on the phone with no composable."),
+                "config, all inline on the phone with no composable.",
+            controls = listOf(
+                SettingsControl(
+                    "playback-sponsor-skip", "Skip sponsors & intros",
+                    sub = "Using SponsorBlock community markers",
+                    kind = ControlKind.TOGGLE, writes = "sponsorSkip"
+                ),
+                SettingsControl(
+                    "playback-autoplay", "Autoplay the next video",
+                    sub = "Behind a short countdown",
+                    kind = ControlKind.TOGGLE, writes = "autoplayNext", json = "autoplay"
+                ),
+                SettingsControl(
+                    "playback-suggest", "More like what you watch",
+                    sub = "A home row of older videos",
+                    kind = ControlKind.TOGGLE, writes = "suggestSimilar", json = "suggest"
+                )
+            )),
         SettingsSection("quality", "Video quality", Page.PLAYBACK, "",
             listOf("qualityTv", "qualityPhone"), Where.BOTH, true,
             "Set per form factor, so a parent on either face is choosing for " +
-                "the TVs and the phones separately."),
+                "the TVs and the phones separately.",
+            controls = listOf(
+                SettingsControl(
+                    "quality-tv", "On TVs",
+                    kind = ControlKind.CHIPS, writes = "qualityTv",
+                    options = PLAYBACK_QUALITIES.map { ControlOption(it, qualityLabel(it)) }
+                ),
+                SettingsControl(
+                    "quality-phone", "On phones & tablets",
+                    kind = ControlKind.CHIPS, writes = "qualityPhone",
+                    options = PLAYBACK_QUALITIES.map { ControlOption(it, qualityLabel(it)) }
+                )
+            )),
         SettingsSection("listening", "Listening", Page.PLAYBACK, "",
             listOf("listenPercent"), Where.BOTH, true,
             "Whether playback continues with the screen off. It only affects " +
                 "phones, but it is family config rather than device state, so " +
-                "the hub can set it and phones honour it."),
+                "the hub can set it and phones honour it.",
+            controls = listOf(
+                SettingsControl(
+                    "listening-rate", "Keep playing when the phone locks",
+                    sub = "Phones only. The rate is how fast those minutes count.",
+                    kind = ControlKind.CHIPS, writes = "listenPercent", json = "listen",
+                    // Off is null, and FREE is 0 — two different things that a
+                    // hand-written hub card had collapsed into one "Off".
+                    options = listOf(
+                        ControlOption(null, "Off"),
+                        ControlOption(100, "1x"),
+                        ControlOption(75, "0.75x"),
+                        ControlOption(50, "0.5x"),
+                        ControlOption(25, "0.25x"),
+                        ControlOption(0, "FREE")
+                    )
+                )
+            )),
 
         // --- Backup & app ---------------------------------------------------
         SettingsSection("export", "Import, export & backup", Page.BACKUP, "ExportSection",
@@ -201,6 +516,27 @@ object SettingsSurface {
                 "are still only on the phone. No phone equivalent and none wanted.")
     )
 
+    /**
+     * Config leaves that no control sets, and why.
+     *
+     * Guard 26(a) requires every property of [Whitelist], [Limits] and
+     * [AiConfig] to be claimed by exactly one control or named here. A field
+     * with nothing to set it is either an omission (the common case, and the
+     * one this catches) or a deliberate exception — and an exception with no
+     * reason beside it is indistinguishable from the omission.
+     */
+    val NOT_A_CONTROL: Map<String, String> = mapOf(
+        "limits" to "a container; each of its leaves is claimed on its own below",
+        "ai" to "a container; each of its leaves is claimed on its own below",
+        "sync" to "the merge's own bookkeeping. Only ConfigStamp writes it, and a " +
+            "control that could would break causality for the whole household",
+        "masterDeviceToken" to "elected between peers by MasterElection, never chosen " +
+            "by a parent. Both faces show who holds it and neither offers to set it",
+        "ai.rulesVersion" to "bumped by SettingsForm.toConfig when the rules, the age, " +
+            "the model or the endpoint change, so every device re-screens. A parent " +
+            "setting it by hand would silently un-screen a catalogue"
+    )
+
     /** [Where.BOTH] groups still to be built on the hub. */
     fun outstandingOnHub(): List<SettingsSection> =
         sections.filter { it.where == Where.BOTH && !it.hubReady }
@@ -215,4 +551,33 @@ object SettingsSurface {
 
     /** Every config field this manifest claims to cover. */
     fun coveredFields(): Set<String> = sections.flatMap { it.fields }.toSet()
+
+    /** Every control, in page order. */
+    val controls: List<SettingsControl> = sections.flatMap { it.controls }
+
+    private val byId: Map<String, SettingsControl> = controls.associateBy { it.id }
+
+    /**
+     * The words for one control. Throws on an unknown id rather than
+     * rendering a blank label: a typo would otherwise be a control with no
+     * name, which reads as a layout bug and is found by a parent. Guard 26(c)
+     * checks the ids the phone asks for against this list, so the throw is a
+     * backstop for a build that skipped the gate, not the first line of
+     * defence.
+     */
+    fun control(id: String): SettingsControl =
+        byId[id] ?: error("no settings control called \"$id\" — see SettingsSurface")
+
+    /** The controls of one group, or nothing if the group has none declared. */
+    fun controlsFor(groupId: String): List<SettingsControl> =
+        sections.firstOrNull { it.id == groupId }?.controls.orEmpty()
+
+    /**
+     * What the hub is expected to render: every control that is not
+     * phone-only, in a group the hub is ready for. This is exactly the list
+     * `/api/state` ships, so the browser cannot be offered a control the
+     * guard is not checking, nor left without one it is.
+     */
+    fun hubControls(): List<SettingsControl> =
+        forHub().flatMap { section -> section.controls.filter { it.where != Where.PHONE } }
 }
