@@ -47,13 +47,20 @@ class HubServer(
      */
     private val index: ChannelIndex = ChannelIndex(File(dataDir, "search-index")),
     /**
-     * The AI verdicts this hub holds, beside the index and under the same
-     * volume. Not screened here — the hub reaches YouTube and nothing else
-     * (guard 7) — but pushed here by every phone on every sweep, which is
-     * what the review queue on the admin page is built from. Same file name
-     * a device uses, so a copy taken off either box reads on the other.
+     * The AI verdicts this hub holds. Not screened here — the hub reaches
+     * YouTube and nothing else (guard 7) — but pushed here by every phone on
+     * every sweep, which is what the review queue on the admin page is built
+     * from. Same file name a device uses, so a copy taken off either box reads
+     * on the other.
+     *
+     * Taken from [store]'s own directory rather than from [dataDir], which is
+     * a display string the caller may pass anything for: `Main` never passes
+     * it at all and the two agreed only because both read the same environment
+     * variable. Verdicts that landed somewhere other than beside `config.json`
+     * would be silently absent from every backup of the volume, and the queue
+     * would empty itself on the next container move with nothing to say why.
      */
-    private val screening: ScreeningStore = ScreeningStore(File(dataDir, "screening.json")),
+    private val screening: ScreeningStore = ScreeningStore(File(store.dataDir, "screening.json")),
     /** The election and the crawl, for the Devices page to report on. Null in tests that have neither. */
     private val master: HubMaster? = null,
     private val crawl: HubCrawl? = null,
