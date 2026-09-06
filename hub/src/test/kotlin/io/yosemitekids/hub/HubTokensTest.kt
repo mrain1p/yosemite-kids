@@ -1,5 +1,7 @@
 package io.yosemitekids.hub
 
+import io.yosemitekids.app.data.MasterToken
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -162,5 +164,35 @@ class HubTokensTest {
         val a = t.approve(t.startEnrolment("A", T), T).getOrThrow()
         val b = t.approve(t.startEnrolment("B", T), T).getOrThrow()
         assertNotEquals(a, b)
+    }
+
+    // --- identity and arming ---------------------------------------------
+
+    @Test
+    fun theSelfTokenIsMintedOnceAndLooksLikeAHub() {
+        val dir = tmp.newFolder()
+        val a = HubTokens(dir).selfToken()
+        assertEquals(32, a.length)
+        assertTrue(MasterToken.isHub(a))
+        assertTrue(a.drop(MasterToken.HUB_PREFIX.length).all { it in "0123456789abcdef" })
+        assertEquals("the same hub keeps its identity across restarts", a, HubTokens(dir).selfToken())
+        assertNotEquals("two hubs differ", a, tokens().selfToken())
+    }
+
+    @Test
+    fun aPullIsRememberedPerEnrolledDeviceAndWrittenSparingly() {
+        val t = tokens()
+        val token = t.approve(t.startEnrolment("TV", T), T).getOrThrow()
+        assertFalse(t.armed(T))
+        t.notePull("not-enrolled", T)
+        assertFalse("an unknown token arms nothing", t.armed(T))
+        t.notePull(token, T)
+        assertTrue(t.armed(T))
+        assertEquals(T, t.devices().single().pulledAt)
+        // Within the hour the file is left alone.
+        t.notePull(token, T + 10 * 60 * 1000L)
+        assertEquals(T, t.devices().single().pulledAt)
+        t.notePull(token, T + HubTokens.PULL_WRITE_INTERVAL_MS)
+        assertEquals(T + HubTokens.PULL_WRITE_INTERVAL_MS, t.devices().single().pulledAt)
     }
 }

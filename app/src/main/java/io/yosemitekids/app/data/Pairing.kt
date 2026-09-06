@@ -1611,14 +1611,38 @@ object LanClient {
             }.getOrDefault(false)
         }
 
-    /** A device's per-source index status (hashes), or null when unreachable. */
-    suspend fun indexStatus(device: PairedDevice): String? = withContext(Dispatchers.IO) {
-        runCatching {
-            request(device, "GET", "/index-status", null).use { resp ->
-                if (resp.isSuccessful) resp.body?.string() else null
-            }
-        }.getOrNull()
-    }
+    /**
+     * A peer's per-source index status (hashes), or null when unreachable.
+     *
+     * @param pull true when this device takes its index FROM [device] rather
+     *   than comparing before a push. The header is what arms a hub to claim
+     *   the master slot (HubTokens.armed): a hub nobody pulls from never takes
+     *   the crawl away from the phone still doing it.
+     */
+    suspend fun indexStatus(device: PairedDevice, pull: Boolean = false): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val headers = if (pull) mapOf("X-Index-Pull" to "1") else emptyMap()
+                request(device, "GET", "/index-status", null, headers).use { resp ->
+                    if (resp.isSuccessful) resp.body?.string() else null
+                }
+            }.getOrNull()
+        }
+
+    /**
+     * One indexed source from a peer, in the wire format /index speaks (state
+     * line, then the video array), or null when it has none or is unreachable.
+     * The pull half of the index: what a device fetches from the hub after
+     * [indexStatus] said a source differs.
+     */
+    suspend fun fetchIndexSource(device: PairedDevice, sourceId: String): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                request(device, "GET", "/index?source=$sourceId", null).use { resp ->
+                    if (resp.isSuccessful) resp.body?.string() else null
+                }
+            }.getOrNull()
+        }
 
     /** Push one indexed source (state line + video array) to a device. */
     suspend fun pushIndexSource(device: PairedDevice, sourceId: String, body: String): Boolean =
@@ -1664,16 +1688,20 @@ object LanClient {
             }.getOrDefault(false)
         }
 
-    private fun request(device: PairedDevice, method: String, path: String, body: String?) =
-        raw(device.host, device.port, method, path, body, device.token)
+    private fun request(
+        device: PairedDevice, method: String, path: String, body: String?,
+        headers: Map<String, String> = emptyMap()
+    ) = raw(device.host, device.port, method, path, body, device.token, headers = headers)
 
     private fun raw(
         host: String, port: Int, method: String, path: String, body: String?, token: String?,
-        client: okhttp3.OkHttpClient = lanClient
+        client: okhttp3.OkHttpClient = lanClient,
+        headers: Map<String, String> = emptyMap()
     ) = client.newCall(
         Request.Builder()
             .url("http://$host:$port$path")
             .apply { token?.let { header("X-Token", it) } }
+            .apply { headers.forEach { (k, v) -> header(k, v) } }
             // Where to reach us back. A hub records this against our token so
             // it can push an edit made in its own admin pages, instead of
             // sitting on it until we next happen to ask. Our address it can

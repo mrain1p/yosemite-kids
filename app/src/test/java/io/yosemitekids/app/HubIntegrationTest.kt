@@ -1,5 +1,11 @@
 package io.yosemitekids.app
 
+import java.io.File
+
+import io.yosemitekids.app.data.LanClient
+
+import io.yosemitekids.app.data.ChannelIndex
+
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.HubEnrolment
 import io.yosemitekids.app.data.PairedDevice
@@ -49,6 +55,7 @@ class HubIntegrationTest {
     private lateinit var store: HubStore
     private lateinit var tokens: HubTokens
     private lateinit var server: HubServer
+    private lateinit var index: ChannelIndex
     private var port = 0
 
     @Before
@@ -56,7 +63,8 @@ class HubIntegrationTest {
         val dir = tmp.newFolder("hub")
         store = HubStore(dir)
         tokens = HubTokens(dir)
-        server = HubServer(store, tokens, 0, admin) { T }
+        index = ChannelIndex(File(dir, "search-index"))
+        server = HubServer(store, tokens, 0, admin, index = index) { T }
         port = server.start()
     }
 
@@ -360,5 +368,32 @@ class HubIntegrationTest {
         client().newCall(req).execute().use { resp ->
             return resp.code to resp.body?.string().orEmpty()
         }
+    }
+
+    // --- the search index, end to end ------------------------------------
+
+    private fun joined(name: String) =
+        runBlocking { HubEnrolment.join("127.0.0.1:$port", 8765, admin, name) }.getOrThrow()
+
+    @Test
+    fun theAppLearnsTheHubsIdentityFromStatus() {
+        val status = runBlocking { LanClient.fullStatus(joined("Dad's phone")) }!!
+        assertEquals(tokens.selfToken(), status.deviceToken)
+        assertEquals("hub", status.kind)
+    }
+
+    @Test
+    fun aDevicePullsWhatTheHubServesAndArmsItByAsking() {
+        val hub = joined("Living room TV")
+        index.addVideos(
+            "UCaaa",
+            listOf(ChannelIndex.IndexedVideo(videoId = "v1", title = "t", channelName = "c", thumbnailUrl = null, durationSeconds = 60, sourceId = "UCaaa")),
+            complete = true
+        )
+        assertFalse(tokens.armed(T))
+        assertEquals(index.statusJson(), runBlocking { LanClient.indexStatus(hub, pull = true) })
+        assertTrue("the pull header must reach HubTokens", tokens.armed(T))
+        assertEquals(index.exportSourceWithState("UCaaa"), runBlocking { LanClient.fetchIndexSource(hub, "UCaaa") })
+        assertEquals(null, runBlocking { LanClient.fetchIndexSource(hub, "UCzzz") })
     }
 }

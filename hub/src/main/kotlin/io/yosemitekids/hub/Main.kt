@@ -41,7 +41,10 @@ fun main() {
     val nudge = HubNudge(tokens)
     val store = HubStore(dataDir, onChanged = nudge::changed)
     val admin = tokens.adminToken(System.getenv("YOSEMITE_KIDS_ADMIN_TOKEN"))
-    val server = HubServer(store, tokens, port, admin)
+    // Beside config.json, on the volume a parent already backs up. Devices
+    // pull it from here; HubCrawl fills it once this hub holds the slot.
+    val index = io.yosemitekids.app.data.ChannelIndex(File(dataDir, "search-index"))
+    val server = HubServer(store, tokens, port, admin, index = index)
 
     val bound = server.start()
     println("Yosemite Kids hub listening on $bound, data in ${dataDir.absolutePath}")

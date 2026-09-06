@@ -1,5 +1,9 @@
 package io.yosemitekids.hub
 
+import java.io.File
+
+import io.yosemitekids.app.data.ChannelIndex
+
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import io.yosemitekids.app.data.SyncMeta
@@ -28,6 +32,12 @@ class HubServer(
     /** Shown on the status page so a parent can see which volume is live. */
     private val dataDir: String = System.getenv("YOSEMITE_KIDS_DATA") ?: "/data",
     /**
+     * The search index this hub serves — and crawls, once it holds the
+     * master slot. Beside config.json under the data dir, so the volume a
+     * parent already backs up carries it.
+     */
+    private val index: ChannelIndex = ChannelIndex(File(dataDir, "search-index")),
+    /**
      * Passed in so tests need no clock and the merge stays clock-free.
      *
      * Last on purpose. Every existing call site passes it as a trailing
@@ -50,6 +60,9 @@ class HubServer(
     /** Bodies are bounded: this faces the LAN, and a config is small. */
     private val maxBody = 1024 * 1024
 
+    /** Bounded and anchored: the id names a file under the data dir. Same alphabet and length as a device's /index. */
+    private val sourceId = Regex("(?:^|&)source=([A-Za-z0-9_-]{1,64})(?:&|$)")
+
     fun start(): Int {
         val s = HttpServer.create(InetSocketAddress(port), 0)
         // A small fixed pool, like the app's LAN server. Unbounded threads on a
@@ -62,6 +75,13 @@ class HubServer(
         s.createContext("/approve") { ex -> guarded(ex) { approve(ex) } }
         s.createContext("/pending") { ex -> guarded(ex) { pending(ex) } }
         s.createContext("/health") { ex -> respond(ex, 200, "ok") }
+        // The search index, for devices to pull. GET only: the hub builds
+        // the index itself and takes nobody's copy — a device that could
+        // POST here could truncate a source the hub had crawled further.
+        // Same wire format as a device's /index-status and /index, so the
+        // app's one importer reads both.
+        s.createContext("/index-status") { ex -> guarded(ex) { indexStatus(ex) } }
+        s.createContext("/index") { ex -> guarded(ex) { indexSource(ex) } }
 
         // The admin GUI. "/" is registered last and matches everything not
         // claimed above, so an unknown path lands on the page rather than on
@@ -103,6 +123,11 @@ class HubServer(
                 .put("syncV", SyncMeta.VERSION)
                 .put("syncHash", store.syncHash())
                 .put("name", "Yosemite Kids hub")
+                // Identity, so a phone backfills PairedDevice.id with it and
+                // can recognise the hub in config.masterDeviceToken; never a
+                // credential. `kind` is what the settings screens badge by.
+                .put("token", tokens.selfToken())
+                .put("kind", "hub")
                 .toString()
         )
     }
@@ -139,6 +164,26 @@ class HubServer(
      * yet — so it may do exactly one thing: mint a code for a human to approve
      * here. It reveals nothing about the family and grants nothing on its own.
      */
+    private fun indexStatus(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        if (!authorised(ex)) return
+        // The pull marker is what arms this hub to claim the master slot
+        // (HubTokens.armed): the caller says it takes its index from here.
+        if (ex.requestHeaders.getFirst("X-Index-Pull") == "1") {
+            tokens.notePull(ex.requestHeaders.getFirst("X-Token"), now())
+        }
+        respond(ex, 200, index.statusJson())
+    }
+
+    private fun indexSource(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        if (!authorised(ex)) return
+        val id = sourceId.find(ex.requestURI.rawQuery.orEmpty())?.groupValues?.get(1)
+            ?: return respond(ex, 400, "bad source")
+        val json = index.exportSourceWithState(id) ?: return respond(ex, 404, "unknown source")
+        respond(ex, 200, json)
+    }
+
     private fun enrol(ex: HttpExchange) {
         if (ex.requestMethod != "POST") return respond(ex, 405, "no")
         val body = readBody(ex) ?: return respond(ex, 413, "too large")

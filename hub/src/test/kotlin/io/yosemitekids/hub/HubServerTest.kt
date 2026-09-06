@@ -1,5 +1,7 @@
 package io.yosemitekids.hub
 
+import io.yosemitekids.app.data.ChannelIndex
+
 import io.yosemitekids.app.data.AiConfig
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.ConfigStamp
@@ -39,6 +41,7 @@ class HubServerTest {
     private lateinit var store: HubStore
     private lateinit var tokens: HubTokens
     private lateinit var server: HubServer
+    private lateinit var index: ChannelIndex
     private var port = 0
 
     @Before
@@ -46,7 +49,8 @@ class HubServerTest {
         val dir = tmp.newFolder("data")
         store = HubStore(dir)
         tokens = HubTokens(dir)
-        server = HubServer(store, tokens, 0, ADMIN) { T }
+        index = ChannelIndex(File(dir, "search-index"))
+        server = HubServer(store, tokens, 0, ADMIN, index = index) { T }
         port = server.start()
     }
 
@@ -379,5 +383,78 @@ class HubServerTest {
         val (code, body) = callAdmin("/approve", JSONObject().put("code", "WRONGCOD").toString())
         assertEquals(409, code)
         assertEquals("UNKNOWN_CODE", JSONObject(body).getString("refused"))
+    }
+
+    // --- the search index ------------------------------------------------
+
+    private fun vids(sourceId: String, vararg ids: String) = ids.map {
+        ChannelIndex.IndexedVideo(
+            videoId = it, title = "t $it", channelName = "c",
+            thumbnailUrl = null, durationSeconds = 60, sourceId = sourceId
+        )
+    }
+
+    private fun get(path: String, token: String?, headers: Map<String, String>): Pair<Int, String> {
+        val c = URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection
+        c.requestMethod = "GET"
+        token?.let { c.setRequestProperty("X-Token", it) }
+        headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
+        val code = c.responseCode
+        val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
+        c.disconnect()
+        return code to text
+    }
+
+    @Test
+    fun statusNamesTheHubByItsSelfTokenAndKind() {
+        // LanClient.fullStatus reads both: 'token' backfills PairedDevice.id,
+        // 'kind' is what the settings screens badge by.
+        val json = JSONObject(call("/status", token = enrolled()).second)
+        assertEquals(tokens.selfToken(), json.getString("token"))
+        assertEquals("hub", json.getString("kind"))
+    }
+
+    @Test
+    fun theIndexIsBehindTheSameTokenAsEverythingElse() {
+        assertEquals(401, call("/index-status").first)
+        assertEquals(401, call("/index?source=UCaaa").first)
+    }
+
+    @Test
+    fun theIndexIsServedInTheDeviceWireFormat() {
+        val token = enrolled()
+        assertEquals("{}", call("/index-status", token = token).second)
+        index.addVideos("UCaaa", vids("UCaaa", "v1", "v2"), complete = true)
+        assertEquals(index.statusJson(), call("/index-status", token = token).second)
+        val (code, body) = call("/index?source=UCaaa", token = token)
+        assertEquals(200, code)
+        assertEquals(index.exportSourceWithState("UCaaa"), body)
+        assertEquals(404, call("/index?source=UCzzz", token = token).first)
+        assertEquals(400, call("/index?source=..%2Fetc", token = token).first)
+        assertEquals(400, call("/index", token = token).first)
+    }
+
+    @Test
+    fun theHubTakesNobodysCopyOfTheIndex() {
+        // A device that could POST here could truncate a source the hub had
+        // crawled further. The device side has this route; the hub must not.
+        assertEquals(405, call("/index?source=UCaaa", "POST", enrolled(), "{}").first)
+    }
+
+    @Test
+    fun aPullArmsTheHubAndAPlainStatusReadDoesNot() {
+        val token = enrolled()
+        call("/index-status", token = token)
+        assertFalse("comparing before a push is not pulling", tokens.armed(T))
+        get("/index-status", token, mapOf("X-Index-Pull" to "1"))
+        assertTrue(tokens.armed(T))
+        assertTrue(tokens.armed(T + HubTokens.ARM_WINDOW_MS))
+        assertFalse("a day without a pull disarms", tokens.armed(T + HubTokens.ARM_WINDOW_MS + 1))
+    }
+
+    @Test
+    fun anUnknownCallersPullArmsNothing() {
+        assertEquals(401, get("/index-status", "not-a-token", mapOf("X-Index-Pull" to "1")).first)
+        assertFalse(tokens.armed(T))
     }
 }

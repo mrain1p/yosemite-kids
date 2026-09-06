@@ -1,5 +1,7 @@
 package io.yosemitekids.hub
 
+import io.yosemitekids.app.data.MasterToken
+
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -35,7 +37,9 @@ class HubTokens(dataDir: File) {
         val enrolledAt: Long,
         val host: String? = null,
         val port: Int = 0,
-        val lastSeenAt: Long = 0L
+        val lastSeenAt: Long = 0L,
+        /** When it last asked this hub for the search index. See [armed]. */
+        val pulledAt: Long = 0L
     ) {
         /** Where to reach it, or null when it has never said. */
         val address: String? get() = if (host != null && port in 1..65535) "$host:$port" else null
@@ -53,6 +57,17 @@ class HubTokens(dataDir: File) {
 
         /** Wrong guesses before a code is burned. Guessing is not a thing you get to do. */
         const val MAX_TRIES = 5
+
+        /**
+         * A device's pull counts for this long. The same day the master
+         * stamp takes to go vacant (MasterElection.VACANT_AFTER_MS): a hub
+         * that nobody has pulled from for a day is a hub whose crawl nobody
+         * would see.
+         */
+        const val ARM_WINDOW_MS = 24 * 60 * 60 * 1000L
+
+        /** How often a device's pull is written down. The question asked is "within a day", not "when". */
+        const val PULL_WRITE_INTERVAL_MS = 60 * 60 * 1000L
 
         /**
          * No vowels and no look-alikes: someone is reading this off a TV across
@@ -79,7 +94,8 @@ class HubTokens(dataDir: File) {
                 Device(
                     it.optString("token"), it.optString("name"), it.optLong("enrolledAt"),
                     it.optString("host").ifBlank { null },
-                    it.optInt("port"), it.optLong("lastSeenAt")
+                    it.optInt("port"), it.optLong("lastSeenAt"),
+                    it.optLong("pulledAt")
                 )
             }
         }
@@ -115,6 +131,56 @@ class HubTokens(dataDir: File) {
             }
         }
     }
+    /**
+     * This hub's own identity: ".hub" + 28 lowercase hex, 32 characters like
+     * a device token so nothing that takes the first eight or assumes the
+     * length breaks. Minted once and kept under `self`. An identity, never a
+     * credential — no route accepts it — which is what lets it travel in
+     * config.masterDeviceToken and lets the merge tell a hub from a phone by
+     * its prefix (MasterToken).
+     */
+    fun selfToken(): String = synchronized(lock) {
+        val root = read()
+        root.optString("self").takeIf { MasterToken.isHub(it) && it.length == 32 }?.let { return it }
+        val minted = MasterToken.HUB_PREFIX +
+            (1..28).map { "0123456789abcdef"[rng.nextInt(16)] }.joinToString("")
+        root.put("self", minted)
+        write(root)
+        minted
+    }
+
+    /**
+     * A device asked for the index (GET /index-status with X-Index-Pull: 1).
+     * Only an enrolled token counts. Written at most once an hour per device:
+     * a fleet pulling every fifteen minutes would otherwise rewrite
+     * devices.json on a schedule for the life of the hub.
+     */
+    fun notePull(token: String?, now: Long) {
+        if (token.isNullOrBlank()) return
+        synchronized(lock) {
+            val root = read()
+            val arr = root.optJSONArray("devices") ?: return
+            for (i in 0 until arr.length()) {
+                val d = arr.optJSONObject(i) ?: continue
+                if (d.optString("token") != token) continue
+                if (now - d.optLong("pulledAt") < PULL_WRITE_INTERVAL_MS) return
+                d.put("pulledAt", now)
+                write(root)
+                return
+            }
+        }
+    }
+
+    /**
+     * Whether any enrolled device has pulled the index within [ARM_WINDOW_MS].
+     * The hub claims the master slot only while armed (MasterElection): a hub
+     * nobody's devices can pull from must never take the crawl away from the
+     * phone still doing the work, and one they stopped pulling from lets its
+     * slot age out.
+     */
+    fun armed(now: Long): Boolean =
+        devices().any { it.pulledAt > 0L && now - it.pulledAt <= ARM_WINDOW_MS }
+
     fun isEnrolled(token: String?): Boolean =
         token != null && token.isNotBlank() && devices().any { it.token == token }
 

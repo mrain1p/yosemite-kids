@@ -180,3 +180,16 @@ nothing is written. Old clients that only check the status code are unaffected.
 Attribution costs nothing on the wire: the pushing phone already authenticated
 with a token the device can name, so the change log records who without any
 new field.
+
+## The hub's routes
+
+The hub answers `GET /status` and `GET|POST /config` like a device, has
+`/enrol`, `/approve`, `/pending`, `/health` and the admin GUI of its own
+(see `docs/HUB.md`), and serves the search index. Guard 14 covers the device
+table above; these are pinned by `HubServerTest` and `HubIntegrationTest`.
+
+| Route | Auth | Body | Reply | Notes |
+| --- | --- | --- | --- | --- |
+| `GET /status` | device token | — | as a device, plus `token` and `kind: "hub"` | `token` is the hub's self token (`.hub` + 28 hex, minted once): an identity, never a credential. It is what `config.masterDeviceToken` holds while the hub builds the index, and how a phone backfills `PairedDevice.id`. |
+| `GET /index-status` | device token | — | `{sourceId:{count,complete,hash}}`, byte-for-byte a device's | `X-Index-Pull: 1` says the caller takes its index from this hub. That **arms** the hub to claim the master slot (`HubTokens.armed`, 24 h window); a plain read arms nothing. |
+| `GET /index?source=<id>` | device token | — | `{count,newest,complete}\n[…videos]` / 404 | id `[A-Za-z0-9_-]{1,64}`, else 400. Anything but GET is 405: there is deliberately **no `POST /index` on the hub**. It takes nobody's copy, because a device that could push could truncate a source the hub had crawled further. |
