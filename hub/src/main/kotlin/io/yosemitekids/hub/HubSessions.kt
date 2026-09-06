@@ -31,14 +31,42 @@ class HubSessions(
         /** A parent administering a TV is not at the keyboard for hours. */
         internal const val SESSION_TTL_MS = 12 * 60 * 60 * 1000L
 
-        /** Wrong admin tokens tolerated inside [LOCKOUT_WINDOW_MS] before refusing. */
-        internal const val MAX_ATTEMPTS = 8
+        /**
+         * Wrong admin secrets tolerated inside a window before refusing.
+         *
+         * Ten rather than eight because /approve now shares this counter, and
+         * the phone's "connect my TVs" fans out one call per television.
+         */
+        internal const val MAX_ATTEMPTS = 10
         internal const val LOCKOUT_WINDOW_MS = 15 * 60 * 1000L
+
+        /**
+         * Consecutive lockouts double the wait, capped here. Against 96 bits
+         * of hex a rate limit was irrelevant; against a password a parent
+         * chose it is the whole control, so handing back ten fresh guesses
+         * every quarter of an hour for ever is not enough. At the cap this is
+         * about twelve thousand guesses a year, and a months-long grind
+         * visibly stops working.
+         *
+         * The hub already speaks this idiom: HubCrawl backs off the same way.
+         */
+        internal const val MAX_LOCKOUT_MS = 6 * 60 * 60 * 1000L
     }
 
     private val random = SecureRandom()
     private val sessions = LinkedHashMap<String, Long>()      // id -> expires at
     private val failures = ArrayDeque<Long>()                  // when, oldest first
+
+    /** Lockouts entered since the last successful sign-in. Drives [windowMs]. */
+    private var lockouts = 0
+
+    /**
+     * How long failures are remembered, and therefore how long a lockout
+     * lasts: 15 min, then 30, then an hour, doubling to [MAX_LOCKOUT_MS].
+     */
+    private fun windowMs(): Long =
+        if (lockouts <= 0) LOCKOUT_WINDOW_MS
+        else minOf(LOCKOUT_WINDOW_MS shl (lockouts - 1).coerceAtMost(20), MAX_LOCKOUT_MS)
 
     /**
      * Whether a login may even be attempted right now.
@@ -56,7 +84,13 @@ class HubSessions(
     @Synchronized
     fun recordFailure() {
         prune()
+        // Already locked out: do not deepen it. Otherwise a caller that keeps
+        // hammering a refused door would escalate itself to the six-hour cap
+        // in seconds, and the escalation is meant to answer a slow grind, not
+        // a fast one the gate is already refusing.
+        if (failures.size >= MAX_ATTEMPTS) return
         failures.addLast(now())
+        if (failures.size >= MAX_ATTEMPTS) lockouts++
     }
 
     /** Seconds until another attempt is allowed, or 0 when one is allowed now. */
@@ -65,13 +99,17 @@ class HubSessions(
         prune()
         if (failures.size < MAX_ATTEMPTS) return 0
         val oldest = failures.firstOrNull() ?: return 0
-        return ((oldest + LOCKOUT_WINDOW_MS - now()) / 1000).coerceAtLeast(1)
+        return ((oldest + windowMs() - now()) / 1000).coerceAtLeast(1)
     }
 
     /** A successful login clears the record: the guesser was not the parent. */
     @Synchronized
     fun open(): String {
+        // The guesser was not the parent: forget the failures AND the
+        // escalation, or a family who mistyped twice last week would still be
+        // serving the longer sentence today.
         failures.clear()
+        lockouts = 0
         prune()
         val id = ByteArray(ID_BYTES).also { random.nextBytes(it) }
             .joinToString("") { "%02x".format(it) }
@@ -92,6 +130,18 @@ class HubSessions(
         if (id != null) sessions.remove(id)
     }
 
+    /**
+     * End every session but the caller's own. Used when the password
+     * changes: you change it because you think someone else has it, and a
+     * twelve-hour session on a browser left open somewhere is exactly what
+     * you are trying to end. No disk state is needed — sessions are
+     * memory-only and single-process, so there is no epoch to persist.
+     */
+    @Synchronized
+    fun closeAll(except: String?) {
+        sessions.keys.retainAll { it == except }
+    }
+
     @Synchronized
     internal fun openCount(): Int {
         prune()
@@ -101,7 +151,7 @@ class HubSessions(
     private fun prune() {
         val t = now()
         sessions.entries.removeAll { it.value <= t }
-        while (failures.isNotEmpty() && failures.first() + LOCKOUT_WINDOW_MS <= t) {
+        while (failures.isNotEmpty() && failures.first() + windowMs() <= t) {
             failures.removeFirst()
         }
     }
