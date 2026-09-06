@@ -1714,6 +1714,10 @@ private fun AdminScreen(
             TextButton(modifier = Modifier.tvFocusHighlight(), onClick = ::close) { Text("Done") }
         }
         SettingsDivider()
+        // The page inset, applied once here rather than on the scroll, so the
+        // bar and its rule run full width above it. Kept at this indent
+        // deliberately: it wraps everything below and re-indenting the screen
+        // would hide the actual change in a diff of whitespace.
         Column(Modifier.padding(horizontal = 14.dp)) {
         Spacer(Modifier.height(14.dp))
         // "Your change lost." Found here rather than raised: a background
