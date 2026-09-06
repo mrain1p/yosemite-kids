@@ -208,7 +208,18 @@ should still be well under a second.
 Open `http://<host>:8765/` in a browser on the same network and sign in with
 your hub password — or, before you have set one, the admin token from the log.
 From there you can manage channels and blocked videos, approve or remove
-devices, set or change the password, and see what the hub holds.
+devices, give a kid bonus minutes or turn watching off until midnight, set or
+change the password, and see what the hub holds.
+
+Bonus minutes and the pause are worth one sentence about *when* they land,
+because the hub is not a phone. A phone calls each device it can see, so a
+television that is awake stops or gains time as the parent's thumb comes off
+the button. The hub calls nothing: it holds no credential on any device by
+design, so it writes the change into the family config and tells the devices
+their copy has moved. Everything awake with the app open takes it in seconds;
+everything else takes it the next time it opens. The card on the page says
+this too, in those words — a parent standing in the doorway should not have to
+come here to find out whether the television has heard yet.
 
 The status page names every setting that exists on the phone and is not here
 yet, so "can I do this on the NAS?" is answerable without guessing. That list
