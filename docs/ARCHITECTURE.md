@@ -243,9 +243,52 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Add a screen-time rule | `Whitelist.Limits` + `ConfigStore` (de)serializers + `SessionGuard` + settings section |
 | Add a LAN route | `LanServer.handle` (bound every read!) + `LanClient` + `docs/LAN-API.md` (guard 14 checks the row is there) |
 | Change what "Update now" does to a device, or says on the phone | `RemoteUpdate` in `data/Updater.kt` (the device's decision, over lambdas) + `POST /check-updates` + `LanClient.checkUpdates`; on the phone `DeviceFleet.updateNow` and `updateOutcomeText` in `SettingsDevices.kt` |
-| Add a parent setting | `Settings.kt` AdminScreen section + config field + push |
+| Add a parent setting | See "Adding one setting" below — eight steps, and the build fails on any of them you skip |
 | Change kid-facing wording | grep the string; every kid string is inline (no `strings.xml` yet) |
 | Touch the extractor | `YouTubeRepository.kt`; bump `newpipeextractor` in `gradle/libs.versions.toml` |
+
+## Adding one setting
+
+Say it is a new family-wide toggle, "Ask before playing a long video".
+
+1. `core/…/data/Whitelist.kt` — the property, defaulting to **today's
+   behaviour**.
+2. `core/…/data/ConfigJson.kt` — `toJson`/`fromJson`, **omitted at its
+   default**; the fingerprint tail appended only when set.
+3. `core/…/data/ConfigStamp.kt` — add it to the comparison of the unit it
+   belongs to (`settingsDiffer` here; `sameRules` for a limits scalar).
+4. `core/…/data/ConfigMerge.kt` — its JSON key into that unit's key list
+   (`SETTINGS_KEYS` / `LIMITS_RULES_KEYS`) and a line in `settingsChanges` /
+   `describeLimits`.
+5. `core/…/data/SettingsSurface.kt` — one `SettingsControl` in the right
+   group: `id`, `label`, `sub`, `kind`, `writes` (the Kotlin property path),
+   `json` only when `ConfigJson` spells it differently, and `where = BOTH` —
+   or `PHONE`/`HUB` **with a `why`**.
+6. `app/…/ui/<the screen>.kt` — render it, taking its words from
+   `ctl("<id>")`.
+7. `hub/…/web/index.html` — **nothing at all.** A `TOGGLE`, `NUMBER`, `TEXT`,
+   `TEXTAREA` or `CHIPS` control on a root or one-level path is drawn from the
+   manifest by `renderControl`. Only a `CUSTOM` control needs a hand-written
+   card, and then only a `data-control="<id>"` on it.
+8. `core/src/test/…/ConfigStoreJsonTest.kt` — the four canonical tests:
+   round-trips, omitted at default, keeps the pre-feature fingerprint, moves
+   the fingerprint when set.
+
+What fails if you do half of it:
+
+- Skip **1–4** in the wrong order and the sync skill's existing failures bite:
+  a field left out of `ConfigStamp` mints no stamp and is dropped by the first
+  peer that merges.
+- Skip **5** and guard 1 fails for a root field, or guard 26(a) for a
+  `Limits`/`AiConfig` leaf — and `SettingsSurfaceTest` fails too, by
+  reflection rather than by regex.
+- Skip **6** and guard 26(c) fails. The reference is load-bearing, not
+  ceremonial: the label lives in the manifest, so a screen that does not ask
+  for the control has nothing to draw.
+- Declare it `BOTH`, make it `CUSTOM`, skip **7**, and guard 26(b) fails.
+- Declare it `PHONE` or `HUB` with a blank `why` and guard 26(d) fails.
+- Skip **8** and the fingerprint moves for a family that never touched the
+  setting, which those tests assert against.
 
 ## Threading rules (from CLAUDE.md, restated)
 

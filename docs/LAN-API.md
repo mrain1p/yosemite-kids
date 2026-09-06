@@ -229,6 +229,18 @@ into the phone's `files/stats_cache/` on every sweep. The refusal list is
 | `POST /password` | `current` in the body | `{current, next}` | `{"ok": true, "recovery": <token>\|null}` | Set the first password or change it. `current` is the password or the recovery token, required **even inside a live session** (that session may be a browser on a kitchen counter). `recovery` is non-null on the first set only, is shown once, and retires the token from the log. 400 `{"error":"short"}` under `HubPassword.MIN_LENGTH`. Every other session is closed; the caller's survives. |
 | `POST /recovery` | `current` in the body | `{current}` | `{"token": <24 hex>}` | A fresh recovery token, shown once. The previous one stops working immediately. |
 
+The admin GUI's own routes are under `/api` and are session-gated, not token
+gated; they are not in this table because no device speaks them. Two of their
+rules are worth stating here because they are contracts, not implementation:
+`GET /api/state` carries a `controls` array — exactly
+`SettingsSurface.hubControls()`, the id, words, kind, range and JSON key of
+every control this face is expected to render — and in `POST /api/config` a
+key sent as JSON **null is removed, not set**. "Off", "Auto" and "All" are the
+key's absence in this config (`ConfigJson` asks `has()` before `getInt` in half
+a dozen places), so removing it is how a rule is cleared; a literal null would
+throw where absence means "no rule". `HubWeb.PATCHABLE` still gates which root
+keys a browser may name at all.
+
 `/login`, `/approve`, `/pending`, `/password` and `/recovery` all pass through
 one `adminGate()`, which consults the throttle **before** reading a body and
 before deriving anything: ten wrong secrets and every attempt is refused for

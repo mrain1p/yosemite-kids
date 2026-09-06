@@ -634,6 +634,102 @@ for door in "/forgot" "/reset" "/recover"; do
   fi
 done
 
+# 26. Parity per CONTROL, not per group.
+#     Guards 1-3 hold the two faces to the same GROUPS, and a group is too
+#     coarse to be a promise: hubReady is permanent, so a control added inside
+#     a group the hub already renders slips through with nothing to notice.
+#     That is not hypothetical. It had happened twice and both were live:
+#     screen-time-rules claimed the hub while the hub drew four of a kid's
+#     rules — no minVideoMinutes, no pause — and blocked-times claimed the hub
+#     with no windows editor at all. Four clauses, because "the two faces
+#     agree" is four separate properties and each fails on its own.
+wl=core/src/main/kotlin/io/yosemitekids/app/data/Whitelist.kt
+mtext=$(cat "$manifest")
+#    (a) Every config leaf is claimed by exactly one control, or exempted by
+#        name WITH a reason. A field with nothing to set it is a field a parent
+#        cannot reach on either face, and it fails here on the day it is added
+#        rather than in a message from a family six months later.
+class_props() {   # $1 = data class name; prints its declared properties
+  # One line, because the lint at the top of this file reads a line at a time.
+  awk -v head="data class $1(" 'index($0, head) == 1 { inside = 1; next } inside && /^\)/ { exit } inside' "$wl" | grep -oE "^    val [A-Za-z]+" | awk '{ print $2 }' || true
+}
+for cls in "Whitelist:" "Limits:limits." "AiConfig:ai."; do
+  props=$(class_props "${cls%%:*}")
+  [ -n "$props" ] || guard_fail "guard 26 cannot read ${cls%%:*}'s properties out of $wl; it is blind."
+  for p in $props; do
+    path="${cls#*:}$p"
+    claimed=0; exempt=0
+    case "$mtext" in *"writes = $q$path$q"*) claimed=1 ;; esac
+    case "$mtext" in *"$q$path$q to "*) exempt=1 ;; esac
+    [ $((claimed + exempt)) -eq 1 ] ||
+      guard_fail "$path is claimed by $claimed control and exempted $exempt times in SettingsSurface — want exactly one. Give it a SettingsControl with writes = $q$path$q, or add it to NOT_A_CONTROL with the reason there is nothing to set it."
+  done
+done
+#    (b)-(d), per control, read in file order: a control belongs to the section
+#        declared above it, which is what lets the section's own where/hubReady
+#        decide whether the hub owes it anything.
+#        From the list down, so the `data class SettingsControl(` declaration
+#        above it is not read as a control of its own.
+records=$(sed -n "/val sections: List<SettingsSection> = listOf(/,\$p" "$manifest" | tr "\n" " " | sed -E "s/SettingsSection[(]/\n@S /g; s/SettingsControl[(]/\n@C /g")
+ready=0
+declared=""
+while IFS= read -r rec; do
+  case "$rec" in
+    "@S "*)
+      ready=0
+      case "$rec" in *"Where.BOTH, true,"*|*"Where.HUB, true,"*) ready=1 ;; esac
+      continue ;;
+    "@C "*) ;;
+    *) continue ;;
+  esac
+  rest=${rec#*$q}
+  id=${rest%%$q*}
+  case "$id" in
+    *[!a-z0-9-]*|"") guard_fail "guard 26 cannot read a control id out of $manifest; it is blind." ;;
+  esac
+  declared="$declared $id"
+  case "$rec" in *"kind = ControlKind.CUSTOM"*) kind=CUSTOM ;; *) kind=PLAIN ;; esac
+  case "$rec" in
+    *"where = Where.PHONE"*) face=PHONE ;;
+    *"where = Where.HUB"*) face=HUB ;;
+    *) face=BOTH ;;
+  esac
+  # Empty first, so `why = ""` does not read as a reason.
+  case "$rec" in *"why = $q$q"*) haswhy=0 ;; *"why = $q"*) haswhy=1 ;; *) haswhy=0 ;; esac
+  #  (b) A control the hub is expected to have is either drawn generically from
+  #      the manifest or hand-written and marked. Nothing may be merely claimed.
+  if [ "$face" != PHONE ] && [ "$ready" = 1 ] && [ "$kind" = CUSTOM ]; then
+    grep -qE "data(-|set[.])control ?= ?$q$id$q" "$hubhtml" ||
+      guard_fail "the control $q$id$q is on the hub's list and index.html does not build it. A CUSTOM control is hand-written, so mark its card data-control=$q$id$q; anything a generic renderer could draw should not be CUSTOM."
+  fi
+  #  (c) A control the phone is expected to have is asked for by id. The
+  #      manifest owns the words, so the reference is load-bearing rather than
+  #      ceremonial — without it there is no label to render. CUSTOM controls
+  #      are exempt on purpose: their words are their own, which is what CUSTOM
+  #      means, so a reference there would prove nothing.
+  if [ "$face" != HUB ] && [ "$kind" != CUSTOM ]; then
+    grep -rqF "ctl($q$id$q)" app/src/main/java/io/yosemitekids/app/ui ||
+      guard_fail "the control $q$id$q is declared for the phone and no ui/*.kt asks for it. Render it with ctl($q$id$q), or move it to Where.HUB and say why."
+  fi
+  #  (d) "Specific to each" is a decision, and one with no recorded reason is
+  #      re-argued every round by someone who cannot tell it from an omission.
+  if [ "$face" != BOTH ] && [ "$haswhy" = 0 ]; then
+    guard_fail "the control $q$id$q is ${face}-only with a blank why. Say what the other face cannot do, where the next session will meet it."
+  fi
+done <<RECORDS
+$records
+RECORDS
+[ -n "$declared" ] || guard_fail "guard 26 read no controls out of $manifest; it is blind."
+#        And the other direction, which (c) alone does not cover: an id the
+#        phone asks for and the manifest does not declare. control() throws,
+#        and it throws at render time on a screen a parent just opened.
+for asked in $(grep -rhoE "ctl[(]$q[a-z0-9-]+$q[)]" app/src/main/java/io/yosemitekids/app/ui | sed -E "s/ctl[(]$q//; s/$q[)]//" | sort -u || true); do
+  case " $declared " in
+    *" $asked "*) ;;
+    *) guard_fail "the phone asks for a settings control called $q$asked$q, which SettingsSurface does not declare. SettingsSurface.control() throws — on the screen, in front of a parent." ;;
+  esac
+done
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"

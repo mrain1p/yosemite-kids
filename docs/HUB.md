@@ -216,6 +216,16 @@ comes from `SettingsSurface` in `:core`, which is the same list the build
 checks — a page cannot exist without an entry, and an entry cannot claim to be
 built without a page.
 
+Most of what you see is drawn from that manifest rather than written out here.
+`SettingsSurface` declares each control once — its words, how it is drawn, its
+range, and the config key it writes — `GET /api/state` ships the ones this face
+is expected to have, and `renderControl` in `index.html` builds them. So a new
+switch on the phone appears on the hub from one declaration, and the two faces
+cannot call the same rule by two different names. A handful of controls are too
+particular for that (the channel list, the device rows, the blocked-times
+editor); those are hand-written and marked `data-control="<id>"`, which is how
+guard 26 tells a control that was built from one that was only claimed.
+
 Notes on the session:
 
 - It lives in memory. Restarting the hub signs everyone out. That is

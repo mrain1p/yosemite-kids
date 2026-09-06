@@ -64,9 +64,11 @@ import io.yosemitekids.app.data.SettingsSurface
  * rather than ceremonial — a control the phone does not name is a control the
  * phone cannot render, so the reference is load-bearing.
  *
- * Spelled `ctl("id")` on purpose: the guard reads that shape out of these
- * files, in both directions — every control the manifest declares for this
- * face is asked for somewhere, and every id asked for is declared.
+ * Spelled `ctl(<id>)` on purpose: guard 26 reads that shape out of these files,
+ * in both directions — every control the manifest declares for this face is
+ * asked for somewhere, and every id asked for is declared. (The angle brackets
+ * are this comment's, not the call's: a real id in here would read to the guard
+ * as a control the phone renders.)
  */
 internal fun ctl(id: String): SettingsControl = SettingsSurface.control(id)
 

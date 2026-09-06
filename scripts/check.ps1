@@ -725,6 +725,106 @@ foreach ($door in @("/forgot", "/reset", "/recover")) {
     }
 }
 
+# 26. Parity per CONTROL, not per group.
+#     Guards 1-3 hold the two faces to the same GROUPS, and a group is too
+#     coarse to be a promise: hubReady is permanent, so a control added inside
+#     a group the hub already renders slips through with nothing to notice.
+#     That is not hypothetical. It had happened twice and both were live:
+#     screen-time-rules claimed the hub while the hub drew four of a kid's
+#     rules - no minVideoMinutes, no pause - and blocked-times claimed the hub
+#     with no windows editor at all. Four clauses, because "the two faces
+#     agree" is four separate properties and each fails on its own.
+$whitelistSrc = Get-Content "core/src/main/kotlin/io/yosemitekids/app/data/Whitelist.kt" -Raw
+$uiSrc = (Get-ChildItem "app/src/main/java/io/yosemitekids/app/ui" -Filter *.kt |
+    ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n"
+
+function Get-ClassProps($src, $name) {
+    $m = [regex]::Match($src, "(?sm)^data class $name\((.*?)^\)")
+    if (-not $m.Success) { return @() }
+    @([regex]::Matches($m.Groups[1].Value, '(?m)^    val ([A-Za-z]+)') |
+        ForEach-Object { $_.Groups[1].Value })
+}
+
+#    (a) Every config leaf is claimed by exactly one control, or exempted by
+#        name WITH a reason. A field with nothing to set it is a field a parent
+#        cannot reach on either face, and it fails here on the day it is added
+#        rather than in a message from a family six months later.
+foreach ($cls in @(@("Whitelist", ""), @("Limits", "limits."), @("AiConfig", "ai."))) {
+    $props = Get-ClassProps $whitelistSrc $cls[0]
+    if ($props.Count -eq 0) {
+        Fail-Guard "guard 26 cannot read $($cls[0])'s properties out of Whitelist.kt; it is blind."
+    }
+    foreach ($p in $props) {
+        $path = $cls[1] + $p
+        $claimed = if ($manifest.Contains('writes = "' + $path + '"')) { 1 } else { 0 }
+        $exempt = if ($manifest.Contains('"' + $path + '" to ')) { 1 } else { 0 }
+        if (($claimed + $exempt) -ne 1) {
+            Fail-Guard "$path is claimed by $claimed control and exempted $exempt times in SettingsSurface - want exactly one. Give it a SettingsControl with writes = ""$path"", or add it to NOT_A_CONTROL with the reason there is nothing to set it."
+        }
+    }
+}
+
+#    (b)-(d), per control, read in file order: a control belongs to the section
+#        declared above it, which is what lets the section's own where/hubReady
+#        decide whether the hub owes it anything.
+$declared = @()
+$ready = $false
+# From the list down, so the `data class SettingsControl(` declaration above it
+# is not read as a control of its own.
+$listAt = $manifest.IndexOf('val sections: List<SettingsSection> = listOf(')
+if ($listAt -lt 0) { Fail-Guard "guard 26 cannot find SettingsSurface.sections; it is blind." }
+$sectionsBlock = $manifest.Substring($listAt)
+foreach ($t in [regex]::Matches($sectionsBlock, '(?s)(SettingsSection|SettingsControl)\((.*?)(?=SettingsSection\(|SettingsControl\(|\z)')) {
+    $body = $t.Groups[2].Value
+    if ($t.Groups[1].Value -eq "SettingsSection") {
+        $ready = $body -match 'Where\.(BOTH|HUB), true,'
+        continue
+    }
+    $idMatch = [regex]::Match($body, '^\s*"([a-z0-9-]+)"')
+    if (-not $idMatch.Success) { Fail-Guard "guard 26 cannot read a control id out of SettingsSurface." }
+    $id = $idMatch.Groups[1].Value
+    $declared += $id
+    $custom = $body -match 'kind = ControlKind\.CUSTOM'
+    $face = if ($body -match 'where = Where\.PHONE') { "PHONE" }
+        elseif ($body -match 'where = Where\.HUB') { "HUB" }
+        else { "BOTH" }
+    $hasWhy = ($body -match 'why = "') -and -not ($body -match 'why = ""')
+
+    #  (b) A control the hub is expected to have is either drawn generically
+    #      from the manifest or hand-written and marked. Nothing may be merely
+    #      claimed.
+    if ($face -ne "PHONE" -and $ready -and $custom) {
+        if ($hubHtml -notmatch ('data(-|set\.)control ?= ?"' + [regex]::Escape($id) + '"')) {
+            Fail-Guard "the control ""$id"" is on the hub's list and index.html does not build it. A CUSTOM control is hand-written, so mark its card data-control=""$id""; anything a generic renderer could draw should not be CUSTOM."
+        }
+    }
+    #  (c) A control the phone is expected to have is asked for by id. The
+    #      manifest owns the words, so the reference is load-bearing rather
+    #      than ceremonial - without it there is no label to render. CUSTOM
+    #      controls are exempt on purpose: their words are their own, which is
+    #      what CUSTOM means, so a reference there would prove nothing.
+    if ($face -ne "HUB" -and -not $custom) {
+        if (-not $uiSrc.Contains('ctl("' + $id + '")')) {
+            Fail-Guard "the control ""$id"" is declared for the phone and no ui/*.kt asks for it. Render it with ctl(""$id""), or move it to Where.HUB and say why."
+        }
+    }
+    #  (d) "Specific to each" is a decision, and one with no recorded reason is
+    #      re-argued every round by someone who cannot tell it from an omission.
+    if ($face -ne "BOTH" -and -not $hasWhy) {
+        Fail-Guard "the control ""$id"" is $face-only with a blank why. Say what the other face cannot do, where the next session will meet it."
+    }
+}
+if ($declared.Count -eq 0) { Fail-Guard "guard 26 read no controls out of SettingsSurface.kt; it is blind." }
+#        And the other direction, which (c) alone does not cover: an id the
+#        phone asks for and the manifest does not declare. control() throws,
+#        and it throws at render time on a screen a parent just opened.
+foreach ($asked in @([regex]::Matches($uiSrc, 'ctl\("([a-z0-9-]+)"\)') |
+        ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)) {
+    if ($declared -notcontains $asked) {
+        Fail-Guard "the phone asks for a settings control called ""$asked"", which SettingsSurface does not declare. SettingsSurface.control() throws - on the screen, in front of a parent."
+    }
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan
