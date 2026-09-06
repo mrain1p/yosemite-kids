@@ -1911,6 +1911,13 @@
     // — which is how guard 26(b) tells a hand-written control that was built
     // from one that was only claimed.
     c.dataset.control = "review-allowed";
+    // What an empty card means. Without this, "nothing is waiting" reads the
+    // same whether screening is working perfectly or has never run at all.
+    if (r && r.screened) {
+      c.appendChild(el("p", "sub", r.screened +
+        (r.screened === 1 ? " video judged" : " videos judged") +
+        " under your current rules."));
+    }
     return c;
   }
 
