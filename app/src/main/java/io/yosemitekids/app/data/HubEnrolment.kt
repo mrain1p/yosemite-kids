@@ -139,7 +139,10 @@ object HubEnrolment {
         runCatching {
             val root = base(host, port)
 
-            val token = mint(root, adminToken, deviceName)
+            // A parent's phone, said by the thing holding the admin secret —
+            // which here is this phone, and it is entitled to. It is what
+            // decides whether the hub ever serves this device the API key.
+            val token = mint(root, adminToken, deviceName, PARENT)
 
             // Stored like any other peer. From here the ordinary reconcile
             // takes over — the hub is simply a device that never sleeps.
@@ -183,19 +186,34 @@ object HubEnrolment {
         adminToken: String,
         deviceName: String
     ): Result<String> = withContext(Dispatchers.IO) {
-        runCatching { mint(base(host, port), adminToken, deviceName) }
+        // A kid's screen. It is handed its API key by this phone, so it has no
+        // reason to be handed one by the hub as well.
+        runCatching { mint(base(host, port), adminToken, deviceName, DEVICE) }
             .recoverCatching { e -> throw if (e is HubError) e else HubError(Failure.Unreachable) }
     }
 
+    /**
+     * What is being enrolled, as the hub's `/approve` spells it. The hub fails
+     * closed on anything it does not recognise, so an older hub simply files
+     * everything as a device and serves nobody a key — which is what it did
+     * before this existed.
+     */
+    private const val PARENT = "parent"
+    private const val DEVICE = "device"
+
     /** enrol + approve, shared by [join] and [tokenFor] so they cannot drift. */
-    private fun mint(root: String, adminToken: String, deviceName: String): String {
+    private fun mint(root: String, adminToken: String, deviceName: String, kind: String): String {
         val code = post(root, "/enrol", JSONObject().put("name", deviceName).toString(), null)
             .let { (status, body) ->
                 if (status != 200) throw HubError(Failure.NotAHub)
                 JSONObject(body).optString("code").takeIf { it.isNotBlank() }
                     ?: throw HubError(Failure.NotAHub)
             }
-        return post(root, "/approve", JSONObject().put("code", code).toString(), adminToken)
+        return post(
+            root, "/approve",
+            JSONObject().put("code", code).put("kind", kind).toString(),
+            adminToken
+        )
             .let { (status, body) ->
                 when (status) {
                     200 -> JSONObject(body).optString("token").takeIf { it.isNotBlank() }

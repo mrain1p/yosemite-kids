@@ -167,9 +167,22 @@ class HubServer(
      */
     private fun status(ex: HttpExchange) {
         if (!authorised(ex)) return
+        // Whether this caller and this hub are going to be comparing a key.
+        // Deliberately per-caller and not "does this box hold one": a peer
+        // that will never be served the key must never be judged on a
+        // fingerprint that includes it, or it reads as out of sync for ever
+        // and takes the merge arm on every sweep — the exact bug the phone's
+        // keyless-peer flag was introduced to fix. The predicate is the same
+        // one [config] uses, so the two answers cannot drift apart.
+        val shared = sharesKeyWith(ex)
         respond(
             ex, 200,
             JSONObject()
+                // The keyless fingerprint, for ever. A phone from before this
+                // feature has the hub recorded as keyless and compares its own
+                // keyless form against this one; moving it would put every
+                // such phone permanently out of sync with a hub it agrees with
+                // completely.
                 .put("hash", store.fingerprint())
                 .put("updatedAt", store.updatedAt())
                 .put("syncV", SyncMeta.VERSION)
@@ -180,15 +193,34 @@ class HubServer(
                 // credential. `kind` is what the settings screens badge by.
                 .put("token", tokens.selfToken())
                 .put("kind", "hub")
+                .put("holdsKey", shared)
+                .apply { if (shared) put("hashWithKey", store.fingerprintWithKey()) }
                 .toString()
         )
     }
+
+    /**
+     * Whether the caller is a parent's phone **and** this hub has a key to
+     * give it. Both halves, in one place, because `/status` and `GET /config`
+     * have to agree: a peer told `holdsKey` and then served a keyless document
+     * would compare a hash it can never reproduce.
+     *
+     * Parents only, and the row says which. A kid device is handed its key by
+     * a parent's phone (`ConfigSync` pushes `rawJson()`, secrets included) and
+     * has no reason to be handed one by a box on the network as well — this is
+     * the machine most likely to face the internet one day, and a television
+     * is the peer least able to look after a credential.
+     */
+    private fun sharesKeyWith(ex: HttpExchange): Boolean =
+        store.holdsKey() &&
+            tokens.kindOf(ex.requestHeaders.getFirst("X-Token")) == HubTokens.Kind.PARENT
 
     private fun config(ex: HttpExchange) {
         if (!authorised(ex)) return
         when (ex.requestMethod) {
             "GET" -> {
-                val raw = store.raw()
+                // The key goes back on only for a parent. See [sharesKeyWith].
+                val raw = if (sharesKeyWith(ex)) store.forPeers() else store.raw()
                 if (raw == null) respond(ex, 404, "no config yet")
                 else respond(ex, 200, raw)
             }
@@ -265,10 +297,19 @@ class HubServer(
             return respond(ex, 401, JSONObject().put("error", "password").toString())
         }
         val body = readBody(ex) ?: return respond(ex, 413, "too large")
-        val code = runCatching { JSONObject(body).optString("code") }.getOrNull()
+        val json = runCatching { JSONObject(body) }.getOrNull()
             ?: return respond(ex, 400, "no code")
+        val code = json.optString("code")
+        // What is being enrolled, said by the party holding the admin secret —
+        // never by the thing joining. /enrol is unauthenticated by necessity,
+        // so nothing it claims about itself is worth anything, and the only
+        // door this opens is the API key. Absent means DEVICE, which is what
+        // every older phone sends and what a code typed into the hub's own
+        // page means.
+        val enrolling = if (json.optString("kind") == "parent") HubTokens.Kind.PARENT
+        else HubTokens.Kind.DEVICE
 
-        tokens.approve(code, now()).fold(
+        tokens.approve(code, now(), enrolling).fold(
             onSuccess = { respond(ex, 200, JSONObject().put("token", it).toString()) },
             onFailure = {
                 val reason = (it as? EnrolmentRefused)?.reason

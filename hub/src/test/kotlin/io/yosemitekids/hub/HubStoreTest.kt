@@ -300,7 +300,85 @@ class HubStoreTest {
         assertFalse("the feed names an API key at all: $feed", feed.contains("sk-or"))
     }
 
+    // --- who the hub gives it to -------------------------------------------
+
+    @Test
+    fun aParentsPhoneIsServedTheKeyAndAKidDeviceIsNot() {
+        pushFromPhone(oldKey) { it.copy(sources = listOf(scishow)) }
+        val parent = enrol("Dad's phone", HubTokens.Kind.PARENT)
+        val tv = enrol("Living Room", HubTokens.Kind.DEVICE)
+
+        val (parentCode, forParent) = getAs("/config", parent)
+        assertEquals(200, parentCode)
+        assertTrue("a second parent's phone was not given the family's key", forParent.contains(oldKey))
+
+        val (tvCode, forTv) = getAs("/config", tv)
+        assertEquals(200, tvCode)
+        assertFalse("a television was handed a credential it never asked for", forTv.contains(oldKey))
+
+        // The same document either way, apart from the one field. A kid
+        // device gets its key from a parent's phone (ConfigSync pushes
+        // rawJson(), secrets included) and loses nothing here.
+        assertEquals(
+            ConfigJson.fromJson(forParent).sources.map { it.id },
+            ConfigJson.fromJson(forTv).sources.map { it.id }
+        )
+    }
+
+    @Test
+    fun statusTellsAParentAboutTheKeyAndTellsATelevisionNothing() {
+        pushFromPhone(oldKey) { it.copy(sources = listOf(scishow)) }
+        val parent = JSONObject(getAs("/status", enrol("Dad's phone", HubTokens.Kind.PARENT)).second)
+        val tv = JSONObject(getAs("/status", enrol("Living Room", HubTokens.Kind.DEVICE)).second)
+
+        assertTrue(parent.getBoolean("holdsKey"))
+        assertEquals(store.fingerprintWithKey(), parent.getString("hashWithKey"))
+
+        // Not "this box holds no key" — "you and I are not going to be
+        // comparing one". A peer that will never be served the key must keep
+        // being judged on the keyless fingerprint, or it reads as out of sync
+        // for ever and re-merges on every sweep.
+        assertFalse(tv.getBoolean("holdsKey"))
+        assertFalse("a peer with no key was handed a hash it can never reproduce", tv.has("hashWithKey"))
+
+        // And `hash` is the keyless form for both, for ever: a phone from
+        // before this feature compares its own keyless fingerprint to it.
+        assertEquals(store.fingerprint(), parent.getString("hash"))
+        assertEquals(store.fingerprint(), tv.getString("hash"))
+    }
+
+    @Test
+    fun anEnrolmentFromBeforeThisFeatureIsNotAParent() {
+        // Fail closed. Every row in every existing devices.json has no `kind`,
+        // and the only door the field opens is the API key — so an unknown
+        // word, or none, is a device. The cost is that a parent re-joins to be
+        // upgraded; the alternative is handing a credential to whatever
+        // happened to be enrolled first.
+        pushFromPhone(oldKey) { it.copy(sources = listOf(scishow)) }
+        val legacy = enrol("An older phone", HubTokens.Kind.PARENT)
+        stripKindFromDevicesFile()
+
+        assertEquals(HubTokens.Kind.DEVICE, tokens.kindOf(legacy))
+        assertFalse(getAs("/config", legacy).second.contains(oldKey))
+    }
+
     // --- plumbing ---------------------------------------------------------
+
+    /** An enrolled token of a given kind, the way the approver records it. */
+    private fun enrol(name: String, kind: HubTokens.Kind): String {
+        val code = tokens.startEnrolment(name, clock)
+        return tokens.approve(code, clock, kind).getOrThrow()
+    }
+
+    /** Every enrolment as an older build wrote it: no `kind` at all. */
+    private fun stripKindFromDevicesFile() {
+        val f = File(dir, "devices.json")
+        val root = JSONObject(f.readText())
+        val arr = root.getJSONArray("devices")
+        for (i in 0 until arr.length()) arr.getJSONObject(i).remove("kind")
+        f.writeText(root.toString(2))
+    }
+
 
     /**
      * A parent's phone editing what it last synced and pushing it, carrying
@@ -336,6 +414,17 @@ class HubStoreTest {
         c.outputStream.use { it.write(JSONObject().put("secret", admin).toString().toByteArray()) }
         if (c.responseCode != 200) return null
         return c.getHeaderField("Set-Cookie")?.substringAfter("yk_session=")?.substringBefore(";")
+    }
+
+    /** As an enrolled device, which is how a phone and a television both call. */
+    private fun getAs(path: String, token: String): Pair<Int, String> {
+        val c = (URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection).apply {
+            setRequestProperty("X-Token", token)
+        }
+        val code = c.responseCode
+        val text = (if (code in 200..299) c.inputStream else c.errorStream)
+            ?.bufferedReader()?.readText().orEmpty()
+        return code to text
     }
 
     private fun get(path: String, cookie: String?): Pair<Int, String> {

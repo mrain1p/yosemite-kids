@@ -1241,8 +1241,37 @@ object LanClient {
         /** Whether this peer already syncs with a hub of its own. */
         val hasHub: Boolean = false,
         /** "tv", "tablet" or "phone", or null for a build that predates the key. */
-        val kind: String? = null
-    )
+        val kind: String? = null,
+        /**
+         * A hub saying it holds the family's API key **and serves it to this
+         * caller**. False everywhere else, including on every build older than
+         * the feature, which is why the phone keeps working unchanged against
+         * a hub that has not been updated.
+         *
+         * Both halves matter. A peer that will never be given the key must
+         * keep being judged on the keyless fingerprint, or it reads as out of
+         * sync for ever and the reconcile takes the merge arm on every sweep.
+         */
+        val holdsKey: Boolean = false,
+        /**
+         * The fingerprint this peer computes **with** that key, which is what
+         * a phone holding the same key must compare against. Null when there
+         * is no shared key, and then [hash] — the keyless form, which the hub
+         * advertises for ever — is the one to use.
+         */
+        val hashWithKey: String? = null
+    ) {
+        /**
+         * Which of the two fingerprints to judge this peer on.
+         *
+         * [keyless] is `PairedDevice.secretless`: this phone's own record of
+         * whether the peer holds the key, never the peer's claim about the
+         * comparison. The peer only reports the fact ([holdsKey]); what that
+         * means for a check is decided here.
+         */
+        fun hashFor(keyless: Boolean): String =
+            if (keyless) hash else (hashWithKey ?: hash)
+    }
 
     /** The device's config fingerprint + last-edit time, or null when unreachable. */
     suspend fun status(device: PairedDevice): Pair<String, Long>? =
@@ -1477,7 +1506,9 @@ object LanClient {
                     versionName = json.optString("versionName").ifEmpty { null },
                     versionCode = if (json.has("versionCode")) json.optInt("versionCode") else null,
                     hasHub = json.optBoolean("hub", false),
-                    kind = json.optString("kind").ifEmpty { null }
+                    kind = json.optString("kind").ifEmpty { null },
+                    holdsKey = json.optBoolean("holdsKey", false),
+                    hashWithKey = json.optString("hashWithKey").ifEmpty { null }
                 )
             }
         }.getOrNull()

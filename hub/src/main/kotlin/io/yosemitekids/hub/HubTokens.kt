@@ -52,11 +52,36 @@ class HubTokens(dataDir: File) {
          */
         val deviceId: String? = null,
         /** Two different identities have announced themselves under this enrolment. See [noteSeen]. */
-        val idConflict: Boolean = false
+        val idConflict: Boolean = false,
+        /**
+         * Whether this enrolment is a parent's phone or a child's screen.
+         *
+         * Written by the **approver** — whoever presented the admin secret to
+         * `/approve` — and never claimed by the enrolling device, which is the
+         * same argument the codebase already makes for `PairedDevice.isHub`:
+         * `/enrol` is unauthenticated by necessity, so anything it could say
+         * about itself is worthless.
+         *
+         * It decides one thing: whether `GET /config` puts the API key back.
+         * A row written before this existed is a [Kind.DEVICE], because
+         * failing closed here costs a parent one re-join and failing open
+         * hands a credential to a television.
+         */
+        val kind: Kind = Kind.DEVICE
     ) {
         /** Where to reach it, or null when it has never said. */
         val address: String? get() = if (host != null && port in 1..65535) "$host:$port" else null
     }
+
+    /**
+     * What kind of thing an enrolment is, and therefore what it may be given.
+     *
+     * A parent's phone administers the family and already holds the API key —
+     * it is where the key is typed. A kid device is handed its key by a
+     * parent's phone and has no reason to be handed one by a box on the
+     * network as well. Two names, one decision: see [Device.kind].
+     */
+    enum class Kind { PARENT, DEVICE }
 
     /** A code shown on a device, waiting for a human to approve it here. */
     data class Pending(val code: String, val name: String, val createdAt: Long, val tries: Int)
@@ -110,7 +135,12 @@ class HubTokens(dataDir: File) {
                     it.optInt("port"), it.optLong("lastSeenAt"),
                     it.optLong("pulledAt"),
                     it.optString("deviceId").ifBlank { null },
-                    it.optBoolean("idConflict")
+                    it.optBoolean("idConflict"),
+                    // Fail closed. An unknown word from a newer build, or no
+                    // word at all from an older one, is a device — never a
+                    // parent, because the only thing this field opens is the
+                    // API key.
+                    runCatching { Kind.valueOf(it.optString("kind")) }.getOrDefault(Kind.DEVICE)
                 )
             }
         }
@@ -230,6 +260,15 @@ class HubTokens(dataDir: File) {
 
     fun nameOf(token: String?): String? = devices().firstOrNull { it.token == token }?.name
 
+    /**
+     * What kind of enrolment a token is, or null when it is not one at all.
+     *
+     * The one caller that matters is `GET /config`: a parent is served the API
+     * key and a kid device is not. An unknown token answers null and is
+     * refused before it gets this far.
+     */
+    fun kindOf(token: String?): Kind? = devices().firstOrNull { it.token == token }?.kind
+
     /** Mint a code for a device that wants in. [now] is passed so tests need no clock. */
     fun startEnrolment(name: String, now: Long): String = synchronized(lock) {
         // Inside the lock, like every other mutator here. read() and write()
@@ -278,7 +317,7 @@ class HubTokens(dataDir: File) {
      * resembles — otherwise the try limit is per-code and an attacker gets
      * five guesses per outstanding enrolment.
      */
-    fun approve(code: String, now: Long): Result<String> = synchronized(lock) {
+    fun approve(code: String, now: Long, kind: Kind = Kind.DEVICE): Result<String> = synchronized(lock) {
         val root = read()
         val arr = root.optJSONArray("pending") ?: JSONArray()
         val wanted = code.trim().uppercase()
@@ -313,6 +352,7 @@ class HubTokens(dataDir: File) {
             JSONObject().put("token", token)
                 .put("name", found.optString("name"))
                 .put("enrolledAt", now)
+                .put("kind", kind.name)
         )
         root.put("devices", devices)
         root.put("pending", kept)   // the approved one is consumed

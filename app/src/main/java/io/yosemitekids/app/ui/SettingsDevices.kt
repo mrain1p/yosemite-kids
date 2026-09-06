@@ -105,8 +105,17 @@ internal sealed interface DeviceSync {
         val versionName: String? = null,
         val versionCode: Int? = null,
         /** [io.yosemitekids.app.data.DeviceKind], or null when the build predates it. */
-        val kind: String? = null
-    ) : DeviceSync
+        val kind: String? = null,
+        /**
+         * The fingerprint this peer computes with the API key it holds and
+         * shares, or null when there is no shared key — see
+         * [LanClient.DeviceStatus.hashWithKey].
+         */
+        val hashWithKey: String? = null
+    ) : DeviceSync {
+        /** Which of the two to judge it on. [LanClient.DeviceStatus.hashFor]. */
+        fun hashFor(keyless: Boolean): String = if (keyless) hash else (hashWithKey ?: hash)
+    }
 }
 
 /**
@@ -140,11 +149,19 @@ private fun hashesAgree(
 ): Boolean =
     remoteHash == expectedHash && (remoteSyncV == null || remoteSyncHash == localSyncHash)
 
-private fun DeviceSync.Reachable.matches(expectedHash: String, localSyncHash: String): Boolean =
-    hashesAgree(hash, syncV, syncHash, expectedHash, localSyncHash)
+/**
+ * [device] decides which of the peer's two fingerprints is the one to read, by
+ * the same flag [expectedHash] uses to decide which of this phone's two to
+ * compare it against. Both sides have to move together or the comparison is
+ * between a keyed hash and a keyless one, which never matches and never can.
+ */
+private fun DeviceSync.Reachable.matches(
+    device: PairedDevice, expectedHash: String, localSyncHash: String
+): Boolean = hashesAgree(hashFor(device.secretless), syncV, syncHash, expectedHash, localSyncHash)
 
-private fun LanClient.DeviceStatus.matches(expectedHash: String, localSyncHash: String): Boolean =
-    hashesAgree(hash, syncV, syncHash, expectedHash, localSyncHash)
+private fun LanClient.DeviceStatus.matches(
+    device: PairedDevice, expectedHash: String, localSyncHash: String
+): Boolean = hashesAgree(hashFor(device.secretless), syncV, syncHash, expectedHash, localSyncHash)
 
 /**
  * The fingerprint [device] should be reporting if it agrees with this phone.
@@ -250,7 +267,7 @@ internal class DeviceFleet(private val pairingStore: PairingStore) {
     fun inSyncCount(expectedHashFor: (PairedDevice) -> String, localSyncHash: String): Int =
         devices.count { d ->
             (syncStates[d.key] as? DeviceSync.Reachable)
-                ?.matches(expectedHashFor(d), localSyncHash) == true
+                ?.matches(d, expectedHashFor(d), localSyncHash) == true
         }
 
     val hub: PairedDevice? get() = devices.firstOrNull { it.isHub }
@@ -272,7 +289,7 @@ internal class DeviceFleet(private val pairingStore: PairingStore) {
         if (status != null) {
             val answer = DeviceSync.Reachable(
                 status.hash, status.updatedAt, status.deviceToken, status.syncV, status.syncHash,
-                status.versionName, status.versionCode, status.kind
+                status.versionName, status.versionCode, status.kind, status.hashWithKey
             )
             syncStates = syncStates + (device.key to answer)
             lastAnswer = lastAnswer + (device.key to answer)
@@ -502,7 +519,7 @@ private fun rowStatusLine(
 ): Pair<String, Boolean> {
     val sync = fleet.syncStates[device.key]
     val inSync = (sync as? DeviceSync.Reachable)
-        ?.matches(expectedHash(device, localHash, localSecretlessHash), localSyncHash) == true
+        ?.matches(device, expectedHash(device, localHash, localSecretlessHash), localSyncHash) == true
     return deviceStatusLine(sync, fleet.lastAnswer[device.key], fleet.lastSeen[device.key], inSync)
 }
 /** The kid-device badge, from what the device said about itself. Null = say nothing. */
@@ -988,7 +1005,7 @@ internal fun DevicePage(
     val expected = expectedHash(device, localHash, localSecretlessHash)
     val sync = fleet.syncStates[device.key]
     val last = fleet.lastAnswer[device.key]
-    val inSync = (sync as? DeviceSync.Reachable)?.matches(expected, localSyncHash)
+    val inSync = (sync as? DeviceSync.Reachable)?.matches(device, expected, localSyncHash)
 
     pendingRevoke?.let { (adminName, adminToken) ->
         RevokeDialog(
@@ -1146,7 +1163,7 @@ internal fun DevicePage(
                             after == null ->
                                 "Sent, but ${device.name} stopped answering — check it arrived."
                             // Through matches(), not a second copy of its rule.
-                            after.matches(expectedNow, syncNow) -> "Pushed ✓"
+                            after.matches(device, expectedNow, syncNow) -> "Pushed ✓"
                             // The device took the config and still disagrees.
                             // Two honest causes: it merged in something this
                             // phone has not pulled yet, or it is an older build

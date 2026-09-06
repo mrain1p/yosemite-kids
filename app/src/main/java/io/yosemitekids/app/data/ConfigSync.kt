@@ -137,24 +137,52 @@ object ConfigSync {
                 device = device.copy(id = status.deviceToken)
                 pairing.replacePaired(stored, device)
             }
+            // A hub that has started holding the family's API key — or stopped.
+            // Recorded here, on the one path that talks to every peer, so the
+            // devices list and the reconcile agree without asking twice.
+            //
+            // Only for a hub, and only about the hub's own storage. A kid
+            // device never reports this and could not be believed if it did:
+            // the flag it would be setting decides whether this phone checks
+            // the key at all, and a television holding a revoked one would
+            // then read "in sync" while its screening was dead. A hub cannot
+            // gain anything by lying either way — claiming false leaves the
+            // comparison exactly where it is today, and claiming true makes
+            // this phone compare a hash the liar then has to produce.
+            if (device.isHub && device.secretless == status.holdsKey) {
+                // Against `device`, not `stored`: replacePaired matches on
+                // host:port, and a hub that had just moved was already
+                // written back at its new address a few lines above.
+                val at = device
+                device = device.copy(secretless = !status.holdsKey)
+                pairing.replacePaired(at, device)
+                android.util.Log.i("YosemiteKids",
+                    "config sync: ${device.name} " +
+                        (if (status.holdsKey) "holds the AI key" else "no longer holds the AI key")
+                )
+            }
             answered[device] = status
             // Read per iteration, not hoisted above the loop. With two
             // TVs, merging the first one lands a co-parent's channel —
             // and comparing the second against the pre-merge hash
             // would take the do-nothing arm and leave it stale, while
             // the devices list cheerfully reported it in sync.
-            // Without the API key for a peer that holds none. A hub
-            // strips secrets before writing and cannot put them back,
-            // so its hash is permanently the keyless one — and judged
-            // against the full form this took the merge arm on every
-            // sweep forever, fetching and re-merging a config that had
-            // never changed. Everything else is judged on the full
-            // form, so a rotated key still forces a push to a TV.
+            // Without the API key for a peer that holds none. A peer
+            // that strips secrets before writing and cannot put them
+            // back has a hash that is permanently the keyless one —
+            // and judged against the full form this took the merge arm
+            // on every sweep forever, fetching and re-merging a config
+            // that had never changed. Everything else is judged on the
+            // full form, so a rotated key still forces a push to a TV.
+            //
+            // Both sides of the comparison move together: a hub that
+            // holds the key advertises a keyed fingerprint of its own
+            // (hashWithKey) and is judged on the full form like a TV.
             val localHash =
                 ConfigJson.fingerprint(store.load(), includeSecrets = !device.secretless)
             val localSyncHash = store.syncHash()
             val localAt = store.updatedAt()
-            val remoteHash = status.hash
+            val remoteHash = status.hashFor(device.secretless)
             when (
                 syncAction(
                     localHash = localHash,
