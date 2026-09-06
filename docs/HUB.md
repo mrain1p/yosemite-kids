@@ -4,9 +4,15 @@ An always-on peer for the family config. It runs in Docker on anything that
 stays powered — a NAS, a Pi, a spare box — holds the same `config.json` the
 phones and TVs hold, and merges with them over the existing LAN routes.
 
-It is entirely optional. What it buys today is that two parents stay in step
-without both being home: an edit made on one phone reaches the other through
-the hub rather than waiting for a television both happen to be near.
+It is entirely optional, and it started as one thing: two parents staying in
+step without both being home, an edit made on one phone reaching the other
+without waiting for a television they both happen to walk past. It has since
+become the other place a parent administers the family — a password-protected
+page that edits nearly every setting the phone does, rules on the videos the AI
+held back, gives bonus minutes, holds the AI key so a second parent never types
+it, builds the search index, and keeps five snapshots you can roll back to. A
+family that never runs one still loses nothing: every device works alone, and
+nothing in the app requires a hub to be present.
 
 **The TVs use it too, with one honest limit.** A television cannot join a hub
 itself — its entire parent settings screen is a QR code, so there is nowhere
@@ -14,17 +20,34 @@ to type an address — so the phone introduces them: joining a hub also mints a
 token for every TV that phone administers and hands it over. From then on the
 TV reconciles with the hub directly, using the same code path a phone does.
 
-The limit: a TV reconciles when Yosemite Kids opens on it and while a kid is
-looking at it, **not** while it is asleep or on another app. The sweep lives
-in the ViewModel behind a foreground check and there is no background worker.
-So the hub means "current the moment a kid opens it, without a parent being
-home" — not "always up to date". Making the latter true needs a background
-tick, which is in "Next up" in `docs/FORK-NOTES.md`.
+The limit is **reachability, not convergence** — and the difference matters,
+because the paragraph that used to sit here said a television only syncs while
+a child is watching it, and that has been false for two rounds. A change made
+on the hub reaches a TV three ways now: `POST /sync-now`, the nudge, the moment
+the hub's copy moves (only to an address the hub has been told, which it learns
+from the device's own calls — a television that has never called cannot be
+nudged); `ConfigSyncWorker` on a fifteen-minute floor whether or not anyone has
+opened the app; and the sweep in the app itself while it is open. In practice a
+rule set on the NAS lands on an awake television in seconds and on a sleeping
+one within a quarter of an hour of it waking.
 
-Nothing in the app's main source set knows the hub exists. It enrols as an
-ordinary `PairedDevice` named `Yosemite Kids hub`, and every sync path that already
-worked with a TV works with it unchanged. See `docs/PLAN-hub.md` for why it is
-built that way.
+What is still true: while the app is closed the device is not *reachable*.
+`LanServer` is built by `MainActivity` and dies with the process, so the
+parent's phone shows a sleeping TV as unreachable, "Play on TV" cannot wake it,
+and a nudge sent to it lands nowhere — the worker is the floor underneath that.
+Fixing it needs a foreground service, which is `docs/ROADMAP.md` §2A.
+
+The hub enrols as an ordinary `PairedDevice` named `Yosemite Kids hub`, and
+every sync path that already worked with a TV works with it unchanged — that
+is still the design and `docs/PLAN-hub.md` is why. What has changed since that
+sentence read "nothing in the app's main source set knows the hub exists" is
+that seven files now do: `HubEnrolment` joins one, `SettingsHub` is the screen
+that does it, and `PairedDevice.isHub` decides four things a hub must be
+treated differently for (no subnet sweep for a box with a fixed address, no
+index pushed at a peer that answers 405, its own card rather than a device row,
+and what `POST /leave-hub` removes). `isHub` and `secretless` were one flag
+until 1.0.7 and are now two, because a hub that holds the API key is still a
+hub — see `docs/FORK-NOTES.md`.
 
 ## Deploying
 
