@@ -364,8 +364,8 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        isTv = (getSystemService(UI_MODE_SERVICE) as android.app.UiModeManager)
-            .currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+        DeviceShape.seed(this)
+        isTv = DeviceShape.current.isTv
         live?.get()?.takeIf { it !== this && !it.isFinishing }?.finish()
         live = java.lang.ref.WeakReference(this)
         if (!isTv) {

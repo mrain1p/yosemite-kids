@@ -858,7 +858,39 @@ for r in $hub_routes; do
   printf "%s" "$hubdoc" | grep -qE "(GET|POST) $r[^a-z-]" ||
     guard_fail "the hub registers $r and docs/LAN-API.md's hub section has no row for it. Add it to the route table — that table is the only place the hub's wire is written down."
 done
+# 31. The form factor is decided in exactly one place.
+#     The same two-line UiModeManager check was inlined in four files and the
+#     answer travelled onward under four different names (cards, rounded,
+#     greet, voice), so no call site could tell whether two screens were
+#     making the same decision or two different ones. FormFactor.kt is now the
+#     only place that asks, and Pairing.kt is the deliberate exception: it
+#     looks identical but answers "what kind of device is this on the LAN",
+#     which decides whether a device auto-assumes the KID role. Folding them
+#     together would couple pairing behaviour to a layout concern.
+ffhits=$(grep -rl "UI_MODE_TYPE_TELEVISION" --include=*.kt app/src/main | sort || true)
+ffwant="app/src/main/java/io/yosemitekids/app/data/Pairing.kt
+app/src/main/java/io/yosemitekids/app/ui/FormFactor.kt"
+[ "$ffhits" = "$ffwant" ] ||
+  guard_fail "the form factor is detected somewhere new. Call formFactorOf() (or read LocalFormFactor in a container) instead of asking UiModeManager again. Found in:
+$ffhits"
+
+# 32. Containers read LocalFormFactor; leaves take a parameter.
+#     This is the rule that keeps every @Preview and Compose test able to
+#     render the other shape. Break it and nothing fails - the app compiles,
+#     runs on a device, and quietly becomes impossible to check in the shape
+#     you are not holding. That silence is exactly why it is a guard and not a
+#     comment. A leaf wanting the form factor takes it as a parameter whose
+#     default is LocalFormFactor.current, so the caller can always override.
+#     Screen hosts are the sanctioned readers, named here so that adding one
+#     is a visible decision in a diff rather than a habit.
+ffread=$(grep -rn "LocalFormFactor.current" --include=*.kt app/src/main | grep -vE ": *FormFactor *= *LocalFormFactor\.current" | grep -vE "/(FormFactor|YosemiteScreen)\.kt:" || true)
+[ -z "$ffread" ] ||
+  guard_fail "LocalFormFactor.current is read outside a default-parameter expression. Containers may read it; a leaf takes 'formFactor: FormFactor = LocalFormFactor.current' so a preview or test can pass the other one:
+$ffread"
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
+
+
 
 echo "== 1/6 compile (assembleDebug)"
 ./gradlew --no-daemon -q assembleDebug

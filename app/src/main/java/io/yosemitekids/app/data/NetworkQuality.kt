@@ -31,6 +31,5 @@ object NetworkQuality {
     fun configureTargets(context: Context) = QualityTargets.configure(tier(context), isTv(context))
 
     fun isTv(context: Context): Boolean =
-        (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager)
-            .currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+        io.yosemitekids.app.ui.formFactorOf(context).isTv
 }

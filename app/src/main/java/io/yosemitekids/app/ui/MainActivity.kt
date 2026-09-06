@@ -67,8 +67,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         val initialConfigTask = java.util.concurrent.FutureTask { configStore.load() }
         Thread(initialConfigTask, "config-preload").start()
         val pairingStore = PairingStore(applicationContext)
-        val deviceIsTv = (getSystemService(android.content.Context.UI_MODE_SERVICE) as android.app.UiModeManager)
-            .currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+        DeviceShape.seed(this)
+        val deviceIsTv = DeviceShape.current.isTv
         // Role is explicit from the first launch: TVs are kid devices, and any
         // device that already pairs others is a parent. Phone/tablet with no
         // history stays unset until its first pairing act decides it.

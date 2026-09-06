@@ -184,10 +184,7 @@ fun YosemiteScreen(
 ) {
     val state by vm.state.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    val isTv = remember {
-        (context.getSystemService(android.content.Context.UI_MODE_SERVICE) as android.app.UiModeManager)
-            .currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
-    }
+    val isTv = LocalFormFactor.current.isTv
     val phone = !isTv
 
     // The kid's corner behind the header avatar, and the look editor it (and
