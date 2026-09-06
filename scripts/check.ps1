@@ -445,8 +445,8 @@ if ($lastInit -eq 0 -or $lastProp -eq 0 -or $lastInit -le $lastProp) {
     Fail-Guard "MainViewModel.kt: the init block (line $lastInit) must come after the last property declaration (line $lastProp) - it starts work that reads them from other threads."
 }
 
-# 13. The hub's build context is an allow-list. hub/docker-compose.yml builds
-#     from the repo root, which on the NAS also holds data/ — the family's
+# 13. The hub's build context is an allow-list. The image is built from the
+#     repo root (CI, or a docker build on the NAS), which on the NAS also holds data/ — the family's
 #     config and tokens, owned by the hub's uid and unreadable by the user
 #     running the build: the build died on it before compiling anything.
 #     .dockerignore must start by excluding everything and let in only what

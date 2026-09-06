@@ -28,80 +28,79 @@ built that way.
 
 ## Deploying
 
-CI builds the image on every push that touches `hub/` or `core/`
-(`.github/workflows/hub-image.yml`) and pushes it to GHCR, so the NAS pulls a
-finished jar and never compiles anything:
+CI builds the image on every push that touches `hub/`, `core/` or `crawl/`
+(`.github/workflows/hub-image.yml`) and pushes it to GHCR as
+`ghcr.io/mrain1p/yosemite-kids-hub:latest`, so the NAS pulls a finished jar
+and never compiles anything. The compose file is pull-only.
 
-```
-cd /volume2/Docker/yosemite-kids
-docker compose -f hub/docker-compose.yml pull
-docker compose -f hub/docker-compose.yml up -d
-```
+### One-time: make the package public
 
-### Getting the source onto the NAS
+The repository is public, but a GHCR package keeps its own visibility, and
+this one was first published while the repo was private. Until it is flipped,
+an anonymous pull is refused (`denied` / `authentication required`). On
+GitHub: your profile → **Packages** → `yosemite-kids-hub` → **Package
+settings** → *Danger Zone* → **Change visibility** → Public. The image holds
+only the open source above, no token and no family data, so there is nothing
+to protect by keeping it private.
 
-The NAS has no `git`. Make a clean archive of the committed tree on the PC,
-copy it with the classic scp protocol, and unpack it beside `data/`.
-Windows OpenSSH 9 runs `scp` over SFTP by default, and Synology ships with
-the SFTP service off: the symptom is "Connection closed" right after the
-password, and `-O` is the fix.
-
-```
-git archive --format=tar.gz -o ~/yosemite-kids-src.tar.gz HEAD     # on the PC
-scp -O ~/yosemite-kids-src.tar.gz <user>@<nas>:/volume2/Docker/yosemite-kids/
-cd /volume2/Docker/yosemite-kids && tar xzf yosemite-kids-src.tar.gz && rm yosemite-kids-src.tar.gz
-```
-
-Unpack over an old tree only when the layout is unchanged; after the package
-rename the old `io/pickwick` sources had to be moved out first, or Gradle
-would have compiled both. The repo-root `.dockerignore` allow-lists only what
-the Dockerfile copies, so `data/` (owned by the hub's uid, unreadable by the
-user running the build) never enters the build context. Without it the build
-stopped at `can't stat '.../data'` before compiling anything; `sudo` on the
-build is the workaround for a tree that predates the file.
-
-### One-time: let the NAS pull a private image
-
-The package inherits the repository's visibility, so a private repo produces a
-private package and an anonymous `pull` gets **denied**. The NAS needs a
-read-only credential once.
-
-On GitHub, create a classic personal access token with the single scope
-`read:packages` — nothing else; this token only ever reads one package.
-Then, on the NAS:
+The alternative, if you would rather not: the NAS logs in once with a classic
+personal access token carrying the single scope `read:packages`:
 
 ```
 read -rs -p "Token: " T && echo "$T" | sudo docker login ghcr.io -u <username> --password-stdin; unset T
 ```
 
 `read -rs` prompts without echoing, so the token reaches neither the shell
-history nor the process list. Piping alone does **not** do that: `echo <token> |`
-is recorded in history exactly as `-p <token>` would be — what `--password-stdin`
-buys you is only that it stays out of `ps`, where any other user on the NAS
-could read it.
+history nor the process list. Log in as the same user that runs compose:
+Docker keeps credentials per user, and a login as yourself leaves `sudo docker
+compose pull` with none.
 
-**Use the same `sudo` you use for compose.** Docker keeps credentials per user
-in `~/.docker/config.json`. Logging in as yourself and then running
-`sudo docker compose pull` leaves root with no credential, so the pull fails
-`denied` while `docker login` insists you are authenticated. It survives
-reboots, so this is genuinely once.
+### Running it
 
-If `pull` reports `denied` or `unauthorized` later, that login expired or the
-token was revoked — redo the two commands above. The build path below always
-works and needs no login, so a registry problem never blocks a deploy.
+Either as a Container Manager project (DSM 7.2): **Project → Create**, paste
+`hub/docker-compose.yml`, pick any folder for the project, **Build**, then
+**Run**. Or from a shell, with the compose file wherever you keep it:
+
+```
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
+```
+
+Updating is the same two commands. The only path that matters is the volume
+line: `/volume2/Docker/yosemite-kids/data:/data` holds `config.json`,
+`devices.json` and the search index. Keep it, and every enrolled device and
+the whole configuration survive a move between projects; lose it, and every
+device has to enrol again.
+
+Before the first run as a project, remove the container the old compose
+folder started, or the new one fails on the name and the port:
+
+```
+docker rm -f yosemite-kids-hub
+```
+
+The data on the volume is untouched by that.
 
 ### Building on the NAS instead
 
-Still supported, and the fallback when GHCR is unreachable or you are changing
-hub code from the NAS itself. It needs the source on the host:
+The fallback when GHCR is unreachable, or for hacking on the hub from the box
+itself. The NAS has no `git`; fetch a release's source from GitHub and unpack
+it beside `data/`:
 
 ```
 cd /volume2/Docker/yosemite-kids
-docker compose -f hub/docker-compose.yml up -d --build
+curl -L -o src.tar.gz https://github.com/mrain1p/yosemite-kids/archive/refs/tags/v1.0.5.tar.gz
+tar -xzf src.tar.gz --strip-components=1 && rm src.tar.gz
+sudo docker build -f hub/Dockerfile -t ghcr.io/mrain1p/yosemite-kids-hub:latest .
+docker compose -f hub/docker-compose.yml up -d
 ```
 
-`--build` ignores the registry entirely and tags the local result with the same
-name, which is why one compose file serves both paths.
+`sudo` on the build is not optional here. The repo-root `.dockerignore`
+allow-lists what the Dockerfile copies (guard 13 keeps it so), but DSM's older
+builder still stats every top-level entry while scanning the context, and
+`data/` belongs to the container's uid, so the scan stops at
+`can't stat '.../data'` for an ordinary user. This document used to claim the
+ignore file made `sudo` unnecessary; it does not, on this NAS.
 
 **The first build takes 10 to 20 minutes and prints almost nothing.** Gradle
 downloads its own distribution and then the Kotlin compiler, quietly. It is

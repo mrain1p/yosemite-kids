@@ -5,9 +5,10 @@
 # the first time, and a Gradle daemon competing with everything else on the box
 # for RAM. The NAS has no reason to own a toolchain. It runs one jar.
 #
-# The image goes to GHCR under the same account and inherits the repository's
-# visibility, so a private repo gets a private package. That means the NAS has
-# to authenticate once to pull it — see docs/HUB.md.
+# The image goes to GHCR under the same account. A package keeps its own
+# visibility: one first published while the repo was private stays private
+# after the repo goes public, until it is flipped by hand — see docs/HUB.md,
+# "Deploying".
 name: Hub image
 
 on:
