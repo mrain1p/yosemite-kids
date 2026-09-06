@@ -29,6 +29,12 @@ fun main() {
         exitProcess(1)
     }
 
+    // Before any fetch: this container reaches YouTube and the devices'
+    // /sync-now, nothing else, and the shared client enforces the first half
+    // (HubNudge is the second). Guard 7 checks this line is here.
+    io.yosemitekids.app.data.Http.restrictTo(io.yosemitekids.app.data.Http.HUB_HOSTS)
+    io.yosemitekids.app.data.Extractor.init()
+
     val tokens = HubTokens(dataDir)
     // The one thing this hub ever initiates: "my copy moved, come and look."
     // Not the config itself — see HubNudge for why that limit is deliberate.

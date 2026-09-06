@@ -43,7 +43,7 @@ class ExtractorSmokeTest {
 
     @Test
     fun channelUploads() = runBlocking {
-        NewPipe.init(OkHttpDownloader(), Localization("en", "US"), ContentCountry("US"))
+        io.yosemitekids.app.data.Extractor.init()
         val yt = ServiceList.YouTube
 
         val info = skipOnCiBotCheck {
@@ -64,7 +64,7 @@ class ExtractorSmokeTest {
     /** The URL forms parents will paste must actually resolve against YouTube. */
     @Test
     fun resolvesUrlForms() = runBlocking {
-        NewPipe.init(OkHttpDownloader(), Localization("en", "US"), ContentCountry("US"))
+        io.yosemitekids.app.data.Extractor.init()
         val yt = ServiceList.YouTube
         val urls = listOf(
             "https://www.youtube.com/user/crashcoursekids",
@@ -91,7 +91,7 @@ class ExtractorSmokeTest {
      */
     @Test
     fun resolvesStream() = runBlocking {
-        NewPipe.init(OkHttpDownloader(), Localization("en", "US"), ContentCountry("US"))
+        io.yosemitekids.app.data.Extractor.init()
         val yt = ServiceList.YouTube
 
         val info = skipOnCiBotCheck {
@@ -116,7 +116,7 @@ class ExtractorSmokeTest {
 
     @Test
     fun searchUploaderUrls() = runBlocking {
-        NewPipe.init(OkHttpDownloader(), Localization("en", "US"), ContentCountry("US"))
+        io.yosemitekids.app.data.Extractor.init()
         val yt = ServiceList.YouTube
         val info = skipOnCiBotCheck {
             org.schabi.newpipe.extractor.search.SearchInfo.getInfo(

@@ -57,7 +57,7 @@ data class Video(
     val videoId: String?
         // Sideloaded files carry a synthetic yosemitekids://local/<hash> URL; the
         // hash is 16 hex chars so it can't collide with an 11-char YouTube id.
-        get() = if (LocalLibrary.isLocal(url)) url.removePrefix(LocalLibrary.URL_PREFIX)
+        get() = if (LocalUrls.isLocal(url)) url.removePrefix(LocalUrls.PREFIX)
         else VIDEO_ID.find(url)?.groupValues?.get(1)
 
     companion object {
@@ -179,7 +179,7 @@ class YouTubeRepository {
             page.relatedItems
                 .filterIsInstance<org.schabi.newpipe.extractor.playlist.PlaylistInfoItem>()
                 .mapNotNull { item ->
-                    val id = ChannelPlaylistsCache.playlistIdFrom(item.url) ?: return@mapNotNull null
+                    val id = PlaylistRefs.playlistIdFrom(item.url) ?: return@mapNotNull null
                     PlaylistRef(
                         id = id,
                         url = item.url,

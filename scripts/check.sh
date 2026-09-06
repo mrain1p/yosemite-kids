@@ -250,18 +250,43 @@ arrival_owner "ProfileLooks[(][^)]*[)][.]ack[(]" "ConfigSync.applyArrived"
 arrival_owner "KidNotices[.]configChange[(]" "ConfigSync.applyArrived"
 arrival_owner "ProfileLooks[.]mergeInto[(]" "ConfigSync.adoptLooks"
 
-# 7. The hub may announce a change; it may never command a device.
-#    It has no credential on a device and must not acquire one: it is the
-#    box on the NAS, the one meant to face the internet eventually. So its
-#    single outbound call is a nudge carrying no data, and the device then
-#    pulls and authenticates as it always does. Anything else here means a
-#    device had to start trusting the hub as an admin.
+# 7. The hub may reach exactly two things: YouTube, for the crawl, and the
+#    devices' /sync-now, for the nudge. It holds no credential on a device and
+#    must not acquire one: it is the box on the NAS, the one meant to face the
+#    internet eventually. So the nudge carries no data and the device pulls
+#    and authenticates as it always does, and the crawl goes through the
+#    shared client with its host allow-list armed. Four clauses, because a
+#    substring scan for "HttpClient" cannot tell the crawler's one client from
+#    a second, unarmed one.
+#    (a) hub/src opens no connection of its own outside HubNudge.kt.
 outbound=$(grep -rlE "openConnection|HttpClient|Socket[(]" hub/src/main/kotlin | grep -v "/HubNudge[.]kt$" | tr "\n" " " || true)
 if [ -n "$outbound" ]; then
-  guard_fail "the hub makes an outbound call outside HubNudge.kt (in $outbound). The hub announces; it does not command."
+  guard_fail "the hub makes an outbound call outside HubNudge.kt (in $outbound). The hub crawls through :crawl's Http and nudges through HubNudge; nothing else."
 fi
 nudge_url=$(grep -c "sync-now" hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt || true)
 [ "$nudge_url" -ge 1 ] || guard_fail "HubNudge no longer posts to /sync-now. That route is the whole contract."
+#    (b) :crawl builds exactly one client, in Http.kt, and opens no raw socket.
+clients=$(grep -rlE "OkHttpClient[.]Builder[(]|OkHttpClient[(]" crawl/src/main/kotlin | grep -v "/Http[.]kt$" | tr "\n" " " || true)
+if [ -n "$clients" ]; then
+  guard_fail ":crawl builds an OkHttpClient outside Http.kt (in $clients). One client, so the hub's allow-list covers every fetch."
+fi
+rawnet=$(grep -rlE "openConnection|Socket[(]" crawl/src/main/kotlin | tr "\n" " " || true)
+if [ -n "$rawnet" ]; then
+  guard_fail ":crawl opens a connection around the shared client (in $rawnet). Everything goes through Http.client."
+fi
+#    (c) the hub arms the allow-list before anything fetches.
+if ! grep -q "Http.restrictTo(io.yosemitekids.app.data.Http.HUB_HOSTS)" hub/src/main/kotlin/io/yosemitekids/hub/Main.kt; then
+  guard_fail "hub Main.kt does not arm Http.restrictTo(Http.HUB_HOSTS) at startup. Without it the crawler could reach any host."
+fi
+#    (d) the allow-list names YouTube's hosts and nothing else.
+hosts=$(grep -A3 "val HUB_HOSTS" crawl/src/main/kotlin/io/yosemitekids/app/data/Http.kt | grep -oE "$q[a-z0-9.-]+$q" | tr -d "$q" | tr "\n" " " || true)
+[ -n "$hosts" ] || guard_fail "Http.HUB_HOSTS is empty or unreadable; the hub's allow-list must name YouTube's hosts."
+for h in $hosts; do
+  case "$h" in
+    youtube.com|youtu.be|googlevideo.com|ytimg.com|ggpht.com|googleusercontent.com) ;;
+    *) guard_fail "Http.HUB_HOSTS names $h, which is not one of YouTube's hosts. The hub reaches YouTube and nothing else." ;;
+  esac
+done
 # 6. A worker that nothing schedules is dead code that reads as shipped.
 for w in IndexCrawlWorker ConfigSyncWorker ContentWarmWorker; do
   grep -q "$w.schedule(" app/src/main/java/io/yosemitekids/app/ui/MainActivity.kt ||

@@ -259,21 +259,51 @@ foreach ($fn in $arrivalFns) {
     }
 }
 
-# 7. The hub may announce a change; it may never command a device.
-#    It has no credential on a device and must not acquire one: it is the
-#    box on the NAS, the one meant to face the internet eventually. So its
-#    single outbound call is a nudge carrying no data, and the device then
-#    pulls and authenticates as it always does. Anything else here means a
-#    device had to start trusting the hub as an admin.
+# 7. The hub may reach exactly two things: YouTube, for the crawl, and the
+#    devices' /sync-now, for the nudge. It holds no credential on a device and
+#    must not acquire one: it is the box on the NAS, the one meant to face the
+#    internet eventually. So the nudge carries no data and the device pulls
+#    and authenticates as it always does, and the crawl goes through the
+#    shared client with its host allow-list armed. Four clauses, because a
+#    substring scan for "HttpClient" cannot tell the crawler's one client from
+#    a second, unarmed one.
+#    (a) hub/src opens no connection of its own outside HubNudge.kt.
 $outbound = Get-ChildItem -Path "hub/src/main/kotlin" -Recurse -Filter *.kt |
     Where-Object { $_.Name -ne "HubNudge.kt" } |
     Where-Object { (Get-Content $_.FullName -Raw) -match 'openConnection|HttpClient|Socket\(' }
 if ($outbound) {
     $where = ($outbound | ForEach-Object { $_.Name }) -join ", "
-    Fail-Guard "the hub makes an outbound call outside HubNudge.kt (in $where). The hub announces; it does not command."
+    Fail-Guard "the hub makes an outbound call outside HubNudge.kt (in $where). The hub crawls through :crawl's Http and nudges through HubNudge; nothing else."
 }
 if ((Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt" -Raw) -notmatch "sync-now") {
     Fail-Guard "HubNudge no longer posts to /sync-now. That route is the whole contract."
+}
+#    (b) :crawl builds exactly one client, in Http.kt, and opens no raw socket.
+$clients = Get-ChildItem -Path "crawl/src/main/kotlin" -Recurse -Filter *.kt |
+    Where-Object { $_.Name -ne "Http.kt" } |
+    Where-Object { (Get-Content $_.FullName -Raw) -match 'OkHttpClient\.Builder\(|OkHttpClient\(' }
+if ($clients) {
+    Fail-Guard ":crawl builds an OkHttpClient outside Http.kt (in $(($clients | ForEach-Object { $_.Name }) -join ', ')). One client, so the hub's allow-list covers every fetch."
+}
+$rawnet = Get-ChildItem -Path "crawl/src/main/kotlin" -Recurse -Filter *.kt |
+    Where-Object { (Get-Content $_.FullName -Raw) -match 'openConnection|Socket\(' }
+if ($rawnet) {
+    Fail-Guard ":crawl opens a connection around the shared client (in $(($rawnet | ForEach-Object { $_.Name }) -join ', ')). Everything goes through Http.client."
+}
+#    (c) the hub arms the allow-list before anything fetches.
+if (-not (Select-String -Path "hub/src/main/kotlin/io/yosemitekids/hub/Main.kt" -Pattern 'Http.restrictTo(io.yosemitekids.app.data.Http.HUB_HOSTS)' -SimpleMatch -Quiet)) {
+    Fail-Guard "hub Main.kt does not arm Http.restrictTo(Http.HUB_HOSTS) at startup. Without it the crawler could reach any host."
+}
+#    (d) the allow-list names YouTube's hosts and nothing else.
+$httpSrc = Get-Content "crawl/src/main/kotlin/io/yosemitekids/app/data/Http.kt"
+$hostsStart = [array]::IndexOf($httpSrc, ($httpSrc | Where-Object { $_ -match 'val HUB_HOSTS' } | Select-Object -First 1))
+$hostLines = if ($hostsStart -ge 0) { $httpSrc[$hostsStart..([Math]::Min($hostsStart + 3, $httpSrc.Count - 1))] } else { @() }
+$hosts = @($hostLines | Select-String -Pattern '"([a-z0-9.-]+)"' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value })
+if ($hosts.Count -eq 0) { Fail-Guard "Http.HUB_HOSTS is empty or unreadable; the hub's allow-list must name YouTube's hosts." }
+foreach ($h in $hosts) {
+    if ($h -notin @("youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "googleusercontent.com")) {
+        Fail-Guard "Http.HUB_HOSTS names $h, which is not one of YouTube's hosts. The hub reaches YouTube and nothing else."
+    }
 }
 # 6. A worker that nothing schedules is dead code that reads as shipped.
 $mainActivity = Get-Content "app/src/main/java/io/yosemitekids/app/ui/MainActivity.kt" -Raw

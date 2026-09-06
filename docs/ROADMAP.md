@@ -175,9 +175,11 @@ Cheap, and they actively mislead:
 
 The last `Where.BOTH` group not on the hub. Its recorded reasoning is now stale:
 the hub *does* initiate. But a genuinely new constraint replaced it — **guard 7
-fails the build on any `openConnection`/`HttpClient`/`Socket(` in `hub/src`
-outside `HubNudge.kt`**, written deliberately to mean "the hub announces; it does
-not command."
+holds the hub to exactly two outbound destinations: YouTube, through
+`:crawl`'s shared client with its host allow-list armed, and the devices'
+`/sync-now` through `HubNudge.kt`** (rewritten 2026-09-05 for the crawl; four
+negative-tested clauses). It still means "the hub announces; it does not
+command."
 
 So the two options are no longer equivalent:
 

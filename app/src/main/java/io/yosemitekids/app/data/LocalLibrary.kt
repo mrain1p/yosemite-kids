@@ -435,9 +435,11 @@ class LocalLibrary(private val context: Context) {
     }
 
     companion object {
-        const val URL_PREFIX = "yosemitekids://local/"
+        // The shape lives in :crawl (LocalUrls), where the repository can see
+        // it without a Context; these keep every caller in the app reading.
+        const val URL_PREFIX = LocalUrls.PREFIX
 
-        fun isLocal(url: String): Boolean = url.startsWith(URL_PREFIX)
+        fun isLocal(url: String): Boolean = LocalUrls.isLocal(url)
 
         /** 16 hex chars: stable per document URI, can't collide with an 11-char YouTube id. */
         fun idFor(docUri: String): String =

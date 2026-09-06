@@ -23,7 +23,7 @@ class SingleChannelProbeTest {
         println("PARSED: ${parsed.sources}")
         check(parsed.sources.isNotEmpty()) { "Parser rejected the URL" }
 
-        NewPipe.init(OkHttpDownloader(), Localization("en", "US"), ContentCountry("US"))
+        io.yosemitekids.app.data.Extractor.init()
         val yt = ServiceList.YouTube
         val info = ChannelInfo.getInfo(yt, parsed.sources[0].url)
         println("CHANNEL: ${info.name}")

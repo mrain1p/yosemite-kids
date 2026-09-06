@@ -23,6 +23,37 @@ import java.util.concurrent.TimeUnit
  */
 object Http {
 
+    /**
+     * The hub's outbound allow-list. Null on a phone or TV, where the client
+     * fetches whatever the kid's screen needs; the hub arms it at startup
+     * with [HUB_HOSTS], and from then on this client reaches YouTube and
+     * nothing else — before DNS, before a socket. Guard 7 in scripts/check.*
+     * checks the hub arms it and that the list names only YouTube's hosts.
+     */
+    @Volatile private var allowedHosts: Set<String>? = null
+
+    /** YouTube and the CDNs its pages and thumbnails come from. Bare domains; subdomains match. */
+    val HUB_HOSTS: Set<String> = setOf(
+        "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "googleusercontent.com"
+    )
+
+    fun restrictTo(hosts: Set<String>?) { allowedHosts = hosts }
+
+    /** [host] itself, or any subdomain of it — never a lookalike such as youtube.com.evil.example. */
+    fun hostAllowed(host: String, allowed: Set<String>): Boolean =
+        allowed.any { host == it || host.endsWith(".$it") }
+
+    private object HostAllowList : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val allowed = allowedHosts ?: return chain.proceed(chain.request())
+            val host = chain.request().url.host
+            if (!hostAllowed(host, allowed)) {
+                throw IOException("refused: $host is not on this hub's allow-list")
+            }
+            return chain.proceed(chain.request())
+        }
+    }
+
     private val bootstrap = OkHttpClient()
 
     private val doh = DnsOverHttps.Builder()
@@ -59,6 +90,9 @@ object Http {
         private var dohPreferredUntil = 0L
 
         override fun lookup(hostname: String): List<InetAddress> {
+            // An armed client is the hub: it has a resolver of its own, and
+            // DNS-over-HTTPS would make 1.1.1.1 a silent third outbound host.
+            if (allowedHosts != null) return Dns.SYSTEM.lookup(hostname)
             val now = System.currentTimeMillis()
             cache[hostname]?.let { (ts, addrs) -> if (now - ts < CACHE_TTL_MS) return addrs }
 
@@ -135,6 +169,8 @@ object Http {
     val client: OkHttpClient = OkHttpClient.Builder()
         .dispatcher(dispatcher)
         .dns(ResilientDns)
+        // First, so a refused host never reaches the retry or the network.
+        .addInterceptor(HostAllowList)
         .addInterceptor(RetryInterceptor)
         // Short connect timeout: a dead address (broken IPv6 route) fails over
         // to the next one quickly instead of stalling the whole request.

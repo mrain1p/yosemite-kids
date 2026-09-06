@@ -3,15 +3,6 @@ package io.yosemitekids.app.data
 import android.content.Context
 import java.io.File
 
-/** One of a channel's own playlists, as listed on its Playlists tab. */
-data class PlaylistRef(
-    val id: String,
-    val url: String,
-    val name: String,
-    val thumbnailUrl: String?,
-    val videoCount: Long
-)
-
 /**
  * Remembers which playlists each channel has, so the "By playlist" channel
  * layout costs one extractor fetch per channel per day instead of one per
@@ -79,7 +70,7 @@ class ChannelPlaylistsCache(context: Context) {
         ).joinToString("\t") { it.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ') }
 
         /** The `list=` id of a playlist URL, in any of YouTube's spellings. */
-        internal fun playlistIdFrom(url: String): String? =
-            Regex("[?&]list=([A-Za-z0-9_-]+)").find(url)?.groupValues?.get(1)
+        // The parser lives with PlaylistRef in :crawl; kept here so callers read as before.
+        internal fun playlistIdFrom(url: String): String? = PlaylistRefs.playlistIdFrom(url)
     }
 }
