@@ -474,7 +474,7 @@ class HubServer(
         when (ex.requestURI.path) {
             "/api/state" -> respond(
                 ex, 200,
-                HubWeb.state(store, tokens, dataDir, now(), index, master, crawl, startedAt)
+                HubWeb.state(store, tokens, dataDir, now(), index, screening, master, crawl, startedAt)
             )
 
             /**

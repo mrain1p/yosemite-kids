@@ -127,6 +127,10 @@
   .tag { font-size: 11.5px; color: var(--dim); border: 1px solid var(--line);
     border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
   .empty { color: var(--dim); font-size: 13.5px; padding: 6px 0; }
+  /* A review-queue thumbnail. Fixed so a card's height does not jump as each
+     one arrives, and small enough that a queue of sixty is still a page. */
+  img.thumb { width: 106px; height: 60px; object-fit: cover; border-radius: 6px;
+    background: var(--sunk); flex: none; }
   .error { color: var(--danger); font-size: 13.5px; min-height: 20px; }
   .note { background: color-mix(in srgb, var(--brand) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--brand) 35%, transparent);
@@ -1246,6 +1250,13 @@
   function screeningLine() {
     var ai = cfg().ai || {};
     if (!ai.enabled) return "Off";
+    var r = review();
+    // What a parent actually wants off this row: whether anything is waiting
+    // on them. The model is what it says when nothing is.
+    if (r && r.queueTotal) {
+      return r.queueTotal + (r.queueTotal === 1 ? " video waiting" : " videos waiting") +
+        " for your OK";
+    }
     return "On" + (ai.model ? " · " + ai.model : " · no model set");
   }
 
@@ -1737,6 +1748,183 @@
       });
   }
 
+  // --- the review queue -------------------------------------------------
+  //
+  // The three CUSTOM controls of the manifest's `ai-review` group. Nothing
+  // here is fetched by this page from anything but /api/state: a verdict
+  // entry already carries the title, the channel, a thumbnail URL and the
+  // AI's own reason, because a device stored them beside the verdict for
+  // exactly this. That is why the hub needs no video cache — the reason
+  // recorded against this group before it shipped was half wrong.
+  //
+  // The <img> is the one thing on this page that leaves the house, and it is
+  // the BROWSER that fetches it, from YouTube's thumbnail CDN. The hub asks
+  // YouTube for nothing on this path. docs/HUB.md says so where a parent
+  // will read it.
+
+  function review() { return state.review || null; }
+
+  /**
+   * A ruling for the whole family.
+   *
+   * Allow puts the video in `aiAllowed`, and lifts a hard block only when
+   * this hub is holding one. That condition is not tidiness: `blk` fails
+   * closed in the merge, so a removal counts as a lift precisely because the
+   * copy doing the removing had the block — and sending the key when the id
+   * is not in it would replace a list this page may be a moment behind on.
+   */
+  function ruleFamily(id, allow) {
+    var c = cfg();
+    var body = {};
+    if (allow) {
+      body.aiAllowed = (c.aiAllowed || []).filter(function (v) { return v !== id; }).concat([id]);
+      if ((c.blocked || []).indexOf(id) >= 0) {
+        body.blocked = (c.blocked || []).filter(function (v) { return v !== id; });
+      }
+    } else {
+      body.blocked = (c.blocked || []).filter(function (v) { return v !== id; }).concat([id]);
+    }
+    return patch(body);
+  }
+
+  /** The same ruling for one child. "Fine for the older one, not the younger." */
+  function ruleForKid(id, kidId, allow) {
+    var key = allow ? "allowedFor" : "blockedFor";
+    var map = Object.assign({}, cfg()[key] || {});
+    var had = (map[id] || []).filter(function (k) { return k !== kidId; });
+    map[id] = had.concat([kidId]);
+    var body = {};
+    body[key] = map;
+    return patch(body);
+  }
+
+  /** "held for Dave · fine for Katy" — the phone's own words for a per-kid verdict. */
+  function verdictLine(e) {
+    var held = [], fine = [];
+    kids().forEach(function (k) {
+      var v = (e.forKids || {})[k.id];
+      if (!v) return;
+      if (v === "ALLOW") fine.push(k.name); else held.push(k.name);
+    });
+    return [
+      held.length ? "held for " + held.join(", ") : null,
+      fine.length ? "fine for " + fine.join(", ") : null
+    ].filter(Boolean).join(" · ");
+  }
+
+  /** One held-back video: what it is, why the AI stopped it, and the rulings. */
+  function flaggedLi(e, allowLabel) {
+    var li = el("li");
+    var head = el("div", "line");
+    if (e.thumb) {
+      var img = el("img", "thumb");
+      img.src = e.thumb;
+      img.alt = "";
+      img.loading = "lazy";
+      // Nothing about this household travels with the request. The hub is
+      // not in this fetch at all; the browser is.
+      img.referrerPolicy = "no-referrer";
+      head.appendChild(img);
+    }
+    var box = el("div", "grow");
+    box.appendChild(el("div", "name", e.title || e.id));
+    var who = [e.channel, verdictLine(e)].filter(Boolean).join(" · ");
+    if (who) box.appendChild(el("div", "sub", who));
+    head.appendChild(box);
+    li.appendChild(head);
+    if (e.why) li.appendChild(el("p", "note", e.why));
+
+    var line = el("div", "line");
+    // A parent cannot rule on a title. The video opens where they can
+    // actually watch it, which is what the phone's card does too.
+    var watch = el("a", "sub grow", "Watch on YouTube");
+    watch.href = "https://www.youtube.com/watch?v=" + encodeURIComponent(e.id);
+    watch.target = "_blank";
+    watch.rel = "noreferrer noopener";
+    line.appendChild(watch);
+    line.appendChild(button("Block", "quiet", function () { return ruleFamily(e.id, false); }));
+    line.appendChild(button(allowLabel, "primary", function () { return ruleFamily(e.id, true); }));
+    li.appendChild(line);
+
+    // Per kid, and only where there are kids to name. Two labelled rows of
+    // chips rather than a dialog: the phone gets this from a long-press, and
+    // a browser has none.
+    //
+    // The two ids are written out here rather than passed into kidRuleRow,
+    // because guard 26(b) reads this file as text: an id arriving in a
+    // variable is a control the guard cannot see built.
+    if (kids().length) {
+      var allowFor = kidRuleRow(e, "Allow for", true);
+      allowFor.dataset.control = "review-allowed-for";
+      li.appendChild(allowFor);
+      var blockFor = kidRuleRow(e, "Block for", false);
+      blockFor.dataset.control = "review-blocked-for";
+      li.appendChild(blockFor);
+    }
+    return li;
+  }
+
+  /**
+   * One per-kid ruling: "Allow for [Leo] [Mia]".
+   *
+   * A chip already ruled this way reads as pressed, so a parent can see what
+   * they decided last time instead of being offered the same answer twice.
+   */
+  function kidRuleRow(e, label, allow) {
+    var row = el("div", "line");
+    row.style.marginTop = "8px";
+    row.appendChild(el("div", "sub", label));
+    var held = (cfg()[allow ? "allowedFor" : "blockedFor"] || {})[e.id] || [];
+    kids().forEach(function (k) {
+      var b = el("button", "chip", k.name);
+      b.setAttribute("aria-pressed", String(held.indexOf(k.id) >= 0));
+      b.onclick = function () { return ruleForKid(e.id, k.id, allow); };
+      row.appendChild(b);
+    });
+    return row;
+  }
+
+  /** One of the two piles, with what is behind the part being shown. */
+  function flaggedCard(title, hint, entries, total, emptyText, allowLabel) {
+    var c = card(title, hint);
+    var ul = el("ul", "rows");
+    if (!entries.length) ul.appendChild(emptyLi(emptyText));
+    entries.forEach(function (e) { ul.appendChild(flaggedLi(e, allowLabel)); });
+    c.appendChild(ul);
+    if (total > entries.length) {
+      c.appendChild(el("p", "sub", "Showing " + entries.length + " of " + total +
+        ". Rule on these and the rest follow."));
+    }
+    return c;
+  }
+
+  function cardReview() {
+    var r = review();
+    var c = flaggedCard(
+      "Waiting for your OK",
+      "Videos the AI held back. A kid sees none of them until you say so.",
+      r ? r.queue : [], r ? r.queueTotal : 0,
+      "Nothing is waiting. Verdicts arrive here as your phones and televisions sync.",
+      "Allow"
+    );
+    // The family-wide ruling this card makes IS "Allowed anyway" — aiAllowed
+    // — which is how guard 26(b) tells a hand-written control that was built
+    // from one that was only claimed.
+    c.dataset.control = "review-allowed";
+    return c;
+  }
+
+  function cardAiBlocked() {
+    var r = review();
+    return flaggedCard(
+      "Blocked by the AI",
+      "Already hidden. Listed so a wrong call can be overruled.",
+      r ? r.blocked : [], r ? r.blockedTotal : 0,
+      "Nothing has been blocked under the current rules.",
+      "Allow anyway"
+    );
+  }
+
   function pageScreening() {
     var out = document.createDocumentFragment();
     var s = rootScope();
@@ -1752,6 +1940,8 @@
       "New videos on allowed channels are checked against your rules before a " +
         "kid can see them."
     ));
+    out.appendChild(cardReview());
+    out.appendChild(cardAiBlocked());
 
     out.appendChild(phoneOnlyNote("Content screening"));
     return out;

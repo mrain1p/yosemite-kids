@@ -207,9 +207,10 @@ should still be well under a second.
 
 Open `http://<host>:8765/` in a browser on the same network and sign in with
 your hub password — or, before you have set one, the admin token from the log.
-From there you can manage channels and blocked videos, approve or remove
-devices, give a kid bonus minutes or turn watching off until midnight, set or
-change the password, and see what the hub holds.
+From there you can manage channels and blocked videos, rule on the videos the
+AI is holding back, approve or remove devices, give a kid bonus minutes or turn
+watching off until midnight, set or change the password, and see what the hub
+holds.
 
 It opens on a home page rather than a row of tabs: the kids at the top with
 what each one's rules currently say, two status tiles, then the settings
@@ -250,6 +251,35 @@ cannot call the same rule by two different names. A handful of controls are too
 particular for that (the channel list, the device rows, the blocked-times
 editor); those are hand-written and marked `data-control="<id>"`, which is how
 guard 26 tells a control that was built from one that was only claimed.
+
+### Waiting for your OK
+
+*Content screening* carries the same review queue the phone has: the videos the
+AI held back, the ones it blocked, and Allow or Block for the family or for one
+child at a time. A ruling made here is an ordinary config edit — it reaches
+every device on its next sync, the same way a channel or a bedtime does.
+
+The hub can show this because it holds verdicts now. Every phone pushes what it
+has screened to every peer it is paired with on every sweep, the hub included,
+and a verdict entry carries the video's title, its channel, a thumbnail and the
+AI's own sentence about why it stopped it. That is the whole card, so the hub
+needs no copy of the family's feed to draw one. It is also why the queue is
+empty on a hub nobody has synced with yet, and why it fills up on its own once
+a phone has.
+
+One thing the phone shows and this cannot: "12 still being screened". That
+count is measured against a device's cached feed, and the hub has none.
+
+**This page makes third-party requests, and it is the only page here that
+does.** The thumbnails are loaded by *your browser*, directly from YouTube's
+image CDN, using URLs a device recorded with the verdict. The hub is not in
+that fetch — it asks YouTube for nothing on this path, and the container's own
+outbound allow-list is unchanged. The requests carry no referrer and no cookie
+this page sets, so YouTube learns that some browser asked for some thumbnails
+and nothing about your family. If the NAS has no outbound access, or you would
+rather your browser did not talk to YouTube at all, the page still works — the
+thumbnails simply do not appear, and every ruling is still a title, a channel
+and a reason.
 
 ### The AI key
 

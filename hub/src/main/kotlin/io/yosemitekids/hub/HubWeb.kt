@@ -4,11 +4,13 @@ import io.yosemitekids.app.data.MasterToken
 
 import io.yosemitekids.app.data.ChannelIndex
 
+import io.yosemitekids.app.data.AiScreener
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.Grant
 import io.yosemitekids.app.data.Grants
 import io.yosemitekids.app.data.Page
 import io.yosemitekids.app.data.Profile
+import io.yosemitekids.app.data.ScreeningStore
 import io.yosemitekids.app.data.SettingsSurface
 import io.yosemitekids.app.data.SourceKind
 import io.yosemitekids.app.data.Whitelist
@@ -74,12 +76,28 @@ object HubWeb {
      * [grant], which only ever appends and mints the id here.
      *
      * `ai` is here but its key never is — see [scrubPatch].
+     *
+     * `aiAllowed`, `blockedFor` and `allowedFor` are the review queue's three
+     * rulings, and they are patchable where `grants` is not. The difference is
+     * what a *missing* entry means. A grant left out of a save is expiry, which
+     * the stamper tombstones for the whole fleet, and grants come and go every
+     * day — so a browser holding a copy from a minute ago would routinely
+     * revoke a co-parent's tap. A ruling is a deliberate answer to a card the
+     * parent is looking at, made against a queue the page fetched moments
+     * before, and the page re-reads the whole config after every save. The
+     * exposure that remains is the same one `entries`, `profiles` and `blocked`
+     * have carried since the first patch route: two parents ruling in the same
+     * few seconds, one of whom loses. Worth naming, because the directions
+     * differ — dropping an `aiAllowed` or `allowedFor` entry hides a video
+     * again, which is the safe way to fail, while dropping a `blockedFor` entry
+     * lifts a block for one kid, which is not.
      */
     private val PATCHABLE = setOf(
         "entries", "blocked", "profiles", "limits", "ai", "deviceProfiles",
         "sponsorSkip", "autoplay", "suggest", "listen",
         "qualityTv", "qualityPhone",
-        "showVideoAge", "pageSize", "channelLayout", "channelOrder"
+        "showVideoAge", "pageSize", "channelLayout", "channelOrder",
+        "aiAllowed", "blockedFor", "allowedFor"
     )
 
     /** Everything the page renders, in one round trip. */
@@ -89,6 +107,8 @@ object HubWeb {
         dataDir: String,
         now: Long,
         index: ChannelIndex? = null,
+        /** The verdicts this hub holds, for the review queue. Null in tests that have none. */
+        screening: ScreeningStore? = null,
         master: HubMaster? = null,
         crawl: HubCrawl? = null,
         /** When this process started, for the health block. 0 when nobody said. */
@@ -181,6 +201,10 @@ object HubWeb {
             // bookkeeping, and until now nothing rendered it anywhere but the
             // phone. See [changesJson].
             .put("changes", changesJson(config))
+            // What the AI is holding back, and what it blocked. Null on a hub
+            // built without a verdict store at all, which the page renders as
+            // "nothing here yet" rather than as an error.
+            .put("review", reviewJson(screening, config))
             .put("devices", devices)
             .put("pending", pending)
             .put("versions", HubVersions.list(store))
@@ -215,6 +239,77 @@ object HubWeb {
             )
             .toString()
     }
+
+    /**
+     * How many held-back videos the page is handed at once.
+     *
+     * The store caps itself at 5000 verdicts, and a browser asked to draw five
+     * thousand cards with a thumbnail each — over a home LAN, from a NAS — is a
+     * page nobody opens twice. A parent rules from the top; the count beside
+     * the list says how much is behind it.
+     */
+    internal const val MAX_REVIEW_SHOWN = 60
+
+    /**
+     * The AI's two piles, as the review queue draws them.
+     *
+     * Nothing is looked up to build this. A `ScreeningStore.Entry` already
+     * carries the title, channel, thumbnail and the AI's own reason, because a
+     * device stored them for exactly this purpose — which is why the hub needs
+     * no video cache, no feed and no crawl to put a queue on the page. The
+     * thumbnails are URLs the **browser** fetches; this box asks YouTube for
+     * nothing, so guard 7 is untouched. That it is the browser and not the hub
+     * is a real statement about a page a parent opens, and `docs/HUB.md` makes
+     * it.
+     *
+     * The queue drops whatever the family has already ruled on — the same set
+     * the phone calls `resolved` — because a card answered on one face must not
+     * come back on the other. The blocked pile is deliberately *not* filtered:
+     * it exists so a wrong call can be overruled, and a video allowed for one
+     * kid is still blocked for the rest.
+     */
+    private fun reviewJson(screening: ScreeningStore?, config: Whitelist): Any {
+        screening ?: return JSONObject.NULL
+        val rules = config.ai.rulesVersion
+        val ruled = config.blockedVideoIds + config.aiAllowedVideoIds +
+            config.blockedFor.keys + config.allowedFor.keys
+        val flagged = runCatching { screening.flagged(rules) }.getOrDefault(emptyList())
+        val queue = flagged.filter {
+            it.second.verdict == AiScreener.Verdict.REVIEW && it.first !in ruled
+        }
+        val blocked = flagged.filter { it.second.verdict == AiScreener.Verdict.BLOCK }
+        return JSONObject()
+            .put("rulesVersion", rules)
+            .put("screened", runCatching { screening.screenedCount(rules) }.getOrDefault(0))
+            .put("queue", flaggedJson(queue.take(MAX_REVIEW_SHOWN)))
+            .put("queueTotal", queue.size)
+            .put("blocked", flaggedJson(blocked.take(MAX_REVIEW_SHOWN)))
+            .put("blockedTotal", blocked.size)
+    }
+
+    private fun flaggedJson(entries: List<Pair<String, ScreeningStore.Entry>>): JSONArray =
+        JSONArray().also { arr ->
+            entries.forEach { (id, e) ->
+                arr.put(
+                    JSONObject()
+                        .put("id", id)
+                        .put("title", e.title)
+                        .put("channel", e.channel)
+                        .put("thumb", e.thumb ?: "")
+                        .put("why", e.reason)
+                        .put("at", e.at)
+                        // Per-kid verdicts, so a card can say "held for Dave ·
+                        // fine for Katy" in the phone's own words instead of
+                        // asking for one answer on behalf of every child.
+                        .put(
+                            "forKids",
+                            JSONObject().also { o ->
+                                e.perProfile.forEach { (pid, v) -> o.put(pid, v.name) }
+                            }
+                        )
+                )
+            }
+        }
 
     /**
      * The change feed, newest first.

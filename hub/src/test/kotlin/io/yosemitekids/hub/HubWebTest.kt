@@ -610,7 +610,7 @@ class HubWebTest {
         val crawl = HubCrawl(store, index, tokens.selfToken(), crawlOnce = { false }, dropSource = {}) { clock }
 
         // Nothing enrolled, nothing pulled: the hub reports itself idle.
-        var ix = JSONObject(HubWeb.state(store, tokens, "/data", clock, index, master, crawl)).getJSONObject("index")
+        var ix = JSONObject(HubWeb.state(store, tokens, "/data", clock, index, master = master, crawl = crawl)).getJSONObject("index")
         assertEquals(0, ix.getInt("sources"))
         assertFalse(ix.getBoolean("armed"))
         assertFalse(ix.getBoolean("masterIsMe"))
@@ -621,7 +621,7 @@ class HubWebTest {
         tokens.notePull(token, clock)
         master.tick()
         crawl.runOnce()
-        ix = JSONObject(HubWeb.state(store, tokens, "/data", clock, index, master, crawl)).getJSONObject("index")
+        ix = JSONObject(HubWeb.state(store, tokens, "/data", clock, index, master = master, crawl = crawl)).getJSONObject("index")
         assertTrue(ix.getBoolean("armed"))
         assertTrue(ix.getBoolean("masterIsMe"))
         assertTrue(ix.getBoolean("masterIsHub"))

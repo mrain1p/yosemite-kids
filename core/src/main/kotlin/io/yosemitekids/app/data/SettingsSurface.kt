@@ -362,32 +362,33 @@ object SettingsSurface {
             )),
         SettingsSection("ai-review", "Waiting for your OK", Page.SCREENING, "AiReviewSection",
             listOf("blockedFor", "allowedFor", "aiAllowedVideoIds"),
-            Where.PHONE, false,
-            "The rulings are config, but the queue is not: it is built from " +
-                "ScreeningStore verdicts and the video cache, neither of which " +
-                "the hub holds. It would render an empty list until devices " +
-                "push verdicts to it.",
+            Where.BOTH, true,
+            "The rulings are config and the queue now reaches both faces. The " +
+                "reason recorded here until this shipped — that the queue is " +
+                "ScreeningStore's verdicts plus the video cache, neither of " +
+                "which the hub holds — was half wrong and is worth correcting " +
+                "rather than deleting. The hub holds verdicts now: it answers " +
+                "GET|POST /verdicts, and a phone pushes its own to every peer " +
+                "on every sweep. And the video cache was never needed: an entry " +
+                "carries the title, channel, thumbnail and the AI's reason, " +
+                "which is the whole card. What the hub genuinely cannot show is " +
+                "the \"still screening\" count, which is measured against a " +
+                "cached feed only a device has.",
             controls = listOf(
                 SettingsControl(
                     "review-allowed", "Allowed anyway",
                     sub = "Videos the AI blocked and a parent let through.",
-                    kind = ControlKind.CUSTOM, writes = "aiAllowedVideoIds", json = "aiAllowed",
-                    where = Where.PHONE,
-                    why = "A ruling is made against the queue, and the queue is " +
-                        "ScreeningStore's verdicts plus the video cache — neither of " +
-                        "which the hub holds. It would render an empty list."
+                    kind = ControlKind.CUSTOM, writes = "aiAllowedVideoIds", json = "aiAllowed"
                 ),
                 SettingsControl(
                     "review-blocked-for", "Blocked for one kid",
-                    sub = "A long-press ruling that applies to one child, not the family.",
-                    kind = ControlKind.CUSTOM, writes = "blockedFor", where = Where.PHONE,
-                    why = "Same queue, same reason as review-allowed."
+                    sub = "A ruling that applies to one child, not the family.",
+                    kind = ControlKind.CUSTOM, writes = "blockedFor"
                 ),
                 SettingsControl(
                     "review-allowed-for", "Allowed for one kid",
                     sub = "Fine for the older one, not the younger.",
-                    kind = ControlKind.CUSTOM, writes = "allowedFor", where = Where.PHONE,
-                    why = "Same queue, same reason as review-allowed."
+                    kind = ControlKind.CUSTOM, writes = "allowedFor"
                 )
             )),
         SettingsSection("ai-discovery", "Discover with AI", Page.SCREENING, "AiDiscoverySection",
