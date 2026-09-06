@@ -719,21 +719,49 @@ internal fun GrantTimeSection(
                 val kidName = profiles.firstOrNull { it.id == kidId }?.name
                 val suffix = io.yosemitekids.app.data.ProfileNamespace(context.applicationContext)
                     .suffixFor(kidId)
-                SessionGuard(context.applicationContext, suffix).grantExtraMinutes(amount)
-                val devices = pairingStore.paired()
+                // One tap, one grant, one id. It goes into the config first,
+                // because that is the copy every device will hold: a TV that
+                // is asleep now finds it at its next sync, within fifteen
+                // minutes of waking. The guard here and the LAN call to each
+                // awake device are the fast paths, and they carry the same id
+                // so nothing counts the tap twice.
+                val now = System.currentTimeMillis()
+                val grant = io.yosemitekids.app.data.Grant(
+                    id = io.yosemitekids.app.data.Profile.newId(),
+                    kidId = kidId,
+                    date = io.yosemitekids.app.data.Grants.dateOf(now),
+                    minutes = amount,
+                    at = now
+                )
                 val who = kidName?.let { " for $it" } ?: ""
-                if (devices.isEmpty()) {
-                    granted = GrantReceipt("Granted $amount extra minutes$who 🎉")
-                } else {
-                    scope.launch {
-                        var ok = 0
-                        devices.forEach { if (LanClient.grant(it, amount, kidId)) ok++ }
-                        granted = GrantReceipt("Granted $amount min$who here + $ok device(s) 🎉")
+                scope.launch {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        io.yosemitekids.app.data.ConfigStore(context.applicationContext)
+                            .update(who = pairingStore.myName(), by = pairingStore.by()) {
+                                it.copy(grants = it.grants + grant)
+                            }
+                        SessionGuard(context.applicationContext, suffix).applyGrant(grant)
                     }
+                    val devices = pairingStore.paired()
+                    var ok = 0
+                    devices.forEach { if (LanClient.grant(it, amount, kidId, grant)) ok++ }
+                    granted = GrantReceipt(
+                        if (devices.isEmpty()) "Granted $amount extra minutes$who 🎉"
+                        else "Granted $amount min$who: here now, on $ok of ${devices.size} device(s) now, " +
+                            "and on any asleep at their next sync 🎉"
+                    )
                 }
             }
         ) { Text("Grant") }
     }
+    // Where the minutes go, in plain words: the tap is in the family config
+    // now, so every device gets it by the same path as every rule.
+    Text(
+        "Reaches every device: awake ones right away, asleep ones within " +
+            "fifteen minutes of waking, through the hub if there is one.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
     granted?.let { receipt ->
         Text(receipt.text, style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)

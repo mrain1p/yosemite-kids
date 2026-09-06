@@ -119,6 +119,21 @@ object ConfigMerge {
             describeLimits(o.limits, n.limits, n.name).forEach { out += it }
         }
 
+        // --- Extra minutes ---------------------------------------------
+        // Dated, because this is a "what am I about to overwrite" summary
+        // and a grant from last Tuesday is not the same news as one from
+        // today.
+        val grantsWas = a.grants.associateBy { it.id }
+        val grantsNow = b.grants.associateBy { it.id }
+        (grantsNow.keys - grantsWas.keys).sorted().forEach {
+            val g = grantsNow.getValue(it)
+            out += Change("grant", "adds ${g.minutes} extra minutes for ${Grants.whose(g, b.profiles)} on ${g.date}")
+        }
+        (grantsWas.keys - grantsNow.keys).sorted().forEach {
+            val g = grantsWas.getValue(it)
+            out += Change("grant", "removes ${g.minutes} extra minutes for ${Grants.whose(g, a.profiles)} on ${g.date}")
+        }
+
         // --- Blocks and allow lists ------------------------------------
         countChange(
             a.blockedVideoIds.size, b.blockedVideoIds.size, "blocked video", "blocked videos"
@@ -421,7 +436,10 @@ object ConfigMerge {
      */
     private fun safeState(ns: String): Safe = when (ns) {
         "blk", "for" -> Safe.PRESENT
-        "src", "kid", "kid.pin", "allow", "afor", "dev" -> Safe.ABSENT
+        // A grant fails absent like a channel: the tombstone the stamper
+        // mints when its day has passed must beat a stale copy still listing
+        // it, or expiry would never settle.
+        "src", "kid", "kid.pin", "allow", "afor", "dev", "grant" -> Safe.ABSENT
         else -> Safe.SCALAR
     }
 
@@ -652,6 +670,36 @@ object ConfigMerge {
             }
             putLike(
                 out, locRoot, "profiles",
+                JSONArray().also { arr ->
+                    kept.sortedWith(compareBy({ it.first }, { it.second.optString("id") }))
+                        .forEach { arr.put(it.second) }
+                }
+            )
+        }
+
+        // --- extra minutes -----------------------------------------------
+        // One unit per tap, keyed by id like a channel, so two phones that
+        // granted on the same day both survive and the kid gets the sum. A
+        // grant is immutable once minted, so there is no value to collide on.
+        // Nothing here reads a clock: a grant for a day that has passed
+        // merges like any other and is ignored by the guard until a phone's
+        // next save tombstones it — and that tombstone wins here, because
+        // the namespace fails absent.
+        run {
+            val lm = byId(L.root, "grants")
+            val rm = byId(R.root, "grants")
+            val kept = ArrayList<Pair<Long, JSONObject>>()
+            (lm.keys + rm.keys).forEach { id ->
+                val key = ConfigStamp.grant(id)
+                val d = decide(key)
+                if (!d.present) { if (d.gone > 0) gone[key] = d.gone; return@forEach }
+                val pick = pickValue(d, lm[id], rm[id]) ?: return@forEach
+                at[key] = d.at
+                if (d.gone > 0) gone[key] = d.gone
+                kept += d.at to pick
+            }
+            putLike(
+                out, locRoot, "grants",
                 JSONArray().also { arr ->
                     kept.sortedWith(compareBy({ it.first }, { it.second.optString("id") }))
                         .forEach { arr.put(it.second) }
@@ -901,6 +949,7 @@ object ConfigMerge {
         // started at 0.
         idsOf(root, "entries").forEachIndexed { i, id -> at[ConfigStamp.src(id)] = i + 1L }
         idsOf(root, "profiles").forEachIndexed { i, id -> at[ConfigStamp.kid(id)] = i + 1L }
+        idsOf(root, "grants").forEachIndexed { i, id -> at[ConfigStamp.grant(id)] = i + 1L }
         strsOf(root, "blocked").forEach { at[ConfigStamp.blk(it)] = 1L }
         strsOf(root, "aiAllowed").forEach { at[ConfigStamp.allow(it)] = 1L }
         overlayKeys(root, "blockedFor").forEach { at["for|$it"] = 1L }

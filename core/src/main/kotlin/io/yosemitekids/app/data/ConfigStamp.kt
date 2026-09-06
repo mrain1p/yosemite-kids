@@ -29,6 +29,8 @@ object ConfigStamp {
     fun blk(id: String) = "blk|$id"
     fun allow(id: String) = "allow|$id"
     fun dev(token: String) = "dev|$token"
+    /** One "Add time" tap. Its own unit so two phones' taps on one day both land. */
+    fun grant(id: String) = "grant|$id"
 
     /**
      * Per-kid overlays. The shape must match ConfigMerge.mergeOverlay, which
@@ -69,6 +71,12 @@ object ConfigStamp {
      *
      * [now] is the caller's wall clock, passed in rather than read here, so
      * the merge proper can stay provably clock-free.
+     *
+     * [today] is the caller's local calendar day ([Grants.dateOf]), and the
+     * one place a grant expires: every grant dated before it is tombstoned in
+     * this save. Null means "do not judge" — the hub passes null, because a
+     * container's clock is UTC and the family's is not, and a day that ends
+     * hours early on the NAS would take a kid's minutes away at teatime.
      */
     fun stamped(
         previous: Whitelist,
@@ -76,7 +84,8 @@ object ConfigStamp {
         next: Whitelist,
         now: Long,
         who: String,
-        by: String
+        by: String,
+        today: String? = null
     ): Result {
         val prevSync = previous.sync
         // Monotonic: a device whose clock came back wrong after a power cut
@@ -192,6 +201,40 @@ object ConfigStamp {
         }
         (prevKid.keys - baseKid.keys - nextKid.keys).forEach { profiles += prevKid.getValue(it) }
 
+        // --- Extra minutes ----------------------------------------------
+        // Keyed by id like a channel, one unit per tap: two parents adding
+        // time on the same day are two units and both survive the merge,
+        // where one per-kid "bonus today" value would keep the later stamp
+        // and drop the other without a word. A tap only ever adds — nothing
+        // in the app removes a grant — so a removal here is expiry below or a
+        // programmatic edit, and neither is a parent's act worth a log line.
+        val prevGrant = previous.grants.associateBy { it.id }
+        val baseGrant = base.grants.associateBy { it.id }
+        val nextGrant = next.grants.associateBy { it.id }
+        val grants = ArrayList<Grant>()
+        nextGrant.forEach { (id, g) ->
+            grants += g
+            if (id !in baseGrant) {
+                readd(grant(id))
+                changes += line(
+                    "grant", "gave ${Grants.whose(g, next.profiles)} ${g.minutes} extra minutes",
+                    who, by, mint
+                )
+            }
+        }
+        (baseGrant.keys - nextGrant.keys).forEach { remove(grant(it)) }
+        (prevGrant.keys - baseGrant.keys - nextGrant.keys).forEach { grants += prevGrant.getValue(it) }
+        // Expiry lives here because the merge reads no clock. A day that has
+        // passed is tombstoned, never merely dropped: absence never deletes,
+        // so a peer still listing the grant would put it straight back and
+        // the two would trade it forever — the tombstone-TTL failure the sync
+        // skill warns about, arriving by another door.
+        if (today != null) {
+            grants.removeAll { g ->
+                Grants.expired(g.date, today).also { if (it) remove(grant(g.id)) }
+            }
+        }
+
         // --- Sets -------------------------------------------------------
         val blocked = setUnit(
             previous.blockedVideoIds, base.blockedVideoIds, next.blockedVideoIds,
@@ -274,6 +317,7 @@ object ConfigStamp {
         val out = next.copy(
             sources = sources,
             profiles = profiles,
+            grants = grants,
             blockedVideoIds = blocked,
             aiAllowedVideoIds = aiAllowed,
             blockedFor = blockedFor,
@@ -464,8 +508,11 @@ object ConfigStamp {
         val out = ArrayList(existing)
         fresh.forEach { c ->
             val last = out.lastOrNull()
+            // A grant line carries a quantity. Folding "gave Leo 15 extra
+            // minutes" into a second one would leave the feed saying 15 when
+            // he got 30, so each tap keeps its own line.
             val burst = last != null && last.by == c.by && last.code == c.code &&
-                c.at - last.at in 0..LOG_COALESCE_MS
+                c.code != "grant" && c.at - last.at in 0..LOG_COALESCE_MS
             if (burst) out[out.lastIndex] = c else out += c
         }
         return if (out.size <= SyncMeta.MAX_LOG) out else out.takeLast(SyncMeta.MAX_LOG)
