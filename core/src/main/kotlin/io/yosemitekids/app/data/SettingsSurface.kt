@@ -229,19 +229,19 @@ object SettingsSurface {
                 )
             )),
         SettingsSection("grant-time", "Grant extra time", Page.KIDS, "GrantTimeSection",
-            emptyList(), Where.PHONE, false,
-            "Writes no config at all. A grant is device-local session state held " +
-                "in SessionGuard's preferences and delivered by a LAN call, so " +
-                "there is no config edit the hub could make to express one. " +
-                "Giving the hub this needs an outbound grant call of its own.",
+            emptyList(), Where.BOTH, true,
+            "Merged config since 1.0.5: each tap is a `grant|<id>` unit, which is " +
+                "what lets a television that slept through it find the minutes " +
+                "when it wakes. The faces differ in delivery, not in effect — the " +
+                "phone also calls POST /grant on whatever is awake, and the hub, " +
+                "holding no credential on any device, writes the tap and nudges.",
             controls = listOf(
                 SettingsControl(
                     "grant-time-minutes", "Bonus watch time",
-                    sub = "Extra minutes for today, for one kid.",
-                    kind = ControlKind.CUSTOM, writes = "grants", where = Where.PHONE,
-                    why = "The field is merged config, so the hub could write it — but a " +
-                        "grant minted on the NAS needs an id, a local date and a bounds " +
-                        "check on both, which is PLAN-hub-parity step 8, not this one."
+                    // Not "for one kid": a household with no profiles grants
+                    // to everyone, which is the same control on both faces.
+                    sub = "Extra minutes for today, on top of the usual limit.",
+                    kind = ControlKind.CUSTOM, writes = "grants"
                 )
             )),
 

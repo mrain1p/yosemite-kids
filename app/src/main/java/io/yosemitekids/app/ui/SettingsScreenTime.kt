@@ -880,7 +880,9 @@ internal fun GrantTimeSection(
             Spacer(Modifier.height(9.dp))
         }
 
-        Text("Bonus watch time", style = MaterialTheme.typography.bodyMedium)
+        // The manifest owns the words, so this card and the hub's cannot end
+        // up calling the same thing two names.
+        Text(ctl("grant-time-minutes").label, style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(9.dp))
         // Four amounts to pick from rather than two buttons to press: the four
         // cover what a parent actually grants, and the fifth keeps every value
@@ -903,7 +905,7 @@ internal fun GrantTimeSection(
         }
         if (customising) {
             ExactMinutesDialog(
-                title = "Bonus watch time", initial = minutes, min = 5, max = 180,
+                title = ctl("grant-time-minutes").label, initial = minutes, min = 5, max = 180,
                 // No Off: a grant of nothing isn't a grant, and Grant is what
                 // applies it — there is no rule here to switch off.
                 allowOff = false,

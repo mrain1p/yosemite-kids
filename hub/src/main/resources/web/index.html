@@ -747,6 +747,101 @@
     return row;
   }
 
+  /**
+   * The parent's own calendar day, in the form a grant carries.
+   *
+   * Same reason as endOfTodayLocal, and the same division of labour: the day
+   * a grant counts on is the family's, which this container does not know, so
+   * the browser sends it and the hub only refuses one nowhere near its own.
+   */
+  function todayLocal() {
+    var d = new Date();
+    var two = function (n) { return (n < 10 ? "0" : "") + n; };
+    return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate());
+  }
+
+  /** The amounts a parent actually grants — the phone's own four. */
+  var BONUS_PRESETS = [5, 15, 30, 60];
+
+  /**
+   * Minutes already given today, read out of the config itself: a co-parent's
+   * tap on their phone counts here as soon as it has synced, which is the
+   * point of grants being merged config rather than a LAN call.
+   */
+  function bonusToday(kidId) {
+    var today = todayLocal();
+    return (cfg().grants || []).reduce(function (sum, g) {
+      var mine = !g.kid || g.kid === kidId;
+      return sum + (g.date === today && mine ? (g.minutes || 0) : 0);
+    }, 0);
+  }
+
+  /**
+   * Bonus minutes for one kid, or for everyone with a blank [kidId].
+   *
+   * The phone's card without its LAN half, and the wording has to say so
+   * rather than borrow the phone's "on 2 of 3 devices now". The hub fires
+   * nothing at a device: POST /grant needs a credential on that device, which
+   * the hub holds for nothing and guard 7 refuses it. So it writes the tap
+   * into the config and nudges — the same path every rule takes.
+   *
+   * Its own route, not patch(): `grants` is not in HubWeb.PATCHABLE, because
+   * a patch replaces the array and an entry left out of one is expiry to the
+   * stamper. The hub appends, and mints the id.
+   */
+  function grantRow(kidId, kidName) {
+    var c = controlById("grant-time-minutes");
+    var box = el("div", "ctl");
+    box.dataset.control = "grant-time-minutes";
+    box.appendChild(el("div", "name", c.label));
+    box.appendChild(el("div", "sub",
+      kidName ? "Extra minutes for " + kidName + " today, on top of their usual limit." : c.sub));
+
+    var chosen = 15;
+    var line = el("div", "line");
+    line.style.marginTop = "8px";
+    var picks = [];
+    BONUS_PRESETS.forEach(function (m) {
+      var b = el("button", "chip", m + " min");
+      b.setAttribute("aria-pressed", String(m === chosen));
+      b.onclick = function () {
+        chosen = m;
+        picks.forEach(function (p) { p[0].setAttribute("aria-pressed", String(p[1] === chosen)); });
+      };
+      picks.push([b, m]);
+      line.appendChild(b);
+    });
+
+    var err = el("p", "error");
+    line.appendChild(button("Add time", "primary", function () {
+      err.textContent = "";
+      return api("/api/grant", { kid: kidId, minutes: chosen, date: todayLocal() })
+        .then(function (r) {
+          if (!r.granted) {
+            // Named rather than "something went wrong": a refused date and a
+            // refused amount send a parent to different places.
+            err.textContent = r.why === "BAD_DATE"
+              ? "This hub would not take today's date from this browser. Check the clock on the device you are using."
+              : "That is not an amount this hub will grant.";
+            return;
+          }
+          flashSaved();
+          return refresh();
+        });
+    }));
+    box.appendChild(line);
+
+    var already = bonusToday(kidId);
+    if (already > 0) {
+      box.appendChild(el("p", "sub", already + " bonus minutes today already, from every parent and every phone."));
+    }
+    box.appendChild(el("p", "sub",
+      "Reaches every device at its next sync — right away if it is awake and " +
+      "the app is open, when it next opens otherwise."));
+    box.appendChild(err);
+    return box;
+  }
+
   var DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   var ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
 
@@ -950,6 +1045,9 @@
           }) });
         }
       ));
+      // Beside the pause, which is where a parent reaches when they are
+      // thinking about this evening rather than about the rules.
+      rules.appendChild(grantRow(k.id, k.name));
       rules.appendChild(windowsBlock((k.limits || {}).windows, function (next) {
         var edited = kids().slice();
         edited[idx] = Object.assign({}, k, { limits: withWindows(k.limits, next) });
@@ -994,6 +1092,10 @@
       family.appendChild(windowsBlock((cfg().limits || {}).windows, function (next) {
         return patch({ limits: withWindows(cfg().limits, next) });
       }));
+      // A grant with no kid named counts for everyone, which is exactly what
+      // a household with no profiles is. The phone's card does the same thing
+      // by the same rule (Grants.forKid).
+      family.appendChild(grantRow("", null));
       out.appendChild(family);
     }
 
@@ -1001,8 +1103,9 @@
     // page and this one can both be on, and the later of the two wins.
     var everyone = card(
       "Everyone at once",
-      "Bonus minutes and a single kid's pause are on that kid's card. This one " +
-        "stops every kid at once, until midnight."
+      (kids().length
+        ? "Bonus minutes and a single kid's pause are on that kid's card. "
+        : "") + "This one stops every kid at once, until midnight."
     );
     everyone.appendChild(pauseRow(
       "Every kid, every device.",
