@@ -1,28 +1,41 @@
 package io.yosemitekids.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.yosemitekids.app.data.Profile
 import io.yosemitekids.app.data.SourceKind
 import io.yosemitekids.app.data.TIME_MULTIPLIERS
@@ -133,6 +146,24 @@ internal fun sourceAudience(entry: WhitelistEntry, profiles: List<Profile>): Str
 internal fun sourceMetaTail(entry: WhitelistEntry, profiles: List<Profile>, isNew: Boolean): String =
     if (isNew) "just added" else sourceAudience(entry, profiles)
 
+/**
+ * The whole meta line, as one sentence in one colour. A source no kid can see
+ * says so plainly rather than spelling it "Channel · Nobody": the row is a
+ * problem to fix, and the kind of source is not the news.
+ */
+internal fun sourceMetaLine(entry: WhitelistEntry, profiles: List<Profile>, isNew: Boolean): String =
+    if (sourceAudience(entry, profiles) == "Nobody") "No kid can see this"
+    else "${sourceKindLabel(entry)} · ${sourceMetaTail(entry, profiles, isNew)}"
+
+/**
+ * The letter an avatar stands in with. A leading article is not what anyone
+ * scans for — "The Magic School Bus" files under M, the way the design (and a
+ * bookshelf) has it.
+ */
+internal fun sourceInitial(name: String): String =
+    name.trim().removePrefix("The ").removePrefix("A ")
+        .firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "?"
+
 /** The rows the list shows for one combination of tab, search and sort. */
 internal fun filterSources(
     entries: List<WhitelistEntry>,
@@ -162,6 +193,130 @@ internal fun filterSources(
     return when (sort) {
         SourceSort.RECENT -> picked.asReversed()
         SourceSort.ALPHA -> picked.sortedBy { nameOf(it).lowercase() }
+    }
+}
+
+// --- Shared parts of the two search pages ---------------------------------------
+
+/**
+ * The design's search field: a 40dp box with the magnifier inside it, not
+ * M3's 56dp `OutlinedTextField` with its floating label machinery.
+ *
+ * [borderColor] is the whole difference between the two callers — the channel
+ * list's is the quiet card border, because searching is one of several things
+ * that page does; the YouTube search's is teal at all times, because typing
+ * there is the page's only job. Either way focus brightens it, which is the
+ * only thing a TV remote has to go on once the M3 field is gone.
+ */
+@Composable
+private fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    borderColor: Color,
+    iconTint: Color = borderColor,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    trailing: (@Composable () -> Unit)? = null
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(8.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 40.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .border(
+                1.dp,
+                if (focused) MaterialTheme.colorScheme.primary else borderColor,
+                shape
+            )
+            .padding(horizontal = 12.dp)
+    ) {
+        Icon(
+            Icons.Filled.Search, contentDescription = null,
+            tint = iconTint, modifier = Modifier.size(17.dp)
+        )
+        Spacer(Modifier.width(9.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            // BasicTextField draws in black on a black page unless both the
+            // text and the caret are named.
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            modifier = Modifier
+                .weight(1f)
+                .onFocusChanged { focused = it.isFocused || it.hasFocus },
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Text(
+                        placeholder,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                        color = SettingsPlaceholder,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    inner()
+                }
+            }
+        )
+        if (trailing != null) trailing()
+    }
+}
+
+/**
+ * The quiet row of words both search pages filter with: the active one in
+ * teal over a 2dp underline of its own width, the rest grey. Chips would put
+ * six filled pills across a 344dp page; these read as a heading that happens
+ * to be tappable.
+ */
+@Composable
+private fun <T> TextTabs(
+    tabs: List<Pair<T, String>>,
+    selected: T,
+    /** The channel list's tabs outgrow the page once a family has kids. */
+    scrollable: Boolean,
+    onPick: (T) -> Unit
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (scrollable) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
+    ) {
+        tabs.forEach { (value, label) ->
+            val on = value == selected
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
+                fontWeight = FontWeight.Medium,
+                color = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier
+                    .tvFocusHighlight(cornerRadius = 8.dp)
+                    .clickable { onPick(value) }
+                    // Drawn rather than laid out: the underline is exactly the
+                    // word's width, which a Box child inside a Row cannot be
+                    // without measuring the text twice.
+                    .drawBehind {
+                        if (on) drawRect(
+                            color = accent,
+                            topLeft = Offset(0f, size.height - 2.dp.toPx()),
+                            size = Size(size.width, 2.dp.toPx())
+                        )
+                    }
+                    .padding(top = 2.dp, bottom = 7.dp)
+            )
+        }
     }
 }
 
@@ -201,36 +356,46 @@ internal fun ChannelsSection(
         entries, state.filter, state.query, state.sort, newIds, profiles, ::displayName
     )
     var confirmRemove by remember { mutableStateOf(false) }
+    var sortSheet by remember { mutableStateOf(false) }
 
     if (confirmRemove) {
         val n = state.selected.size
         AlertDialog(
             onDismissRequest = { confirmRemove = false },
             title = { Text(if (n == 1) "Remove 1 source?" else "Remove $n sources?") },
-            text = { Text("They disappear from the kids' apps as soon as the change syncs.") },
+            text = {
+                Text(
+                    "The kids stop seeing anything from ${if (n == 1) "it" else "them"}. " +
+                        "Their watch history and favorites are kept, so adding it back " +
+                        "restores where they were."
+                )
+            },
             confirmButton = {
                 Button(onClick = {
                     onRemove(state.selected)
                     state.stopSelecting()
                     confirmRemove = false
-                }) { Text("Remove") }
+                }) { Text("Remove $n") }
             },
             dismissButton = {
                 TextButton(onClick = { confirmRemove = false }) { Text("Cancel") }
             }
         )
     }
+    if (sortSheet) SortSheet(
+        current = state.sort,
+        onPick = { state.sort = it; sortSheet = false },
+        onDismiss = { sortSheet = false }
+    )
 
-    OutlinedTextField(
+    SearchField(
         value = state.query,
         onValueChange = { state.query = it; state.shown = SOURCES_PER_PAGE },
-        placeholder = { Text("Search your sources") },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-        singleLine = true,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth()
+        placeholder = "Search your sources",
+        borderColor = MaterialTheme.colorScheme.outline,
+        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
     )
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(12.dp))
 
     // Text tabs, not chips: the design draws them as a quiet row of words
     // with the active one in teal, and it scrolls sideways so a family of
@@ -244,85 +409,71 @@ internal fun ChannelsSection(
             add(SourceFilter.Everyone to "Everyone")
             profiles.forEach { add(SourceFilter.Kid(it.id) to it.name) }
         }
-        add(SourceFilter.Nobody to "Nobody")
+        add(SourceFilter.Nobody to "Nobody sees")
     }
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-    ) {
-        tabs.forEach { (filter, label) ->
-            val on = state.filter == filter
-            Text(
-                label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (on) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .tvFocusHighlight()
-                    .clickable { state.filter = filter; state.shown = SOURCES_PER_PAGE }
-                    .padding(horizontal = 6.dp, vertical = 8.dp)
-            )
-        }
+    TextTabs(tabs = tabs, selected = state.filter, scrollable = true) { filter ->
+        state.filter = filter
+        state.shown = SOURCES_PER_PAGE
     }
     SettingsDivider()
 
-    // The count line, or — in select mode — the selection and its one action.
+    // The count line and the sort, 4dp further in than the page padding. It
+    // stays put in select mode: what is being selected out of how many is
+    // exactly the thing a bulk edit needs stated.
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
+        modifier = Modifier.fillMaxWidth().padding(top = 14.dp, start = 4.dp, end = 4.dp)
     ) {
-        if (state.selecting) {
-            Text(
-                "${state.selected.size} selected",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f)
+        val total = entries.size
+        val noun = if (total == 1) "source" else "sources"
+        Text(
+            buildString {
+                if (visible.size == total) append("$total $noun")
+                else append("${visible.size} of $total $noun")
+                if (visible.size > state.shown) append(" · showing first ${state.shown}")
+            },
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        // Its own target rather than a CompactButton: the design sets the
+        // label's right edge 6dp past the text column, which the offset buys
+        // back from the button's own padding.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .offset(x = 6.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .clickable { sortSheet = true }
+                .tvFocusHighlight(cornerRadius = 7.dp)
+                .padding(horizontal = 6.dp, vertical = 8.dp)
+        ) {
+            Icon(
+                YosemiteIcons.Sort, contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(15.dp)
             )
-            CompactButton(onClick = {
-                state.selected = if (state.selected.containsAll(visible.map { it.id }))
-                    emptySet() else visible.mapTo(mutableSetOf()) { it.id }
-            }) {
-                Text(if (state.selected.containsAll(visible.map { it.id }) && visible.isNotEmpty())
-                    "None" else "All")
-            }
-            CompactButton(
-                enabled = state.selected.isNotEmpty(),
-                onClick = { confirmRemove = true }
-            ) {
-                Text(
-                    "Remove",
-                    color = if (state.selected.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.error
-                )
-            }
-        } else {
-            val total = entries.size
-            val noun = if (total == 1) "source" else "sources"
+            Spacer(Modifier.width(6.dp))
             Text(
-                buildString {
-                    if (visible.size == total) append("$total $noun")
-                    else append("${visible.size} of $total $noun")
-                    if (visible.size > state.shown) append(" · showing first ${state.shown}")
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                state.sort.label,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1
             )
-            CompactButton(onClick = {
-                state.sort = if (state.sort == SourceSort.RECENT) SourceSort.ALPHA else SourceSort.RECENT
-            }) {
-                Icon(
-                    YosemiteIcons.Sort, contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(state.sort.label)
-            }
         }
     }
+
+    // The design pins this bar to the bottom of the screen; SubPage has no
+    // slot under its scroll, so it sits over the list instead — where it is
+    // still one thumb-move from the rows being ticked.
+    if (state.selecting) ChannelsBulkBar(
+        visible = visible,
+        state = state,
+        onRemove = { confirmRemove = true }
+    )
 
     when {
         entries.isEmpty() -> Text(
@@ -341,10 +492,17 @@ internal fun ChannelsSection(
             val rows = visible.take(state.shown)
             rows.forEachIndexed { i, entry ->
                 val picked = entry.id in state.selected
+                val isNew = entry.id in newIds
+                val stranded = sourceAudience(entry, profiles) == "Nobody"
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(
+                            if (picked) Modifier.background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                            ) else Modifier
+                        )
                         .tvFocusHighlight()
                         .clickable {
                             if (state.selecting) {
@@ -352,40 +510,66 @@ internal fun ChannelsSection(
                                     if (picked) state.selected - entry.id else state.selected + entry.id
                             } else onOpen(entry)
                         }
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        // The tick box is what a row says about itself in select
+                        // mode; without this TalkBack reads it as a plain button.
+                        .semantics { if (state.selecting) selected = picked }
+                        .heightIn(min = 60.dp)
+                        .padding(horizontal = 11.dp, vertical = 9.dp)
                 ) {
-                    if (state.selecting) {
-                        Checkbox(checked = picked, onCheckedChange = null)
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    SourceAvatar(displayName(entry), size = 36)
-                    Spacer(Modifier.width(12.dp))
+                    SourceAvatar(displayName(entry), size = 32)
+                    Spacer(Modifier.width(11.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            displayName(entry), fontWeight = FontWeight.SemiBold,
+                            displayName(entry),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp),
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1, overflow = TextOverflow.Ellipsis
                         )
-                        val isNew = entry.id in newIds
-                        Row {
-                            Text(
-                                "${sourceKindLabel(entry)} · ",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                sourceMetaTail(entry, profiles, isNew),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (isNew) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                        // One line, one colour: amber when nothing can see it,
+                        // green while it is new, grey otherwise. Teal is
+                        // reserved for what a parent can press.
+                        Text(
+                            sourceMetaLine(entry, profiles, isNew),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = when {
+                                stranded -> WarningAmber
+                                isNew -> SettingsSuccess
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(11.dp))
+                    if (state.selecting) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    if (picked) MaterialTheme.colorScheme.primary
+                                    else Color.Transparent
+                                )
+                                .border(
+                                    1.5.dp,
+                                    if (picked) MaterialTheme.colorScheme.primary
+                                    else SettingsStrongBorder,
+                                    RoundedCornerShape(6.dp)
+                                )
+                        ) {
+                            if (picked) Text(
+                                "✓",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
                         }
-                    }
-                    if (!state.selecting) {
-                        Spacer(Modifier.width(8.dp))
+                    } else {
                         Icon(
                             YosemiteIcons.ChevronRight, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = SettingsPlaceholder,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -402,22 +586,168 @@ internal fun ChannelsSection(
     }
 }
 
-/** The initial in a circle that stands in for a channel's avatar. */
+/**
+ * The initial that stands in for a channel's avatar. A circle in the source
+ * list, where it reads as a face; a [rounded] square in the search results,
+ * which is how the design draws a thing you have not allowed yet.
+ */
 @Composable
-private fun SourceAvatar(name: String, size: Int) {
+private fun SourceAvatar(name: String, size: Int, rounded: Boolean = false) {
+    val shape = if (rounded) RoundedCornerShape(8.dp) else CircleShape
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(size.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clip(shape)
+            .background(
+                if (rounded) MaterialTheme.colorScheme.surfaceVariant
+                else MaterialTheme.colorScheme.surfaceContainerHigh
+            )
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
     ) {
         Text(
-            name.trim().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "?",
-            style = if (size >= 48) MaterialTheme.typography.titleMedium
-                else MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            sourceInitial(name),
+            style = when {
+                size >= 48 -> MaterialTheme.typography.titleMedium
+                rounded -> MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp)
+                else -> MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp)
+            },
+            fontWeight = FontWeight.Medium,
+            color = if (size >= 48 || rounded) MaterialTheme.colorScheme.onSurfaceVariant
+                else SettingsTextSecondary
         )
+    }
+}
+
+/**
+ * Select mode's bar: what is ticked, select-all, and the one destructive
+ * action. Its own block rather than three [CompactButton]s in the count row —
+ * a bulk delete should look like a mode the page is in.
+ */
+@Composable
+private fun ChannelsBulkBar(
+    visible: List<WhitelistEntry>,
+    state: ChannelListState,
+    onRemove: () -> Unit
+) {
+    val allPicked = visible.isNotEmpty() && state.selected.containsAll(visible.map { it.id })
+    val any = state.selected.isNotEmpty()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .border(1.dp, SettingsStrongBorder, RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 11.dp)
+    ) {
+        Text(
+            if (any) "${state.selected.size} selected" else "Tap sources to remove",
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+            color = SettingsTextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        OutlinedButton(
+            onClick = {
+                state.selected =
+                    if (allPicked) emptySet() else visible.mapTo(mutableSetOf()) { it.id }
+            },
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, SettingsStrongBorder),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            contentPadding = PaddingValues(horizontal = 11.dp, vertical = 0.dp),
+            modifier = Modifier.height(32.dp).tvFocusHighlight(cornerRadius = 8.dp)
+        ) {
+            Text(
+                if (allPicked) "Clear all" else "Select all ${visible.size}",
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
+        }
+        Button(
+            onClick = onRemove,
+            enabled = any,
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+                disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
+                disabledContentColor = SettingsPlaceholder
+            ),
+            contentPadding = PaddingValues(horizontal = 11.dp, vertical = 0.dp),
+            modifier = Modifier.height(32.dp).tvFocusHighlight(cornerRadius = 8.dp)
+        ) {
+            Text(
+                "Remove",
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+/**
+ * What the sort control opens. Two options is a small sheet, but it says
+ * which one is on and what the setting does and does not reach — the old
+ * toggle-on-tap left both unanswerable without pressing it.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SortSheet(current: SourceSort, onPick: (SourceSort) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(bottom = 24.dp)) {
+            Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 8.dp)) {
+                Text(
+                    "Sort sources",
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    "Changes the order you see here. The kid's own order is set " +
+                        "under How videos are listed.",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+            }
+            SourceSort.values().forEachIndexed { i, sort ->
+                if (i > 0) SettingsDivider()
+                val on = sort == current
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tvFocusHighlight(cornerRadius = 8.dp)
+                        .clickable { onPick(sort) }
+                        .semantics { selected = on }
+                        .heightIn(min = 52.dp)
+                        .padding(horizontal = 14.dp, vertical = 9.dp)
+                ) {
+                    Text(
+                        sort.label,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp),
+                        color = if (on) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (on) Text(
+                        "✓",
+                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -726,54 +1056,82 @@ internal fun AddSourceSheet(
     onSuggested: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(horizontal = 8.dp).padding(bottom = 24.dp)) {
-            Text(
-                "Add a channel or playlist",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-            SheetRow(Icons.Filled.Search, "Search YouTube", "Find a channel or playlist by name", onSearch)
+        Column(Modifier.padding(bottom = 24.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, bottom = 10.dp)
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Add a source",
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        "Everything you allow lands in your list, under New.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 3.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(44.dp).tvFocusHighlight(cornerRadius = 8.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Close, contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+            SheetRow("Search YouTube", "By channel or playlist name", onSearch)
             SheetRow(
-                Icons.Filled.Edit, "Paste a channel or playlist link",
-                "Any YouTube link, playlists included", onPaste
+                "Paste a channel or playlist link",
+                "Straight from the YouTube app", onPaste
             )
             SheetRow(
-                YosemiteIcons.Sparkle, "Suggested channels",
+                "Suggested channels",
                 "The directory other parents have vetted", onSuggested
             )
         }
     }
 }
 
+/**
+ * No leading icon: three teal glyphs down the left of a sheet read as a
+ * toolbar, and the words already say which way in each row is.
+ */
 @Composable
-private fun SheetRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    summary: String,
-    onClick: () -> Unit
-) {
+private fun SheetRow(title: String, summary: String, onClick: () -> Unit) {
+    SettingsDivider()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .tvFocusHighlight()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 14.dp, vertical = 11.dp)
     ) {
-        Icon(
-            icon, contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(Modifier.width(16.dp))
-        Column {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp),
+                color = MaterialTheme.colorScheme.onSurface
+            )
             Text(
                 summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
             )
         }
+        Spacer(Modifier.width(11.dp))
+        Icon(
+            YosemiteIcons.ChevronRight, contentDescription = null,
+            tint = SettingsPlaceholder,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 
