@@ -601,6 +601,28 @@ if (@(Get-ChildItem -Recurse -File -Filter *.kt app/src/main/java | Select-Strin
     Fail-Guard "nothing in the app reads Whitelist.grantsFor, so config-carried grants reach every device and are applied by none."
 }
 
+# 22. The hub answers a device's routes, or refuses them by name. Never with
+#     the page.
+#     HubServer registers "/" last so an unknown path lands on the admin GUI
+#     rather than a 404 a parent has to interpret. For a human that is right;
+#     for a device it is a lie. A phone sweeps /watchstate, /verdicts and
+#     /stats across EVERY paired peer including the hub: all three answered
+#     200 with HTML, the two mergers parsed it to nothing, and StatsCache
+#     wrote index.html into files/stats_cache/ on every sweep for ever.
+#     Nothing failed, because a 200 is a success.
+$hubSrvSrc = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt" -Raw
+$deviceOnly = ([regex]::Match($hubSrvSrc, '(?s)val DEVICE_ONLY = setOf\((.*?)\)')).Groups[1].Value
+if (-not $deviceOnly) { Fail-Guard "HubServer.kt declares no DEVICE_ONLY set; guard 22 is blind." }
+$lanRoutes = @([regex]::Matches(
+    (Get-Content "app/src/main/java/io/yosemitekids/app/data/Pairing.kt" -Raw), 'path == "(/[a-z-]+)"') |
+    ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+foreach ($r in $lanRoutes) {
+    if ($hubSrvSrc -match [regex]::Escape('createContext("' + $r + '")')) { continue }
+    if ($deviceOnly -notmatch [regex]::Escape('"' + $r + '"')) {
+        Fail-Guard "LanServer answers $r and the hub neither implements it nor names it in HubServer.DEVICE_ONLY - its catch-all would hand a device the admin page with a 200."
+    }
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan

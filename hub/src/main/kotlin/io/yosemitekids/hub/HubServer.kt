@@ -285,6 +285,11 @@ class HubServer(
      * every byte of family data arrives later, over /api, behind a session.
      */
     private fun web(ex: HttpExchange) {
+        // Before anything else: a device route this hub does not implement is
+        // a 404, never the page. See [DEVICE_ONLY].
+        if (ex.requestURI.path in DEVICE_ONLY) {
+            return respond(ex, 404, JSONObject().put("error", "the hub does not answer this").toString())
+        }
         if (ex.requestMethod != "GET") return respond(ex, 405, "no")
         val html = javaClass.getResourceAsStream("/web/index.html")?.readBytes()
             ?: return respond(ex, 500, "the GUI is missing from this build")
@@ -572,11 +577,37 @@ class HubServer(
         respond(ex, 200, JSONObject().put("token", tokens.rotateRecoveryToken()).toString())
     }
 
-    private companion object {
+    internal companion object {
         const val SESSION_COOKIE = "yk_session"
 
         /** How a hub edit is attributed in the change feed a parent reads. */
         const val WHO = "The hub"
+
+        /**
+         * Routes a device answers and this hub deliberately does not.
+         *
+         * `"/"` is registered last and hands the admin page to anything
+         * unclaimed, which is right for a parent's typo and wrong for a
+         * device. A phone sweeps `/watchstate`, `/verdicts` and `/stats`
+         * across **every** paired peer, the hub included, and each came back
+         * 200 with a page of HTML: the watch-state and verdict mergers parsed
+         * it to nothing, and `StatsCache` wrote index.html into the phone's
+         * `files/stats_cache/` on every sweep, for ever. A 404 is a shape the
+         * app already handles — it is what a device on a build older than a
+         * route replies.
+         *
+         * This is `LanServer.handle`'s route list minus the four this file
+         * registers, and a guard in `scripts/check.*` holds it there: a route
+         * added to a device and not thought about here would go quietly back
+         * to being answered with the page.
+         */
+        val DEVICE_ONLY = setOf(
+            "/admin-leave", "/admin-revoke", "/admins", "/check-updates",
+            "/grant", "/join-hub", "/leave-hub", "/looks",
+            "/pair-approve", "/pair-deny", "/pair-pending", "/pair-request",
+            "/pair-status", "/play", "/player", "/stats",
+            "/sync-now", "/verdicts", "/watchstate"
+        )
     }
 
     /**

@@ -188,6 +188,16 @@ The hub answers `GET /status` and `GET|POST /config` like a device, has
 (see `docs/HUB.md`), and serves the search index. Guard 14 covers the device
 table above; these are pinned by `HubServerTest` and `HubIntegrationTest`.
 
+**Everything else in the device table above is a JSON 404 on the hub.**
+`HubServer` registers `"/"` last, so an unknown path lands on the admin page
+rather than a status code a parent has to interpret — right for a typo, and a
+lie to a device. A phone sweeps `/watchstate`, `/verdicts` and `/stats` across
+every paired peer including the hub; all three came back 200 with the page's
+HTML, the two mergers parsed it to nothing, and `StatsCache` wrote index.html
+into the phone's `files/stats_cache/` on every sweep. The refusal list is
+`HubServer.DEVICE_ONLY`, and guard 22 holds it to exactly the routes
+`LanServer` answers and the hub does not.
+
 | Route | Auth | Body | Reply | Notes |
 | --- | --- | --- | --- | --- |
 | `GET /status` | device token | — | as a device, plus `token` and `kind: "hub"` | `token` is the hub's self token (`.hub` + 28 hex, minted once): an identity, never a credential. It is what `config.masterDeviceToken` holds while the hub builds the index, and how a phone backfills `PairedDevice.id`. |

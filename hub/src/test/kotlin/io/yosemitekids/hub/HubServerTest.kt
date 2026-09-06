@@ -458,6 +458,45 @@ class HubServerTest {
         assertFalse(tokens.armed(T))
     }
 
+    // --- routes the hub does not have -------------------------------------
+
+    @Test
+    fun aDeviceRouteTheHubDoesNotHaveIsA404AndNotThePage() {
+        // THE property. "/" is registered last and answers anything unclaimed
+        // with the admin page, so a phone sweeping /watchstate, /verdicts and
+        // /stats across every peer got 200 and a page of HTML from the hub:
+        // the mergers parsed it to nothing and StatsCache wrote index.html
+        // into files/stats_cache/ on every sweep, for ever. Nothing failed,
+        // because a 200 is a success.
+        val token = enrolled()
+        val (code, body) = call("/watchstate", token = token)
+        assertEquals(404, code)
+        assertFalse("a 404 that carries the page is the bug, not the fix", body.contains("<html"))
+        assertTrue("and it is JSON, like every other refusal here", body.trimStart().startsWith("{"))
+    }
+
+    @Test
+    fun everyDeviceOnlyRouteRefusesRatherThanRendering() {
+        // The whole list, because the one that matters is whichever one a
+        // future build of the app starts calling.
+        val token = enrolled()
+        HubServer.DEVICE_ONLY.forEach { path ->
+            val (code, body) = call(path, token = token)
+            assertEquals("$path must not be answered with the page", 404, code)
+            assertFalse(path, body.contains("<html"))
+        }
+    }
+
+    @Test
+    fun aParentsTypoStillLandsOnTheAdminPage() {
+        // The control. Without it the guard above would also pass if the
+        // catch-all had simply been turned into a blanket 404, which would
+        // send a parent who typed /kids to a status code instead of the GUI.
+        val (code, body) = call("/kids")
+        assertEquals(200, code)
+        assertTrue(body.contains("Yosemite Kids hub"))
+    }
+
     // --- the installable shell -------------------------------------------
 
     /** Status, Content-Type + Cache-Control, and the raw bytes. */

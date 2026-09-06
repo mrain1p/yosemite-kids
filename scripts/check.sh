@@ -529,6 +529,24 @@ if ! grep -rq "grantsFor(" app/src/main/java; then
   guard_fail "nothing in the app reads Whitelist.grantsFor, so config-carried grants reach every device and are applied by none."
 fi
 
+# 22. The hub answers a device's routes, or refuses them by name. Never with
+#     the page.
+#     HubServer registers "/" last so an unknown path lands on the admin GUI
+#     rather than a 404 a parent has to interpret. For a human that is right;
+#     for a device it is a lie. A phone sweeps /watchstate, /verdicts and
+#     /stats across EVERY paired peer including the hub: all three answered
+#     200 with HTML, the two mergers parsed it to nothing, and StatsCache
+#     wrote index.html into files/stats_cache/ on every sweep for ever.
+#     Nothing failed, because a 200 is a success.
+hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
+device_only=$(sed -n '/val DEVICE_ONLY = setOf(/,/)$/p' "$hubsrv")
+[ -n "$device_only" ] || guard_fail "HubServer.kt declares no DEVICE_ONLY set; guard 22 is blind."
+for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z-]+' | sort -u); do
+  if grep -qF "createContext(${q}$r${q})" "$hubsrv"; then continue; fi
+  printf '%s' "$device_only" | grep -qF "${q}$r${q}" ||
+    guard_fail "LanServer answers $r and the hub neither implements it nor names it in HubServer.DEVICE_ONLY — its catch-all would hand a device the admin page with a 200."
+done
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"
