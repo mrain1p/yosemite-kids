@@ -41,7 +41,7 @@ it. A phone out of a drawer claims to be brand new.
 `updatedAt`.** The edit clock is `sync.at[unit]`, minted once per save in
 `ConfigStamp.stamped`.
 
-## 2. Eleven prohibitions
+## 2. Twelve prohibitions
 
 1. **Never add a term to `ConfigStore.fingerprint`.** Stamps and tombstones
    live in `syncHash`, advertised separately on `/status`. An old build can
@@ -106,6 +106,48 @@ it. A phone out of a drawer claims to be brand new.
     `ConfigStampTest.aSaveThatChangesNothingMintsNothing`: previous, base
     and next all equal must leave the sync block byte-for-byte alone,
     `docAt` included.
+12. **Never put a counter in `config.json`.** Not minutes watched, not
+    channel opens, not a play count — nothing a device increments while a
+    child is sitting in front of it. This is the most natural-looking wrong
+    turn left in the design, and the only prohibition here that no script
+    can help with: a `use|<kid>|<day>` unit looks exactly like `grant|<id>`,
+    it would slot into §3's table without anything looking odd, and every
+    guard in `scripts/check.*` would stay green. This paragraph is the whole
+    of the enforcement, which is why it spells the arithmetic out.
+
+    **What it costs.** `SyncDecision.syncAction` takes the `Merge` arm on
+    **any** `syncHash` difference, and a counter's stamp moves `syncHash`.
+    One increment is therefore a `/status`, a `GET /config`, a merge and a
+    re-push *between every pair of peers*, plus `HubStore.onChanged` →
+    `HubNudge` fanning out to every enrolled device — once a minute, for as
+    long as anyone in the house is watching, for the life of the feature.
+    And `mergeLogs` keeps the last `SyncMeta.MAX_LOG` (30) lines: a usage
+    line a minute wipes a family's change history in half an hour, and that
+    history is now the feed on the hub's home page as well as the phone's
+    Recent changes. The sync traffic is annoying; erasing the record of who
+    changed what is the part a parent would actually be hurt by.
+
+    **The deeper reason, which outlives the numbers.** Every unit in §3
+    resolves by *who acted later* — a stamp, and a winner. A counter has no
+    winner; it has a **join**. Two devices that each played twenty minutes
+    did not disagree with each other, and last-writer-wins throws twenty
+    minutes away. A document whose merge is "newest stamp wins" is the wrong
+    container for a value whose merge is `max`.
+
+    **Where it goes instead**, if it is ever built: its own small document,
+    grow-only cells keyed `(kid, day, device)`, joined per cell by `max`,
+    outside `ConfigStore.fingerprint` and outside `syncHash`, with a merge
+    that takes no clock at all (prohibition 2 applies to it too, and a
+    `today: String` parameter sails straight past the guard that greps for
+    `currentTimeMillis`). `docs/PLAN-hub-parity.md` §4 is the design and
+    `docs/ROADMAP.md` item J is why it is parked — read J first, because it
+    argues the whole thing shrinks to almost nothing if a shared budget is
+    allowed to require a hub. And the day rules, whichever design wins:
+    **write under your own day, read forward, never adopt a peer's.**
+    `max(localDay, seenDay)` turns the day boundary into a ratchet the merge
+    itself propagates, so one television with a wrong clock walks the entire
+    household's day forward and hands out a second budget that no parent
+    action reverses.
 
 ## 3. The unit table
 
@@ -201,9 +243,11 @@ unmoved.
 `GET /config` re-serializes through its own model and launders the blob out.
 The change log makes that visible and the devices row names the version.
 
-`version.json` still points at upstream and `UPDATE_MANIFEST_URL` defaults to
-empty, so shipping an update to both ends is not currently available, and
-`Updater` offers no downgrade. **Plan format changes forward-only.**
+Since 1.0.3 the fork ships its own `version.json` and every device can pull the
+next build — from its own settings, or from "Update now" on the parent's phone
+(`POST /check-updates`). What has not changed is the direction: `Updater` will
+not install an older `versionCode`, so a format both ends cannot read is not
+something a release can walk back out of. **Plan format changes forward-only.**
 
 ## 7. Where the rendezvous is
 
