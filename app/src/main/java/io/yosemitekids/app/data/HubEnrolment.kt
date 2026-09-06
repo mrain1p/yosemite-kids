@@ -49,13 +49,40 @@ object HubEnrolment {
         data object Unreachable : Failure
         /** Something answered but it is not a Yosemite Kids hub. */
         data object NotAHub : Failure
-        /** The admin token was refused. */
-        data object BadAdminToken : Failure
+        /**
+         * The secret was refused.
+         *
+         * One case, not two, because there is one header: the hub decides
+         * whether what arrived was the password or the recovery token
+         * ([HubTokens.verifyAdminSecret] on that side), and this phone never
+         * asks a parent which of the two they are holding.
+         */
+        data object BadAdminSecret : Failure
+        /**
+         * Too many wrong secrets: the hub is refusing every attempt, the
+         * right one included, for [retryAfterSeconds].
+         *
+         * Its own case because 429 used to arrive here as [NotAHub] —
+         * "something answered, but it isn't a Yosemite Kids hub" — which sends
+         * a parent to check an address that was right all along, while the
+         * lockout they actually hit doubles behind them.
+         */
+        data class Throttled(val retryAfterSeconds: Int) : Failure
         /** The hub refused the code: expired, or too many wrong guesses. */
         data class Refused(val reason: String) : Failure
     }
 
     class HubError(val failure: Failure) : Exception(failure.toString())
+
+    /**
+     * What a hub says about itself before anyone has authenticated: whether it
+     * has been claimed with a password.
+     *
+     * The only thing it decides is which word the phone's one secret field
+     * uses. A hub too old to answer `/setup` reads as `hasPassword = false`,
+     * which is what it is — that build has no password to have.
+     */
+    data class Setup(val hasPassword: Boolean)
 
     /**
      * [host] may be typed by a parent, so it is accepted in the forms people
@@ -69,13 +96,29 @@ object HubEnrolment {
         return if (Regex(":\\d+$").containsMatchIn(withScheme)) withScheme else "$withScheme:$port"
     }
 
-    /** Is something there, and is it a Yosemite Kids hub? Checked before asking to join. */
-    suspend fun probe(host: String, port: Int): Result<Unit> = withContext(Dispatchers.IO) {
+    /**
+     * Is something there, is it a Yosemite Kids hub, and has it been claimed?
+     *
+     * `/health` answers the first two, as it always has. `/setup` answers the
+     * third, unauthenticated and with exactly one key, so the field a parent
+     * is about to type into can be labelled correctly before they type.
+     *
+     * A hub older than `/setup` does not 404 it: `HubServer` registers `"/"`
+     * last, so an unknown GET comes back 200 with the admin page's HTML. That
+     * is why this reads the body rather than the status — anything that is not
+     * the one JSON object means "no password", which is the truth on every
+     * build that predates one.
+     */
+    suspend fun probe(host: String, port: Int): Result<Setup> = withContext(Dispatchers.IO) {
         runCatching {
-            val req = okhttp3.Request.Builder().url("${base(host, port)}/health").get().build()
+            val root = base(host, port)
+            val req = okhttp3.Request.Builder().url("$root/health").get().build()
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) throw HubError(Failure.NotAHub)
             }
+            Setup(hasPassword = get(root, "/setup").let { (status, body) ->
+                status == 200 && runCatching { JSONObject(body).optBoolean("password") }.getOrDefault(false)
+            })
         }.recoverCatching { e ->
             throw if (e is HubError) e else HubError(Failure.Unreachable)
         }
@@ -152,7 +195,18 @@ object HubEnrolment {
                 when (status) {
                     200 -> JSONObject(body).optString("token").takeIf { it.isNotBlank() }
                         ?: throw HubError(Failure.NotAHub)
-                    401 -> throw HubError(Failure.BadAdminToken)
+                    401 -> throw HubError(Failure.BadAdminSecret)
+                    // The hub's own number, not a guess: it names the wait in
+                    // the body and repeats it in Retry-After, and the two are
+                    // the same value. A default of a full window is the safe
+                    // way round — telling a parent to come back too early is
+                    // another failed attempt, which lengthens the lockout.
+                    429 -> throw HubError(
+                        Failure.Throttled(
+                            runCatching { JSONObject(body).optInt("retryAfter") }.getOrDefault(0)
+                                .takeIf { it > 0 } ?: DEFAULT_RETRY_AFTER_SECONDS
+                        )
+                    )
                     409 -> throw HubError(
                         Failure.Refused(JSONObject(body).optString("refused", "UNKNOWN_CODE"))
                     )
@@ -161,16 +215,27 @@ object HubEnrolment {
             }
     }
 
+    /** What to tell a parent when a 429 carries no number of its own. */
+    private const val DEFAULT_RETRY_AFTER_SECONDS = 15 * 60
+
     private fun post(root: String, path: String, body: String, adminToken: String?): Pair<Int, String> {
         val req = okhttp3.Request.Builder()
             .url("$root$path")
-            .post(body.toRequestBody("application/json".toMediaType()))
+            // One header for one secret. The hub decides whether what arrived
+            // was the password or the recovery token; this side never asks a
+            // parent to classify what they are holding, and never keeps it.
             .apply { adminToken?.let { header("X-Admin-Token", it) } }
+            .post(body.toRequestBody("application/json".toMediaType()))
             .build()
         client.newCall(req).execute().use { resp ->
             return resp.code to (resp.body?.string().orEmpty())
         }
     }
 
-
+    private fun get(root: String, path: String): Pair<Int, String> {
+        val req = okhttp3.Request.Builder().url("$root$path").get().build()
+        client.newCall(req).execute().use { resp ->
+            return resp.code to (resp.body?.string().orEmpty())
+        }
+    }
 }

@@ -36,7 +36,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.yosemitekids.app.data.HubEnrolment
@@ -104,10 +106,28 @@ internal fun HubSection(
 
     val hub = fleet.hub
     var host by remember { mutableStateOf("") }
+    // The secret the parent is typing. Held in composition and nowhere else:
+    // it is cleared the moment it has been used, and no path here writes it to
+    // PairingStore, to prefs or to the config. What IS stored is what the hub
+    // hands back — a per-device enrolment token — which is a credential for
+    // this household's hub alone. A parent's password, which a family will
+    // have reused elsewhere, never lands on disk on this phone.
     var admin by remember { mutableStateOf("") }
+    var showSecret by remember { mutableStateOf(false) }
+    // What the hub calls its own secret, from GET /setup. Null until something
+    // answers, and false on a hub too old to have the route — which is the
+    // truth for that build, not a fallback.
+    var hubHasPassword by remember { mutableStateOf<Boolean?>(null) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var pendingRemove by remember { mutableStateOf(false) }
+
+    // One field, one word for it, decided by the hub rather than by asking a
+    // parent which kind of secret they are holding.
+    val secretLabel = if (hubHasPassword == true) "Hub password" else "Admin token"
+    val secretHint =
+        if (hubHasPassword == true) "The password you set on the hub"
+        else "Shown in the hub's log when it starts"
 
     /**
      * Give every kid device this phone administers a hub of its own.
@@ -121,38 +141,52 @@ internal fun HubSection(
      * because "3 of 4" is actionable and "done" is not — the missing one is a
      * TV that is switched off, and the parent needs to know to come back.
      */
-    suspend fun connectDevices(hubHost: String, hubPort: Int, adminToken: String): Pair<Int, Int> {
+    suspend fun connectDevices(hubHost: String, hubPort: Int, adminToken: String): HubConnect {
         var added = 0
         var missed = 0
-        pairingStore.paired()
-            .filterNot { it.secretless }   // never the hub itself
-            .forEach { device ->
-                val status = LanClient.fullStatus(device)
-                when {
-                    status == null -> missed++
-                    status.hasHub -> Unit
-                    else -> {
-                        val token = HubEnrolment
-                            .tokenFor(hubHost, hubPort, adminToken, device.name)
-                            .getOrNull()
-                        if (token == null) missed++
-                        else if (LanClient.sendHubDetails(device, hubHost, hubPort, token)) added++
-                        else missed++
+        for (device in pairingStore.paired().filterNot { it.secretless }) {   // never the hub itself
+            val status = LanClient.fullStatus(device)
+            when {
+                status == null -> missed++
+                status.hasHub -> Unit
+                else -> {
+                    val minted = HubEnrolment.tokenFor(hubHost, hubPort, adminToken, device.name)
+                    val refusal = (minted.exceptionOrNull() as? HubEnrolment.HubError)?.failure
+                    // Stop on a secret the hub has already refused, rather
+                    // than presenting it once per television. Every extra
+                    // attempt is another failure against a lockout that
+                    // doubles — a household with four TVs could hand itself a
+                    // six-hour wait from one mistyped password, and the fourth
+                    // refusal reads no differently from the first.
+                    if (refusal is HubEnrolment.Failure.BadAdminSecret ||
+                        refusal is HubEnrolment.Failure.Throttled
+                    ) {
+                        return HubConnect(added, missed, refusal)
                     }
+                    val token = minted.getOrNull()
+                    if (token == null) missed++
+                    else if (LanClient.sendHubDetails(device, hubHost, hubPort, token)) added++
+                    else missed++
                 }
             }
-        return added to missed
+        }
+        return HubConnect(added, missed)
     }
 
-    fun describe(e: Throwable): String = when ((e as? HubEnrolment.HubError)?.failure) {
+    fun describe(e: Throwable): String = when (val f = (e as? HubEnrolment.HubError)?.failure) {
         // Each of these sends a parent somewhere different, so none of them
         // collapses into "failed".
         HubEnrolment.Failure.Unreachable ->
             "Nothing answered at that address. Is the hub running, and is this phone on the same network?"
         HubEnrolment.Failure.NotAHub ->
             "Something answered, but it isn't a Yosemite Kids hub. Check the address and port."
-        HubEnrolment.Failure.BadAdminToken ->
-            "That admin token was refused. It's printed in the hub's log when it starts."
+        HubEnrolment.Failure.BadAdminSecret ->
+            if (hubHasPassword == true) "That hub password was refused."
+            else "That admin token was refused. It's printed in the hub's log when it starts."
+        is HubEnrolment.Failure.Throttled ->
+            "Too many wrong tries: the hub is refusing every attempt for another " +
+                "${waitFor(f.retryAfterSeconds)}, this one included. The recovery token " +
+                "in the hub's log still works."
         is HubEnrolment.Failure.Refused ->
             "The hub refused this attempt. Try again — codes are only good for a few minutes."
         null -> "Couldn't connect: ${e.message?.take(120)}"
@@ -163,6 +197,12 @@ internal fun HubSection(
         // says now and not what the last Devices sweep found. The fleet lives
         // above the pages, so a repeat visit renders the last answer at once.
         LaunchedEffect(hub.key) { fleet.refresh(hub) }
+        // And ask what it calls its secret. Unauthenticated, one key, and off
+        // the main thread inside probe(); a hub that is off simply leaves the
+        // field labelled the way it was last time.
+        LaunchedEffect(hub.key) {
+            HubEnrolment.probe(hub.host, hub.port).onSuccess { hubHasPassword = it.hasPassword }
+        }
 
         if (pendingRemove) {
             AlertDialog(
@@ -276,16 +316,18 @@ internal fun HubSection(
             SettingsDivider()
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Added a TV since? Enter the admin token again to connect it.",
+                    "Added a TV since? Enter the ${secretLabel.lowercase()} again to connect it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 OutlinedTextField(
                     value = admin,
                     onValueChange = { admin = it },
-                    placeholder = { Text("Admin token") },
+                    placeholder = { Text(secretLabel) },
                     singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = secretMask(showSecret),
+                    keyboardOptions = secretKeyboard(),
+                    trailingIcon = { RevealToggle(showSecret) { showSecret = !showSecret } },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(
@@ -299,12 +341,20 @@ internal fun HubSection(
                             scope.launch {
                                 busy = true
                                 message = "Connecting your TVs…"
-                                val (added, missed) = connectDevices(hub.host, hub.port, admin.trim())
+                                val outcome = connectDevices(hub.host, hub.port, admin.trim())
                                 admin = ""
+                                showSecret = false
                                 message = when {
-                                    added == 0 && missed == 0 -> "Every device is already using the hub."
-                                    missed == 0 -> "Connected $added ${if (added == 1) "device" else "devices"}."
-                                    else -> "Connected $added. $missed couldn't be reached — " +
+                                    // First, because it is the reason the rest
+                                    // of the count is short.
+                                    outcome.refused != null ->
+                                        describe(HubEnrolment.HubError(outcome.refused)) +
+                                            " Nothing further was tried."
+                                    outcome.added == 0 && outcome.missed == 0 ->
+                                        "Every device is already using the hub."
+                                    outcome.missed == 0 ->
+                                        "Connected ${outcome.added} ${if (outcome.added == 1) "device" else "devices"}."
+                                    else -> "Connected ${outcome.added}. ${outcome.missed} couldn't be reached — " +
                                         "switch them on and try again."
                                 }
                                 busy = false
@@ -331,6 +381,22 @@ internal fun HubSection(
             }
         }
         return
+    }
+
+    // Ask the address the parent has typed what it calls its secret, once they
+    // have stopped typing. Debounced rather than per-keystroke: this opens a
+    // socket, and half an address is a socket to nowhere. The label is worth
+    // the round trip — a parent holding a password they set on the hub should
+    // not be reading the word "token".
+    LaunchedEffect(host) {
+        val typed = host.trim()
+        if (typed.isBlank()) {
+            hubHasPassword = null
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(700)
+        HubEnrolment.probe(typed, HubEnrolment.DEFAULT_PORT)
+            .onSuccess { hubHasPassword = it.hasPassword }
     }
 
     SettingsCard {
@@ -368,13 +434,19 @@ internal fun HubSection(
         OutlinedTextField(
             value = admin,
             onValueChange = { admin = it },
-            label = { Text("Admin token") },
-            // Printed in the hub's container log on first start, or set by you in
-            // the compose file. Masked because it is the secret that can add
-            // devices, and this screen gets shown to people.
-            supportingText = { Text("Shown in the hub's log when it starts") },
+            // One field whatever the hub is holding. Before a password is set
+            // that is the token printed in the container log; after, it is the
+            // password — and the recovery token from the log still works in
+            // the same box, because the hub checks both against one header.
+            label = { Text(secretLabel) },
+            // Masked because it is the secret that can add devices, and this
+            // screen gets shown to people. Revealable because a masked field
+            // is where a long typed secret goes wrong silently.
+            supportingText = { Text(secretHint) },
             singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = secretMask(showSecret),
+            keyboardOptions = secretKeyboard(),
+            trailingIcon = { RevealToggle(showSecret) { showSecret = !showSecret } },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(4.dp))
@@ -402,15 +474,21 @@ internal fun HubSection(
                                 // did, and the hub would sit there doing half of
                                 // what the screen above it promises.
                                 message = "Connecting your TVs…"
-                                val (added, missed) =
-                                    connectDevices(device.host, device.port, token)
+                                val outcome = connectDevices(device.host, device.port, token)
                                 admin = ""
+                                showSecret = false
                                 message = when {
-                                    added == 0 && missed == 0 -> null
-                                    missed == 0 ->
-                                        "Connected, and $added ${if (added == 1) "TV" else "TVs"} now use it too."
+                                    // The secret was good enough to join with,
+                                    // so this is the lockout closing behind a
+                                    // fan-out rather than a wrong password.
+                                    outcome.refused != null ->
+                                        "Connected. " + describe(HubEnrolment.HubError(outcome.refused)) +
+                                            " Use \"Connect my TVs\" once it lifts."
+                                    outcome.added == 0 && outcome.missed == 0 -> null
+                                    outcome.missed == 0 ->
+                                        "Connected, and ${outcome.added} ${if (outcome.added == 1) "TV" else "TVs"} now use it too."
                                     else ->
-                                        "Connected, and $added of ${added + missed} TVs now use it. " +
+                                        "Connected, and ${outcome.added} of ${outcome.added + outcome.missed} TVs now use it. " +
                                             "Switch the others on and use \"Connect my TVs\"."
                                 }
                                 // The reload is what flips this card to its
@@ -433,5 +511,54 @@ internal fun HubSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+/**
+ * What a fan-out across the televisions achieved, and why it stopped.
+ *
+ * [refused] is non-null when the hub rejected the secret or was already
+ * refusing every attempt. The counts are still meaningful — they say how far
+ * the run got — and the message leads with the refusal, because it is the
+ * reason the rest of the count is short.
+ */
+private data class HubConnect(
+    val added: Int,
+    val missed: Int,
+    val refused: HubEnrolment.Failure? = null
+)
+
+/** A lockout in the units a parent waits in. */
+private fun waitFor(seconds: Int): String = when {
+    seconds >= 5400 -> "${(seconds + 1800) / 3600} hours"
+    seconds >= 3600 -> "an hour"
+    seconds >= 60 -> "${(seconds + 59) / 60} minutes"
+    else -> "a moment"
+}
+
+/**
+ * The keyboard a secret is typed on.
+ *
+ * The field set none at all, so a phone was free to autocapitalise and
+ * autocorrect a password — and the failure that produces is a refused sign-in
+ * with a lockout behind it, for a password the parent typed correctly.
+ */
+private fun secretKeyboard() = KeyboardOptions(
+    keyboardType = KeyboardType.Password,
+    autoCorrect = false
+)
+
+private fun secretMask(shown: Boolean) =
+    if (shown) VisualTransformation.None else PasswordVisualTransformation()
+
+/**
+ * Show/hide for a masked field. Words rather than an eye glyph: this screen
+ * also runs on a television, where a focus ring around a labelled button is
+ * legible from a sofa and a 20dp icon is not.
+ */
+@Composable
+private fun RevealToggle(shown: Boolean, onToggle: () -> Unit) {
+    TextButton(onClick = onToggle, modifier = Modifier.tvFocusHighlight()) {
+        Text(if (shown) "Hide" else "Show", style = MaterialTheme.typography.bodySmall)
     }
 }

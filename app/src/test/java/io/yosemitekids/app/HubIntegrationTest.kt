@@ -102,6 +102,88 @@ class HubIntegrationTest {
     }
 
     @Test
+    fun theProbeSaysWhetherTheHubHasBeenClaimed() {
+        // The one thing this decides is the word above the phone's single
+        // secret field. Getting it wrong shows a parent "Admin token" for a
+        // password they set themselves.
+        assertFalse(runBlocking { HubEnrolment.probe("127.0.0.1", port) }.getOrThrow().hasPassword)
+        tokens.setPassword(admin, "a-parents-long-password", T, admin).getOrThrow()
+        assertTrue(runBlocking { HubEnrolment.probe("127.0.0.1", port) }.getOrThrow().hasPassword)
+    }
+
+    @Test
+    fun aHubTooOldForSetupReadsAsHavingNoPassword() {
+        // The trap this exists for: an older hub does NOT 404 an unknown path.
+        // HubServer registers "/" last, so GET /setup comes back 200 with the
+        // admin page's HTML — and a probe that trusted the status code would
+        // read a page of markup as "this hub has a password" and label the
+        // field for a password that build cannot have.
+        // A socket rather than the JDK's HttpServer: com.sun.net.httpserver is
+        // not on an Android unit test's compile classpath, and the point here
+        // is the bytes on the wire anyway.
+        val old = java.net.ServerSocket(0)
+        Thread {
+            runCatching {
+                while (true) {
+                    old.accept().use { c ->
+                        val first = c.getInputStream().bufferedReader().readLine().orEmpty()
+                        val body =
+                            if (first.startsWith("GET /health")) "ok"
+                            else "<!doctype html><html><body>Yosemite Kids hub</body></html>"
+                        c.getOutputStream().apply {
+                            write(
+                                ("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n" +
+                                    "Content-Length: ${body.toByteArray().size}\r\n" +
+                                    "Connection: close\r\n\r\n$body").toByteArray()
+                            )
+                            flush()
+                        }
+                    }
+                }
+            }
+        }.apply { isDaemon = true }.start()
+        try {
+            val setup = runBlocking { HubEnrolment.probe("127.0.0.1", old.localPort) }.getOrThrow()
+            assertFalse("an unparseable answer means no password, never a password", setup.hasPassword)
+        } finally {
+            old.close()
+        }
+    }
+
+    @Test
+    fun tooManyWrongSecretsReadAsAWaitAndNotAsTheWrongAddress() {
+        // 429 used to arrive on the phone as NotAHub — "something answered,
+        // but it isn't a Yosemite Kids hub" — which sends a parent to check an
+        // address that was right all along while the lockout doubles behind
+        // them. Counted rather than hardcoded: the gate's limit lives in
+        // :hub and this side must not restate it.
+        var refusals = 0
+        var throttled: HubEnrolment.Failure.Throttled? = null
+        while (refusals < 30 && throttled == null) {
+            val e = runBlocking {
+                HubEnrolment.tokenFor("127.0.0.1:$port", 8765, "not-the-admin-token", "Living Room")
+            }.exceptionOrNull()
+            when (val f = (e as HubEnrolment.HubError).failure) {
+                is HubEnrolment.Failure.Throttled -> throttled = f
+                else -> { assertEquals(HubEnrolment.Failure.BadAdminSecret, f); refusals++ }
+            }
+        }
+        assertTrue("the hub must eventually refuse outright", throttled != null)
+        assertTrue("a wait a parent can act on", throttled!!.retryAfterSeconds > 0)
+
+        // And the correct secret is refused the same way, which is the whole
+        // point of saying "wait" rather than "wrong".
+        val e = runBlocking {
+            HubEnrolment.tokenFor("127.0.0.1:$port", 8765, admin, "Living Room")
+        }.exceptionOrNull()
+        assertTrue(
+            "the right secret must also read as a wait",
+            (e as HubEnrolment.HubError).failure is HubEnrolment.Failure.Throttled
+        )
+        assertTrue("a refused fan-out enrols nothing", tokens.devices().isEmpty())
+    }
+
+    @Test
     fun joiningYieldsAPairedDeviceTheOrdinarySyncCanUse() {
         // The whole design rests on this: what comes back is a plain
         // PairedDevice, so the existing reconcile treats the hub as a peer and
@@ -124,7 +206,7 @@ class HubIntegrationTest {
             HubEnrolment.join("127.0.0.1:$port", 8765, "not-the-admin-token", "Dad's phone")
         }.exceptionOrNull()
 
-        assertEquals(HubEnrolment.Failure.BadAdminToken, (e as HubEnrolment.HubError).failure)
+        assertEquals(HubEnrolment.Failure.BadAdminSecret, (e as HubEnrolment.HubError).failure)
         assertTrue("a refused join must leave the hub with no devices", tokens.devices().isEmpty())
     }
 
@@ -266,7 +348,7 @@ class HubIntegrationTest {
             HubEnrolment.tokenFor("127.0.0.1:$port", 8765, "not-the-admin-token", "Living Room")
         }.exceptionOrNull()
 
-        assertEquals(HubEnrolment.Failure.BadAdminToken, (e as HubEnrolment.HubError).failure)
+        assertEquals(HubEnrolment.Failure.BadAdminSecret, (e as HubEnrolment.HubError).failure)
         assertTrue(tokens.devices().isEmpty())
     }
 
