@@ -120,7 +120,16 @@
     border-radius: 50%; background: var(--dim); transition: transform .15s, background .15s; }
   .switch:checked { background: var(--brand); border-color: var(--brand); }
   .switch:checked::after { transform: translateX(18px); background: var(--brand-ink); }
-  #login { max-width: 380px; margin: 12vh auto; }
+  #login, #claim, #reveal { max-width: 420px; margin: 12vh auto; }
+  /* A secret shown once has to survive being copied by hand off a phone
+     screen, so it wraps at a character rather than at a word and is spaced. */
+  code.secret { display: block; background: var(--sunk); border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px; margin: 10px 0; font-size: 15px;
+    letter-spacing: 0.06em; overflow-wrap: anywhere; }
+  .warn { background: color-mix(in srgb, var(--danger) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 0 0 16px; }
+  .warn .line { margin-top: 8px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -128,14 +137,59 @@
 
 <section id="login" class="card" hidden>
   <h2>Yosemite Kids hub</h2>
-  <p class="hint">
-    Enter the admin token. It is printed in the container log when the hub
-    starts &mdash; <code>docker logs yosemite-kids-hub</code>.
-  </p>
+  <p class="hint" id="loginHint"></p>
   <input id="token" type="password" autocomplete="current-password" placeholder="Admin token">
   <p></p>
   <button class="primary" id="signin">Sign in</button>
   <p class="error" id="loginError"></p>
+</section>
+
+<!--
+  First run. GET /setup says which of these two cards to show, and it is
+  unauthenticated because the alternative is a parent staring at a password
+  box for a password nobody ever set. It tells a LAN peer only that this hub
+  is unclaimed, which they cannot act on without the container log.
+-->
+<section id="claim" class="card" hidden>
+  <h2>Set a password</h2>
+  <p class="hint">
+    Nobody has claimed this hub yet. To claim it, enter the admin token from the
+    container log &mdash; <code>docker logs yosemite-kids-hub</code> &mdash; and
+    choose the password you will use from now on.
+  </p>
+  <p class="hint" id="claimTokenLabel">Admin token from the log</p>
+  <input id="claimToken" type="password" autocomplete="one-time-code" placeholder="Admin token">
+  <p class="hint" style="margin-top:12px">A password for this hub</p>
+  <input id="claimNext" type="password" autocomplete="new-password" placeholder="New password">
+  <p></p>
+  <input id="claimAgain" type="password" autocomplete="new-password" placeholder="Type it again">
+  <p></p>
+  <button class="primary" id="claimGo">Set the password</button>
+  <p class="error" id="claimError"></p>
+  <p class="hint">
+    Once a password is set the token stops adding devices and stops being
+    printed on every restart. It keeps working here, as the way back in if the
+    password is forgotten.
+  </p>
+  <button class="quiet" id="claimSkip">Sign in with the token instead</button>
+</section>
+
+<!--
+  A secret shown exactly once. Nothing here re-fetches it: the hub does not
+  keep it in a form it could hand back, and the only way to see another is to
+  mint another.
+-->
+<section id="reveal" class="card" hidden>
+  <h2 id="revealTitle">Save your recovery token</h2>
+  <p class="hint" id="revealHint"></p>
+  <code class="secret" id="revealValue"></code>
+  <label class="row">
+    <div class="grow"><div class="name">I have saved this</div>
+      <div class="sub">It is not shown again.</div></div>
+    <input type="checkbox" class="switch" id="revealSaved">
+  </label>
+  <p></p>
+  <button class="primary" id="revealGo" disabled>Continue</button>
 </section>
 
 <div id="app" hidden>
@@ -146,6 +200,12 @@
     <button class="quiet" id="signout">Sign out</button>
   </header>
   <main>
+    <div class="warn" id="nopass" hidden>
+      <strong>No password is set.</strong>
+      Anyone who can read this hub's container log can administer it, and the
+      token is printed there on every restart.
+      <div class="line"><button class="primary" id="nopassGo">Set a password</button></div>
+    </div>
     <nav id="tabs"></nav>
     <div id="page"></div>
   </main>
@@ -157,6 +217,22 @@
 
   var state = null;
   var current = "kids";
+  // GET /setup, which says only whether this hub has been claimed. Refreshed
+  // on load, after a password change, and on sign-out, because it decides
+  // which card the signed-out page shows and what the field is called.
+  //
+  // Nothing here is cached by the service worker, and that was checked rather
+  // than assumed: sw.js caches SHELL and skips every path outside it
+  // (`SHELL.indexOf(url.pathname) === -1`), SHELL is "/" plus the manifest and
+  // the icons, and guard 19 fails the build if that list grows anything else.
+  // So /setup, /login, /password and /recovery go to the network exactly as if
+  // the worker did not exist — which matters, because Cache Storage outlives
+  // the session, the sign-out and the tab.
+  var setup = { password: false };
+  // The one-time reveal's continuation, held only while its card is up.
+  var revealThen = null;
+  // What the password card should say when it is next built. See cardPassword.
+  var passwordNote = null;
 
   function $(id) { return document.getElementById(id); }
 
@@ -178,12 +254,67 @@
     };
     if (body) opts.body = JSON.stringify(body);
     return fetch(path, opts).then(function (r) {
-      if (r.status === 401) { showLogin(); throw new Error("sign in"); }
+      if (r.status === 401) { signedOut(); throw new Error("sign in"); }
       return r.json().then(function (j) {
         if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
         return j;
       });
     });
+  }
+
+  /**
+   * The routes that carry a secret, which are deliberately not under /api:
+   * on first run there is no session to have. Never throws on a refusal —
+   * every caller has a form to put the reason next to.
+   */
+  function postSecret(path, body) {
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        return { ok: r.ok, status: r.status, body: j };
+      });
+    });
+  }
+
+  function loadSetup() {
+    return fetch("/setup", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { setup.password = !!j.password; })
+      // A hub too old to have the route answers the page's HTML with a 200,
+      // which is not JSON: that build has no password to have, so the
+      // unclaimed wording is the honest one.
+      .catch(function () { setup.password = false; });
+  }
+
+  /** Why the hub refused a secret, in the words the hub itself used. */
+  function secretRefusal(res) {
+    if (res.status === 429) {
+      return "Too many attempts. Every sign-in is refused for another " +
+        waitFor(res.body.retryAfter) + " — the right one included.";
+    }
+    if (res.status === 401) {
+      return res.body.error === "password"
+        ? "That password was not accepted. The recovery token from the container log also works here."
+        : "That token was not accepted. It is printed in the log when the hub starts.";
+    }
+    if (res.status === 400 && res.body.error === "short") {
+      return "That password is too short.";
+    }
+    if (res.status === 400) return "The hub could not use that. Check what you typed.";
+    return "The hub said no (HTTP " + res.status + ").";
+  }
+
+  /** A lockout in the units somebody waits in. */
+  function waitFor(seconds) {
+    var s = seconds || 0;
+    if (s >= 5400) return Math.round(s / 3600) + " hours";
+    if (s >= 3600) return "an hour";
+    if (s >= 60) return Math.ceil(s / 60) + " minutes";
+    return "a moment";
   }
 
   function flashSaved() {
@@ -200,28 +331,118 @@
     });
   }
 
-  function showLogin() { $("app").hidden = true; $("login").hidden = false; $("token").focus(); }
-  function showApp() { $("login").hidden = true; $("app").hidden = false; }
+  function hideAll() {
+    ["app", "login", "claim", "reveal"].forEach(function (id) { $(id).hidden = true; });
+  }
+
+  /** Signed out, or never signed in: which card depends on whether it is claimed. */
+  function signedOut() { if (setup.password) showLogin(); else showClaim(); }
+
+  function showLogin() {
+    hideAll();
+    var hint = $("loginHint");
+    hint.textContent = setup.password
+      ? "Enter your hub password."
+      : "Enter the admin token. It is printed in the container log when the hub starts — ";
+    if (!setup.password) {
+      var c = el("code", null, "docker logs yosemite-kids-hub");
+      hint.appendChild(c);
+      hint.appendChild(document.createTextNode("."));
+    }
+    $("token").placeholder = setup.password ? "Hub password" : "Admin token";
+    $("login").hidden = false;
+    $("token").focus();
+  }
+
+  function showClaim() {
+    hideAll();
+    $("claimError").textContent = "";
+    $("claim").hidden = false;
+    $("claimToken").focus();
+  }
+
+  function showApp() {
+    hideAll();
+    $("app").hidden = false;
+    $("nopass").hidden = !!setup.password;
+  }
+
+  /**
+   * Show a secret once, behind an explicit acknowledgement.
+   *
+   * The step is deliberate rather than decorative: this is the only time this
+   * value exists anywhere a parent can read it, and a card that vanished on
+   * the next render would take the recovery token with it.
+   */
+  function revealOnce(title, hint, value, then) {
+    hideAll();
+    $("revealTitle").textContent = title;
+    $("revealHint").textContent = hint;
+    $("revealValue").textContent = value;
+    $("revealSaved").checked = false;
+    $("revealGo").disabled = true;
+    revealThen = then;
+    $("reveal").hidden = false;
+  }
 
   function signIn() {
     var btn = $("signin");
     btn.disabled = true;
     $("loginError").textContent = "";
-    fetch("/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ token: $("token").value.trim() })
-    }).then(function (r) {
-      return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; });
-    }).then(function (res) {
+    postSecret("/login", { secret: $("token").value.trim() }).then(function (res) {
       if (res.ok) { $("token").value = ""; showApp(); return refresh(); }
-      $("loginError").textContent = res.status === 429
-        ? "Too many attempts. Try again in " + res.body.retryAfter + "s."
-        : "That token was not accepted.";
+      $("loginError").textContent = secretRefusal(res);
     }).catch(function () {
       $("loginError").textContent = "Could not reach the hub.";
     }).then(function () { btn.disabled = false; });
+  }
+
+  /**
+   * First run: trade the token from the container log for a password.
+   *
+   * The password is then used immediately to sign in, so a parent who has just
+   * typed it twice does not type it a third time — and it is dropped from the
+   * form as soon as it has been.
+   */
+  function claim() {
+    var btn = $("claimGo");
+    var err = $("claimError");
+    var next = $("claimNext").value;
+    err.textContent = "";
+    if (next !== $("claimAgain").value) {
+      err.textContent = "Those two passwords are not the same.";
+      return;
+    }
+    btn.disabled = true;
+    postSecret("/password", { current: $("claimToken").value.trim(), next: next })
+      .then(function (res) {
+        if (!res.ok) { err.textContent = secretRefusal(res); return; }
+        var recovery = res.body.recovery;
+        $("claimToken").value = "";
+        $("claimNext").value = "";
+        $("claimAgain").value = "";
+        return postSecret("/login", { secret: next }).then(function (signIn) {
+          setup.password = true;
+          if (!signIn.ok) {
+            // Set but not signed in: say so rather than dropping the parent on
+            // a form with no explanation.
+            err.textContent = "The password is set. " + secretRefusal(signIn);
+            showLogin();
+            return;
+          }
+          if (!recovery) return refresh().then(showApp);
+          revealOnce(
+            "Save your recovery token",
+            "This replaces the token from the log, which no longer works. It is the " +
+              "only way back in if the password is forgotten, and it is not shown again. " +
+              "Keep it where you keep passwords, not on the hub.",
+            recovery,
+            function () { refresh().then(showApp); }
+          );
+        });
+      })
+      .catch(function () { err.textContent = "Could not reach the hub."; })
+      .then(function () { btn.disabled = false; });
   }
 
   // --- small builders -------------------------------------------------
@@ -725,8 +946,137 @@
     return out;
   }
 
+  /**
+   * A password field with its own label. Not [textField]: that one builds a
+   * visible text input, and these are the only fields on this page whose value
+   * must not sit in a browser's autofill for an ordinary text box.
+   */
+  function secretField(label, placeholder, autocomplete) {
+    var f = el("label", "field");
+    f.appendChild(el("span", null, label));
+    var i = el("input");
+    i.type = "password";
+    i.autocomplete = autocomplete;
+    if (placeholder) i.placeholder = placeholder;
+    f.appendChild(i);
+    return { node: f, input: i };
+  }
+
+  /**
+   * Setting the password, or changing it — one card, because they are one
+   * route on the hub for one reason: on first run there is no session to have.
+   *
+   * `current` is required even inside a live session. That session may be a
+   * browser on a kitchen counter, and the failure it prevents (somebody picks
+   * it up and locks the parent out of their own hub) is a household failure
+   * rather than a theoretical one.
+   */
+  function cardPassword() {
+    var first = !setup.password;
+    var c = card(
+      first ? "Set a password" : "Hub password",
+      first
+        ? "This hub has not been claimed. Until it is, anyone who can read the container log can administer it."
+        : "What you sign in with here, and what your phone asks for when it connects a television."
+    );
+
+    var cur = secretField(
+      first ? "Admin token from the container log" : "Current password, or your recovery token",
+      first ? "Admin token" : "Current password",
+      "current-password"
+    );
+    var next = secretField("New password", "At least 8 characters", "new-password");
+    var again = secretField("Type it again", "New password", "new-password");
+    [cur, next, again].forEach(function (f) {
+      f.node.style.marginTop = "10px";
+      c.appendChild(f.node);
+    });
+
+    var err = el("p", "error");
+    // What the last save said, carried across the re-render that clears the
+    // form. Written straight onto this node instead, it would land on a node
+    // the re-render had already thrown away — which is exactly what the first
+    // version of this card did, and the change looked like it had done
+    // nothing at all.
+    if (passwordNote) { err.textContent = passwordNote; passwordNote = null; }
+    var row = el("div", "line");
+    row.style.marginTop = "12px";
+    row.appendChild(button(first ? "Set the password" : "Change the password", "primary", function () {
+      err.textContent = "";
+      if (next.input.value !== again.input.value) {
+        err.textContent = "Those two passwords are not the same.";
+        return Promise.resolve();
+      }
+      return postSecret("/password", { current: cur.input.value, next: next.input.value })
+        .then(function (res) {
+          if (!res.ok) { err.textContent = secretRefusal(res); return; }
+          [cur, next, again].forEach(function (f) { f.input.value = ""; });
+          flashSaved();
+          var recovery = res.body.recovery;
+          // No /api/state round trip: a password is not part of the family's
+          // settings and nothing on any other page moved. What did move is
+          // whether this hub is claimed, which is what the re-render is for.
+          return loadSetup().then(function () {
+            if (recovery) {
+              render();
+              revealOnce(
+                "Save your recovery token",
+                "This replaces the token from the log, which no longer works. It is the " +
+                  "only way back in if the password is forgotten, and it is not shown again.",
+                recovery,
+                showApp
+              );
+              return;
+            }
+            passwordNote = "Changed. Every other browser signed in to this hub has been signed out.";
+            render();
+            showApp();
+          });
+        })
+        .catch(function () { err.textContent = "Could not reach the hub."; });
+    }));
+    c.appendChild(row);
+    c.appendChild(err);
+
+    if (!first) {
+      var rec = el("div");
+      rec.style.marginTop = "16px";
+      rec.appendChild(el("div", "name", "Recovery token"));
+      rec.appendChild(el("div", "sub",
+        "The way back in if the password is forgotten. It signs in and changes the password; " +
+        "it no longer adds devices. Minting a new one immediately retires the old."));
+      var recErr = el("p", "error");
+      var recCur = secretField("Current password, or the recovery token you hold", "Current password", "current-password");
+      recCur.node.style.marginTop = "10px";
+      rec.appendChild(recCur.node);
+      var recRow = el("div", "line");
+      recRow.style.marginTop = "10px";
+      recRow.appendChild(button("Mint a new recovery token", "quiet", function () {
+        recErr.textContent = "";
+        return postSecret("/recovery", { current: recCur.input.value })
+          .then(function (res) {
+            if (!res.ok) { recErr.textContent = secretRefusal(res); return; }
+            recCur.input.value = "";
+            revealOnce(
+              "Save your recovery token",
+              "The previous one stopped working the moment this was minted. It is not shown again.",
+              res.body.token,
+              showApp
+            );
+          })
+          .catch(function () { recErr.textContent = "Could not reach the hub."; });
+      }));
+      rec.appendChild(recRow);
+      rec.appendChild(recErr);
+      c.appendChild(rec);
+    }
+    return c;
+  }
+
   function pageBackup() {
     var out = document.createDocumentFragment();
+
+    out.appendChild(cardPassword());
 
     var h = card("This hub", null);
     var dl = el("dl", "kv");
@@ -822,11 +1172,34 @@
 
   $("signin").onclick = signIn;
   $("token").addEventListener("keydown", function (e) { if (e.key === "Enter") signIn(); });
-  $("signout").onclick = function () { api("/logout", {}).catch(function () {}).then(showLogin); };
+  $("signout").onclick = function () {
+    api("/logout", {}).catch(function () {}).then(function () {
+      // Re-read on the way out: another browser may have claimed this hub
+      // while this one was signed in, and the field it offers next must say
+      // what to type now.
+      return loadSetup().then(signedOut);
+    });
+  };
+
+  $("claimGo").onclick = claim;
+  $("claimAgain").addEventListener("keydown", function (e) { if (e.key === "Enter") claim(); });
+  // Deliberate: the token IS a full credential until a password exists, so
+  // refusing to let a parent look around without setting one would be a gate
+  // that protects nothing. The banner inside says what is still open.
+  $("claimSkip").onclick = showLogin;
+  $("revealSaved").onchange = function () { $("revealGo").disabled = !$("revealSaved").checked; };
+  $("revealGo").onclick = function () {
+    $("revealValue").textContent = "";
+    var then = revealThen;
+    revealThen = null;
+    if (then) then();
+  };
+  $("nopassGo").onclick = function () { current = "backup"; render(); showApp(); };
 
   // A live session survives a reload, so try the data first and fall back to
-  // the sign-in form only when the hub says no.
-  refresh().catch(showLogin);
+  // the signed-out cards only when the hub says no. /setup first, because it
+  // is what decides which of those two cards that is.
+  loadSetup().then(refresh).then(showApp).catch(signedOut);
 
   // Only on a secure origin: on plain http the API does not exist and
   // registering would throw in the console on every load for no gain. The
