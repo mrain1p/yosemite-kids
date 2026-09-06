@@ -1,12 +1,19 @@
 package io.yosemitekids.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -25,8 +32,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.yosemitekids.app.data.HubEnrolment
 import io.yosemitekids.app.data.LanClient
 import io.yosemitekids.app.data.PairedDevice
@@ -79,7 +91,14 @@ internal fun HubSection(
      * page, which already ends in a Disconnect row — the same action twice on
      * one screen reads as two different things.
      */
-    removable: Boolean = false
+    removable: Boolean = false,
+    /**
+     * Open the card with the hub's name, for the one page where this card is
+     * the only place the name can be changed. Off wherever the hub's device
+     * page is a chevron away: that page's "This entry" card renames it, and
+     * two editors for one name read as two different names.
+     */
+    nameable: Boolean = false
 ) {
     val scope = rememberCoroutineScope()
 
@@ -171,15 +190,73 @@ internal fun HubSection(
             )
         }
 
-        // No name field here: the hub's page ends in the same "This entry"
-        // card every device gets, and that card's Name row renames it. Two
-        // editors for one name on one screen read as two different names.
+        // A name field only where this card is the only name editor
+        // ([nameable]) — everywhere the hub's own page is a chevron away, that
+        // page's "This entry" card renames it, and two editors for one name on
+        // one screen read as two different names.
         SettingsCard(padded = false) {
+            if (nameable) {
+                var name by remember(hub.key) { mutableStateOf(hub.name) }
+                // On Done and on losing focus, never per keystroke:
+                // renamePaired and reload are synchronous SharedPreferences
+                // work on the main thread.
+                fun commitName() {
+                    val trimmed = name.trim()
+                    if (trimmed.isNotEmpty() && trimmed != hub.name) {
+                        pairingStore.renamePaired(hub.key, trimmed)
+                        fleet.reload()
+                        onFleetChanged()
+                    }
+                }
+                Column(Modifier.padding(12.dp)) {
+                    Text(
+                        "Called",
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // The same hand-built field as "Called" on This phone: the
+                    // title above already says what it is, so an M3 floating
+                    // label would say it twice.
+                    Box(
+                        Modifier
+                            .padding(top = 7.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.background)
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
+                            .tvFocusHighlight(cornerRadius = 10.dp)
+                            .padding(horizontal = 11.dp, vertical = 12.dp)
+                    ) {
+                        BasicTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { commitName() }),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onFocusChanged { if (!it.isFocused) commitName() }
+                        )
+                    }
+                    Text(
+                        "The name it shows under Kid devices and beside the changes it makes.",
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                SettingsDivider()
+            }
             // The address, and whether anything is answering there right now.
             // "Connected" is the fleet's word, not a stored flag: a hub that
             // was joined and then switched off says Offline.
             val (state, tone) = when (fleet.syncStates[hub.key]) {
-                is DeviceSync.Reachable -> "Connected" to StatusOkGreen
+                is DeviceSync.Reachable -> "Connected" to SettingsSuccess
                 is DeviceSync.Offline -> "Offline" to StatusAmber
                 is DeviceSync.Checking, null -> "Checking…" to MaterialTheme.colorScheme.onSurfaceVariant
             }
