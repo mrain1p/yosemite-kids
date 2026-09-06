@@ -1,6 +1,7 @@
 package io.yosemitekids.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -21,6 +22,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.yosemitekids.app.data.ALL_DAYS
 import io.yosemitekids.app.data.DAY_LABELS
 import io.yosemitekids.app.data.LISTEN_MULTIPLIERS
@@ -49,74 +51,147 @@ internal fun RulesSection(
     onBreakPassCommitted: ((passUntil: Long?) -> Unit)? = null,
     trailing: @Composable ColumnScope.() -> Unit = {}
 ) {
-    SectionTitle("Rules")
-    SettingsCard {
-        StepperRow(
+    SectionTitle(
+        "Screen-time rules",
+        // The Shorts sentence used to be printed under the last row, always.
+        // It answers a question asked once, so it folds away with the rest.
+        help = "Every rule off means unlimited watching. Tap a value to set it " +
+            "exactly or turn it off. YouTube Shorts are never shown regardless " +
+            "of the last rule — it also hides the short clips a channel uploads " +
+            "as regular videos."
+    )
+    SettingsCard(padded = false) {
+        RuleRow(
             label = "Time per session",
-            value = limits.sessionMinutes, step = 5, min = 5, max = 240,
-            format = { "$it min" }, picker = StepperPicker.Minutes,
+            value = limits.sessionMinutes, min = 5, max = 240, unit = "min",
             onChanged = { onChanged(limits.copy(sessionMinutes = it)) }
         )
         SettingsDivider()
-        StepperRow(
+        RuleRow(
             label = "Sessions on weekdays",
-            value = limits.weekdaySessions, step = 1, min = 1, max = 12,
-            format = { "$it" },
+            value = limits.weekdaySessions, min = 1, max = 12, unit = "",
+            hint = "1–12 sessions",
             onChanged = { onChanged(limits.copy(weekdaySessions = it)) }
         )
         SettingsDivider()
-        StepperRow(
+        RuleRow(
             label = "Sessions on weekends",
-            value = limits.weekendSessions, step = 1, min = 1, max = 12,
-            format = { "$it" },
+            value = limits.weekendSessions, min = 1, max = 12, unit = "",
+            hint = "1–12 sessions",
             onChanged = { onChanged(limits.copy(weekendSessions = it)) }
         )
         SettingsDivider()
-        StepperRow(
+        RuleRow(
             label = "Break between sessions",
-            value = limits.breakMinutes, step = 15, min = 15, max = 240,
-            format = { "$it min" }, picker = StepperPicker.Minutes,
+            value = limits.breakMinutes, min = 15, max = 240, unit = "min",
             onChanged = { onChanged(limits.copy(breakMinutes = it)) }
         )
         // Only while there's a break rule to skip — no rule, no row.
         if (limits.breakMinutes != null) {
-            SkipBreakRow(limits.breakPassUntilMillis) { until ->
-                onChanged(limits.copy(breakPassUntilMillis = until))
-                onBreakPassCommitted?.invoke(until)
+            // The card is unpadded now, so anything that isn't a full-width
+            // row brings the 12dp inset itself.
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                SkipBreakRow(limits.breakPassUntilMillis) { until ->
+                    onChanged(limits.copy(breakPassUntilMillis = until))
+                    onBreakPassCommitted?.invoke(until)
+                }
             }
         }
-        val summary = buildString {
+        SettingsDivider()
+        RuleRow(
+            label = "Hide videos shorter than",
+            value = limits.minVideoMinutes, min = 1, max = 60, unit = "min",
+            onChanged = { onChanged(limits.copy(minVideoMinutes = it)) }
+        )
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) { trailing() }
+    }
+
+    // Under the card, not in it: it describes the five rows above rather than
+    // being a sixth one, and it moved out from between Break and Hide, where
+    // it read as a note on the row it happened to follow.
+    val set = rulesSet(limits)
+    val summary = buildString {
+        if (set == 0) {
+            // A bedtime with every rule off is a real configuration — don't
+            // contradict the blocked-times card below this one.
+            append(
+                if (limits.windows.isEmpty()) "No limits set — unlimited watching."
+                else "No minute limits — the blocked times below still apply."
+            )
+        } else {
+            append("$set of $KID_RULE_COUNT rules set.")
             val s = limits.sessionMinutes
             val wd = limits.weekdaySessions
             val we = limits.weekendSessions
-            if (s != null && wd != null) append("Weekdays: up to ${s * wd} min total. ")
-            if (s != null && we != null) append("Weekends: up to ${s * we} min total.")
-            if (isEmpty()) {
-                // A bedtime with all steppers Off is a real configuration — don't
-                // contradict the blocked-times card below this one.
-                append(
-                    if (limits.windows.isEmpty()) "No limits set — unlimited watching."
-                    else "No minute limits — the blocked times below still apply."
-                )
-            }
+            if (s != null && wd != null) append(" Weekdays: up to ${s * wd} min total.")
+            if (s != null && we != null) append(" Weekends: up to ${s * we} min total.")
         }
-        Text(summary, style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Text(
+        summary,
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 9.dp)
+    )
+}
 
-        SettingsDivider()
-        StepperRow(
-            label = "Hide videos shorter than",
-            value = limits.minVideoMinutes, step = 1, min = 1, max = 60,
-            format = { "$it min" }, picker = StepperPicker.Minutes,
-            onChanged = { onChanged(limits.copy(minVideoMinutes = it)) }
-        )
+/**
+ * One rule: its name, what it is set to, and a chevron into the keypad.
+ *
+ * No − and + any more. The pair could only reach Off by stepping off the
+ * bottom of the range — a move nothing on screen announced — and the exact
+ * value was already a tap on the number between them, so the row loses two
+ * controls and gains nothing a parent could previously set.
+ */
+@Composable
+private fun RuleRow(
+    label: String,
+    value: Int?,
+    min: Int,
+    max: Int,
+    /** Printed after the number, and used as the keypad's suffix. "" for a count. */
+    unit: String,
+    hint: String = "$min–$max minutes",
+    onChanged: (Int?) -> Unit
+) {
+    var editing by remember { mutableStateOf(false) }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .tvFocusHighlight()
+            .clickable { editing = true }
+            .padding(horizontal = 12.dp, vertical = 9.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Text(
-            "YouTube Shorts are never shown regardless. This also hides the " +
-                "short clips a channel uploads as regular videos.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            when {
+                value == null -> "Off"
+                unit.isEmpty() -> "$value"
+                else -> "$value $unit"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            // Off in the faintest tone: an unset rule should not read like a
+            // figure someone chose.
+            color = if (value == null) SettingsPlaceholder else MaterialTheme.colorScheme.onSurface
         )
-        trailing()
+        Spacer(Modifier.width(10.dp))
+        Icon(
+            YosemiteIcons.ChevronRight, contentDescription = null,
+            tint = SettingsPlaceholder,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+    if (editing) {
+        // An Off row opens at its minimum: the parent tapped it to set a
+        // value, and a keypad seeded at nothing has nothing to confirm.
+        ExactMinutesDialog(
+            title = label, initial = value ?: min, min = min, max = max, allowOff = true,
+            onDismiss = { editing = false },
+            onPick = { editing = false; onChanged(it) },
+            unit = unit, hint = hint
+        )
     }
 }
 
@@ -146,7 +221,7 @@ internal fun BlockedTimesSection(
     onChanged: (List<TimeWindow>) -> Unit
 ) {
     SectionTitle("Blocked times")
-    SettingsCard {
+    SettingsCard(padded = false) {
         var expandedId by remember { mutableStateOf<String?>(null) }
         var adding by remember { mutableStateOf(false) }
 
@@ -154,7 +229,10 @@ internal fun BlockedTimesSection(
             Text(
                 "No blocked times — screen time is limited by minutes only, not by clock.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                // The card no longer pads its children; this one is a
+                // paragraph rather than a row, so it brings its own.
+                modifier = Modifier.padding(12.dp)
             )
         }
         windows.forEachIndexed { i, w ->
@@ -181,7 +259,27 @@ internal fun BlockedTimesSection(
         // presets is more honest than inventing a schedule behind a blank
         // "Add" — but they don't need to sit on the screen until asked for.
         Box {
-            CompactButton(onClick = { adding = true }) { Text("+ Add blocked time") }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .tvFocusHighlight()
+                    .clickable { adding = true }
+                    .padding(horizontal = 12.dp, vertical = 9.dp)
+            ) {
+                Text(
+                    "+",
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp),
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Add blocked time",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
             androidx.compose.material3.DropdownMenu(
                 expanded = adding,
                 onDismissRequest = { adding = false }
@@ -226,21 +324,29 @@ private fun TimeWindowRow(window: TimeWindow, onOpen: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 64.dp)
             .tvFocusHighlight()
             .clickable(onClick = onOpen)
-            .heightIn(min = 44.dp)
-            .padding(vertical = 4.dp)
+            .padding(horizontal = 12.dp, vertical = 9.dp)
     ) {
         Column(Modifier.weight(1f)) {
-            Text(window.label.ifBlank { "Unnamed" })
+            Text(
+                window.label.ifBlank { "Unnamed" },
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(2.dp))
+            // Days first, then the hours: "which days" is what a parent scans
+            // a list of windows for, and two windows differ by it more often
+            // than by the clock.
             Text(
                 listOfNotNull(
-                    "${formatMinuteOfDay(window.startMin)}–${formatMinuteOfDay(window.endMin)}",
                     daySummary(window.days),
+                    "${formatMinuteOfDay(window.startMin)} → ${formatMinuteOfDay(window.endMin)}",
                     if (window.allowListening) "listening allowed" else null,
                     if (skipped) "skipped once" else null
                 ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall
+                    .copy(fontSize = 12.sp, lineHeight = 17.sp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -249,11 +355,27 @@ private fun TimeWindowRow(window: TimeWindow, onOpen: () -> Unit) {
     }
 }
 
+/**
+ * "Mon–Thu", "Mon–Wed, Fri" — runs of consecutive days collapse to a range,
+ * because four listed days are read as four things and a range as one.
+ * Days are Sun..Sat, so [DAY_LABELS] is indexed by day − 1. The kid-facing
+ * copy of this lives in core's Whitelist.kt and is deliberately its own.
+ */
 private fun daySummary(days: Set<Int>): String = when (days) {
-    ALL_DAYS -> "every day"
+    ALL_DAYS -> "Every day"
     WEEKDAYS -> "Mon–Fri"
-    io.yosemitekids.app.data.WEEKEND_DAYS -> "weekends"
-    else -> days.sorted().joinToString(", ") { DAY_LABELS[it - 1] }
+    io.yosemitekids.app.data.WEEKEND_DAYS -> "Weekends"
+    else -> days.sorted()
+        .fold(mutableListOf<MutableList<Int>>()) { runs, day ->
+            val last = runs.lastOrNull()
+            if (last != null && day == last.last() + 1) last.add(day)
+            else runs.add(mutableListOf(day))
+            runs
+        }
+        .joinToString(", ") { run ->
+            if (run.size == 1) DAY_LABELS[run.first() - 1]
+            else "${DAY_LABELS[run.first() - 1]}–${DAY_LABELS[run.last() - 1]}"
+        }
 }
 
 @Composable
@@ -266,7 +388,9 @@ private fun TimeWindowEditor(
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(vertical = 4.dp)
+        // The card is unpadded, so the expanded editor supplies the inset its
+        // collapsed row does; without it the name field touches the border.
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
@@ -428,47 +552,85 @@ private fun DayChips(days: Set<Int>, onChanged: (Set<Int>) -> Unit) {
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun ListenRateRow(percent: Int?, onChange: (Int?) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Keep playing when the phone locks", modifier = Modifier.weight(1f))
-        val color = percent?.let { timeMultiplierColor(it) }
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                .background(color ?: MaterialTheme.colorScheme.surfaceVariant)
-                .combinedClickable(
-                    onClick = {
-                        // Unknown value (hand-edited config) self-heals: indexOf
-                        // gives -1, so the next tap lands on Off.
-                        val i = LISTEN_MULTIPLIERS.indexOf(percent)
-                        onChange(LISTEN_MULTIPLIERS[(i + 1) % LISTEN_MULTIPLIERS.size])
-                    },
-                    onLongClick = { onChange(null) }
-                )
-                .widthIn(min = 54.dp)
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+    var helpOpen by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            // 48dp rather than the design's 68: the Playback page wraps this
+            // row in the same 12/10 inset a ToggleRow carries itself, so the
+            // outer height matches the switches above and below it.
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
         ) {
+            Column(Modifier.weight(1f).padding(end = 4.dp)) {
+                Text(
+                    "Keep playing when the phone locks",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (percent == null) "Locking the phone stops playback"
+                    else "Audio continues with the screen off",
+                    style = MaterialTheme.typography.bodySmall
+                        .copy(fontSize = 12.sp, lineHeight = 17.sp),
+                    color = SettingsTextTertiary
+                )
+            }
+            HelpDot(open = helpOpen, onToggle = { helpOpen = !helpOpen })
+            val color = percent?.let { timeMultiplierColor(it) }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    // A rate that costs or saves time is worth a fill; 1x and
+                    // Off are not, so they stay hollow like the design's chips.
+                    .let {
+                        if (color != null) it.background(color)
+                        else it.border(1.dp, SettingsStrongBorder, RoundedCornerShape(8.dp))
+                    }
+                    .combinedClickable(
+                        onClick = {
+                            // Unknown value (hand-edited config) self-heals: indexOf
+                            // gives -1, so the next tap lands on Off.
+                            val i = LISTEN_MULTIPLIERS.indexOf(percent)
+                            onChange(LISTEN_MULTIPLIERS[(i + 1) % LISTEN_MULTIPLIERS.size])
+                        },
+                        onLongClick = { onChange(null) }
+                    )
+                    .widthIn(min = 54.dp)
+                    .padding(horizontal = 11.dp)
+            ) {
+                Text(
+                    percent?.let(::timeMultiplierLabel) ?: "Off",
+                    style = MaterialTheme.typography.labelLarge
+                        .copy(fontSize = 12.5.sp, lineHeight = 13.sp),
+                    color = if (color == null) SettingsTextTertiary else Color.White
+                )
+            }
+        }
+        if (helpOpen) {
+            Spacer(Modifier.height(10.dp))
             Text(
-                percent?.let(::timeMultiplierLabel) ?: "Off",
-                style = MaterialTheme.typography.labelMedium,
-                color = if (color == null) MaterialTheme.colorScheme.onSurfaceVariant
-                else Color.White
+                buildString {
+                    append("For listening rather than watching — audio keeps going with the screen off.")
+                    if (percent == 0) {
+                        append(" Listening is free — it doesn't use up screen time.")
+                    } else if (percent != null) {
+                        append(
+                            " Those minutes count at ${timeMultiplierLabel(percent)} " +
+                                "of each channel's usual rate."
+                        )
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall
+                    .copy(fontSize = 12.5.sp, lineHeight = 20.sp),
+                color = SettingsTextTertiary,
+                // The caller's inset supplies 10 of the design's 13dp below.
+                modifier = Modifier.padding(bottom = 3.dp)
             )
         }
     }
-    Text(
-        when {
-            percent == null -> "Off: locking the phone stops playback."
-            percent == 0 ->
-                "Audio keeps playing with the screen off, and listening is free — " +
-                    "it doesn't use up screen time."
-            else ->
-                "Audio keeps playing with the screen off. Those minutes count at " +
-                    "${timeMultiplierLabel(percent)} of each channel's usual rate."
-        },
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
 }
 
 /**
@@ -615,16 +777,26 @@ private fun ExactClockDialog(
     )
 }
 
-/** Exact minutes for the duration rows, clamped to the row's own range. */
+/**
+ * Exact minutes for the duration rows, clamped to the row's own range.
+ *
+ * [unit], [hint] and [offLabel] are the three places the word "minutes" leaks
+ * into the keypad; naming them lets a row that counts something else — a
+ * child's age, a session count — reuse this rather than grow a second dialog
+ * that behaves almost the same.
+ */
 @Composable
-private fun ExactMinutesDialog(
+internal fun ExactMinutesDialog(
     title: String,
     initial: Int,
     min: Int,
     max: Int,
     allowOff: Boolean,
     onDismiss: () -> Unit,
-    onPick: (Int?) -> Unit
+    onPick: (Int?) -> Unit,
+    unit: String = "min",
+    hint: String = "$min–$max minutes",
+    offLabel: String = "Turn off"
 ) {
     // Opens selected, so the first digit typed replaces the old value instead
     // of appending to it — 45 min becomes 20, not 4520.
@@ -651,8 +823,8 @@ private fun ExactMinutesDialog(
                 },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                suffix = { Text("min") },
-                supportingText = { Text("$min–$max minutes") },
+                suffix = if (unit.isEmpty()) null else ({ Text(unit) }),
+                supportingText = { Text(hint) },
                 isError = field.text.isNotEmpty() && !valid,
                 modifier = Modifier.focusRequester(focus)
             )
@@ -663,7 +835,7 @@ private fun ExactMinutesDialog(
         },
         dismissButton = {
             Row {
-                if (allowOff) TextButton(onClick = { onPick(null) }) { Text("Turn off") }
+                if (allowOff) TextButton(onClick = { onPick(null) }) { Text(offLabel) }
                 TextButton(onClick = onDismiss) { Text("Cancel") }
             }
         }
@@ -685,34 +857,53 @@ internal fun GrantTimeSection(
         mutableStateOf(profiles.firstOrNull()?.id)
     }
 
-    // Granting to a child, not to a device: the minutes land on that kid's
-    // guard here and on every paired device.
-    if (profiles.size >= 2) {
-        KidSelectorChips(profiles, targetKidId ?: profiles.first().id) { targetKidId = it }
-        Spacer(Modifier.height(4.dp))
-    }
+    var customising by remember { mutableStateOf(false) }
 
-    // Same stepper styling as the screen-time rows; Grant applies the amount.
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
-        Text("Bonus watch time", modifier = Modifier.weight(1f))
-        CompactButton(
-            onClick = { minutes = stepDown(minutes, 5).coerceAtLeast(5) }
-        ) { Text("−") }
-        StepperValue(
-            title = "Bonus watch time",
-            value = minutes, text = "$minutes min",
-            picker = StepperPicker.Minutes, min = 5, max = 180,
-            // No Off: a grant of nothing isn't a grant, and Grant is what
-            // applies it — there is no rule here to switch off.
-            allowOff = false,
-            onChanged = { minutes = it ?: minutes }
-        )
-        CompactButton(
-            onClick = { minutes = stepUp(minutes, 5).coerceAtMost(180) }
-        ) { Text("+") }
-        Spacer(Modifier.width(8.dp))
+    // The card is unpadded so its rows can run edge to edge; this block is
+    // not a row, so it brings the design's 12dp itself.
+    Column(Modifier.padding(12.dp)) {
+        // Granting to a child, not to a device: the minutes land on that kid's
+        // guard here and on every paired device.
+        if (profiles.size >= 2) {
+            KidSelectorChips(profiles, targetKidId ?: profiles.first().id) { targetKidId = it }
+            Spacer(Modifier.height(9.dp))
+        }
+
+        Text("Bonus watch time", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(9.dp))
+        // Four amounts to pick from rather than two buttons to press: the four
+        // cover what a parent actually grants, and the fifth keeps every value
+        // the stepper could reach behind the same keypad it used.
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            BONUS_PRESETS.forEach { preset ->
+                BonusChip(
+                    label = "$preset min",
+                    selected = minutes == preset,
+                    onClick = { minutes = preset },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            BonusChip(
+                label = if (minutes in BONUS_PRESETS) "Custom" else "$minutes min",
+                selected = minutes !in BONUS_PRESETS,
+                onClick = { customising = true },
+                modifier = Modifier.weight(1f)
+            )
+        }
+        if (customising) {
+            ExactMinutesDialog(
+                title = "Bonus watch time", initial = minutes, min = 5, max = 180,
+                // No Off: a grant of nothing isn't a grant, and Grant is what
+                // applies it — there is no rule here to switch off.
+                allowOff = false,
+                onDismiss = { customising = false },
+                onPick = { customising = false; minutes = it ?: minutes }
+            )
+        }
+        Spacer(Modifier.height(10.dp))
         Button(
-            modifier = Modifier.tvFocusHighlight(),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp).tvFocusHighlight(),
+            shape = RoundedCornerShape(8.dp),
             onClick = {
                 val amount = minutes
                 val kidId = if (profiles.isEmpty()) null else targetKidId
@@ -752,28 +943,80 @@ internal fun GrantTimeSection(
                     )
                 }
             }
-        ) { Text("Grant") }
-    }
-    // Where the minutes go, in plain words: the tap is in the family config
-    // now, so every device gets it by the same path as every rule.
-    Text(
-        "Reaches every device: awake ones right away, asleep ones within " +
-            "fifteen minutes of waking, through the hub if there is one.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    granted?.let { receipt ->
-        Text(receipt.text, style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        // A receipt, not a status line: it was true when it appeared and says
-        // nothing about now, so it goes rather than sitting under the row until
-        // the app is next restarted. Keyed on the receipt (`at` gives two
-        // identical grants separate identities) so a second Grant gets its own
-        // full five seconds.
-        LaunchedEffect(receipt) {
-            kotlinx.coroutines.delay(5_000)
-            if (granted == receipt) granted = null
+        ) {
+            // The button says the amount, so the chip row and the action can
+            // never disagree about what a tap is about to give.
+            Text(
+                if (granted != null) "Granted $minutes min ✓" else "Grant $minutes min",
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.5.sp)
+            )
         }
+        Spacer(Modifier.height(8.dp))
+        // Where the minutes go, in plain words: the tap is in the family config
+        // now, so every device gets it by the same path as every rule.
+        Text(
+            "Reaches every device: awake ones right away, asleep ones within " +
+                "fifteen minutes of waking, through the hub if there is one.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        granted?.let { receipt ->
+            Spacer(Modifier.height(4.dp))
+            // Kept alongside the button's own "Granted ✓": the label says the
+            // tap landed, the receipt says on how many devices.
+            Text(receipt.text, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // A receipt, not a status line: it was true when it appeared and says
+            // nothing about now, so it goes rather than sitting under the row until
+            // the app is next restarted. Keyed on the receipt (`at` gives two
+            // identical grants separate identities) so a second Grant gets its own
+            // full five seconds.
+            LaunchedEffect(receipt) {
+                kotlinx.coroutines.delay(5_000)
+                if (granted == receipt) granted = null
+            }
+        }
+    }
+}
+
+/** The amounts a parent actually grants; anything else is a tap into the keypad. */
+private val BONUS_PRESETS = listOf(5, 15, 30, 60)
+
+/**
+ * The design's chip: hollow with a strong border, and the accent as a 16%
+ * tint when it is the chosen one. Its own Box rather than a [FilterChip]
+ * because five of these share a 344dp row — Material's chip padding alone
+ * would push the last label out of its slot.
+ */
+@Composable
+private fun BonusChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .heightIn(min = 32.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) SettingsAccentTint else Color.Transparent)
+            .border(
+                1.dp,
+                if (selected) MaterialTheme.colorScheme.primary else SettingsStrongBorder,
+                RoundedCornerShape(8.dp)
+            )
+            .tvFocusHighlight(cornerRadius = 8.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 6.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.primary else SettingsTextSecondary,
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -781,69 +1024,58 @@ internal fun GrantTimeSection(
 private data class GrantReceipt(val text: String, val at: Long = System.currentTimeMillis())
 
 /**
- * Parent timeout: one tap turns watching off until midnight, on every device,
- * effective immediately (the guard's next tick stops a playing video).
- * Deliberately minimal — no durations, no multi-day bans; Resume is the undo.
- * With a [kidName] it is that kid's own pause; without, the family-wide one
- * that stops everyone.
+ * Parent timeout: one switch turns watching off until midnight, on every
+ * device, effective immediately (the guard's next tick stops a playing
+ * video). Deliberately minimal — no durations, no multi-day bans; the switch
+ * back is the undo. With a [kidName] it is that kid's own pause; without, the
+ * family-wide one that stops everyone.
+ *
+ * A confirm dialog used to stand between the button and the pause. It guarded
+ * an action that lapses on its own at midnight and that the same control
+ * reverses in one tap, and it made the most-pressed lever on the page a
+ * three-tap errand.
  */
 @Composable
 internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChanged: (Long?) -> Unit) {
-    var confirming by remember { mutableStateOf(false) }
     val active = pausedUntil != null && pausedUntil > System.currentTimeMillis()
-    val whose = kidName?.let { "$it's" } ?: "all"
-
-    if (confirming) {
-        AlertDialog(
-            onDismissRequest = { confirming = false },
-            title = {
-                Text(
-                    if (kidName == null) "Pause screen time for everyone for the rest of today?"
-                    else "Pause $kidName's screen time for the rest of today?"
-                )
-            },
-            text = {
-                Text(
-                    "${if (kidName == null) "All" else "$kidName's"} watching stops right " +
-                        "away on every device and stays off until midnight. Normal " +
-                        "limits return tomorrow. You can resume any time."
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    confirming = false
-                    onChanged(endOfToday())
-                }) { Text("Pause") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirming = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    // Sentence over the button, not beside it. Beside it, the sentence wrapped
-    // to two lines and the button was squeezed against the card edge — worse
-    // on a phone at display scale, where it lost most of its label.
-    Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(vertical = 2.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 12.dp, vertical = 9.dp)
     ) {
-        if (active) {
+        Column(Modifier.weight(1f)) {
             Text(
-                if (kidName == null) "Everyone's screen time is paused until tomorrow"
-                else "$kidName's screen time is paused until tomorrow",
-                color = MaterialTheme.colorScheme.primary
+                if (kidName == null) "Turn off all watching" else "Turn off $kidName's watching",
+                style = MaterialTheme.typography.bodyMedium
             )
-            Button(
-                modifier = Modifier.tvFocusHighlight(),
-                onClick = { onChanged(null) }
-            ) { Text("Resume") }
-        } else {
-            Text("Turn off $whose watching until midnight")
-            CompactButton(
-                onClick = { confirming = true }
-            ) { Text("Pause for today") }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                // The root card's own wording for the same state, so the two
+                // places a parent can read it cannot drift.
+                if (active) "Paused until midnight" else "Until midnight",
+                style = MaterialTheme.typography.bodySmall
+                    .copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = if (active) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            modifier = Modifier.tvFocusHighlight(),
+            checked = active,
+            onCheckedChange = { onChanged(if (it) endOfToday() else null) },
+            // The design's switch, spelled the same way ToggleRow spells it.
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedBorderColor = Color.Transparent,
+                uncheckedTrackColor = SettingsStrongBorder,
+                uncheckedThumbColor = SettingsTextTertiary,
+                uncheckedBorderColor = Color.Transparent
+            )
+        )
     }
 }
 
