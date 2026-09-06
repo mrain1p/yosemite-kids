@@ -1300,24 +1300,31 @@ internal fun AddFromYouTubePage(
 
     SubPage(title = "Add from YouTube", onBack = onBack) {
         Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
+        SearchField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("Channel or playlist name") },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            trailingIcon = if (searching) ({
-                CircularProgressIndicator(
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(18.dp)
-                )
-            }) else null,
-            singleLine = true,
+            placeholder = "Channel or playlist name",
+            // Teal at all times here: typing is the only thing this page does.
+            borderColor = MaterialTheme.colorScheme.primary,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { search(query) }),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
+            trailing = {
+                if (searching) CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(18.dp)
+                ) else if (query.isNotEmpty()) IconButton(
+                    onClick = { query = "" },
+                    modifier = Modifier.size(30.dp).tvFocusHighlight(cornerRadius = 8.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Close, contentDescription = "Clear the search",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(12.dp))
 
         // The same quiet row of words as the channel list's tabs.
         val tabs = listOf(
@@ -1325,25 +1332,7 @@ internal fun AddFromYouTubePage(
             SourceFilter.Channels to "Channels",
             SourceFilter.Playlists to "Playlists"
         )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            tabs.forEach { (f, label) ->
-                val on = filter == f
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (on) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .tvFocusHighlight()
-                        .clickable { filter = f }
-                        .padding(horizontal = 6.dp, vertical = 8.dp)
-                )
-            }
-        }
+        TextTabs(tabs = tabs, selected = filter, scrollable = false) { filter = it }
         SettingsDivider()
 
         val all = hits
@@ -1378,34 +1367,47 @@ internal fun AddFromYouTubePage(
             else -> {
                 Text(
                     hitCountLine(visible.size, visible.count { isAdded(it, entries) }),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).wrapContentHeight()
+                    modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 10.dp, bottom = 10.dp)
                 )
-                visible.forEach { hit ->
-                    val alreadyAdded = isAdded(hit, entries)
-                    SettingsCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            SourceAvatar(hit.name, size = 40)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    hit.name, fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    hit.meta,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2, overflow = TextOverflow.Ellipsis
-                                )
+                // One card holding every hit, divided — eight separate cards
+                // read as eight things floating on the page rather than as a
+                // list of answers to one question.
+                SettingsCard(padded = false) {
+                    visible.forEachIndexed { i, hit ->
+                        val alreadyAdded = isAdded(hit, entries)
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                SourceAvatar(hit.name, size = 44, rounded = true)
+                                Spacer(Modifier.width(11.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                    ) {
+                                        Text(
+                                            hit.name,
+                                            style = MaterialTheme.typography.bodyMedium
+                                                .copy(fontSize = 14.5.sp),
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        if (alreadyAdded) AddedPill()
+                                    }
+                                    Text(
+                                        hit.meta,
+                                        style = MaterialTheme.typography.bodySmall
+                                            .copy(fontSize = 12.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 3.dp)
+                                    )
+                                }
                             }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                modifier = Modifier.tvFocusHighlight(),
-                                onClick = {
+                            Spacer(Modifier.height(9.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                HitButton("Open in YouTube", filled = false) {
                                     runCatching {
                                         context.startActivity(
                                             android.content.Intent(
@@ -1415,23 +1417,107 @@ internal fun AddFromYouTubePage(
                                         )
                                     }
                                 }
-                            ) { Text("Open in YouTube") }
-                            Button(
-                                modifier = Modifier.tvFocusHighlight(),
-                                enabled = !alreadyAdded,
-                                onClick = { add(hit.entry) }
-                            ) { Text(if (alreadyAdded) "Added ✓" else "Add to Yosemite Kids") }
+                                if (alreadyAdded) HitButton(
+                                    "In your list", filled = false, enabled = false
+                                ) {} else HitButton("Add to Yosemite Kids", filled = true) {
+                                    add(hit.entry)
+                                }
+                            }
                         }
+                        if (i < visible.lastIndex) SettingsDivider()
                     }
-                    Spacer(Modifier.height(8.dp))
                 }
+                Text(
+                    "Inspect anything in YouTube before you allow it. Added sources land " +
+                        "tagged NEW in your list, with your per-kid switches and screening " +
+                        "applying as usual.",
+                    style = MaterialTheme.typography.bodySmall
+                        .copy(fontSize = 12.sp, lineHeight = 18.6.sp),
+                    color = SettingsPlaceholder,
+                    modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 11.dp)
+                )
             }
         }
     }
 }
 
+/**
+ * "1.2M" / "912K" / "84". A whole thousand keeps no decimal: the design's
+ * meta line reads "912K subscribers", and "912.0K" is a number pretending to
+ * a precision YouTube never gave. Formatted US-side so the suffix trim can
+ * count on a dot.
+ */
 internal fun formatCount(n: Long): String = when {
-    n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0)
-    n >= 1_000 -> "%.1fK".format(n / 1_000.0)
+    n >= 1_000_000 ->
+        "%.1f".format(java.util.Locale.US, n / 1_000_000.0).removeSuffix(".0") + "M"
+    n >= 1_000 ->
+        "%.1f".format(java.util.Locale.US, n / 1_000.0).removeSuffix(".0") + "K"
     else -> n.toString()
+}
+
+/**
+ * "Added" beside a result already in the list. The badge and the button say
+ * the same thing on purpose: the badge is what a parent scanning the column
+ * sees, the button is what they were reaching for.
+ */
+@Composable
+private fun AddedPill() {
+    Text(
+        "Added",
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+        fontWeight = FontWeight.Medium,
+        color = SettingsSuccess,
+        // The design's own #1E2A26 needs a token in Theme.kt; the success
+        // green at a tenth over the card lands within a shade of it.
+        modifier = Modifier
+            .background(SettingsSuccess.copy(alpha = 0.12f), RoundedCornerShape(5.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    )
+}
+
+/**
+ * A result row's two actions: inspect it where it lives, or allow it. 30dp
+ * and radius 7 — a search result is a dense list, and M3's 40dp pill made
+ * two of them the tallest thing in the card.
+ */
+@Composable
+private fun HitButton(
+    label: String,
+    filled: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(7.dp)
+    val pad = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+    val size = Modifier.height(30.dp).tvFocusHighlight(cornerRadius = 7.dp)
+    val content: @Composable RowScope.() -> Unit = {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
+        )
+    }
+    if (filled) Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = shape,
+        contentPadding = pad,
+        modifier = size,
+        content = content
+    ) else OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        shape = shape,
+        border = BorderStroke(1.dp, SettingsStrongBorder),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = MaterialTheme.colorScheme.background,
+            contentColor = SettingsTextSecondary,
+            disabledContainerColor = Color.Transparent,
+            disabledContentColor = SettingsTextTertiary
+        ),
+        contentPadding = pad,
+        modifier = size,
+        content = content
+    )
 }
