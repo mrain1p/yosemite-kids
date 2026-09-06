@@ -893,23 +893,23 @@ private fun AdminScreen(
     if (openReview) {
         BackHandler { openReview = false }
         SubPage(title = "Waiting for your OK", onBack = { openReview = false }) {
-            SettingsCard {
-                AiReviewSection(
-                    ai = ai,
-                    profiles = profiles,
-                    pairingStore = pairingStore,
-                    resolved = blocked + aiAllowed + blockedFor.keys + allowedFor.keys,
-                    onAllow = { id, forKids ->
-                        if (forKids == null) aiAllowed = aiAllowed + id
-                        else allowedFor = allowedFor + (id to forKids)
-                    },
-                    onBlock = { id, forKids ->
-                        if (forKids == null) blocked = blocked + id
-                        else blockedFor = blockedFor + (id to forKids)
-                    },
-                    show = ReviewHalf.QUEUE
-                )
-            }
+            // No card around it: every video in the queue is already its own
+            // card, and a card of cards drew two borders around each one.
+            AiReviewSection(
+                ai = ai,
+                profiles = profiles,
+                pairingStore = pairingStore,
+                resolved = blocked + aiAllowed + blockedFor.keys + allowedFor.keys,
+                onAllow = { id, forKids ->
+                    if (forKids == null) aiAllowed = aiAllowed + id
+                    else allowedFor = allowedFor + (id to forKids)
+                },
+                onBlock = { id, forKids ->
+                    if (forKids == null) blocked = blocked + id
+                    else blockedFor = blockedFor + (id to forKids)
+                },
+                show = ReviewHalf.QUEUE
+            )
         }
         return
     }
