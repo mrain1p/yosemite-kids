@@ -1,10 +1,10 @@
 package io.yosemitekids.hub
 
 import io.yosemitekids.app.data.MasterToken
-
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.security.MessageDigest
 import java.security.SecureRandom
 
 /**
@@ -187,7 +187,13 @@ class HubTokens(dataDir: File) {
     fun nameOf(token: String?): String? = devices().firstOrNull { it.token == token }?.name
 
     /** Mint a code for a device that wants in. [now] is passed so tests need no clock. */
-    fun startEnrolment(name: String, now: Long): String {
+    fun startEnrolment(name: String, now: Long): String = synchronized(lock) {
+        // Inside the lock, like every other mutator here. read() and write()
+        // each take it, but the read-modify-write between them was not
+        // atomic, so an enrolment landing beside a password write could drop
+        // one of them. Nothing had raced it before; a password is the first
+        // thing written to this file from a route a parent uses while a
+        // device is enrolling.
         val code = (1..CODE_LENGTH)
             .map { ALPHABET[rng.nextInt(ALPHABET.length)] }
             .joinToString("")
@@ -206,7 +212,7 @@ class HubTokens(dataDir: File) {
         )
         root.put("pending", kept)
         write(root)
-        return code
+        code
     }
 
     fun pending(now: Long): List<Pending> {
@@ -283,11 +289,106 @@ class HubTokens(dataDir: File) {
         fromEnv?.takeIf { it.isNotBlank() }?.let { return it }
         val root = read()
         root.optString("admin").takeIf { it.isNotBlank() }?.let { return it }
-        val minted = (1..24).map { "0123456789abcdef"[rng.nextInt(16)] }.joinToString("")
+        val minted = mintAdminToken()
         root.put("admin", minted)
         write(root)
         minted
     }
+
+    // --- the admin password ------------------------------------------------
+    //
+    // The token above becomes the RECOVERY credential and the password becomes
+    // the everyday one. Both are checked here, in one place, so a route cannot
+    // accidentally accept one and not the other.
+
+    /** What a presented secret turned out to be. */
+    enum class Secret { PASSWORD, RECOVERY, NO }
+
+    fun hasPassword(): Boolean = read().optJSONObject("password") != null
+
+    /**
+     * Check a presented admin secret.
+     *
+     * Order matters and is the whole reason this is one function. The
+     * recovery token is compared first, because it is a cheap constant-time
+     * byte compare; only on a miss is the password derived, which costs one
+     * KDF. So a wrong guess costs at most one derivation, and a caller that
+     * is locked out passes `allowPassword = false` and costs none at all.
+     *
+     * @param allowPassword false while the sign-in lockout is in force. The
+     *   recovery token stays exempt: 96 bits gain nothing from a rate limit,
+     *   and it must remain the way back in while the password path is locked,
+     *   or an attacker who only wants the family locked out simply fails ten
+     *   times every window.
+     * @param envToken YOSEMITE_KIDS_ADMIN_TOKEN, which overrides the stored
+     *   one exactly as it does today, so a parent with the compose file is
+     *   never locked out.
+     */
+    fun verifyAdminSecret(given: String?, envToken: String?, allowPassword: Boolean = true): Secret {
+        if (given.isNullOrEmpty()) return Secret.NO
+        val recovery = envToken?.takeIf { it.isNotBlank() } ?: read().optString("admin")
+        if (recovery.isNotBlank() &&
+            MessageDigest.isEqual(given.toByteArray(Charsets.UTF_8), recovery.toByteArray(Charsets.UTF_8))
+        ) return Secret.RECOVERY
+        if (!allowPassword) return Secret.NO
+        val record = read().optJSONObject("password") ?: return Secret.NO
+        if (!HubPassword.verify(record, given)) return Secret.NO
+        // Re-stretch a record an older build wrote, so raising the cost does
+        // not have to invalidate anyone's password. After the answer is
+        // decided, and a failure here must never fail the sign-in.
+        if (HubPassword.needsUpgrade(record)) {
+            runCatching {
+                synchronized(lock) {
+                    val root = read()
+                    if (root.optJSONObject("password") != null) {
+                        root.put("password", HubPassword.record(given, System.currentTimeMillis()))
+                        write(root)
+                    }
+                }
+            }
+        }
+        return Secret.PASSWORD
+    }
+
+    /**
+     * Set or change the password. [current] must be the existing password or
+     * the recovery token — always, even inside a live session, because that
+     * session may be a browser on a kitchen counter and the failure this
+     * prevents is a parent locked out of their own hub.
+     *
+     * Returns the new recovery token on the FIRST set only, to be shown once.
+     * The old one is sitting in a container log that `docker logs` replays,
+     * so leaving it live would make the password decoration. Later changes
+     * rotate nothing: silently invalidating a token a parent wrote down is
+     * itself a lockout.
+     */
+    fun setPassword(current: String?, next: String, now: Long, envToken: String?): Result<String?> {
+        if (verifyAdminSecret(current, envToken) == Secret.NO) {
+            return Result.failure(IllegalArgumentException("wrong"))
+        }
+        val record = runCatching { HubPassword.record(next, now) }
+            .getOrElse { return Result.failure(it) }
+        return synchronized(lock) {
+            val root = read()
+            val first = root.optJSONObject("password") == null
+            root.put("password", record)
+            val rotated = if (first) mintAdminToken().also { root.put("admin", it) } else null
+            write(root)
+            Result.success(rotated)
+        }
+    }
+
+    /** A fresh recovery token, on demand. Same gate and throttle as a password change. */
+    fun rotateRecoveryToken(): String = synchronized(lock) {
+        val root = read()
+        val minted = mintAdminToken()
+        root.put("admin", minted)
+        write(root)
+        minted
+    }
+
+    private fun mintAdminToken(): String =
+        (1..24).map { "0123456789abcdef"[rng.nextInt(16)] }.joinToString("")
 
     fun revoke(token: String) = synchronized(lock) {
         val root = read()

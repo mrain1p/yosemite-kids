@@ -1,5 +1,8 @@
 package io.yosemitekids.hub
 
+import java.io.File
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import io.yosemitekids.app.data.MasterToken
 
 import org.junit.Assert.assertEquals
@@ -194,5 +197,118 @@ class HubTokensTest {
         assertEquals(T, t.devices().single().pulledAt)
         t.notePull(token, T + HubTokens.PULL_WRITE_INTERVAL_MS)
         assertEquals(T + HubTokens.PULL_WRITE_INTERVAL_MS, t.devices().single().pulledAt)
+    }
+
+    // --- the admin password ----------------------------------------------
+
+    @Test
+    fun `a password and the recovery token both open the door, and nothing else does`() {
+        val t = tokens()
+        assertFalse(t.hasPassword())
+        val recovery = t.adminToken(null)
+
+        // Before one is set, only the token works — an existing household
+        // must keep running untouched.
+        assertEquals(HubTokens.Secret.RECOVERY, t.verifyAdminSecret(recovery, null))
+        assertEquals(HubTokens.Secret.NO, t.verifyAdminSecret("a good password", null))
+
+        val rotated = t.setPassword(recovery, "a good password", T, null).getOrThrow()
+        assertTrue(t.hasPassword())
+        assertEquals(HubTokens.Secret.PASSWORD, t.verifyAdminSecret("a good password", null))
+        assertEquals(HubTokens.Secret.NO, t.verifyAdminSecret("a good passwerd", null))
+        assertEquals(HubTokens.Secret.NO, t.verifyAdminSecret("", null))
+        assertEquals(HubTokens.Secret.NO, t.verifyAdminSecret(null, null))
+
+        // The first set rotates the recovery token and hands it back once:
+        // the old one is in a container log that docker logs replays, so
+        // leaving it live would make the password decoration.
+        assertNotNull(rotated)
+        assertNotEquals(recovery, rotated)
+        assertEquals(HubTokens.Secret.NO, t.verifyAdminSecret(recovery, null))
+        assertEquals(HubTokens.Secret.RECOVERY, t.verifyAdminSecret(rotated, null))
+    }
+
+    @Test
+    fun `the plaintext password is nowhere in the file`() {
+        val dir = tmp.newFolder()
+        val t = HubTokens(dir)
+        t.setPassword(t.adminToken(null), "unmistakable-plaintext", T, null).getOrThrow()
+        val text = File(dir, "devices.json").readText()
+        assertFalse(text, text.contains("unmistakable-plaintext"))
+        assertTrue("but the record itself must be there", text.contains("PBKDF2WithHmacSHA256"))
+    }
+
+    @Test
+    fun `changing the password leaves every enrolled device alone`() {
+        // The property a future "simplification" would break by deriving
+        // device tokens from the admin secret. An assertion, not a comment.
+        val t = tokens()
+        val tv = t.approve(t.startEnrolment("Living Room TV", T), T).getOrThrow()
+        val phone = t.approve(t.startEnrolment("Dad's phone", T), T).getOrThrow()
+        t.setPassword(t.adminToken(null), "the first password", T, null).getOrThrow()
+        t.setPassword("the first password", "the second password", T, null).getOrThrow()
+
+        assertTrue(t.isEnrolled(tv))
+        assertTrue(t.isEnrolled(phone))
+        assertEquals("Living Room TV", t.nameOf(tv))
+        assertEquals("Dad's phone", t.nameOf(phone))
+    }
+
+    @Test
+    fun `a later change rotates nothing, and the token can be rotated on demand`() {
+        val t = tokens()
+        val first = t.setPassword(t.adminToken(null), "the first password", T, null).getOrThrow()
+        // Silently invalidating a token a parent wrote down is itself a lockout.
+        val second = t.setPassword("the first password", "the second password", T, null).getOrThrow()
+        assertNull(second)
+        assertEquals(HubTokens.Secret.RECOVERY, t.verifyAdminSecret(first, null))
+
+        val rotated = t.rotateRecoveryToken()
+        assertNotEquals(first, rotated)
+        assertEquals(HubTokens.Secret.NO, t.verifyAdminSecret(first, null))
+        assertEquals(HubTokens.Secret.RECOVERY, t.verifyAdminSecret(rotated, null))
+    }
+
+    @Test
+    fun `a change needs the current secret, and a weak new one is refused`() {
+        val t = tokens()
+        t.setPassword(t.adminToken(null), "the first password", T, null).getOrThrow()
+        assertTrue(t.setPassword("not the password", "a new password", T, null).isFailure)
+        assertTrue(t.setPassword("short", "a new password", T, null).isFailure)
+        assertTrue("too short to store", t.setPassword("the first password", "abc", T, null).isFailure)
+        // None of that changed anything.
+        assertEquals(HubTokens.Secret.PASSWORD, t.verifyAdminSecret("the first password", null))
+    }
+
+    @Test
+    fun `while the password path is locked out the recovery token still works`() {
+        // What stops an attacker who only wants the family locked out from
+        // failing ten times every window: 96 bits gain nothing from a rate
+        // limit, so the token is exempt and the password is not.
+        val t = tokens()
+        val recovery = t.setPassword(t.adminToken(null), "a good password", T, null).getOrThrow()!!
+        assertEquals(
+            HubTokens.Secret.NO,
+            t.verifyAdminSecret("a good password", null, allowPassword = false)
+        )
+        assertEquals(
+            HubTokens.Secret.RECOVERY,
+            t.verifyAdminSecret(recovery, null, allowPassword = false)
+        )
+    }
+
+    @Test
+    fun `the environment token overrides the stored one and is never locked out`() {
+        // A parent with the compose file is never locked out of their own box.
+        val t = tokens()
+        val stored = t.adminToken(null)
+        t.setPassword(stored, "a good password", T, null).getOrThrow()
+        assertEquals(HubTokens.Secret.RECOVERY, t.verifyAdminSecret("from-the-compose-file", "from-the-compose-file"))
+        assertEquals(
+            HubTokens.Secret.RECOVERY,
+            t.verifyAdminSecret("from-the-compose-file", "from-the-compose-file", allowPassword = false)
+        )
+        // And the stored one is not also accepted while the environment names another.
+        assertEquals(HubTokens.Secret.NO, t.verifyAdminSecret(stored, "from-the-compose-file"))
     }
 }
