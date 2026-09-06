@@ -126,7 +126,7 @@ same item: `HubTokens` records `host`/`port`/`lastSeenAt` on every
 authenticated call and `HubWeb` does not render them, and `Device.address`
 has no caller. *Small.*
 
-**H. The crawl in the container; retire master election.** Decided
+**H. The crawl in the container; retire master election.** Design record in `docs/PLAN-crawl.md`. Decided
 2026-09-05, next after the sync bug below. Today the search index is built
 only by whichever device holds `masterDeviceToken`, and that crawl advances
 only while that phone has the app open; the hub, the one machine in the
