@@ -1,5 +1,5 @@
 # Yosemite Kids emulator loop. Usage: .\scripts\emu.ps1 <verb> [args]
-#   boot [headless] | tv | stop | install | seed [--real] | launch | shot <name>
+#   boot [headless] | tv | stop | install | seed [real] | launch | shot <name>
 #   tap X Y | key KEYCODE | text "..." | back | home | rotate | logcat | forward
 #   dpad left|right|up|down|ok|back | hold-ok | wait-stream
 # Every adb call targets the emulator serial so a phone/headset on USB is never touched.
@@ -54,13 +54,32 @@ switch ($Verb) {
         Adb install -r -t app\build\outputs\apk\debug\app-debug.apk
     }
     "seed" {
-        $file = if ($A -eq "--real") { "scripts\seed-config.real.json" } else { "scripts\seed-config.json" }
+        # 'real', not '--real'. PowerShell binds any leading-dash token as a
+        # parameter name and fails before this script runs, so the --real the
+        # usage line advertised could never have worked — it errored with
+        # NamedParameterNotFound, which reads like a broken script rather
+        # than a wrong flag. And an unrecognised argument now throws instead
+        # of quietly seeding the small config: a walk of the settings pages
+        # against three channels looks like a working walk.
+        $file = switch ($A) {
+            ""     { "scripts\seed-config.json" }
+            "real" { "scripts\seed-config.real.json" }
+            default { throw "seed takes nothing or 'real', not '$A'" }
+        }
         if (-not (Test-Path (Join-Path $root $file))) { throw "$file missing (build it with scripts/seed-from-whitelist.sh)" }
         Adb push (Join-Path $root $file) /data/local/tmp/config.json
         Adb shell run-as $pkg mkdir -p files
         Adb shell run-as $pkg cp /data/local/tmp/config.json files/config.json
         Adb shell run-as $pkg rm -f shared_prefs/limits.xml
         Adb shell am force-stop $pkg
+        # run-as works only against a debuggable build. On a release install it
+        # is refused, and every command above still "succeeds", so the old
+        # message announced a seed that had not happened and the next walk
+        # photographed an empty app.
+        $probe = & $adb -s $serial shell "run-as $pkg ls files/config.json" 2>&1
+        if ($probe -notmatch "files/config.json") {
+            throw "seed failed: run-as was refused. That means a RELEASE build is installed; the seed needs assembleDebug."
+        }
         Write-Host "seeded $file; launch to see it"
     }
     "launch" { Adb shell am start -n "$pkg/.ui.MainActivity" | Out-Null; Start-Sleep -Seconds 2 }
