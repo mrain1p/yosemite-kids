@@ -190,13 +190,15 @@ class HubStore(
     fun edit(
         who: String,
         now: Long,
+        /** Stamps to move even though their value did not: the master heartbeat. */
+        refresh: Set<String> = emptySet(),
         transform: (Whitelist) -> Whitelist
     ): Outcome = synchronized(lock) {
         val current = runCatching { load() }.getOrElse { Whitelist(emptyList(), emptySet()) }
         val beforeHash = ConfigJson.fingerprint(current)
         val beforeSync = ConfigMerge.syncHash(current.sync)
 
-        val stamped = ConfigStamp.stamped(current, current, transform(current), now, who, BY)
+        val stamped = ConfigStamp.stamped(current, current, transform(current), now, who, BY, refresh = refresh)
         commit(ConfigJson.toJson(stamped.config))
 
         val after = load()

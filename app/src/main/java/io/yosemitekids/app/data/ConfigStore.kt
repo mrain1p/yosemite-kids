@@ -321,17 +321,24 @@ class ConfigStore internal constructor(
      * its tombstone and resurrects a channel a parent deleted, with no parent
      * action anywhere.
      */
-    fun update(who: String = "", by: String = "", block: (Whitelist) -> Whitelist): Whitelist? =
+    fun update(
+        who: String = "",
+        by: String = "",
+        /** Stamps to move even though their value did not: the master heartbeat. */
+        refresh: Set<String> = emptySet(),
+        block: (Whitelist) -> Whitelist
+    ): Whitelist? =
         runCatching {
             synchronized(FILE_LOCK) {
                 val previous = load()
                 val next = block(previous)
-                if (next == previous) return@synchronized previous
+                if (next == previous && refresh.isEmpty()) return@synchronized previous
                 val w = registered(next)
                 rememberSecrets(w)
                 val stamped = ConfigStamp.stamped(
                     previous = previous, base = previous, next = w,
-                    now = System.currentTimeMillis(), today = Grants.dateOf(System.currentTimeMillis()), who = who, by = by
+                    now = System.currentTimeMillis(), today = Grants.dateOf(System.currentTimeMillis()), who = who, by = by,
+                    refresh = refresh
                 )
                 commit(ConfigJson.toJson(stamped.config))
                 stamped.config

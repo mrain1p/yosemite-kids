@@ -54,6 +54,7 @@ class MergeConvergenceTest {
         limits: Limits = Limits(),
         ai: AiConfig = AiConfig(),
         autoplay: Boolean = true,
+        master: String? = null,
         at: Map<String, Long> = emptyMap(),
         gone: Map<String, Long> = emptyMap()
     ): String = pinUpdatedAt(
@@ -66,6 +67,7 @@ class MergeConvergenceTest {
                 ai = ai,
                 profiles = profiles,
                 autoplayNext = autoplay,
+                masterDeviceToken = master,
                 sync = if (at.isEmpty() && gone.isEmpty()) SyncMeta.EMPTY
                 else SyncMeta(docAt = (at.values + gone.values + 0L).max(), at = at, gone = gone)
             )
@@ -304,5 +306,48 @@ class MergeConvergenceTest {
         }
         assertEquals("both sides must hold the same document after a sweep:\n" + log.joinToString("\n"), hashes(hub), hashes(phone))
         assertEquals("and must stop moving:\n" + log.joinToString("\n"), log[2], log[3])
+    }
+
+    // --- the master slot ------------------------------------------------
+
+    private val hubToken = ".hub0123456789abcdef0123456789ab"
+    private val phoneToken = "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+
+    /** Both orders, then each again: the shape every merge here has to have. */
+    private fun assertSettles(name: String, a: String, b: String, holder: String?, stamp: Long) {
+        val ab = settle(a, b)
+        val ba = settle(b, a)
+        assertEquals("$name: order", hashes(ab), hashes(ba))
+        assertEquals("$name: settled", hashes(ab), hashes(settle(ab, b)))
+        assertEquals("$name: settled the other way", hashes(ba), hashes(settle(ba, a)))
+        val w = ConfigJson.fromJson(ab)
+        assertEquals("$name: holder", holder, w.masterDeviceToken)
+        assertEquals("$name: stamp", stamp, w.sync.at[ConfigStamp.MASTER])
+    }
+
+    @Test
+    fun aHubReclaimsTheSlotFromAPhoneAndTheFleetConverges() {
+        // The phone claimed at T; the hub, armed a day later, claimed after it.
+        val phone = doc(master = phoneToken, at = mapOf(ConfigStamp.MASTER to T))
+        val hub = doc(master = hubToken, at = mapOf(ConfigStamp.MASTER to T + 2))
+        assertSettles("newer hub claim", phone, hub, hubToken, T + 2)
+        // On an exact tie the hub still wins, in both orders (MasterToken.preferred).
+        val phoneTie = doc(master = phoneToken, at = mapOf(ConfigStamp.MASTER to T))
+        val hubTie = doc(master = hubToken, at = mapOf(ConfigStamp.MASTER to T))
+        assertSettles("tie", phoneTie, hubTie, hubToken, T)
+        // Two phones keep the old rule.
+        val other = "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+        assertSettles("two phones", doc(master = other, at = mapOf(ConfigStamp.MASTER to T)), phoneTie, phoneToken, T)
+    }
+
+    @Test
+    fun aHeartbeatMovesTheStampAndNothingElse() {
+        val before = doc(master = hubToken, at = mapOf(ConfigStamp.MASTER to T))
+        val beat = doc(master = hubToken, at = mapOf(ConfigStamp.MASTER to T + 6))
+        assertSettles("heartbeat", before, beat, hubToken, T + 6)
+        // A stale copy pushed back after the heartbeat cannot age the slot again.
+        val merged = settle(before, beat)
+        assertEquals(hashes(merged), hashes(settle(merged, before)))
+        assertEquals(T + 6, ConfigJson.fromJson(settle(merged, before)).sync.at[ConfigStamp.MASTER])
     }
 }

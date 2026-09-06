@@ -460,4 +460,28 @@ class ConfigStampTest {
         )
         assertEquals(T0 + 9_999_999, pruned.floor.getValue("src"))
     }
+
+    // --- refresh ---------------------------------------------------------
+
+    @Test
+    fun aRefreshMovesAStampWithoutAChange() {
+        val base = config(
+            sources = listOf(entry("UCaaa")),
+            sync = SyncMeta(docAt = T0, at = mapOf(ConfigStamp.MASTER to T0, ConfigStamp.src("UCaaa") to T0))
+        ).copy(masterDeviceToken = MUM)
+        val out = ConfigStamp.stamped(base, base, base, T0 + 10, "hub", DAD, refresh = setOf(ConfigStamp.MASTER)).config
+        assertEquals(T0 + 10, out.sync.at.getValue(ConfigStamp.MASTER))
+        assertEquals("the untouched channel keeps its stamp", T0, out.sync.at.getValue(ConfigStamp.src("UCaaa")))
+        assertEquals("docAt follows the mint", T0 + 10, out.sync.docAt)
+        assertEquals("the value itself is unchanged", MUM, out.masterDeviceToken)
+        assertEquals(base.sources, out.sources)
+    }
+
+    @Test
+    fun withoutARefreshAnUnchangedDocumentIsLeftAlone() {
+        val base = config(sync = SyncMeta(docAt = T0, at = mapOf(ConfigStamp.MASTER to T0))).copy(masterDeviceToken = MUM)
+        val out = ConfigStamp.stamped(base, base, base, T0 + 10, "hub", DAD).config
+        assertEquals(T0, out.sync.at.getValue(ConfigStamp.MASTER))
+        assertEquals(T0, out.sync.docAt)
+    }
 }

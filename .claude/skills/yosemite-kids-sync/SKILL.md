@@ -123,7 +123,8 @@ A *unit* is the smallest thing two parents can edit independently.
 | `dev` | one device's kid assignment | ABSENT |
 | `grant` | one "Add time" tap: minutes for one kid or everyone, on one day; a day that has passed is tombstoned by the phone's next save, never by the merge | ABSENT |
 | `lim.rules`, `lim.windows`, `lim.pause`, `lim.brk` | family screen time | scalar |
-| `ai`, `settings`, `master` | one blob each | scalar |
+| `ai`, `settings` | one blob each | scalar |
+| `master` | which peer builds the search index. Its stamp is also the holder's liveness: the holder re-touches it every 6 h through the stamper's `refresh` set (the one stamp allowed to move without a change), a stamp older than 24 h means a vacant slot, and on a tie a hub token (`.hub…`) beats a phone (`MasterToken.preferred`). The rules are `MasterElection.decide`, clock passed in | scalar |
 
 **Polarity is not uniform, and that is deliberate.** For a block the safe
 answer is that it *stays*: presence wins ties and needs no proof, while lifting

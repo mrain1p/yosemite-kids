@@ -789,14 +789,15 @@ object ConfigMerge {
             val d = decide(ConfigStamp.MASTER)
             val mine = L.root.optString("master").ifEmpty { null }
             val theirs = R.root.optString("master").ifEmpty { null }
-            // On a tie the lexicographically smaller token wins. "Keep the
-            // local one" is not commutative, so two co-parents who both
-            // claimed would never converge and would both keep running the
-            // rate-limit-expensive crawl.
+            // On a tie the hub wins, else the lexicographically smaller
+            // token (MasterToken.preferred). "Keep the local one" is not
+            // commutative, so two co-parents who both claimed would never
+            // converge and would both keep running the rate-limit-expensive
+            // crawl.
             val pick = when (d.fromLocal) {
                 true -> mine
                 false -> theirs
-                null -> listOfNotNull(mine, theirs).minOrNull()
+                null -> MasterToken.preferred(mine, theirs)
             }
             if (pick != null) {
                 out.put("master", pick)

@@ -29,9 +29,13 @@ function Fail-Guard($message) {
 # associativity structural rather than artifacts that hold only while a test
 # freezes the clock, and it is why a TV with a bad RTC cannot drop a parent's
 # active pause into the shared document.
-$mergeSrc = Get-Content "core\src\main\kotlin\io\yosemitekids\app\data\ConfigMerge.kt" -Raw
-if ($mergeSrc -match "currentTimeMillis|Instant\.now|System\.nanoTime") {
-    Fail-Guard "ConfigMerge.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."
+# The master election is held to the same rule: a "day later" has to be a
+# number a test passes in, not a moment the machine running the test is at.
+foreach ($clockless in @("ConfigMerge", "MasterElection")) {
+    $src = Get-Content "core\src\main\kotlin\io\yosemitekids\app\data\$clockless.kt" -Raw
+    if ($src -match "currentTimeMillis|Instant\.now|System\.nanoTime") {
+        Fail-Guard "$clockless.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."
+    }
 }
 
 # Every config write must pass through commit(), which stashes the API key in

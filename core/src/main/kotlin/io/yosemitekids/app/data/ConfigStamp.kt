@@ -85,7 +85,8 @@ object ConfigStamp {
         now: Long,
         who: String,
         by: String,
-        today: String? = null
+        today: String? = null,
+        refresh: Set<String> = emptySet()
     ): Result {
         val prevSync = previous.sync
         // Monotonic: a device whose clock came back wrong after a power cut
@@ -308,6 +309,13 @@ object ConfigStamp {
         // touched SETTINGS — and the next merge broke that tie by string
         // order. Their edit survived on a coin flip.
         val scalars = if (settingsDiffer(base, next)) next else previous
+
+        // A refresh is a stamp that moves without its value changing: the
+        // master heartbeat, which is how the holder says it is still alive
+        // (MasterElection). Nothing above touches a unit whose value held
+        // still, and that is right for every other unit, so this is the one
+        // place a caller may ask for it by name.
+        refresh.forEach { touch(it) }
 
         // Nothing minted means the bookkeeping is untouched, docAt included:
         // it is "the highest stamp this document carries", and a save that

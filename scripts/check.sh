@@ -28,11 +28,15 @@ guard_fail() { echo "guard FAILED: $1" >&2; exit 1; }
 q='"'
 
 # The merge must read no clock: that is what makes idempotence and
-# associativity structural rather than test artifacts.
-if grep -qE "currentTimeMillis|Instant\.now|System\.nanoTime" \
-    core/src/main/kotlin/io/yosemitekids/app/data/ConfigMerge.kt; then
-  guard_fail "ConfigMerge.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."
-fi
+# associativity structural rather than test artifacts. The master election
+# is held to the same rule: a "day later" has to be a number a test passes
+# in, not a moment the machine running the test happens to be at.
+for clockless in ConfigMerge MasterElection; do
+  if grep -qE "currentTimeMillis|Instant\.now|System\.nanoTime" \
+      "core/src/main/kotlin/io/yosemitekids/app/data/$clockless.kt"; then
+    guard_fail "$clockless.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."
+  fi
+done
 
 # Every config write goes through commit(), which stashes the API key and
 # strips it from the bytes. Two write paths means the next one added forgets.
