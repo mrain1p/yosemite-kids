@@ -1,13 +1,25 @@
 package io.yosemitekids.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import io.yosemitekids.app.data.LanClient
 import io.yosemitekids.app.data.PairingStore
@@ -242,16 +254,26 @@ internal fun AiScreeningSection(
     profiles: List<io.yosemitekids.app.data.Profile>,
     onChanged: (io.yosemitekids.app.data.AiConfig) -> Unit
 ) {
-    Text(
-        "New videos on allowed channels are checked against your rules by an AI " +
-            "before the kid can see them. Only video titles and channel names are " +
-            "sent — never watch history. Anything blocked appears under each " +
-            "device's Stats for your review.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Screen new videos with AI", modifier = Modifier.weight(1f))
+    // The design's switch row: title, one summary line, switch — the paragraph
+    // that used to sit above it said the same thing four times longer.
+    //
+    // Not [ToggleRow], for two reasons: this row sits in a card that supplies
+    // its own 12dp inset (so ToggleRow's would double it), and the switch has
+    // to be disable-able. Fold it back in the day ToggleRow takes an `enabled`.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(vertical = 10.dp)
+    ) {
+        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+            Text("Screen new videos with AI", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Titles and channel names only — never watch history",
+                style = MaterialTheme.typography.bodySmall
+                    .copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         Switch(
             modifier = Modifier.tvFocusHighlight(),
             checked = ai.enabled,
@@ -261,26 +283,50 @@ internal fun AiScreeningSection(
             enabled = ai.model.isNotBlank(),
             onCheckedChange = { on ->
                 onChanged(ai.copy(enabled = on, rules = ai.rules.ifBlank { DEFAULT_AI_RULES }))
-            }
+            },
+            // The design's switch, spelled the same way [ToggleRow] spells it.
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                uncheckedTrackColor = SettingsStrongBorder,
+                uncheckedThumbColor = SettingsTextTertiary,
+                uncheckedBorderColor = androidx.compose.ui.graphics.Color.Transparent
+            )
         )
     }
     if (ai.model.isBlank()) {
         Text(
             "Set up the AI connection above first — endpoint, key and model.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
         )
         return
     }
     if (!ai.enabled) return
 
+    // A plain textarea: no floating label (the rules are legible as themselves),
+    // the page tone inside the card, and six lines deep so the four house rules
+    // are all on screen at once.
     OutlinedTextField(
         value = ai.rules,
         onValueChange = { onChanged(ai.copy(rules = it)) },
-        label = { Text("House rules the AI enforces") },
-        supportingText = { Text("Rough notes are fine — the AI understands shorthand.") },
-        minLines = 3,
+        minLines = 6,
+        shape = RoundedCornerShape(10.dp),
+        textStyle = LocalTextStyle.current.copy(fontSize = 13.5.sp, lineHeight = 22.sp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.background,
+            unfocusedContainerColor = MaterialTheme.colorScheme.background,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+        ),
         modifier = Modifier.fillMaxWidth()
+    )
+    Spacer(Modifier.height(9.dp))
+    Text(
+        "Rough notes are fine — the AI understands shorthand. One rule per line.",
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 19.sp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     if (profiles.isEmpty()) {
         StepperRow(
@@ -289,22 +335,31 @@ internal fun AiScreeningSection(
             format = { "$it" },
             onChanged = { onChanged(ai.copy(childAge = it)) }
         )
-    } else {
+    }
+    // The card's footer: what one screening pass actually covers, in the
+    // faintest tone — it is the fine print under the rules, not a rule.
+    Spacer(Modifier.height(12.dp))
+    Column(
+        Modifier.padding(bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        if (profiles.isNotEmpty()) {
+            Text(
+                "Checked once for the whole family — one AI call, a verdict per kid, " +
+                    "against the ages set under Kids. " +
+                    profiles.joinToString(", ") { p ->
+                        p.age?.let { "${p.name} is $it" } ?: "${p.name} has no age set"
+                    } + ".",
+                fontSize = 12.sp, lineHeight = 19.sp,
+                color = SettingsPlaceholder
+            )
+        }
         Text(
-            "Each video is checked once for the whole family — one AI call, a " +
-                "verdict per kid, using the ages set under Kids: " +
-                profiles.joinToString(", ") { p ->
-                    p.name + (p.age?.let { " ($it)" } ?: " (no age)")
-                } + ".",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            "Changing rules re-screens the whole catalog on every device.",
+            fontSize = 12.sp, lineHeight = 19.sp,
+            color = SettingsPlaceholder
         )
     }
-    Text(
-        "Changing rules re-screens the whole catalog on every device.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
 }
 
 // --- AI review queue ---------------------------------------------------------
