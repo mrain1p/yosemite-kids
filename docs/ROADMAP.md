@@ -79,6 +79,24 @@ Needs a foreground service: `dataSync` is the honest type and is already declare
 for downloads. Gate on form factor; a persistent notification is defensible on a
 mains-powered TV and a real cost on a phone. *Medium.*
 
+*To review when A is built: should the device hold the connection open instead?*
+Rather than the hub nudging a device it may not be able to reach, the device
+dials the hub and parks the connection (a long poll, or server-sent events),
+and the hub answers on it the moment something changes. The device still
+initiates, so the hub still holds no credential on it and guard 7 is untouched
+— and it *fixes* the unreachable-device case rather than working around it,
+which the nudge cannot: the nudge only finds a device whose address the hub
+learned from an earlier authenticated call (`HubTokens.noteSeen`), and a
+sleeping television has never called.
+
+Weighed for the shared watch-time budget on 2026-09-06 and deliberately left
+out of it. A device that is not playing spends no minutes; a device that is
+playing is awake and already reporting; and the only moment a stale total does
+any harm is session start, when the device fetches anyway. So a parked
+connection earns its foreground service here, on reachability, or it does not
+earn it at all. The decision when A is built is between the parked connection
+and today's nudge plus the 15-minute floor — not both.
+
 **B. Background content warm — done.** `ContentWarmWorker` refreshes the stalest
 twelve channels every six hours on unmetered power, so a TV switched on after a
 week is already current instead of showing last week's uploads until someone
