@@ -39,6 +39,16 @@ Full route table: `docs/LAN-API.md`. Code: `app/src/main/java/io/yosemitekids/ap
 3. Row in `docs/LAN-API.md`; note in `docs/ARCHITECTURE.md` if the UI uses it.
 4. If the route touches a store, the store call must be thread-safe: the
    server runs on a worker pool while the UI reads the same files.
+5. Decide what the **hub** does about it, because its `"/"` catch-all answers
+   everything: either implement it there, or name it in
+   `HubServer.DEVICE_ONLY` so it is a JSON 404 rather than the admin page with
+   a 200. Guard 22 fails if you do neither, guard 29 if you implement it
+   without `authorised(ex)`.
+
+Adding a route to the **hub** is the same list with different files:
+`HubServer.start` plus a handler beside the others, a row in the hub's own
+table in `docs/LAN-API.md` (guard 30 reads the `createContext` literals against
+it), and `authorised(ex)` first if it is a route a device also speaks.
 
 ## Safe probes
 
