@@ -68,6 +68,25 @@ class GrantsTest {
         assertEquals("2026-09-05", Grants.dateOf(1_788_609_600_000L, ZoneId.of("UTC")))
     }
 
+    @Test
+    fun aDayCanBeCountedFromTheEpochForBoundingButNothingElse() {
+        // What the hub compares a browser's day against, because it reads no
+        // calendar of its own. Days, not milliseconds: the hub's own day is
+        // its clock divided by 86_400_000, and one day either side of that is
+        // the whole of the bound.
+        assertEquals(0L, Grants.dayNumber("1970-01-01"))
+        assertEquals(1L, Grants.dayNumber("1970-01-02") ?: 0L)
+        assertEquals(
+            "the epoch day and the day the same instant falls on in UTC must agree",
+            1_788_609_600_000L / (24L * 60 * 60 * 1000),
+            Grants.dayNumber("2026-09-05")
+        )
+        // Anything that is not a day at all answers null rather than a
+        // number, so a bound built on it refuses rather than accepting zero.
+        listOf("", "today", "2026-9-5", "2026-13-40", "2026-09-05T10:00")
+            .forEach { assertNull("\"$it\" is not a day", Grants.dayNumber(it)) }
+    }
+
     // --- the wire ---------------------------------------------------------
 
     @Test

@@ -744,6 +744,24 @@ for asked in $(grep -rhoE "ctl[(]$q[a-z0-9-]+$q[)]" app/src/main/java/io/yosemit
   esac
 done
 
+# 27. The hub reads no calendar.
+#     A container runs UTC and the family does not. Every local day and local
+#     midnight the hub stores therefore comes from the parent's browser, and
+#     the hub only bounds it: PAUSE_MAX_AHEAD_MS for a pause, and
+#     GRANT_MAX_DAYS_AWAY for the day a grant names. It is the same rule
+#     ConfigStamp.stamped(today = null) already encodes, and the reason
+#     HubStore.edit passes null — a day that ends hours early on the NAS
+#     tombstones a grant at teatime and takes a kid's minutes away.
+#     Worth a guard rather than a comment because of how it fails. A hub in
+#     UTC and a family in Auckland disagree for thirteen hours of every day,
+#     so the symptom is bonus minutes that stop working in the evening, for
+#     some households, some of the time. Nothing throws; the container is
+#     right about its own clock and wrong about the family's.
+for cal in "LocalDate" "Calendar" "SimpleDateFormat" "ZoneId.systemDefault"; do
+  dated=$(grep -rlF "$cal" hub/src | tr "\n" " " || true)
+  [ -z "$dated" ] || guard_fail "$dated names $cal. The container's clock is UTC and the family's is not — that is why HubStore.edit passes today = null. A day or a midnight arrives from the parent's browser and the hub only checks how far away it is (HubWeb.PAUSE_MAX_AHEAD_MS, HubWeb.GRANT_MAX_DAYS_AWAY)."
+done
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 echo "== 1/6 compile (assembleDebug)"

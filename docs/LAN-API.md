@@ -230,7 +230,7 @@ into the phone's `files/stats_cache/` on every sweep. The refusal list is
 | `POST /recovery` | `current` in the body | `{current}` | `{"token": <24 hex>}` | A fresh recovery token, shown once. The previous one stops working immediately. |
 
 The admin GUI's own routes are under `/api` and are session-gated, not token
-gated; they are not in this table because no device speaks them. Two of their
+gated; they are not in this table because no device speaks them. Three of their
 rules are worth stating here because they are contracts, not implementation:
 `GET /api/state` carries a `controls` array — exactly
 `SettingsSurface.hubControls()`, the id, words, kind, range and JSON key of
@@ -240,6 +240,19 @@ key's absence in this config (`ConfigJson` asks `has()` before `getInt` in half
 a dozen places), so removing it is how a rule is cleared; a literal null would
 throw where absence means "no rule". `HubWeb.PATCHABLE` still gates which root
 keys a browser may name at all.
+
+And the third, the exception to that patch route:
+
+| Route | Auth | Body | Reply | Notes |
+| --- | --- | --- | --- | --- |
+| `POST /api/grant` | session | `{kid: <8 hex>\|"", minutes: 1..240, date: "yyyy-mm-dd"}` | `{"granted": true\|false, "why": "OK"\|"BAD_KID"\|"BAD_MINUTES"\|"BAD_DATE"}` | Bonus minutes for today. `grants` is deliberately **not** in `HubWeb.PATCHABLE`: a patch replaces the array it names, so a browser could leave an entry out — which the stamper reads as expiry and tombstones for the whole fleet — or send an id already live as a `grant\|<id>` merge key. This route only ever appends, and the hub mints the id with `Profile.newId()`. `date` is the **parent's browser's** local day, refused when more than `HubWeb.GRANT_MAX_DAYS_AWAY` from this container's UTC day and never rewritten to it (guard 27). Blank `kid` means everyone. Always 200: `why` names the refusal, because "that date is nowhere near this box's" and "that is not a number of minutes" send a parent to different places. |
+
+The hub cannot fire `POST /grant` at a device the way a phone does — that
+needs a credential on the device, which the hub holds for nothing and which
+guard 7 refuses it. It writes the tap into the config and nudges, so the
+minutes arrive by the same path every rule does: right away on a device that
+is awake with the app open, at its next sync otherwise. `ConfigSync.applyArrived`
+is the receiving half (guard 21).
 
 `/login`, `/approve`, `/pending`, `/password` and `/recovery` all pass through
 one `adminGate()`, which consults the throttle **before** reading a body and

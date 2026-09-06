@@ -5,6 +5,8 @@ import io.yosemitekids.app.data.MasterToken
 import io.yosemitekids.app.data.ChannelIndex
 
 import io.yosemitekids.app.data.ConfigJson
+import io.yosemitekids.app.data.Grant
+import io.yosemitekids.app.data.Grants
 import io.yosemitekids.app.data.Page
 import io.yosemitekids.app.data.Profile
 import io.yosemitekids.app.data.SettingsSurface
@@ -61,6 +63,14 @@ object HubWeb {
      * three deliberate omissions are `sync` (the merge's own bookkeeping, which
      * only the stamper may write), `master` (elected between devices, not
      * chosen), and `updatedAt` (stamped at serialization).
+     *
+     * `grants` is a fourth, and for a harder reason than the other three: a
+     * patch **replaces** the key it names, so a browser that could set the
+     * array could also leave an entry out of it — and a grant missing from a
+     * save is expiry to the stamper, which tombstones that `grant|<id>` unit
+     * for the whole fleet. It could equally send an id already live somewhere
+     * as a merge key. Extra minutes therefore have a route of their own,
+     * [grant], which only ever appends and mints the id here.
      *
      * `ai` is here but its key never is — see [scrubPatch].
      */
@@ -284,6 +294,97 @@ object HubWeb {
                 current.profile(kid.optString("id"))?.limits?.pausedUntilMillis
             )
         }
+    }
+
+    // --- extra minutes ----------------------------------------------------
+
+    /** What a grant did, so the page can say something true when it did nothing. */
+    enum class Granted { OK, BAD_KID, BAD_MINUTES, BAD_DATE }
+
+    /**
+     * How far from this container's own day a granted date may sit.
+     *
+     * One day either side, because the hub reads no calendar of its own: the
+     * day comes from the parent's browser, and a family in Auckland is a day
+     * ahead of a container in UTC while a family in Honolulu is a day behind.
+     * Wider than that and a mistyped year would sit in the config for ever —
+     * a grant is expired by the *text* of its date, so one dated far ahead
+     * never expires and quietly pays out again every day until someone finds
+     * it.
+     */
+    internal const val GRANT_MAX_DAYS_AWAY = 1L
+
+    /**
+     * The same bound `LanServer`'s own `POST /grant` enforces. Two faces that
+     * disagreed about it would mean a parent granting on the NAS what their
+     * phone refuses, or the reverse.
+     */
+    internal val GRANT_MINUTES = 1..240
+
+    /** [Profile.newId]'s shape, which is what every kid id in this config is. */
+    private val KID_ID = Regex("[0-9a-f]{8}")
+
+    private const val DAY_MS = 24L * 60 * 60 * 1000
+
+    /**
+     * Extra minutes for today, for one kid or (blank [kidId]) for everyone.
+     *
+     * Deliberately not a config patch. `grants` is not in [PATCHABLE] and must
+     * not be: a patch replaces the array, so a browser holding a stale copy
+     * would silently expire a co-parent's tap, and one holding a chosen copy
+     * could mint a colliding merge key. Here the hub appends a single entry
+     * and mints its own id, so the only thing a browser decides is who, how
+     * many minutes, and which day.
+     *
+     * [date] is the browser's own local day and is checked against this
+     * container's UTC day only for distance — never rewritten to it. The
+     * container's day is arithmetic on [now] rather than a calendar lookup:
+     * Unix time carries no leap seconds, so the division *is* the day, and it
+     * is used for this bound and nothing else.
+     *
+     * The hub cannot deliver these minutes itself. It holds no credential on
+     * any device, so unlike the phone there is no `POST /grant` it may fire:
+     * it writes the tap into the config and nudges, and the minutes arrive by
+     * the same path every rule does.
+     */
+    fun grant(
+        store: HubStore,
+        who: String,
+        now: Long,
+        kidId: String,
+        minutes: Int,
+        date: String
+    ): Granted {
+        // A kid id lands in the fingerprint between commas (ConfigJson's `;G:`
+        // tail), so a stray delimiter there would let two different documents
+        // hash alike and read as in sync for ever. Existence is deliberately
+        // not checked: the browser only offers kids it just read, and the LAN
+        // route accepts an unknown kid for the same reason — a grant may
+        // precede the push that introduces the child.
+        if (kidId.isNotEmpty() && !KID_ID.matches(kidId)) return Granted.BAD_KID
+        if (minutes !in GRANT_MINUTES) return Granted.BAD_MINUTES
+        val day = Grants.dayNumber(date) ?: return Granted.BAD_DATE
+        if (Math.abs(day - Math.floorDiv(now, DAY_MS)) > GRANT_MAX_DAYS_AWAY) return Granted.BAD_DATE
+
+        store.edit(who, now) { current ->
+            // Minted against what this hub is holding rather than blind. Four
+            // CSPRNG bytes collide with a handful of live grants about never,
+            // but a collision is not a failure — it is two taps merged into
+            // one, silently, and the retry costs nothing.
+            val taken = current.grants.map { it.id }.toSet()
+            var id = Profile.newId()
+            while (id in taken) id = Profile.newId()
+            current.copy(
+                grants = current.grants + Grant(
+                    id = id,
+                    kidId = kidId.ifEmpty { null },
+                    date = date,
+                    minutes = minutes,
+                    at = now
+                )
+            )
+        }
+        return Granted.OK
     }
 
     /**

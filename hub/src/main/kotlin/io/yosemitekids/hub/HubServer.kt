@@ -411,6 +411,26 @@ class HubServer(
                 else null
             }
 
+            // The one config field with a route of its own, because it is the
+            // one a patch would get wrong: a patch replaces the array it
+            // names, and an entry left out of `grants` is expiry to the
+            // stamper. So the browser says who, how long and which day, and
+            // the hub appends one entry with an id it minted itself.
+            "/api/grant" -> mutate(ex) { body ->
+                val outcome = HubWeb.grant(
+                    store, WHO, now(),
+                    body.optString("kid"),
+                    body.optInt("minutes", 0),
+                    body.optString("date")
+                )
+                // Named rather than merely refused, like an assignment: "that
+                // date is nowhere near this box's" and "that is not a number
+                // of minutes" send a parent to different places.
+                JSONObject()
+                    .put("granted", outcome == HubWeb.Granted.OK)
+                    .put("why", outcome.name)
+            }
+
             "/api/versions" -> mutate(ex) { body ->
                 if (!body.has("restore")) null
                 else JSONObject().put(

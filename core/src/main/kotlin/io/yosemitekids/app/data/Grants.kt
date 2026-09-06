@@ -1,6 +1,7 @@
 package io.yosemitekids.app.data
 
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 
 /**
@@ -43,6 +44,23 @@ object Grants {
     /** The calendar day [epochMillis] falls on in [zone], in the form [Grant.date] uses. */
     fun dateOf(epochMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String =
         Instant.ofEpochMilli(epochMillis).atZone(zone).toLocalDate().toString()
+
+    /**
+     * [date] as a count of days since the epoch, or null when it is not a day
+     * in [Grant.date]'s form.
+     *
+     * For bounding how far a date sits from some clock, and for nothing else.
+     * Nothing counts, expires or merges by this number — a grant counts on the
+     * day it *names*, compared as text, so two devices in different zones
+     * agree on which taps are today's without agreeing on when today started.
+     *
+     * It exists because the hub takes a grant's date from the parent's browser
+     * (a container runs UTC and the family does not) and has to be able to
+     * refuse a date nowhere near its own, while reading no calendar of its
+     * own — see `HubWeb.grant` and guard 27.
+     */
+    fun dayNumber(date: String): Long? =
+        runCatching { LocalDate.parse(date).toEpochDay() }.getOrNull()
 
     /**
      * The grants that count for [profileId] on [date]: their own, plus any
