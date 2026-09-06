@@ -14,6 +14,13 @@ import java.util.concurrent.TimeUnit
  * chat-completions endpoint. Only titles, channel names and durations are sent —
  * never watch history. Prompt assembly and response parsing are pure functions,
  * kept Android-free so they are unit-testable.
+ *
+ * Here rather than in :app because [ScreeningStore] is, and a verdict is typed
+ * by [Verdict], which is declared inside this object — moving the store alone
+ * would have meant a second spelling of the enum on the two sides of a module
+ * boundary. Nothing in :hub calls it: the hub arms Http.HUB_HOSTS at startup,
+ * so an AI call from that box would be refused before DNS. Hub-side screening
+ * is a separate decision with its own record (docs/PLAN-hub-parity.md §8).
  */
 object AiScreener {
 
