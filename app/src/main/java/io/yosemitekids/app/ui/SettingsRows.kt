@@ -1,20 +1,25 @@
 package io.yosemitekids.app.ui
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,8 +28,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * The two rows the redesigned settings pages are built from.
@@ -36,8 +44,12 @@ import androidx.compose.ui.unit.dp
  * paragraph behind a **?** — the explanation stays available and stops being
  * the page.
  *
- * See docs/design/parent-settings/screens/raw-playback.png and
- * raw-screening.png.
+ * Both rows carry their own vertical padding and minimum height so a
+ * [SettingsDivider] between two of them can run the full width of the card
+ * they sit in, edge to edge, the way the design draws it.
+ *
+ * See docs/design/parent-settings/screens/full-10-playback.png and
+ * full-07-screening.png.
  */
 
 /** A switch with a summary line, and its full explanation behind a **?**. */
@@ -50,32 +62,50 @@ internal fun ToggleRow(
     help: String? = null
 ) {
     var helpOpen by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.SemiBold)
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 68.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Column(Modifier.weight(1f).padding(end = 4.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(2.dp))
                 Text(
                     summary,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall
+                        .copy(fontSize = 12.sp, lineHeight = 17.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (help != null) {
-                HelpDot(open = helpOpen, onToggle = { helpOpen = !helpOpen })
-                Spacer(Modifier.width(10.dp))
-            }
+            if (help != null) HelpDot(open = helpOpen, onToggle = { helpOpen = !helpOpen })
             Switch(
                 modifier = Modifier.tvFocusHighlight(),
                 checked = checked,
-                onCheckedChange = onCheckedChange
+                onCheckedChange = onCheckedChange,
+                // The design's switch: no outline on either state, and the
+                // off track a border grey rather than Material's lit one.
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedBorderColor = Color.Transparent,
+                    uncheckedTrackColor = SettingsStrongBorder,
+                    uncheckedThumbColor = SettingsTextTertiary,
+                    uncheckedBorderColor = Color.Transparent
+                )
             )
         }
         if (help != null && helpOpen) {
-            Spacer(Modifier.height(8.dp))
+            // No spacer above: the row's own bottom padding is the gap.
             Text(
                 help,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                style = MaterialTheme.typography.bodySmall
+                    .copy(fontSize = 12.5.sp, lineHeight = 20.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 13.dp)
             )
         }
     }
@@ -96,21 +126,30 @@ internal fun ValueRow(
     onClick: (() -> Unit)? = null,
     /** The summary in a tone — amber for "Never backed up" — rather than the quiet grey. */
     summaryColor: androidx.compose.ui.graphics.Color? = null,
-    /** The value in a tone — amber for a count waiting on the parent (raw-digest.png). */
+    /** The value in a tone — amber for a count waiting on the parent (full-14-digest.png). */
     valueColor: androidx.compose.ui.graphics.Color? = null
 ) {
     val base = Modifier.fillMaxWidth()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = (if (onClick != null) base.clickable(onClick = onClick) else base)
-            .padding(vertical = 12.dp)
+            // heightIn before the padding, so the minimum is the row's outer
+            // height: 15sp over 12sp does not reach it on its own.
+            .heightIn(min = if (summary == null) 56.dp else 64.dp)
+            .padding(vertical = 9.dp)
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium
+                    .copy(fontSize = 14.5.sp, lineHeight = 19.sp)
+            )
             if (summary != null) {
+                Spacer(Modifier.height(2.dp))
                 Text(
                     summary,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall
+                        .copy(fontSize = 12.sp, lineHeight = 17.sp),
                     color = summaryColor ?: MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -118,7 +157,7 @@ internal fun ValueRow(
         if (value != null) {
             Text(
                 value,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                 color = valueColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.End
             )
@@ -127,35 +166,42 @@ internal fun ValueRow(
             Spacer(Modifier.width(8.dp))
             Icon(
                 YosemiteIcons.ChevronRight, contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = SettingsPlaceholder,
+                modifier = Modifier.size(18.dp)
             )
         }
     }
 }
 
 /**
- * The **?** itself.
+ * The **?** itself: a 21 dp ring, hollow, in a 44 dp target.
  *
- * A 28dp circle rather than an [androidx.compose.material3.IconButton]'s 48:
- * it sits inline beside a switch, and the default touch target pushed the
- * switch off the row on a 344dp screen. Still comfortably tappable, and the
- * whole row is not clickable so there is nothing else here to hit by mistake.
+ * The two sizes are the point. 44 dp is the floor for every target in the
+ * design, but a 44 dp *layout* slot pushes the switch off a 344 dp row — so
+ * the ring reports 21 dp of layout and keeps 44 dp of touch, the way
+ * Material's own minimum-touch-target expansion does. Nothing else on these
+ * rows is clickable, so the overhang has nothing to steal.
  */
 @Composable
-internal fun HelpDot(open: Boolean, onToggle: () -> Unit) {
-    Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.size(28.dp).clickable(onClick = onToggle).tvFocusHighlight()
+internal fun HelpDot(open: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(21.dp)
+            .wrapContentSize(align = Alignment.Center, unbounded = true)
+            .size(44.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onToggle)
+            .tvFocusHighlight(cornerRadius = 8.dp)
     ) {
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(21.dp).border(1.dp, SettingsStrongBorder, CircleShape)
         ) {
             Text(
                 if (open) "×" else "?",
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelSmall
+                    .copy(fontSize = 11.5.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

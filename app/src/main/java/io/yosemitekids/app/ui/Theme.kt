@@ -301,6 +301,33 @@ val WarningAmber = Color(0xFFE0B77E)
 val WarningAmberSurface = Color(0xFF221D14)
 val WarningAmberBorder = Color(0xFF5A4A30)
 
+/** Text ON the amber fill — the count badge on a "waiting for you" card. */
+val WarningAmberOn = Color(0xFF231B10)
+
+/**
+ * The parent-settings palette, for the roles Material has no slot for.
+ * Everything else in the design's token table
+ * (docs/design/parent-settings/README.md) lands on a [AdminDarkColors] role;
+ * these five do not, and colours live in this file only.
+ */
+/** Body and feed lines — a step brighter than a label. */
+val SettingsTextSecondary = Color(0xFFA5A1AD)
+/** Labels and summaries. Same value as `onSurfaceVariant`, named where a
+ *  composable needs to say which of the two greys it means. */
+val SettingsTextTertiary = Color(0xFF8B8794)
+/** The faintest tone: counts, chevrons, asides, the footer. */
+val SettingsPlaceholder = Color(0xFF6D6979)
+/** Buttons, chips and the **?** ring — a step above a card border. */
+val SettingsStrongBorder = Color(0xFF3A3744)
+/** "Everything is fine" in the parent settings — greener than [StatusOkGreen],
+ *  which stays as it is for the search-index readouts. */
+val SettingsSuccess = Color(0xFF7FC8A9)
+/** A selected chip's fill: the accent at 16% over the card. */
+val SettingsAccentTint = Color(0x298FCFBE)
+/** The neutral square an avatar is previewed on while it is being picked —
+ *  the kid's own colour would make the grid a colour picker twice over. */
+val AvatarTile = Color(0xFF25242C)
+
 /** "Needs a look, not an alarm": a device offline or behind on updates, the
  *  banner that counts them. Warm rather than red, because a TV that is
  *  switched off is the normal state of a TV. */
@@ -332,18 +359,41 @@ fun timeMultiplierColor(percent: Int): Color? = when {
 }
 
 /**
- * Parent-facing settings/stats: the same teal, desaturated a step. Dense admin
- * forms shouldn't shout, and the muted variant still reads as "same app,
- * grown-up room" rather than switching brand mid-flow.
+ * Parent-facing settings/stats: the palette of the settings design handoff
+ * (docs/design/parent-settings/README.md), not a tint of the brand teal.
+ *
+ * A near-black page under cards one step lighter, one grey for every label and
+ * summary, and teal kept for interactive text and the primary button — nav
+ * icons are neutral, so amber still reads as a warning rather than as a
+ * button. The previous scheme desaturated the teal and left every surface,
+ * border and grey at Material's defaults, which is why cards, dividers and
+ * secondary text all sat a full step lighter than the design.
  */
 val AdminDarkColors = darkColorScheme(
-    primary = Color(0xFF7FBAB2),
-    onPrimary = Color(0xFF00352F),
+    primary = Color(0xFF8FCFBE),
+    onPrimary = Color(0xFF0F2A24),
     primaryContainer = Color(0xFF23514B),
     onPrimaryContainer = Color(0xFFCCE8E3),
     secondary = Color(0xFFAEBFBC),
     onSecondary = Color(0xFF1C2A28),
     secondaryContainer = Color(0xFF3A4B49),
     onSecondaryContainer = Color(0xFFDCE7E5),
-    tertiary = Color(0xFF9FC6C0)
+    tertiary = Color(0xFF9FC6C0),
+    // The page, not a card: SettingsFlow's root Surface paints `surface`, and
+    // every card names surfaceContainer so it sits a step above the page.
+    background = Color(0xFF101014),
+    onBackground = Color(0xFFEDEBF0),
+    surface = Color(0xFF101014),
+    onSurface = Color(0xFFEDEBF0),
+    surfaceContainerLow = Color(0xFF17161C),
+    surfaceContainer = Color(0xFF17161C),
+    surfaceContainerHigh = Color(0xFF1E1D24),
+    surfaceVariant = Color(0xFF25242C),
+    onSurfaceVariant = Color(0xFF8B8794),
+    // Two greys one step apart, and which is which matters: `outline` is a
+    // card or field border, `outlineVariant` the divider between two rows
+    // inside one — deliberately darker, so a card reads as one block.
+    outline = Color(0xFF2E2B36),
+    outlineVariant = Color(0xFF252430),
+    error = Color(0xFFE38C7E)
 )

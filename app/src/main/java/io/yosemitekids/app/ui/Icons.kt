@@ -83,6 +83,11 @@ object YosemiteIcons {
     val ChevronRight: ImageVector by lazy {
         icon("ChevronRight", "M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z")
     }
+    /** Back, on a settings sub-page's app bar. The glyph is the whole control
+     *  there — no "Back" word — so its contentDescription is the only label. */
+    val ChevronLeft: ImageVector by lazy {
+        icon("ChevronLeft", "M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z")
+    }
     val Playlist: ImageVector by lazy {
         icon("Playlist", "M4 10h12v2H4zm0-4h12v2H4zm0 8h8v2H4zm10 0v6l5-3z")
     }

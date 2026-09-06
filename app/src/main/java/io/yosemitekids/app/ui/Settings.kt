@@ -23,6 +23,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.ConfigStore
 import io.yosemitekids.app.data.LanClient
@@ -1775,10 +1776,15 @@ private enum class SettingsPage(val title: String) {
 }
 
 /**
- * One page of the hub: back + title, then the content in a scroll.
+ * One page of the hub: an app bar, then the content in a scroll.
+ *
+ * The bar is pinned rather than scrolled with the content — it carries the
+ * page's name and its only way back, and a long page that scrolls both away
+ * leaves a parent with neither. Back is the chevron alone, so its
+ * contentDescription is the only label TalkBack has to read.
  *
  * [actions] sit at the title's right edge, the way an app bar carries them —
- * "Select" and "+" on Channels & playlists (raw-channels.png). Most pages
+ * "Select" and "+" on Channels & playlists (full-04-channels.png). Most pages
  * have none.
  */
 @Composable
@@ -1788,25 +1794,48 @@ internal fun SubPage(
     actions: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            TextButton(modifier = Modifier.tvFocusHighlight(), onClick = onBack) { Text("‹ Back") }
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 6.dp)
+        ) {
+            // A Box, not an IconButton: the design's target is 44dp with an
+            // 8dp radius, and IconButton's state layer is a fixed 48dp circle.
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onBack)
+                    .tvFocusHighlight(cornerRadius = 8.dp)
+            ) {
+                Icon(
+                    YosemiteIcons.ChevronLeft,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
             Text(
                 title,
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(start = 8.dp)
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
             )
             if (actions != null) actions()
         }
-        content()
-        Spacer(Modifier.height(24.dp))
+        SettingsDivider()
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 14.dp)
+        ) {
+            content()
+            Spacer(Modifier.height(26.dp))
+        }
     }
 }
 
@@ -1831,20 +1860,25 @@ private fun HubRow(
             .fillMaxWidth()
             .tvFocusHighlight()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .heightIn(min = 60.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Icon(
             icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp)
+            // Neutral, not teal: on this screen teal means "you can press this
+            // text", and eight teal icons made the nav read as eight buttons.
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp)
         )
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(title, fontSize = 15.sp, lineHeight = 20.sp)
+            Spacer(Modifier.height(1.dp))
             Text(
                 summary,
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.5.sp,
+                lineHeight = 18.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -1853,8 +1887,8 @@ private fun HubRow(
         Icon(
             YosemiteIcons.ChevronRight,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp)
+            tint = SettingsPlaceholder,
+            modifier = Modifier.size(18.dp)
         )
     }
 }
@@ -1867,11 +1901,20 @@ private fun HubRow(
 @Composable
 internal fun SettingsCard(padded: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
     OutlinedCard(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp, MaterialTheme.colorScheme.outline
+        ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = if (padded) Modifier.padding(16.dp) else Modifier.padding(vertical = 4.dp),
+            // Unpadded: the rows bring their own padding and sit flush against
+            // the border, so a divider between two of them spans the card
+            // rather than stopping short of it on both sides.
+            modifier = if (padded) Modifier.padding(12.dp) else Modifier,
             verticalArrangement = Arrangement.spacedBy(if (padded) 8.dp else 0.dp),
             content = content
         )
@@ -2167,17 +2210,25 @@ internal fun SectionTitle(
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(
             text,
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+            style = MaterialTheme.typography.labelLarge
+                .copy(fontSize = 12.5.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f).padding(start = 4.dp)
         )
         if (aside != null) Text(
             aside,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.outline,
+            // Not `outline`, which is now a border tone: an aside at #2E2B36
+            // would be unreadable on the page.
+            color = SettingsPlaceholder,
             modifier = Modifier.padding(end = 4.dp)
         )
-        if (help != null) HelpDot(open = helpOpen, onToggle = { helpOpen = !helpOpen })
+        // The 4dp inset lines the ring's right edge up with the label's.
+        if (help != null) HelpDot(
+            open = helpOpen,
+            onToggle = { helpOpen = !helpOpen },
+            modifier = Modifier.padding(end = 4.dp)
+        )
     }
     if (help != null && helpOpen) {
         Spacer(Modifier.height(6.dp))
