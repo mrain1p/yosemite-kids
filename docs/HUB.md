@@ -251,6 +251,58 @@ particular for that (the channel list, the device rows, the blocked-times
 editor); those are hand-written and marked `data-control="<id>"`, which is how
 guard 26 tells a control that was built from one that was only claimed.
 
+### The AI key
+
+The key for the AI that screens videos can live on this box. Set it on
+*Content screening*, and every parent's phone that joins this hub is given it
+on its next sync — which is the point: screening works for the whole household
+without each parent finding the key and typing it again.
+
+**It is stored in plain text**, in `/data/secrets.json`, and there is no honest
+way around that. A phone keeps its copy in a Keystore-backed store that the
+hardware itself unlocks; a NAS has no such thing, and this container has no
+secret of its own to derive one from — a key encrypted with something sitting
+on the same volume protects against nothing. So the file is owner-only where
+the filesystem allows it (a Synology bind mount often does not, see
+*Permissions* below) and that is the whole of it. Anything running as root on
+the NAS can read it, so can anything else sharing the bind mount, and so can
+whoever holds a backup of that folder.
+
+What follows from that, practically:
+
+- **Use a separate key for this, with a spending cap.** Providers let you mint
+  more than one. A key that can only ever spend a few pounds a month is a very
+  different thing to lose than the one your other projects use.
+- **"Someone got into the NAS" means "rotate the key".** Not "check whether
+  they found it" — assume they did, mint a new one, and paste it into
+  *Replace the key*. That is one action and it is over.
+- **The page never shows it back.** Once set, all it will tell you is the last
+  four characters, which is enough to answer "is this the one I pasted?" and
+  nothing else. There is no way to read the key out of the GUI, and that is
+  deliberate: a field that rendered it would put the value into a browser, its
+  autofill, and every screenshot of the page.
+
+Two things it is **not**. It is not in `config.json`, so it is not in the five
+snapshots under `versions/`, not in `GET /api/state`, and not in the backup you
+download — `HubStoreTest` asserts each of those at every depth. And it is not
+given to kid devices: `GET /config` puts it back only for an enrolment the
+approver recorded as a parent's phone. A television gets its key from a
+parent's phone, as it always has.
+
+Holding the key does not let the hub *call* the AI, and nothing here changed
+that. The screener runs on the devices; the hub still reaches exactly two
+things — YouTube through `:crawl`'s allow-listed client, and the devices'
+`/sync-now` — and guard 7 is untouched by this feature. Whether the hub should
+ever screen is a separate decision with its own record.
+
+Rotating is also the one place the merge could have quietly beaten you. The key
+is resolved between peers by the `ai` unit's stamp, so setting one here moves
+that stamp deliberately: without it, a rotation typed on the NAS and the old
+key still held by a television that slept through it would be a tie, broken by
+string order, and about half of all rotations would lose to the key they
+replaced. Screening would keep working the whole time and the bill would be the
+only symptom.
+
 ### Backups
 
 *App, hub & backup* has two different things with similar names, and the
@@ -279,9 +331,8 @@ Notes on the session:
 - It lives in memory. Restarting the hub signs everyone out. That is
   deliberate: a bearer credential never lands on the volume.
 - Sign-in is throttled, and the lockout escalates. See "The password" above.
-- The API key is not editable here and will not be. The hub strips secrets
-  before writing and has no keystore, so a key typed here could not survive a
-  restart. It stays on the phone.
+- The API key **is** editable here now, and what that costs is written out
+  under "The AI key" below. Read it before you paste one in.
 
 ### Installing it on a phone
 

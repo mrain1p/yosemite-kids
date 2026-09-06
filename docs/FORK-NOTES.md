@@ -1107,7 +1107,9 @@ fixture with no API key, so the one field the hub removes was never in play.
 Its comment even names the symptom it failed to catch.
 
 **A worse bug found on the way, not fixed here:** a rotated API key can be
-silently reverted by a peer still holding the old one. See "Next up" above.
+silently reverted by a peer still holding the old one. Fixed on the phone by
+`ConfigStore.mergeIncoming` passing `localApiKey`, and on the hub by the same
+argument in "The AI key lives on the NAS" below.
 
 ### Update a TV from the phone (roadmap 2G, second half)
 
@@ -1226,3 +1228,64 @@ and a route table in `HubServer`; nothing about how the page works changed.
   the name reads from a sofa. The generator now fits on both axes, because
   height only starts to bind once there are two lines — at mdpi the whole
   banner is 160 by 90 pixels.
+
+### The AI key lives on the NAS (PLAN-hub-parity step 10)
+
+The owner's ask, in their words: "ideally they should live on the nas so
+anyone can use the features." A second parent joining the hub now gets the
+family's AI key with their first sync instead of having to find it and type
+it again.
+
+- **`HubSecrets` over `/data/secrets.json`, and nothing in `config.json`.**
+  `HubStore.commit` still strips `ai.apiKey` from every byte it writes, so
+  the four places a key would otherwise surface — the document itself, the
+  five snapshots in `versions/`, `GET /api/state`, and the backup a parent
+  downloads — stay keyless by construction rather than by anyone remembering.
+  It is put back in exactly two functions, `forPeers()` and
+  `fingerprintWithKey()`, mirroring `ConfigStore.rawJson`/`withSecrets` on the
+  phone. `/api/state` also stopped serialising with secrets: it was writing
+  `apiKey: ""` — an empty field, but a field, and the one that starts
+  carrying a value the day anything overlays the key upstream of it.
+- **`PairedDevice.secretless` split into `secretless` and `isHub`.** One flag
+  had been doing two jobs — "judge this peer on the keyless fingerprint" and
+  "this peer is the hub" — which was harmless while a hub was the only
+  keyless peer and wrong the instant one could hold a key. Flipping it would
+  have re-enabled the /24 subnet sweep for a NAS, pushed the search index at
+  a peer that answers 405, hidden the hub from its own card, and made
+  `POST /leave-hub` remove nothing — four silent failures, none of them near
+  the edit. A guard now holds `secretless` to the three files that pick a
+  fingerprint, and the hub-by-name guard's message, which taught the
+  conflation, names `isHub`.
+- **`localApiKey` finally reaches `HubStore.merge`.** Without it the hub's
+  side of the key comparison is permanently blank, because its own disk copy
+  is keyless — so `pickKey` took the incoming key unconditionally and a
+  television that slept through a rotation would wake, push its stale key,
+  and have the hub hand the dead key back round the household. Screening
+  keeps working throughout; the bill is the only symptom. This is the bug
+  round 14 found and did not fix.
+- **Setting the key on the hub moves the `ai` unit's stamp deliberately.**
+  The value it changes is not in the document, so nothing would otherwise
+  move — and a rotation typed on the NAS versus the old key on a sleeping TV
+  would be a tie, broken lexicographically. About half of all rotations would
+  have lost to the key they replaced.
+- **The hub reports `holdsKey` per caller, and gives the key to parents
+  only.** `HubTokens.Device` gains a kind, written by whoever presented the
+  admin secret at `/approve` and never claimed by the thing joining. Existing
+  rows fail closed to `DEVICE`. `hash` on `/status` stays the keyless
+  fingerprint for ever and a `hashWithKey` is added beside it, so a phone
+  from before this keeps agreeing with the hub exactly as it does now.
+- **A control on the hub that never renders the value back**, at most its
+  last four characters, and a card that says plainly what the file is stored
+  under: plain text, because a NAS has no hardware keystore and a key
+  encrypted with something on the same volume protects against nothing. Use a
+  separate key with a spending cap; treat "someone got into the NAS" as
+  "rotate the key". `docs/HUB.md` carries the long version.
+- **Guard 7 is untouched.** Holding the key does not let the hub call the AI:
+  the screener runs on the devices, and the hub still reaches YouTube and the
+  devices' `/sync-now` and nothing else.
+- **`HubStoreTest` did not exist.** It does now, and it is where "the hub's
+  disk holds no credential" stops being a property of `stripSecrets` happening
+  to be called in one function. The un-rotation is proved against the merge
+  run again and again with the inputs held still, the way
+  `MergeConvergenceTest` does — a rule that holds once and fails on the fourth
+  round is not a rule yet.

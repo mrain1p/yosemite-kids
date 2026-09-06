@@ -148,6 +148,35 @@ needs proof.
    template: round-trips, omitted at default, keeps the pre-feature
    fingerprint, moves the fingerprint when set.
 
+## 4a. The API key is not in the document, and that has a rule
+
+Two faces now hold the key outside `config.json` — the phone in `SecretStore`
+and the hub in `HubSecrets` — because that document is served to every peer,
+copied into the hub's `versions/` ring, rendered by the admin page and handed
+to a parent as a backup. Every write path strips `ai.apiKey`, and the key is
+overlaid back on only where a peer must actually compare or receive it.
+
+What that costs, and what a future session has to remember:
+
+- **The merge is told the key out of band.** `ConfigMerge.merge` takes
+  `localApiKey`, because the local document it is handed is always keyless and
+  without it `pickKey` sees a blank local side and takes the incoming key
+  unconditionally. A peer that slept through a rotation then hands the dead key
+  back to the whole household, screening keeps working, and the bill is the only
+  symptom. Any new caller of `merge` that stores a key must pass it and must
+  store what comes back.
+- **A third place that can set the key must move the `ai` stamp itself.** The
+  key is resolved between peers by that unit's stamp like every other field. A
+  face that keeps the value outside the document changes nothing the stamper can
+  see, so it has to ask: `HubStore.setApiKey` passes `refresh = setOf(AI)`.
+  Without it a rotation and the old key on a sleeping peer are a **tie**, broken
+  lexicographically, and about half of all rotations lose to the key they
+  replaced. No script can catch this — it looks exactly like an ordinary write.
+- **A blank never clears a real key**, and that is deliberate: "this peer holds
+  none" and "clear it" are the same bytes on the wire, and the commonest peer in
+  the fleet is keyless. Clearing therefore does not propagate. Do not "fix" it
+  without a way to tell those two apart.
+
 ## 5. What breaks silently, and its symptom
 
 | Mistake | What you will see |
