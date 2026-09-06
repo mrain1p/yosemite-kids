@@ -39,7 +39,11 @@ fun main() {
     // The one thing this hub ever initiates: "my copy moved, come and look."
     // Not the config itself — see HubNudge for why that limit is deliberate.
     val nudge = HubNudge(tokens)
-    val store = HubStore(dataDir, onChanged = nudge::changed)
+    // The AI key, in a file of its own beside config.json — never in it. See
+    // HubSecrets for what that file is and is not protected by, and
+    // docs/HUB.md for the sentence a parent gets to read about it.
+    val secrets = HubSecrets(dataDir)
+    val store = HubStore(dataDir, onChanged = nudge::changed, secrets = secrets)
     // The environment value, kept separate from the resolved one. The server
     // is handed THIS, so it reads the stored token through HubTokens on every
     // call and a rotated one stops working at once; handing it the resolved

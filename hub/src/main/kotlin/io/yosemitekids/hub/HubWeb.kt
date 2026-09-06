@@ -95,7 +95,14 @@ object HubWeb {
         startedAt: Long = 0L
     ): String {
         val config = runCatching { store.load() }.getOrElse { Whitelist(emptyList(), emptySet()) }
-        val raw = runCatching { JSONObject(ConfigJson.toJson(config)) }.getOrElse { JSONObject() }
+        // Keyless, and explicitly so. `config` comes off the hub's own disk,
+        // which has had the key stripped from it, so `toJson` would write
+        // `apiKey: ""` — an empty field, but a field, and one that would
+        // start carrying a value the first time anything overlays the key
+        // before getting here. The page has no use for it: it renders the
+        // key's last four characters from `hub.keyTail` and never its value.
+        val raw = runCatching { JSONObject(ConfigJson.toJson(config, includeSecrets = false)) }
+            .getOrElse { JSONObject() }
 
         // The search index as the Devices page tells it: who builds it, how
         // far it is, whether anyone is pulling it. Counted against the

@@ -16,9 +16,11 @@ import java.io.File
  * write, one lock held across read-merge-write, and the merge itself, taken
  * from `:core` rather than reimplemented.
  *
- * The API key is **not** stored here. A hub is optional, so the key stays where
- * it already lives, on the devices; a config arriving with one has it stripped
- * before it touches this disk, exactly as the app does.
+ * The API key is **not** stored in this document. A config arriving with one
+ * has it stripped before it touches this disk, exactly as the app does — and
+ * that stays true now that the hub can hold a key at all, because the key
+ * lives in [HubSecrets], in a file of its own, and is overlaid back on only
+ * where it is actually needed ([forPeers], [fingerprintWithKey]).
  */
 class HubStore(
     internal val dataDir: File,
@@ -29,7 +31,15 @@ class HubStore(
      * serves on a fixed pool of four threads. [HubNudge] hands off to its
      * own worker and returns.
      */
-    private val onChanged: () -> Unit = {}
+    private val onChanged: () -> Unit = {},
+    /**
+     * Where the API key lives, or null on a hub that holds none — which is
+     * every hub before this feature, and every test that does not care.
+     *
+     * Deliberately not a field of the config: see this class's own KDoc, and
+     * [HubSecrets] for why the file is separate.
+     */
+    private val secrets: HubSecrets? = null
 ) {
 
     private val file = File(dataDir, "config.json")
@@ -73,7 +83,51 @@ class HubStore(
         if (file.exists()) file.readText().takeIf { it.isNotBlank() } else null
     }
 
+    /**
+     * The bytes with the API key put back — for a **parent's** phone, and for
+     * nothing else.
+     *
+     * `ConfigStore.rawJson` on the phone; the same job and the same shape. A
+     * kid device is served [raw] instead, because it already holds the key by
+     * another path and there is no reason for a credential to travel to a
+     * television that did not ask.
+     *
+     * Built by putting the key back onto the stored JSON rather than by
+     * re-serialising a parsed `Whitelist`, for the reason the sync skill's
+     * sixth prohibition gives: a model round trip drops fields a newer build
+     * added, including ones nested inside objects this build does know.
+     */
+    fun forPeers(): String? {
+        val text = raw() ?: return null
+        val key = secrets?.apiKey().orEmpty()
+        if (key.isBlank()) return text
+        return runCatching {
+            val root = org.json.JSONObject(text)
+            val ai = root.optJSONObject("ai") ?: org.json.JSONObject().also { root.put("ai", it) }
+            ai.put("apiKey", key)
+            root.toString(2)
+        }.getOrDefault(text)
+    }
+
     fun fingerprint(): String = runCatching { ConfigJson.fingerprint(load()) }.getOrDefault("")
+
+    /**
+     * The fingerprint a peer holding the same key would compute.
+     *
+     * Advertised beside [fingerprint], never instead of it. `hash` on
+     * `/status` stays the keyless form for ever: a phone that predates this
+     * has the hub recorded as keyless and compares its own keyless
+     * fingerprint against it, so moving `hash` would put every older phone
+     * permanently out of sync with a hub it agrees with completely.
+     */
+    fun fingerprintWithKey(): String = runCatching {
+        val key = secrets?.apiKey().orEmpty()
+        val w = load()
+        ConfigJson.fingerprint(if (key.isBlank()) w else w.copy(ai = w.ai.copy(apiKey = key)))
+    }.getOrDefault("")
+
+    /** Whether this hub holds a key of its own, for `/status` and the page. */
+    fun holdsKey(): Boolean = secrets?.hasKey() == true
 
     fun syncHash(): String = runCatching { ConfigMerge.syncHash(load().sync) }
         .getOrDefault(ConfigMerge.syncHash(SyncMeta.EMPTY))
@@ -95,7 +149,18 @@ class HubStore(
      * the caller answers 400 and nothing here is touched.
      */
     fun merge(incoming: String, from: String?): Outcome? = synchronized(lock) {
-        val result = ConfigMerge.merge(raw(), incoming)
+        // The key this box actually holds, handed to the merge out of band
+        // because it is never in the document the merge is given — this disk
+        // copy has had it stripped, exactly as the phone's has.
+        //
+        // Without it the local side always looked keyless, so `pickKey` took
+        // the incoming key unconditionally: a television that slept through a
+        // rotation would wake up, push its stale key here, and the hub would
+        // adopt it and hand it back round the fleet. Screening keeps working
+        // throughout, so nobody looks — the symptom arrives weeks later on a
+        // bill for a key that was supposed to be dead.
+        val held = secrets?.apiKey().orEmpty()
+        val result = ConfigMerge.merge(raw(), incoming, localApiKey = held)
         if (result.merged == null && !result.peerBehind) {
             // Either nothing new, or unreadable. Tell them apart the same way
             // the app does, so a malformed push is still a 400.
@@ -105,6 +170,12 @@ class HubStore(
         val beforeHash = fingerprintOf(raw())
         val beforeSync = syncHashOf(raw())
         result.merged?.let { commit(it) }
+        // What the merge decided the key is — resolved by the `ai` unit's own
+        // stamp, like every other field, rather than by whoever spoke last.
+        // A blank never clears one (`ConfigMerge.pickKey`: a keyless peer
+        // cannot be told apart from a peer that has none), so this only ever
+        // learns a key or adopts a newer one.
+        if (result.apiKey.isNotBlank() && result.apiKey != held) secrets?.setApiKey(result.apiKey)
         val after = load()
         val afterHash = ConfigJson.fingerprint(after)
         val afterSync = ConfigMerge.syncHash(after.sync)
@@ -207,6 +278,27 @@ class HubStore(
         val changed = beforeHash != afterHash || beforeSync != afterSync
         if (changed) println("edited on the hub by $who → #$afterHash")
         outcome(changed, peerBehind = changed, hash = afterHash, syncHash = afterSync)
+    }
+
+    /**
+     * Set, replace or (with a blank) clear the AI key from the admin page.
+     *
+     * Two writes, and the second one is the whole subtlety. The key goes to
+     * [HubSecrets]; then the `ai` unit's stamp is moved through [edit]'s
+     * refresh set, because `ConfigMerge.pickKey` resolves the key by that
+     * stamp. Without it a rotation done here and a stale peer still holding
+     * the old key is a **tie**, and a tie is broken lexicographically — so
+     * roughly half of all rotations would quietly lose to the key they
+     * replaced, on the box the parent typed the new one into.
+     *
+     * The stamp moves and no value in the document does, which is exactly what
+     * `refresh` exists for. Nothing derived from the key reaches `sync.log`:
+     * the refresh mints no change line, and the `Change` record has no value
+     * field to leak one into.
+     */
+    fun setApiKey(key: String, who: String, now: Long): Outcome {
+        secrets?.setApiKey(key)
+        return edit(who, now, refresh = setOf(ConfigStamp.AI)) { it }
     }
 
     // There is deliberately no adopt()/replace() here.
