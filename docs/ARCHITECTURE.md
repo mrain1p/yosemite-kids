@@ -87,6 +87,7 @@ app/src/main/java/io/yosemitekids/app/
     │                         hold-menu actions, "Play on TV"
     ├── HomeState.kt          Screen sealed interface + UiState
     ├── YosemiteScreen.kt     Screen container: transitions, titles, back, errors
+    ├── TvNavRail.kt          The television's chrome: the rail, its two widths
     ├── HomeSections.kt       The home as data: shelf ids, order, pin resolve
     ├── HomeShelves.kt        One home, both shapes: the shelf walk, the hero
     ├── HomeScreens.kt        Shared home pieces: rails, header, Channels tab
@@ -297,6 +298,7 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Add, reorder or restyle a home shelf | `HomeSections.kt` (the id, the catalogue), then its branch in `HomeShelves.kt` `drawShelves` — guard 33 fails if you do only one. Sizes are `homeMetrics`; the hero is `PinnedHeroCarousel` (phone) / `PinnedHeroRow` (TV) |
 | Change what the pinned hero shows | `MainViewModel.standInPins` / `pinnedRow` (the parent's list is still a TODO), `HomeSections.resolvePins` (fail-closed, `HomeSectionsTest`) |
 | Change the You tab | `YouScreen.kt`, `MainViewModel.youShelves` / `openYou` |
+| Change the television's rail (a stop, its widths, the time card) | `TvNavRail.kt` (`RailStop`, `railStopFor`, the two widths — `TvNavRailTest` pins what still fits beside them), wired in `YosemiteScreen.kt` (`railShown`, the asymmetric gutter, the page's focus group). Guard 35 holds the focus-modifier order the collapse depends on |
 | Change what "More like what you watch" suggests | `HomeState.suggestionsFor` / `titleKeywords` (pure — `SuggestionsTest` covers it), fed by `MainViewModel.suggestionsRow`, switched by `Whitelist.suggestSimilar` |
 | Change the profile hub or the look editor | `ProfileHub.kt`; the sync-back is `data/ProfileLooks.kt` + `GET /looks` + `MainViewModel.syncConfigState` (`mergeLooks`) + `MainActivity.onChangeLook` |
 | Change what rows sit above a channel's grid | `PlaylistShelves.kt` (`playlistShelves`, `newForYouRow`, `playlistRow`), assembled in `YosemiteScreen` (`header`); the data is `MainViewModel.loadPlaylistShelves` / `loadPlaylistRow` |

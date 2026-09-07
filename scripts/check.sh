@@ -948,9 +948,20 @@ echo "$tl_code" | grep -q "interpolateRemainingMs(" ||
 #     it is dead code that looks like a fix for the exact bug it is not
 #     fixing.
 #
+#     And it may not sit on the page beside the rail at all. It was put there
+#     so a dismissed dialog would hand the remote back to the kid's tile; on
+#     the emulator its exit hook swallowed the LEFT press that should have
+#     reached the rail, and the focus loss it was guarding against was then
+#     measured and does not happen (the content Box in YosemiteScreen.kt says
+#     what was pressed). Anyone putting it back there is fixing a bug that is
+#     not there and breaking the one thing the rail must do.
+#
+#     The rail's own pair has to exist, not just be in the right order: take
+#     the focusGroup off the rail's Column and onFocusChanged has nothing
+#     after it to observe, and the rail never collapses - same silence.
+#
 #     Whitespace is stripped first, so a chain broken over four lines - which
 #     is every chain in this codebase - reads as one string.
-focus_seen=""
 for f in $(find app/src/main -name '*.kt'); do
   flat=$(tr -d '[:space:]' < "$f")
   case "$flat" in
@@ -962,12 +973,14 @@ for f in $(find app/src/main -name '*.kt'); do
   # otherwise end the whole gate on its own success.
   all=$( { echo "$flat" | grep -oE '\.focusRestorer\([^)]*\)' || true; } | wc -l | tr -d ' ')
   ok=$( { echo "$flat" | grep -oE '\.focusRestorer\([^)]*\)\.(focusGroup|focusTarget|focusProperties)\(' || true; } | wc -l | tr -d ' ')
-  [ "$all" = "0" ] || focus_seen="yes"
   [ "$all" = "$ok" ] ||
     guard_fail "$(basename "$f") applies .focusRestorer() with no focus target after it. It restores into the NEXT focus target in the chain; on its own it does nothing at all. Write .focusRestorer().focusGroup()."
+  [ "$all" = "0" ] || [ "$(basename "$f")" != "YosemiteScreen.kt" ] ||
+    guard_fail "YosemiteScreen.kt applies .focusRestorer(). On the page beside the TV nav rail its exit hook ate the LEFT press into the rail, and the focus loss it was meant to cure was measured on the emulator and does not happen. Leave the page a plain focusGroup; the content Box there says what was pressed."
 done
-[ -n "$focus_seen" ] ||
-  guard_fail "no .focusRestorer() anywhere in app/src/main; guard 35 is half blind. The TV nav rail is the first focusable in the tree, so the page beside it needs one - see YosemiteScreen.kt."
+rail_flat=$(tr -d '[:space:]' < app/src/main/java/io/yosemitekids/app/ui/TvNavRail.kt)
+echo "$rail_flat" | grep -qE '\.onFocusChanged\{[^}]*\}\.focusGroup\(\)' ||
+  guard_fail "TvNavRail.kt no longer has .onFocusChanged { }.focusGroup() on the rail's Column. That pair is how the host learns the remote has left the rail; without it the rail never collapses and nothing says so."
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

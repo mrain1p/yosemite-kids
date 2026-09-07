@@ -1086,11 +1086,22 @@ if (($tlCode -join "`n") -notmatch "interpolateRemainingMs\(") {
 #     it is dead code that looks like a fix for the exact bug it is not
 #     fixing.
 #
+#     And it may not sit on the page beside the rail at all. It was put there
+#     so a dismissed dialog would hand the remote back to the kid's tile; on
+#     the emulator its exit hook swallowed the LEFT press that should have
+#     reached the rail, and the focus loss it was guarding against was then
+#     measured and does not happen (the content Box in YosemiteScreen.kt says
+#     what was pressed). Anyone putting it back there is fixing a bug that is
+#     not there and breaking the one thing the rail must do.
+#
+#     The rail's own pair has to exist, not just be in the right order: take
+#     the focusGroup off the rail's Column and onFocusChanged has nothing
+#     after it to observe, and the rail never collapses — same silence.
+#
 #     Only the reversed adjacency is flagged, so this cannot fire on an
 #     unrelated onFocusChanged somewhere else in the same file.
 #     Whitespace is stripped first, so a chain broken over four lines - which
 #     is every chain in this codebase - reads as one string.
-$focusSeen = $false
 foreach ($f in @(Get-ChildItem -Recurse -Filter *.kt app/src/main)) {
     $flat = (Get-Content $f.FullName -Raw) -replace '\s', ''
     if ($flat -match "focusGroup\(\)\.onFocusChanged") {
@@ -1098,13 +1109,16 @@ foreach ($f in @(Get-ChildItem -Recurse -Filter *.kt app/src/main)) {
     }
     $all = @([regex]::Matches($flat, '\.focusRestorer\([^)]*\)'))
     $ok = @([regex]::Matches($flat, '\.focusRestorer\([^)]*\)\.(focusGroup|focusTarget|focusProperties)\('))
-    if ($all.Count -gt 0) { $focusSeen = $true }
     if ($all.Count -ne $ok.Count) {
         Fail-Guard "$($f.Name) applies .focusRestorer() with no focus target after it. It restores into the NEXT focus target in the chain; on its own it does nothing at all. Write .focusRestorer().focusGroup()."
     }
+    if ($all.Count -gt 0 -and $f.Name -eq "YosemiteScreen.kt") {
+        Fail-Guard "YosemiteScreen.kt applies .focusRestorer(). On the page beside the TV nav rail its exit hook ate the LEFT press into the rail, and the focus loss it was meant to cure was measured on the emulator and does not happen. Leave the page a plain focusGroup; the content Box there says what was pressed."
+    }
 }
-if (-not $focusSeen) {
-    Fail-Guard "no .focusRestorer() anywhere in app/src/main; guard 35 is half blind. The TV nav rail is the first focusable in the tree, so the page beside it needs one - see YosemiteScreen.kt."
+$railFlat = (Get-Content "app/src/main/java/io/yosemitekids/app/ui/TvNavRail.kt" -Raw) -replace '\s', ''
+if ($railFlat -notmatch '\.onFocusChanged\{[^}]*\}\.focusGroup\(\)') {
+    Fail-Guard "TvNavRail.kt no longer has .onFocusChanged { }.focusGroup() on the rail's Column. That pair is how the host learns the remote has left the rail; without it the rail never collapses and nothing says so."
 }
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
