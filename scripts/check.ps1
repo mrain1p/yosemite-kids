@@ -1069,6 +1069,63 @@ if (($tlCode -join "`n") -notmatch "interpolateRemainingMs\(") {
     Fail-Guard "TimeLeft.kt no longer calls interpolateRemainingMs. Whatever now produces the chrome's time-left must be a pure function with a test, or the value goes stale again."
 }
 
+# 36. No colour literal on a kid-facing screen.
+#     Every hue a kid sees comes from the scheme (the three looks and the
+#     per-kid tint) or from KidTokens (action, timeWarning, watched, offline,
+#     artworkScrim, onArtwork). A literal at the point of use is how the amber
+#     warning came to exist twice at two alphas, and how a white label on the
+#     light look's paper went invisible - it reviews fine and fails on a
+#     screen the author was not holding. Theme.kt and KidTokens.kt are where
+#     literals live on purpose. Icons.kt builds ImageVectors whose path fill
+#     is a placeholder every Icon() call tints over. The Settings*.kt family,
+#     KidsSettings, StatsScreen, SyncActivityScreen and DigestScreen are the
+#     parent's face, on the named palette in Theme.kt. Comment lines are
+#     skipped, so a comment may explain a literal it replaced.
+#
+#     TEMPORARY: YosemiteScreen.kt and HomeScreens.kt still carry literals.
+#     Other hands were in them when this landed, so they are exempt here and
+#     NAMED on every run rather than hidden in the pattern. Migrate them and
+#     delete them from $colourTemp: the guard fails the moment an exempt file
+#     is clean, so the exemption cannot outlive its reason.
+$colourExempt = @("Theme.kt", "KidTokens.kt", "Icons.kt", "KidsSettings.kt", "StatsScreen.kt", "SyncActivityScreen.kt", "DigestScreen.kt")
+$colourTemp = @("YosemiteScreen.kt", "HomeScreens.kt")
+$colourPat = 'Color\(0x|Color\.White|Color\.Black'
+foreach ($f in Get-ChildItem app/src/main/java/io/yosemitekids/app/ui/*.kt) {
+    if ($colourExempt -contains $f.Name -or $f.Name -like "Settings*.kt") { continue }
+    $hits = @(Get-Content $f.FullName | Select-String -Pattern $colourPat -CaseSensitive |
+        Where-Object { $_.Line.Trim() -notmatch '^(//|\*|/\*)' } |
+        ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" })
+    if ($colourTemp -contains $f.Name) {
+        if ($hits.Count -eq 0) {
+            Fail-Guard "$($f.Name) is clean now: remove it from guard 36's temporary exemption (colourTemp in check.ps1, colour_temp in check.sh)."
+        }
+        Write-Host "   guard 36: $($f.Name) still carries colour literals - TEMPORARY exemption, remove at merge ($($hits.Count) line(s))"
+        continue
+    }
+    if ($hits.Count -gt 0) {
+        Fail-Guard "colour literal on a kid-facing screen in $($f.Name). Use MaterialTheme.colorScheme, or kidTokens: artworkScrim/onArtwork over a picture or a scrim, timeWarning for time running out, action for the one thing to press. Found: $($hits -join '; ')"
+    }
+}
+
+# 37. The player has no focusables.
+#     Every key on the TV player goes through PlayerActivity.onKeyDown: one
+#     integer cursor walks the toolbar slots, the two-button cards and the
+#     track sheet. A focus modifier anywhere under the player's setContent
+#     takes the d-pad away from that path - OK stops toggling playback - and
+#     no screenshot catches it, because the controls still draw.
+#     docs/SCREENS.md states the rule; this enforces it over every Player*.kt
+#     file, comment lines excluded.
+$focusBad = @(Get-ChildItem app/src/main/java/io/yosemitekids/app/ui/Player*.kt | ForEach-Object {
+    $pf = $_
+    Get-Content $pf.FullName |
+        Select-String -Pattern 'focusable\(|[fF]ocusRequester|onFocusChanged|tvFocusHighlight\(|focusTarget|focusProperties|focusGroup' -CaseSensitive |
+        Where-Object { $_.Line.Trim() -notmatch '^(//|\*|/\*)' } |
+        ForEach-Object { "$($pf.Name):$($_.LineNumber): $($_.Line.Trim())" }
+})
+if ($focusBad.Count -gt 0) {
+    Fail-Guard "a focus modifier in the player. Its keys are the single onKeyDown cursor (TvToolbarSlot, handleTwoButtonKey); give the new control a cursor slot instead. Found: $($focusBad -join '; ')"
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

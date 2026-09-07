@@ -331,7 +331,7 @@ internal fun SpecialTile(
             ) {
                 if (icon != null) {
                     androidx.compose.material3.Icon(
-                        icon, contentDescription = null, tint = Color.White,
+                        icon, contentDescription = null, tint = kidTokens.onArtwork,
                         modifier = Modifier.fillMaxSize(0.42f)
                     )
                 } else Text(emoji, fontSize = TextUnit(56f, TextUnitType.Sp))
@@ -497,12 +497,12 @@ internal fun VideoCard(
             if (item.video.durationSeconds > 0) {
                 Text(
                     formatClock(item.video.durationSeconds),
-                    color = Color.White,
+                    color = kidTokens.onArtwork,
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(6.dp)
-                        .background(Color(0xCC000000), RoundedCornerShape(4.dp))
+                        .background(kidTokens.artworkScrim, RoundedCornerShape(4.dp))
                         .padding(horizontal = 5.dp, vertical = 2.dp)
                 )
             }
@@ -599,7 +599,7 @@ internal fun ChannelChip(
             ) {
                 when {
                     icon != null -> androidx.compose.material3.Icon(
-                        icon, contentDescription = null, tint = Color.White,
+                        icon, contentDescription = null, tint = kidTokens.onArtwork,
                         modifier = Modifier.size(art * 0.47f)
                     )
                     emoji != null -> Text(emoji, fontSize = TextUnit(30f, TextUnitType.Sp))

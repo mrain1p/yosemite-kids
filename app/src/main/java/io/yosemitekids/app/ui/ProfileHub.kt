@@ -218,7 +218,9 @@ internal fun LookPicker(
                     .clickable { onColor(c) },
                 contentAlignment = Alignment.Center
             ) {
-                if (c == color) Text("✓", color = Color.White)
+                // Whichever of black and white reads on the swatch — the
+                // kid may pick pale yellow as readily as navy.
+                if (c == color) Text("✓", color = readableOn(Color(c)))
             }
         }
     }

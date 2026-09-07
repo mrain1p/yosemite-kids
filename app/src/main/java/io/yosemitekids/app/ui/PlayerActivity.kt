@@ -746,7 +746,12 @@ class PlayerActivity : ComponentActivity() {
                 if (portrait && !pip) {
                     PortraitPlayerScaffold { stage(true) }
                 } else {
-                    Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                    // The letterbox is `scrim`, which every scheme keeps black:
+                    // a video's surround is not themed, on any player.
+                    Box(
+                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim),
+                        contentAlignment = Alignment.Center
+                    ) {
                         stage(false)
                     }
                 }
@@ -773,10 +778,11 @@ class PlayerActivity : ComponentActivity() {
         val listenOnly by listenOnlyMessage
         val card by endCard
         val pip by inPip
+        val tokens = kidTokens
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .background(MaterialTheme.colorScheme.scrim)
                 .onGloballyPositioned { c ->
                     val b = c.boundsInWindow()
                     videoBounds = android.graphics.Rect(
@@ -808,13 +814,13 @@ class PlayerActivity : ComponentActivity() {
                 ) {
                     Text(
                         listenOnly!!,
-                        color = Color.White,
+                        color = tokens.onArtwork,
                         style = MaterialTheme.typography.headlineSmall
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
                         playback?.title.orEmpty(),
-                        color = Color.White.copy(alpha = 0.7f),
+                        color = tokens.onArtwork.copy(alpha = 0.7f),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -827,7 +833,7 @@ class PlayerActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
                     Text(
                         if (checking) "Checking this one…" else "Getting it ready…",
-                        color = Color.White.copy(alpha = 0.85f)
+                        color = tokens.onArtwork.copy(alpha = 0.85f)
                     )
                 }
                 // Composed from the first video onwards and never swapped
@@ -1001,7 +1007,7 @@ class PlayerActivity : ComponentActivity() {
                                 .padding(vertical = 4.dp)
                         ) {
                             if (avatar != null) {
-                                Box(Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(Color(0x33FFFFFF))) {
+                                Box(Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
                                     coil.compose.AsyncImage(
                                         model = avatar,
                                         contentDescription = channel,
@@ -1681,7 +1687,7 @@ class PlayerActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = YosemiteDarkColors, typography = YosemiteTypography) {
                 Box(
-                    Modifier.fillMaxSize().background(Color.Black),
+                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim),
                     contentAlignment = Alignment.Center
                 ) {
                     BlockedCard(reason, isTv = isTv) { finish() }
@@ -2271,12 +2277,13 @@ private fun BoxScope.NoticeOverlay(state: MutableState<Notice?>) {
             androidx.compose.animation.fadeOut(),
         modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp)
     ) {
+        val tokens = kidTokens
         Text(
             shown?.text.orEmpty(),
-            color = Color.White,
+            color = tokens.onArtwork,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier
-                .background(Color(0xCC000000), shape = RoundedCornerShape(24.dp))
+                .background(tokens.artworkScrim, shape = RoundedCornerShape(24.dp))
                 .padding(horizontal = 20.dp, vertical = 10.dp)
         )
     }
@@ -2314,22 +2321,30 @@ private fun BoxScope.SeekRipple(state: State<Pair<Int, Long>?>) {
             .align(if (delta < 0) Alignment.CenterStart else Alignment.CenterEnd)
             .padding(horizontal = 48.dp)
     ) {
+        val tokens = kidTokens
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(112.dp)
                 .clip(CircleShape)
-                .background(Color(0x59FFFFFF))
+                .background(tokens.onArtwork.copy(alpha = 0.35f))
         ) {
             Text(
                 if (delta < 0) "◀◀\n${-delta} s" else "▶▶\n$delta s",
-                color = Color.White,
+                color = tokens.onArtwork,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
             )
         }
     }
 }
+
+/**
+ * Ink for a glyph on a button filled with [KidTokens.onArtwork] — the pause
+ * bars, a lit CC. Not `onBackground`: that is the page's text colour and
+ * flips to near-white on the dark look, where the button is still white.
+ */
+private fun KidTokens.inkOnArtworkFill(): Color = readableOn(onArtwork)
 
 /** A pill-shaped kid button: big, rounded, one job. On TV the remote's cursor
  *  highlights it instead of touch focus (see the activity's key handling). */
@@ -2344,16 +2359,17 @@ internal fun KidButton(
     val scale by androidx.compose.animation.core.animateFloatAsState(
         if (highlighted) 1.06f else 1f, label = "kidButtonScale"
     )
+    val tokens = kidTokens
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .scale(scale)
             .height(56.dp)
             .clip(RoundedCornerShape(28.dp))
-            .background(if (primary) YosemiteDarkColors.primary else Color(0x33FFFFFF))
+            .background(if (primary) MaterialTheme.colorScheme.primary else tokens.onArtwork.copy(alpha = 0.2f))
             .border(
                 width = if (highlighted) 3.dp else 0.dp,
-                color = if (highlighted) Color.White else Color.Transparent,
+                color = if (highlighted) tokens.onArtwork else Color.Transparent,
                 shape = RoundedCornerShape(28.dp)
             )
             // Touch only: a focusable here would steal the remote's keys from
@@ -2363,7 +2379,7 @@ internal fun KidButton(
     ) {
         Text(
             label,
-            color = if (primary) YosemiteDarkColors.onPrimary else Color.White,
+            color = if (primary) MaterialTheme.colorScheme.onPrimary else tokens.onArtwork,
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             maxLines = 1
         )
@@ -2401,7 +2417,7 @@ internal fun BlockedCard(message: String, isTv: Boolean, onOk: () -> Unit) {
         Spacer(Modifier.height(20.dp))
         Text(
             text,
-            color = Color.White,
+            color = kidTokens.onArtwork,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
         )
@@ -2427,14 +2443,14 @@ private fun ErrorCard(isTv: Boolean, cursor: Int, onRetry: () -> Unit, onBack: (
         Spacer(Modifier.height(16.dp))
         Text(
             "Hmm, this video won't play right now.",
-            color = Color.White,
+            color = kidTokens.onArtwork,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
         )
         Spacer(Modifier.height(8.dp))
         Text(
             "Try again, or pick a different one.",
-            color = Color.White.copy(alpha = 0.7f),
+            color = kidTokens.onArtwork.copy(alpha = 0.7f),
             style = MaterialTheme.typography.bodyLarge
         )
         Spacer(Modifier.height(28.dp))
@@ -2464,8 +2480,9 @@ private fun BoxScope.EndCardOverlay(
     compact: Boolean = false
 ) {
     val showMore = !isTv && !compact && card.more.isNotEmpty()
+    val tokens = kidTokens
     Box(
-        Modifier.fillMaxSize().background(Color(0xB3000000)),
+        Modifier.fillMaxSize().background(tokens.artworkScrim.copy(alpha = 0.7f)),
         contentAlignment = Alignment.Center
     ) {
         // Side by side: a landscape phone is wide and short, and a stacked
@@ -2479,7 +2496,7 @@ private fun BoxScope.EndCardOverlay(
             if (card.hasNext) {
                 Text(
                     "Up next",
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = tokens.onArtwork.copy(alpha = 0.7f),
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
@@ -2492,13 +2509,13 @@ private fun BoxScope.EndCardOverlay(
                             .width(if (isTv) 320.dp else 208.dp)
                             .height(if (isTv) 180.dp else 117.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0x33FFFFFF))
+                            .background(tokens.onArtwork.copy(alpha = 0.2f))
                     )
                     Spacer(Modifier.height(8.dp))
                 }
                 Text(
                     card.nextTitle ?: "The next video",
-                    color = Color.White,
+                    color = tokens.onArtwork,
                     maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -2508,7 +2525,7 @@ private fun BoxScope.EndCardOverlay(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Playing in ${card.secondsLeft}…",
-                    color = YosemiteDarkColors.primary,
+                    color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
@@ -2524,13 +2541,13 @@ private fun BoxScope.EndCardOverlay(
                 Spacer(Modifier.height(if (compact) 2.dp else 8.dp))
                 Text(
                     "That's the end!",
-                    color = Color.White,
+                    color = tokens.onArtwork,
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Back to the shelf in ${card.secondsLeft}…",
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = tokens.onArtwork.copy(alpha = 0.6f),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(if (compact) 8.dp else 16.dp))
@@ -2546,7 +2563,7 @@ private fun BoxScope.EndCardOverlay(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     "More from $channel",
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = tokens.onArtwork.copy(alpha = 0.7f),
                     style = MaterialTheme.typography.labelLarge
                 )
                 card.more.forEach { v ->
@@ -2579,6 +2596,9 @@ private fun SmallVideoRow(
             .clickable { onClick() }
             .padding(4.dp)
     ) {
+        // Scheme colours, not the on-artwork token: this row sits on the page
+        // under the portrait video as well as on the end card's scrim, and
+        // white text on the light look's paper would vanish.
         coil.compose.AsyncImage(
             model = thumb,
             contentDescription = title,
@@ -2587,13 +2607,13 @@ private fun SmallVideoRow(
                 .width(136.dp)
                 .height(76.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0x33FFFFFF))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
         )
         Spacer(Modifier.width(12.dp))
         Column {
             Text(
                 title,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 2,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleSmall
@@ -2602,7 +2622,7 @@ private fun SmallVideoRow(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     subtitle,
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall
@@ -2626,7 +2646,7 @@ private fun HeartButton(isFavorite: Boolean, onClick: () -> Unit) {
             if (isFavorite) androidx.compose.material.icons.Icons.Filled.Favorite
             else androidx.compose.material.icons.Icons.Filled.FavoriteBorder,
             contentDescription = if (isFavorite) "In your Favorites" else "Add to Favorites",
-            tint = if (isFavorite) Color(0xFFFF5A79) else Color.White,
+            tint = if (isFavorite) kidTokens.action else kidTokens.onArtwork,
             modifier = Modifier.size(28.dp)
         )
     }
@@ -2640,13 +2660,15 @@ private fun MoonButton(stopAfterThis: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .size(48.dp)
             .clip(CircleShape)
-            .background(if (stopAfterThis) Color(0x59FFFFFF) else Color.Transparent)
+            .background(if (stopAfterThis) kidTokens.onArtwork.copy(alpha = 0.35f) else Color.Transparent)
             .clickable { onClick() }
     ) {
+        // Lit in the action colour, not amber: armed is a choice the kid
+        // made, and amber on this screen means time is running out.
         Icon(
             YosemiteIcons.Moon,
             contentDescription = "Stop after this one",
-            tint = if (stopAfterThis) Color(0xFFFFD54F) else Color.White,
+            tint = if (stopAfterThis) kidTokens.action else kidTokens.onArtwork,
             modifier = Modifier.size(26.dp)
         )
     }
@@ -2763,13 +2785,17 @@ private fun SkipGlyph(forward: Boolean, size: androidx.compose.ui.unit.Dp, color
 @Composable
 private fun RemainingChip(ms: Long) {
     val urgent = ms <= 5 * 60_000L
+    val tokens = kidTokens
     Text(
         "⏳ " + remainingLabel(ms),
-        color = Color.White,
+        color = tokens.onArtwork,
         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
         maxLines = 1,
         modifier = Modifier
-            .background(if (urgent) Color(0xE6B26A00) else Color(0x80000000), RoundedCornerShape(16.dp))
+            .background(
+                if (urgent) tokens.timeWarning.copy(alpha = 0.9f) else tokens.artworkScrim.copy(alpha = 0.5f),
+                RoundedCornerShape(16.dp)
+            )
             .padding(horizontal = 12.dp, vertical = 6.dp)
     )
 }
@@ -2814,6 +2840,7 @@ private fun Scrubber(
                 onSeekTo(((offset.x / size.width).coerceIn(0f, 1f) * durationMs).toLong())
             }
         }
+    val onArtwork = kidTokens.onArtwork
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
@@ -2822,12 +2849,12 @@ private fun Scrubber(
     ) {
         Box(
             Modifier.align(Alignment.CenterStart).fillMaxWidth().height(4.dp)
-                .background(Color(0x40FFFFFF))
+                .background(onArtwork.copy(alpha = 0.25f))
         )
         Box(
             Modifier.align(Alignment.CenterStart)
                 .fillMaxWidth((bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f))
-                .height(4.dp).background(Color(0x8CFFFFFF))
+                .height(4.dp).background(onArtwork.copy(alpha = 0.55f))
         )
         // Green skip marks sit under playback state: an already-viewed
         // stretch stays red, while upcoming sponsor stretches stay green.
@@ -2931,6 +2958,9 @@ private fun BoxScope.PlayerControlsOverlay(
     }
 
     val edge = if (isTv) 32.dp else if (compact) 8.dp else 16.dp
+    val tokens = kidTokens
+    val onArtwork = tokens.onArtwork
+    val ink = tokens.inkOnArtworkFill()
     androidx.compose.animation.AnimatedVisibility(
         visible = visible && durationMs > 0,
         enter = androidx.compose.animation.fadeIn(),
@@ -2941,14 +2971,14 @@ private fun BoxScope.PlayerControlsOverlay(
             Box(
                 Modifier.align(Alignment.TopCenter).fillMaxWidth().height(if (compact) 72.dp else 140.dp).background(
                     androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(Color(0xB3000000), Color.Transparent)
+                        listOf(tokens.artworkScrim.copy(alpha = 0.7f), Color.Transparent)
                     )
                 )
             )
             Box(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(if (compact) 96.dp else 180.dp).background(
                     androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(Color.Transparent, Color(0xCC000000))
+                        listOf(Color.Transparent, tokens.artworkScrim)
                     )
                 )
             )
@@ -2968,7 +2998,7 @@ private fun BoxScope.PlayerControlsOverlay(
                         Icon(
                             androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color.White,
+                            tint = onArtwork,
                             modifier = Modifier.size(if (compact) 26.dp else 30.dp)
                         )
                     }
@@ -2982,7 +3012,7 @@ private fun BoxScope.PlayerControlsOverlay(
                         Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(Color(0x33FFFFFF))
+                            .background(onArtwork.copy(alpha = 0.2f))
                             .then(if (isTv) Modifier else Modifier.clickable { onOpenChannel() })
                     ) {
                         coil.compose.AsyncImage(
@@ -3001,14 +3031,14 @@ private fun BoxScope.PlayerControlsOverlay(
                 ) {
                     Text(
                         title,
-                        color = Color.White,
+                        color = onArtwork,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     if (channel.isNotBlank()) Text(
                         if (isTv) channel else "$channel  ›",
-                        color = Color.White.copy(alpha = 0.7f),
+                        color = onArtwork.copy(alpha = 0.7f),
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall
@@ -3038,14 +3068,14 @@ private fun BoxScope.PlayerControlsOverlay(
                             modifier = Modifier
                                 .size(width = 30.dp, height = 22.dp)
                                 .background(
-                                    if (captionsOn) Color.White else Color.Transparent,
+                                    if (captionsOn) onArtwork else Color.Transparent,
                                     RoundedCornerShape(3.dp)
                                 )
-                                .border(2.dp, Color.White, RoundedCornerShape(3.dp))
+                                .border(2.dp, onArtwork, RoundedCornerShape(3.dp))
                         ) {
                             Text(
                                 "CC",
-                                color = if (captionsOn) Color(0xFF0F0F0F) else Color.White,
+                                color = if (captionsOn) ink else onArtwork,
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                             )
                         }
@@ -3060,7 +3090,7 @@ private fun BoxScope.PlayerControlsOverlay(
                             .clip(CircleShape)
                             .clickable { onMinimise() }
                     ) {
-                        PipGlyph(size = 26.dp, color = Color.White)
+                        PipGlyph(size = 26.dp, color = onArtwork)
                     }
                 }
             }
@@ -3078,38 +3108,38 @@ private fun BoxScope.PlayerControlsOverlay(
                         modifier = Modifier
                             .size(side)
                             .clip(CircleShape)
-                            .background(Color(0x33FFFFFF))
+                            .background(onArtwork.copy(alpha = 0.2f))
                             .then(
                                 if (hasPrevious) Modifier.clickable { onPrevious() }
                                 else Modifier
                             )
                     ) {
                         SkipGlyph(forward = false, size = side / 2,
-                            color = if (hasPrevious) Color.White else Color(0x66FFFFFF))
+                            color = if (hasPrevious) onArtwork else onArtwork.copy(alpha = 0.4f))
                     }
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .size(main)
                             .clip(CircleShape)
-                            .background(Color.White)
+                            .background(onArtwork)
                             .clickable { onTogglePlay() }
                     ) {
-                        PlayPauseGlyph(playing = playing, size = main * 0.55f, color = Color(0xFF0F0F0F))
+                        PlayPauseGlyph(playing = playing, size = main * 0.55f, color = ink)
                     }
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .size(side)
                             .clip(CircleShape)
-                            .background(Color(0x33FFFFFF))
+                            .background(onArtwork.copy(alpha = 0.2f))
                             .then(
                                 if (hasNext) Modifier.clickable { onNext() }
                                 else Modifier
                             )
                     ) {
                         SkipGlyph(forward = true, size = side / 2,
-                            color = if (hasNext) Color.White else Color(0x66FFFFFF))
+                            color = if (hasNext) onArtwork else onArtwork.copy(alpha = 0.4f))
                     }
                 }
             } else if (!playing) {
@@ -3119,9 +3149,9 @@ private fun BoxScope.PlayerControlsOverlay(
                         .align(Alignment.Center)
                         .size(96.dp)
                         .clip(CircleShape)
-                        .background(Color(0xCCFFFFFF))
+                        .background(onArtwork.copy(alpha = 0.8f))
                 ) {
-                    PlayPauseGlyph(playing = false, size = 52.dp, color = Color(0xFF0F0F0F))
+                    PlayPauseGlyph(playing = false, size = 52.dp, color = ink)
                 }
             }
             if (isTv && (panel == TvTrackPanel.Audio || panel == TvTrackPanel.Subtitles)) {
@@ -3148,14 +3178,14 @@ private fun BoxScope.PlayerControlsOverlay(
                     val shownPos = scrubFraction?.let { (it * durationMs).toLong() } ?: positionMs
                     Text(
                         formatClock(shownPos / 1000) + " / " + formatClock(durationMs / 1000),
-                        color = Color.White,
+                        color = onArtwork,
                         style = MaterialTheme.typography.titleMedium
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (hasNext) {
                             Text(
                                 "Next: " + (nextTitle ?: "one more"),
-                                color = Color.White.copy(alpha = 0.75f),
+                                color = onArtwork.copy(alpha = 0.75f),
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -3171,7 +3201,7 @@ private fun BoxScope.PlayerControlsOverlay(
                                     .clip(CircleShape)
                                     .clickable { onToggleFullscreen() }
                             ) {
-                                FullscreenGlyph(expand = compact, size = 24.dp, color = Color.White)
+                                FullscreenGlyph(expand = compact, size = 24.dp, color = onArtwork)
                             }
                         }
                         if (isTv && panel != TvTrackPanel.Hidden) {
@@ -3188,7 +3218,7 @@ private fun BoxScope.PlayerControlsOverlay(
                                             if (isFavorite) "In your Favorites" else "Add to Favorites"
                                         else -> "More from $channel"
                                     },
-                                    color = Color.White.copy(alpha = 0.85f),
+                                    color = onArtwork.copy(alpha = 0.85f),
                                     maxLines = 1,
                                     style = MaterialTheme.typography.bodyMedium
                                 )
@@ -3240,7 +3270,7 @@ private fun TvEmojiIcon(text: String, selected: Boolean) {
         modifier = Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(if (selected) Color.White else Color.Transparent)
+            .background(if (selected) kidTokens.onArtwork else Color.Transparent)
     ) {
         Text(text, fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp))
     }
@@ -3249,18 +3279,19 @@ private fun TvEmojiIcon(text: String, selected: Boolean) {
 /** The channel's face as a toolbar slot: selecting it leaves for the channel page. */
 @Composable
 private fun TvAvatarIcon(avatarUrl: String?, selected: Boolean) {
+    val onArtwork = kidTokens.onArtwork
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(if (selected) Color.White else Color.Transparent)
+            .background(if (selected) onArtwork else Color.Transparent)
     ) {
         Box(
             Modifier
                 .size(34.dp)
                 .clip(CircleShape)
-                .background(Color(0x33FFFFFF))
+                .background(onArtwork.copy(alpha = 0.2f))
         ) {
             if (avatarUrl != null) {
                 coil.compose.AsyncImage(
@@ -3282,14 +3313,15 @@ private fun TvAvatarIcon(avatarUrl: String?, selected: Boolean) {
 
 @Composable
 private fun TvTrackIcon(glyph: TvTrackGlyph, label: String, selected: Boolean) {
+    val tokens = kidTokens
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(if (selected) Color.White else Color.Transparent)
+            .background(if (selected) tokens.onArtwork else Color.Transparent)
     ) {
-        val ink = if (selected) Color(0xFF0F0F0F) else Color.White
+        val ink = if (selected) tokens.inkOnArtworkFill() else tokens.onArtwork
         when (glyph) {
             TvTrackGlyph.Audio -> Box(contentAlignment = Alignment.Center) {
                 Box(
@@ -3361,17 +3393,18 @@ private fun BoxScope.TvTrackSheet(
                 Triple(track.name, captionsOn && index == selectedSubtitle, index + 1)
             }
     }
+    val tokens = kidTokens
     Column(
         modifier = Modifier
             .align(Alignment.BottomStart)
             .padding(start = 48.dp, bottom = 118.dp)
             .width(330.dp)
-            .background(Color(0xE6000000), RoundedCornerShape(8.dp))
+            .background(tokens.artworkScrim.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
             .padding(vertical = 8.dp)
     ) {
         Text(
             if (panel == TvTrackPanel.Audio) "Audio" else "Subtitles",
-            color = Color.White,
+            color = tokens.onArtwork,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
         )
@@ -3382,7 +3415,7 @@ private fun BoxScope.TvTrackSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        if (index == cursor) Color(0x33FFFFFF) else Color.Transparent
+                        if (index == cursor) tokens.onArtwork.copy(alpha = 0.2f) else Color.Transparent
                     )
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
@@ -3391,14 +3424,14 @@ private fun BoxScope.TvTrackSheet(
                         Icon(
                             Icons.Filled.Check,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = tokens.onArtwork,
                             modifier = Modifier.size(20.dp)
                         )
                     }
                 }
                 Text(
                     label,
-                    color = Color.White,
+                    color = tokens.onArtwork,
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 1,
                     modifier = Modifier.padding(start = 12.dp)
