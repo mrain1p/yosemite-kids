@@ -936,6 +936,57 @@ tl_bad=$(echo "$tl_code" | grep -nE "SessionGuard|sessionGuard" || true)
 echo "$tl_code" | grep -q "interpolateRemainingMs(" ||
   guard_fail "TimeLeft.kt no longer calls interpolateRemainingMs. Whatever now produces the chrome's time-left must be a pure function with a test, or the value goes stale again."
 
+# 36. No colour literal on a kid-facing screen.
+#     Every hue a kid sees comes from the scheme (the three looks and the
+#     per-kid tint) or from KidTokens (action, timeWarning, watched, offline,
+#     artworkScrim, onArtwork). A literal at the point of use is how the amber
+#     warning came to exist twice at two alphas, and how a white label on the
+#     light look's paper went invisible - it reviews fine and fails on a
+#     screen the author was not holding. Theme.kt and KidTokens.kt are where
+#     literals live on purpose. Icons.kt builds ImageVectors whose path fill
+#     is a placeholder every Icon() call tints over. The Settings*.kt family,
+#     KidsSettings, StatsScreen, SyncActivityScreen and DigestScreen are the
+#     parent's face, on the named palette in Theme.kt. Comment lines are
+#     skipped, so a comment may explain a literal it replaced.
+#
+#     TEMPORARY: YosemiteScreen.kt and HomeScreens.kt still carry literals.
+#     Other hands were in them when this landed, so they are exempt here and
+#     NAMED on every run rather than hidden in the pattern. Migrate them and
+#     delete them from colour_temp: the guard fails the moment an exempt file
+#     is clean, so the exemption cannot outlive its reason.
+colour_files=$(ls app/src/main/java/io/yosemitekids/app/ui/*.kt | grep -vE '/(Theme|KidTokens|Icons|Settings[A-Za-z]*|KidsSettings|StatsScreen|SyncActivityScreen|DigestScreen)\.kt$' || true)
+colour_temp="YosemiteScreen.kt HomeScreens.kt"
+colour_pat='Color\(0x|Color\.White|Color\.Black'
+for f in $colour_files; do
+  base=$(basename "$f")
+  hits=$(grep -nE "$colour_pat" "$f" | grep -vE '^[0-9]+:[[:space:]]*(//|\*|/\*)' || true)
+  case " $colour_temp " in
+    *" $base "*)
+      [ -n "$hits" ] ||
+        guard_fail "$base is clean now: remove it from guard 36's temporary exemption (colour_temp in check.sh, colourTemp in check.ps1)."
+      echo "   guard 36: $base still carries colour literals - TEMPORARY exemption, remove at merge ($(echo "$hits" | wc -l | tr -d ' ') line(s))"
+      ;;
+    *)
+      [ -z "$hits" ] ||
+        guard_fail "colour literal on a kid-facing screen in $base. Use MaterialTheme.colorScheme, or kidTokens: artworkScrim/onArtwork over a picture or a scrim, timeWarning for time running out, action for the one thing to press. Found:
+$hits"
+      ;;
+  esac
+done
+
+# 37. The player has no focusables.
+#     Every key on the TV player goes through PlayerActivity.onKeyDown: one
+#     integer cursor walks the toolbar slots, the two-button cards and the
+#     track sheet. A focus modifier anywhere under the player's setContent
+#     takes the d-pad away from that path - OK stops toggling playback - and
+#     no screenshot catches it, because the controls still draw.
+#     docs/SCREENS.md states the rule; this enforces it over every Player*.kt
+#     file, comment lines excluded.
+focus_bad=$(grep -nHE 'focusable\(|[fF]ocusRequester|onFocusChanged|tvFocusHighlight\(|focusTarget|focusProperties|focusGroup' app/src/main/java/io/yosemitekids/app/ui/Player*.kt | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' || true)
+[ -z "$focus_bad" ] ||
+  guard_fail "a focus modifier in the player. Its keys are the single onKeyDown cursor (TvToolbarSlot, handleTwoButtonKey); give the new control a cursor slot instead. Found:
+$focus_bad"
+
 # 38. Every unit ConfigStamp can mint is a unit ConfigMerge.merge decides.
 #     A field can be added to Whitelist, toJson and fromJson, stamped in
 #     ConfigStamp, claimed or exempted in SettingsSurface, and pass guard

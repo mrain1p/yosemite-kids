@@ -1,6 +1,7 @@
 package io.yosemitekids.app.ui
 
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,8 +26,10 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -49,8 +52,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
@@ -159,11 +172,43 @@ class PlayerActivity : ComponentActivity() {
     private var channelSourceId: String? = null
     /** "Stop after this one" — the moon button. Wins over autoplay and lineups. */
     private val stopAfterThis = mutableStateOf(false)
-    /** The parent's autoplay switch, read with the config. */
-    @Volatile
-    private var autoplayOn = true
-    /** Non-null only for EXTRA_FROM_QUEUE launches. */
+    /**
+     * The parent's autoplay switch, read with the config. State, because the
+     * overlay's Autoplay pill shows it — READ-ONLY there: a kid writing a
+     * parent's setting from the player would be a policy change, so the
+     * kid's own lever stays the moon ("stop after this one").
+     */
+    private val autoplayState = mutableStateOf(true)
+    private var autoplayOn: Boolean
+        get() = autoplayState.value
+        set(value) { autoplayState.value = value }
+    /**
+     * Non-null only for EXTRA_FROM_QUEUE launches: the lineup the kid is
+     * playing *is* their Up next, and a video that truly finishes leaves it.
+     * Deliberately not shared with the Queue tile's adds — that opens its
+     * own store instance, because making this one unconditional would make
+     * every launch remove finished videos from the queue, which is a change
+     * in what "from the queue" means.
+     */
     private var queueStore: io.yosemitekids.app.data.QueueStore? = null
+    /** The kid's storage namespace, for the lists the tiles under the video write to. */
+    private var profileSuffix: String = ""
+    /** Watch later, for the tile under the video and the TV toolbar slot. */
+    private lateinit var watchLater: io.yosemitekids.app.data.SavedListStore
+    private val inWatchLater = mutableStateOf(false)
+    private val inQueue = mutableStateOf(false)
+    /** "Similar": title-matched across every channel, empty when the parent's switch is off. */
+    private val similar = mutableStateOf<List<io.yosemitekids.app.data.Video>>(emptyList())
+    /** Upload time of the playing video, from the cache row, for the release-time line. */
+    private val currentPublishedAt = mutableStateOf<Long?>(null)
+    /** How many of the channel's videos the cache holds, for the channel card's meta line. */
+    private val channelVideoCount = mutableIntStateOf(0)
+    /**
+     * The kid's chosen look, for the phone's content column. The stage keeps
+     * the dark scheme regardless — a video surface is black in every look —
+     * but the page under it follows the kid like every other screen does.
+     */
+    private val kidScheme = mutableStateOf<androidx.compose.material3.ColorScheme?>(null)
     private var timePercent = 100
     private var currentPageUrl: String? = null
     private var currentTitle: String = ""
@@ -191,16 +236,29 @@ class PlayerActivity : ComponentActivity() {
     /** Which of the two error-screen buttons the TV remote is on. */
     private val errorCursor = mutableIntStateOf(0)
     private var endCardJob: kotlinx.coroutines.Job? = null
-    /** Wall-clock ms of watching left before a rule stops playback; null = no rule. */
-    private val remainingLeftMs = mutableStateOf<Long?>(null)
+    /**
+     * The daily countdown's last authoritative read (see PlayerCountdown.kt).
+     * Re-seeded whenever the drain rate can have changed — a fresh video, a
+     * flip of listen mode, a parent's grant — and on every 5-second tick;
+     * aged by interpolation in between, never re-read faster.
+     */
+    private val countdownAnchor = mutableStateOf<CountdownAnchor?>(null)
+    /** What the chip draws this second; null hides it. Written by the root ticker. */
+    private val countdownFrame = mutableStateOf<CountdownFrame?>(null)
+    /** Real playback so far, for ageing a budget between reads. */
+    private val playClock = PlayClock { SystemClock.elapsedRealtime() }
     /** A double-tap seek just happened: signed seconds + timestamp, for the ripple label. */
     private val seekFeedback = mutableStateOf<Pair<Int, Long>?>(null)
     /** Last time a held ◀/▶ key repeat was allowed to seek (see onKeyDown). */
     private var lastHeldSeekAt = 0L
     /** Transient top-of-screen pill: time-left warnings, subtitles toggled, … */
     private val notice = mutableStateOf<Notice?>(null)
-    /** Which time-left warnings (5, 1 min) already fired; cleared when time is granted back. */
-    private val warnedMinutes = mutableSetOf<Int>()
+    /**
+     * The single one-minute moment already had; re-armed when time is granted
+     * back. The five-minute pill it used to sit beside is the countdown chip
+     * now, which stays up for the whole of the last five minutes.
+     */
+    private var warnedOneMinute = false
     /** Kid's sticky captions choice (survives across videos and app runs). */
     private var captionsOn = false
     private var currentSubtitles: List<YouTubeRepository.Subtitle> = emptyList()
@@ -259,6 +317,8 @@ class PlayerActivity : ComponentActivity() {
     private val portraitLayout = mutableStateOf(false)
     /** "More from <channel>" under the portrait video: autoplay's own candidates. */
     private val moreFromChannel = mutableStateOf<List<io.yosemitekids.app.data.Video>>(emptyList())
+    /** Which list is open under the portrait video; null = the first tab that has something. */
+    private val portraitTab = mutableStateOf<PlayerTab?>(null)
     /** Where the video is drawn on screen, for the shrink-to-PiP animation. */
     private var videoBounds: android.graphics.Rect? = null
     /** Live only while a ⛶ press has the orientation forced; see [forceOrientation]. */
@@ -304,8 +364,19 @@ class PlayerActivity : ComponentActivity() {
      * True while playback is sound-only: the screen went dark, the kid switched
      * apps, or a "Allow listening" window is on ([listenOnlyWindow]). Drives the
      * audio-only stream swap and the listening drain rate.
+     *
+     * State-backed so the countdown can gate off while listening, and the
+     * setter re-seeds the countdown: the drain rate is different on the other
+     * side of this flip, and the old anchor would keep ageing the old rate.
      */
-    private var listenActive = false
+    private val listeningState = mutableStateOf(false)
+    private var listenActive: Boolean
+        get() = listeningState.value
+        set(value) {
+            if (listeningState.value == value) return
+            listeningState.value = value
+            reseedCountdown()
+        }
     /**
      * True while a window marked "Allow listening" is blocking watching. Unlike
      * the screen-off kind, coming back to the player must NOT restore the
@@ -397,6 +468,7 @@ class PlayerActivity : ComponentActivity() {
                 ?.takeIf { config.profile(it) != null }
             io.yosemitekids.app.data.ProfileNamespace(this).suffixFor(active)
         }
+        this.profileSuffix = profileSuffix
         gateProfileId = intent.getStringExtra(EXTRA_PROFILE_ID)
         channelUsage = io.yosemitekids.app.data.ChannelUsage(this, profileSuffix)
         currentChannel = intent.getStringExtra(EXTRA_CHANNEL).orEmpty()
@@ -413,6 +485,9 @@ class PlayerActivity : ComponentActivity() {
         queueDurations = intent.getLongArrayExtra(EXTRA_QUEUE_DURATIONS)?.toList().orEmpty()
         channelAvatar.value = intent.getStringExtra(EXTRA_CHANNEL_AVATAR)
         favorites = io.yosemitekids.app.data.SavedListStore(this, profileSuffix)
+        watchLater = io.yosemitekids.app.data.SavedListStore(
+            this, profileSuffix, io.yosemitekids.app.data.SavedListStore.WATCH_LATER
+        )
         if (intent.getBooleanExtra(EXTRA_FROM_QUEUE, false)) {
             queueStore = io.yosemitekids.app.data.QueueStore(this, profileSuffix)
         }
@@ -471,6 +546,12 @@ class PlayerActivity : ComponentActivity() {
                 if (isTv) cfg.qualityTv else cfg.qualityPhone
             qualityCeiling.value = io.yosemitekids.app.data.QualityTargets.userMaxHeight
             showVideoAge.value = cfg.showVideoAge
+            // The look the kid picked, resolved the way MainActivity resolves
+            // it: their profile's colour, their device-local theme choice.
+            kidScheme.value = kidColorScheme(
+                cfg.profile(gateProfileId),
+                io.yosemitekids.app.data.KidPrefs(this@PlayerActivity, profileSuffix).theme()
+            )
         }
 
         // Read further ahead than the 50s default: with the chunked data source
@@ -538,6 +619,12 @@ class PlayerActivity : ComponentActivity() {
 
                     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                         wantsPlay.value = playWhenReady
+                    }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        // isPlaying, not playWhenReady: a buffering stall spends
+                        // no budget, and the countdown must not say it did.
+                        playClock.setPlaying(isPlaying)
                     }
 
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
@@ -627,6 +714,11 @@ class PlayerActivity : ComponentActivity() {
         lifecycleScope.launch {
             io.yosemitekids.app.data.KidNotices.messages.collect {
                 notice.value = Notice(it.text)
+                // Minutes granted mid-video: the countdown re-reads now rather
+                // than ageing the old figure for up to five more seconds, and
+                // the one-minute moment can happen again if it comes to that.
+                warnedOneMinute = false
+                reseedCountdown()
             }
         }
 
@@ -635,6 +727,16 @@ class PlayerActivity : ComponentActivity() {
             while (isActive) {
                 delay(5_000)
                 saveProgress()
+                // A window can open or close mid-story: bedtime arriving drops
+                // the picture instead of stopping the video, and morning gives
+                // it back. Checked whether or not playback is running, so a
+                // paused story is in the right mode when it resumes.
+                syncListenOnlyWindow()
+                // The countdown's authoritative read, ABOVE the player check
+                // below: during the pre-play deep check nothing plays, but a
+                // bedtime window can still close, and a number that froze
+                // there looked right in every screenshot taken after a tap.
+                readCountdownAnchor()
                 val exo = player ?: continue
                 // Publish now-playing for the parent's stats screen.
                 if (exo.duration > 0) {
@@ -643,48 +745,31 @@ class PlayerActivity : ComponentActivity() {
                         exo.currentPosition, exo.duration, exo.isPlaying
                     )
                 }
-                // A window can open or close mid-story: bedtime arriving drops
-                // the picture instead of stopping the video, and morning gives
-                // it back. Checked whether or not playback is running, so a
-                // paused story is in the right mode when it resumes.
-                syncListenOnlyWindow()
-                // The drain rate in force right now — what the overlay's
-                // "N min left" chip must be computed at, playing or paused.
-                val drain =
-                    if (listenActive) listenDrainPercent(timePercent, listenPercent)
-                    else timePercent
-                if (timeUpMessage.value == null) {
-                    remainingLeftMs.value = sessionGuard.remainingMs(drain, listenActive)
-                }
                 if (exo.isPlaying && timeUpMessage.value == null) {
                     // Stats record real watch time; the budget drains at the
                     // source's multiplier (exact integer ms — 25% of 5s = 1250ms),
                     // further scaled by the family listening rate while the
                     // screen is off.
+                    val drain = currentDrain()
                     channelUsage.addSeconds(currentChannel, 5)
                     sessionGuard.tick(5_000L * drain / 100, listenActive, multiplierPercent = drain)?.let { reason ->
                         exo.pause()
                         timeUpMessage.value = reason
+                        countdownAnchor.value = null
                         delay(6_000)
                         finish()
                     }
-                    // Soften the cutoff: warn at 5 and 1 wall-clock minutes before
-                    // the budget runs out at the current drain rate (on FREE
-                    // sources only an approaching bedtime counts down). A parent
-                    // grant that lifts the countdown re-arms the warnings.
-                    if (timeUpMessage.value == null)
-                        sessionGuard.remainingMs(drain, listenActive)?.let { left ->
-                        val threshold = when {
-                            left <= 60_000L -> 1
-                            left <= 5 * 60_000L -> 5
-                            else -> null
-                        }
-                        if (threshold == null) warnedMinutes.clear()
-                        else if (warnedMinutes.add(threshold)) {
-                            notice.value = Notice(
-                                if (threshold == 1) "1 minute left! ⏳"
-                                else "$threshold minutes left! ⏳"
-                            )
+                    // Re-read after the tick's write so the chip reflects it
+                    // now, and take the one-minute moment from the same read:
+                    // one wall-clock minute before the budget runs out at the
+                    // current drain rate (on FREE sources only an approaching
+                    // bedtime counts down). A grant that lifts it re-arms it.
+                    if (timeUpMessage.value == null) {
+                        val left = readCountdownAnchor()?.minOfOrNull { it.ms }
+                        if (left == null || left > 60_000L) warnedOneMinute = false
+                        else if (!warnedOneMinute) {
+                            warnedOneMinute = true
+                            notice.value = Notice("1 minute left! ⏳")
                         }
                     }
                 }
@@ -692,7 +777,11 @@ class PlayerActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme(colorScheme = YosemiteDarkColors, typography = YosemiteTypography) {
+            // The kid's look for the page under the video (the portrait column
+            // and the quality dialog); the stage below re-asserts the dark
+            // scheme for itself, because a video surface is black in every look.
+            val scheme = kidScheme.value ?: YosemiteDarkColors
+            MaterialTheme(colorScheme = scheme, typography = YosemiteTypography) {
                 val pip by inPip
                 val portrait by portraitLayout
                 // The PiP parameters (auto-enter, the play/pause button) follow
@@ -700,10 +789,34 @@ class PlayerActivity : ComponentActivity() {
                 // one place that keeps them current.
                 val eligible = pipEligible()
                 LaunchedEffect(eligible) { refreshPipParams() }
+                // One clock for the countdown, above both layouts, so the
+                // portrait column and the full-bleed stage draw the same
+                // second. Gated off while listening (see PlayerCountdown.kt).
+                PlayerCountdownTicker(
+                    anchor = countdownAnchor,
+                    listening = listeningState,
+                    now = { SystemClock.elapsedRealtime() },
+                    playedMs = { playClock.playedMs() },
+                    videoLeftMs = {
+                        player?.let { p ->
+                            val d = p.duration
+                            if (d > 0) (d - p.currentPosition).coerceAtLeast(0) else null
+                        }
+                    },
+                    into = countdownFrame
+                )
                 // One stage, *moved* between the two layouts rather than
                 // rebuilt: a rotation would otherwise recreate the AndroidView
-                // and its SurfaceView, and cut to black mid-video.
-                val stage = remember { movableContentOf { compact: Boolean -> PlayerStage(compact) } }
+                // and its SurfaceView, and cut to black mid-video. The dark
+                // scheme is applied inside the movable content so the stage
+                // looks the same in both layouts whatever the page's look.
+                val stage = remember {
+                    movableContentOf { compact: Boolean ->
+                        MaterialTheme(colorScheme = YosemiteDarkColors, typography = YosemiteTypography) {
+                            PlayerStage(compact)
+                        }
+                    }
+                }
                 if (qualityPickerOpen.value) {
                     val ceiling by qualityCeiling
                     androidx.compose.material3.AlertDialog(
@@ -746,7 +859,20 @@ class PlayerActivity : ComponentActivity() {
                 if (portrait && !pip) {
                     PortraitPlayerScaffold { stage(true) }
                 } else {
-                    Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                    // The letterbox is `scrim`, which every scheme keeps black:
+                    // a video's surround is not themed, on any player.
+                    //
+                    // A landscape phone lands here too, and that is a decision
+                    // rather than a default: it gets the phone's full-size
+                    // overlay (back, the pills, touch transport, a live
+                    // scrubber) with the countdown chip riding the video
+                    // top-right as it does on a TV — the TV-only pieces (the
+                    // cursor toolbar, the non-interactive scrubber) are gated
+                    // on isTv inside the overlay, not on this branch.
+                    Box(
+                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim),
+                        contentAlignment = Alignment.Center
+                    ) {
                         stage(false)
                     }
                 }
@@ -773,10 +899,11 @@ class PlayerActivity : ComponentActivity() {
         val listenOnly by listenOnlyMessage
         val card by endCard
         val pip by inPip
+        val tokens = kidTokens
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .background(MaterialTheme.colorScheme.scrim)
                 .onGloballyPositioned { c ->
                     val b = c.boundsInWindow()
                     videoBounds = android.graphics.Rect(
@@ -808,13 +935,13 @@ class PlayerActivity : ComponentActivity() {
                 ) {
                     Text(
                         listenOnly!!,
-                        color = Color.White,
+                        color = tokens.onArtwork,
                         style = MaterialTheme.typography.headlineSmall
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
                         playback?.title.orEmpty(),
-                        color = Color.White.copy(alpha = 0.7f),
+                        color = tokens.onArtwork.copy(alpha = 0.7f),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -827,7 +954,7 @@ class PlayerActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
                     Text(
                         if (checking) "Checking this one…" else "Getting it ready…",
-                        color = Color.White.copy(alpha = 0.85f)
+                        color = tokens.onArtwork.copy(alpha = 0.85f)
                     )
                 }
                 // Composed from the first video onwards and never swapped
@@ -863,8 +990,19 @@ class PlayerActivity : ComponentActivity() {
             ) {
                 CircularProgressIndicator()
             }
-            val showControls = timeUp == null && blocked == null && error == null &&
+            // Every card state, enumerated once. The controls, the touch layer
+            // and the daily countdown all key off this, so a card added later
+            // cannot be forgotten by one of them and drawn under by another.
+            val videoOnStage = timeUp == null && blocked == null && error == null &&
                 listenOnly == null && played && card == null && !pip
+            val showControls = videoOnStage
+            val frame by countdownFrame
+            // The daily countdown is deliberately OUTSIDE the controls' fade:
+            // it has to stay up while the chrome is hidden, which is most of
+            // the time. The full stage draws it top-right over the video; the
+            // portrait slot leaves it to the content column, which reads the
+            // same frame (see PortraitPlayerScaffold).
+            val countdownUp = videoOnStage && frame != null && !compact
             if (!pip) HeartBurst(heartBurst)
             if (!isTv && showControls) {
                 // Touch layer under the controls: single tap shows/hides
@@ -906,7 +1044,9 @@ class PlayerActivity : ComponentActivity() {
                     wantsPlay = wantsPlay,
                     title = currentTitle,
                     channel = currentChannel,
-                    remainingMs = remainingLeftMs,
+                    publishedAt = if (showVideoAge.value) currentPublishedAt.value else null,
+                    countdownUp = countdownUp,
+                    autoplayOn = autoplayState.value,
                     sponsorSegments = sponsorSegments.value,
                     panelState = trackPanel,
                     cursorState = trackCursor,
@@ -921,6 +1061,10 @@ class PlayerActivity : ComponentActivity() {
                     onOpenChannel = ::openChannel,
                     isFavorite = isFavorite.value,
                     onToggleFavorite = ::toggleFavorite,
+                    inWatchLater = inWatchLater.value,
+                    onToggleWatchLater = ::toggleWatchLater,
+                    inQueue = inQueue.value,
+                    onToggleQueue = ::toggleQueue,
                     stopAfterThis = stopAfterThis.value,
                     onToggleStopAfter = ::toggleStopAfter,
                     onBack = { finish() },
@@ -932,6 +1076,20 @@ class PlayerActivity : ComponentActivity() {
                     onToggleCaptions = { toggleCaptions(); pokeControls() },
                     onPoke = ::pokeControls,
                     playerProvider = { player }
+                )
+            }
+            if (countdownUp) frame?.let { f ->
+                // Under the phone's top row of buttons, beside the TV's title
+                // line (which keeps clear of it — see the overlay's top scrim).
+                DailyCountdownChip(
+                    frame = f,
+                    onArtwork = true,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(
+                            end = if (isTv) tvUnits(44f) else 16.dp,
+                            top = if (isTv) tvUnits(28f) else 64.dp
+                        )
                 )
             }
             card?.let { c ->
@@ -951,25 +1109,47 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
-     * Phone held upright: the video slot on top, then the title, the channel
-     * row with the heart and the moon, and what could play next — the rest
-     * of the lineup, then more from the channel. Padded off the system bars,
-     * which stay visible here (the stage hides them).
+     * Phone held upright: the video slot on top, then the page the design
+     * draws under it — the daily countdown while it is on, the title, the
+     * channel card, the three action tiles, the kid's own chips (the moon,
+     * the quality), and the lists as tabs. Padded off the system bars, which
+     * stay visible here (the stage hides them). This column is in the kid's
+     * look; only the slot above it is the dark stage.
      */
     @Composable
     private fun PortraitPlayerScaffold(stage: @Composable () -> Unit) {
         val playback by playbackState
         val index by indexState
         val more by moreFromChannel
+        val alike by similar
         val favorite by isFavorite
+        val later by inWatchLater
+        val queued by inQueue
         val stopAfter by stopAfterThis
         val avatar by channelAvatar
+        val frame by countdownFrame
+        val timeUp by timeUpMessage
+        val blocked by blockedGently
+        val error by errorState
+        val listenOnly by listenOnlyMessage
+        val chosen by portraitTab
+        val videoCount by channelVideoCount
+        val showAge by showVideoAge
         // Read under the index: appendToQueue grows the lists just before the
         // index moves, so a step is what brings the new entries on screen.
         val upNext = (index + 1..queue.lastIndex).toList()
         val titles = queueTitles
         val thumbs = queueThumbs
         val channel = currentChannel
+        // Up next is a tab only while there is one; the other two are always
+        // there — "Similar" with the parent's switch off is an empty list
+        // under its own name, not a tab that vanished.
+        val tabs = buildList {
+            if (upNext.isNotEmpty()) add(PlayerTab.UpNext)
+            add(PlayerTab.MoreFromChannel)
+            add(PlayerTab.Similar)
+        }
+        val tab = chosen?.takeIf { it in tabs } ?: tabs.first()
         Column(
             Modifier
                 .fillMaxSize()
@@ -981,103 +1161,118 @@ class PlayerActivity : ComponentActivity() {
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
             ) {
-                item {
-                    Column(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp, bottom = 8.dp)) {
-                        Text(
-                            playback?.title ?: titles.getOrNull(index).orEmpty(),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 2,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        // The channel, as a row that opens it: art, name, a chevron.
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                // The same countdown the stage draws top-right in landscape:
+                // one frame, one clock (PlayerCountdownTicker), on the page
+                // instead of over the picture. Hidden under a card for the
+                // same reasons the stage hides it (videoOnStage).
+                val f = frame
+                if (f != null && timeUp == null && blocked == null && error == null && listenOnly == null) {
+                    item {
+                        DailyCountdownChip(
+                            frame = f,
+                            onArtwork = false,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .then(if (avatar != null) Modifier.clickable { openChannel() } else Modifier)
-                                .padding(vertical = 4.dp)
-                        ) {
-                            if (avatar != null) {
-                                Box(Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(Color(0x33FFFFFF))) {
-                                    coil.compose.AsyncImage(
-                                        model = avatar,
-                                        contentDescription = channel,
-                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                                Spacer(Modifier.width(10.dp))
-                            }
-                            if (channel.isNotBlank()) Text(
-                                channel,
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (avatar != null) Icon(
-                                YosemiteIcons.ChevronRight, contentDescription = "Open channel",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        // The kid's two actions on this video, spelled out —
-                        // a heart and a moon floating by the name read as
-                        // decoration, not as buttons.
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            YosemiteChip(
-                                if (favorite) "In Favorites" else "Favorite",
-                                selected = favorite,
-                                icon = if (favorite) androidx.compose.material.icons.Icons.Filled.Favorite
-                                else androidx.compose.material.icons.Icons.Filled.FavoriteBorder,
-                                onClick = ::toggleFavorite
-                            )
-                            YosemiteChip(
-                                if (stopAfter) "Stopping after this" else "Stop after this",
-                                selected = stopAfter,
-                                icon = YosemiteIcons.Moon,
-                                onClick = ::toggleStopAfter
-                            )
-                            val ceiling by qualityCeiling
-                            YosemiteChip(
-                                io.yosemitekids.app.data.qualityLabel(ceiling),
-                                selected = false,
-                                icon = YosemiteIcons.Quality,
-                                onClick = { qualityPickerOpen.value = true }
-                            )
-                        }
+                                .padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                        )
                     }
                 }
-                if (upNext.isNotEmpty()) {
-                    item { SectionLabel("Up next") }
-                    items(upNext) { j ->
-                        val secs = queueDurations.getOrNull(j) ?: 0L
+                item {
+                    Text(
+                        playback?.title ?: titles.getOrNull(index).orEmpty(),
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(horizontal = 16.dp).padding(top = 14.dp, bottom = 12.dp)
+                    )
+                }
+                item {
+                    ChannelCard(
+                        avatar = avatar,
+                        name = channel,
+                        videoCount = videoCount,
+                        onOpen = if (avatar != null) ::openChannel else null
+                    )
+                }
+                item {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp).padding(top = 14.dp)
+                    ) {
+                        val tokens = kidTokens
+                        ActionTile(
+                            if (favorite) "Favorited" else "Favorite",
+                            if (favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            on = favorite, tint = tokens.action, onClick = ::toggleFavorite
+                        )
+                        ActionTile(
+                            if (later) "Saved" else "Watch later",
+                            YosemiteIcons.WatchLater,
+                            on = later, tint = tokens.offline, onClick = ::toggleWatchLater
+                        )
+                        ActionTile(
+                            if (queued) "Queued" else "Queue",
+                            YosemiteIcons.UpNext,
+                            on = queued, tint = tokens.action, onClick = ::toggleQueue
+                        )
+                    }
+                }
+                item {
+                    // The kid's own levers, as chips: the moon is theirs (the
+                    // Autoplay pill on the video is the parent's), and the
+                    // quality pick is for the session.
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp).padding(top = 10.dp)
+                    ) {
+                        YosemiteChip(
+                            if (stopAfter) "Stopping after this" else "Stop after this",
+                            selected = stopAfter,
+                            icon = YosemiteIcons.Moon,
+                            onClick = ::toggleStopAfter
+                        )
+                        val ceiling by qualityCeiling
+                        YosemiteChip(
+                            io.yosemitekids.app.data.qualityLabel(ceiling),
+                            selected = false,
+                            icon = YosemiteIcons.Quality,
+                            onClick = { qualityPickerOpen.value = true }
+                        )
+                    }
+                }
+                item { PlayerTabRow(tabs, tab) { portraitTab.value = it } }
+                val rowMod = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp)
+                when (tab) {
+                    PlayerTab.UpNext -> items(upNext) { j ->
                         SmallVideoRow(
                             title = titles.getOrNull(j)?.ifBlank { null } ?: "One more",
                             thumb = thumbs.getOrNull(j)?.ifBlank { null },
-                            subtitle = listOfNotNull(
-                                queueChannels.getOrNull(j)?.ifBlank { null },
-                                secs.takeIf { it > 0 }?.let { formatClock(it) }
-                            ).joinToString(" · ").ifBlank { null },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                            subtitle = queueChannels.getOrNull(j)?.ifBlank { null },
+                            durationSeconds = queueDurations.getOrNull(j),
+                            modifier = rowMod
                         ) { haptic(); dismissEndCard(); playIndex(j) }
                     }
-                }
-                if (more.isNotEmpty()) {
-                    item { SectionLabel("More from $channel") }
-                    items(more) { v ->
+                    PlayerTab.MoreFromChannel -> if (more.isEmpty()) {
+                        item { EmptyTabLine("Nothing else from ${channel.ifBlank { "this channel" }} yet") }
+                    } else items(more) { v ->
                         SmallVideoRow(
                             title = v.title,
                             thumb = v.thumbnailUrl,
-                            subtitle = listOfNotNull(
-                                if (showVideoAge.value) relativeAge(v.publishedAt) else null,
-                                v.durationSeconds.takeIf { it > 0 }?.let { formatClock(it) }
-                            ).joinToString(" · ").ifBlank { null },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                            subtitle = if (showAge) relativeAge(v.publishedAt) else null,
+                            durationSeconds = v.durationSeconds,
+                            modifier = rowMod
+                        ) { playExtra(v) }
+                    }
+                    PlayerTab.Similar -> if (alike.isEmpty()) {
+                        item { EmptyTabLine("Nothing similar yet") }
+                    } else items(alike) { v ->
+                        SmallVideoRow(
+                            title = v.title,
+                            thumb = v.thumbnailUrl,
+                            subtitle = metaLine(v.channelName, if (showAge) relativeAge(v.publishedAt) else null),
+                            durationSeconds = v.durationSeconds,
+                            modifier = rowMod
                         ) { playExtra(v) }
                     }
                 }
@@ -1085,22 +1280,135 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /** The channel, as a card that opens it: art, name, how many videos, a chevron. */
+    @Composable
+    private fun ChannelCard(avatar: String?, name: String, videoCount: Int, onOpen: (() -> Unit)?) {
+        val scheme = MaterialTheme.colorScheme
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(scheme.surfaceContainer)
+                .border(1.dp, scheme.outlineVariant, RoundedCornerShape(14.dp))
+                .then(if (onOpen != null) Modifier.clickable { onOpen() } else Modifier)
+                .padding(12.dp)
+        ) {
+            ChannelArt(avatar, name, 44.dp, radius = 11.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    name.ifBlank { "This channel" },
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                if (videoCount > 0) {
+                    Spacer(Modifier.height(2.dp))
+                    MicroLabel("$videoCount videos", scheme.onSurfaceVariant, isTv = false)
+                }
+            }
+            if (onOpen != null) Icon(
+                YosemiteIcons.ChevronRight, contentDescription = "Open channel",
+                tint = scheme.onSurfaceVariant
+            )
+        }
+    }
+
     /**
-     * A titled group in the list under the video, with a rule above it: the
-     * video's own details, what is lined up and what else the channel has
-     * ran together as one column of text otherwise.
+     * One of the three tiles under the video. A toggle, and it says so: the
+     * label changes and the glyph takes its own colour once the video is
+     * theirs — the tile itself does not fill, so three lit tiles still read
+     * as three tiles and not one bar.
      */
     @Composable
-    private fun SectionLabel(text: String) {
-        androidx.compose.material3.HorizontalDivider(
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
+    private fun RowScope.ActionTile(
+        label: String,
+        icon: ImageVector,
+        on: Boolean,
+        tint: Color,
+        onClick: () -> Unit
+    ) {
+        val scheme = MaterialTheme.colorScheme
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .weight(1f)
+                .height(46.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(scheme.surfaceContainer)
+                .border(1.dp, if (on) tint else scheme.outlineVariant, RoundedCornerShape(14.dp))
+                .clickable { onClick() }
+                .padding(horizontal = 8.dp)
+        ) {
+            Icon(
+                icon, contentDescription = null,
+                tint = if (on) tint else scheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                label,
+                color = scheme.onSurface,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+            )
+        }
+    }
+
+    /** The underlined tabs over the list; the hairline under them runs edge to edge. */
+    @Composable
+    private fun PlayerTabRow(tabs: List<PlayerTab>, active: PlayerTab, onPick: (PlayerTab) -> Unit) {
+        val scheme = MaterialTheme.colorScheme
+        Column(Modifier.padding(top = 16.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(22.dp),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            ) {
+                tabs.forEach { t ->
+                    val on = t == active
+                    // Bounded to the label's own width: the underline below
+                    // fills its column, and an unbounded column would take
+                    // the whole row and push the other tabs off the screen.
+                    Column(
+                        Modifier
+                            .width(IntrinsicSize.Max)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onPick(t) }
+                    ) {
+                        Text(
+                            t.label,
+                            color = if (on) scheme.onBackground else scheme.onSurfaceVariant,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = if (on) FontWeight.Bold else FontWeight.Medium
+                            ),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .background(if (on) scheme.onBackground else Color.Transparent)
+                        )
+                    }
+                }
+            }
+            androidx.compose.material3.HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.6f))
+        }
+    }
+
+    /** What a tab says when it has nothing to list — a line, never a blank. */
+    @Composable
+    private fun EmptyTabLine(text: String) {
         Text(
             text,
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 4.dp)
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)
         )
     }
 
@@ -1108,6 +1416,126 @@ class PlayerActivity : ComponentActivity() {
     private fun openChannel() {
         io.yosemitekids.app.data.PlayerRequests.openChannel = currentChannel
         finish()
+    }
+
+    /** The drain rate in force right now: the source's, scaled by the family listening rate when the screen is off. */
+    private fun currentDrain(): Int =
+        if (listenActive) listenDrainPercent(timePercent, listenPercent) else timePercent
+
+    /** Re-read the countdown's anchor; the chip re-seeds from it on the next tick. */
+    private fun reseedCountdown() {
+        lifecycleScope.launch { readCountdownAnchor() }
+    }
+
+    /**
+     * The one place the player asks the guard what is left. Off-main, because
+     * `remainingAll()` can write a day rollover. Returns the reads so the
+     * 5-second tick can take its one-minute moment from the same answer
+     * instead of asking twice.
+     */
+    private suspend fun readCountdownAnchor(): List<io.yosemitekids.app.data.Remaining>? {
+        if (!::sessionGuard.isInitialized) return null
+        val drain = currentDrain()
+        val listening = listenActive
+        val reads = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            sessionGuard.remainingAll(drain, listening)
+        }
+        if (timeUpMessage.value != null) return null
+        countdownAnchor.value = CountdownAnchor(reads, SystemClock.elapsedRealtime(), playClock.playedMs())
+        return reads
+    }
+
+    /** The playing video as the saved lists want it — title, poster and length from the lineup. */
+    private fun currentVideo(): io.yosemitekids.app.data.Video? {
+        val url = currentPageUrl ?: return null
+        val i = indexState.intValue
+        val duration = queueDurations.getOrNull(i)?.takeIf { it > 0 }
+            ?: ((player?.duration ?: 0L) / 1000).coerceAtLeast(0)
+        return io.yosemitekids.app.data.Video(
+            url = url,
+            title = currentTitle,
+            channelName = currentChannel,
+            thumbnailUrl = queueThumbs.getOrNull(i)?.ifEmpty { null },
+            durationSeconds = duration
+        )
+    }
+
+    /**
+     * Watch later, from the tile under the video or the TV toolbar. A toggle
+     * like the heart rather than add-only: the hold menu on every shelf
+     * already lets the kid take a video off again, so add-only here would
+     * be a rule this app does not actually have.
+     */
+    private fun toggleWatchLater() {
+        val video = currentVideo() ?: return
+        val now = !inWatchLater.value
+        inWatchLater.value = now
+        haptic()
+        notice.value = Notice(if (now) "Saved for later 🕒" else "Taken off Watch later")
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (now) watchLater.add(video) else watchLater.remove(video.url)
+        }
+        pokeControls()
+    }
+
+    /**
+     * Up next. Its own store instance, not [queueStore]: that one exists only
+     * for EXTRA_FROM_QUEUE launches and means "finished videos leave the
+     * lineup" — sharing it would change what that flag means. The add can be
+     * refused (already queued, or the cap), and the tile must not flip on a
+     * refusal, so the state follows the store's answer.
+     */
+    private fun toggleQueue() {
+        val video = currentVideo() ?: return
+        val store = io.yosemitekids.app.data.QueueStore(this, profileSuffix)
+        val wanted = !inQueue.value
+        haptic()
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (wanted) {
+                val queued = store.add(video) || video.url in store.urls()
+                inQueue.value = queued
+                notice.value = Notice(if (queued) "Added to Up next ☰" else "Up next is full")
+            } else {
+                store.remove(video.url)
+                inQueue.value = false
+                notice.value = Notice("Taken off Up next")
+            }
+        }
+        pokeControls()
+    }
+
+    /**
+     * "Similar": videos across every channel whose titles match this one,
+     * the same local, explainable scorer the home's "More like what you
+     * watch" uses. Honours the parent's switch the way Home does — off means
+     * an EMPTY list, not a hidden tab, so nothing looks accidentally missing.
+     * Every source's cache file is read, so this runs off-main, after the
+     * title is known.
+     */
+    private fun loadSimilar(title: String, pageUrl: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val cfg = familyConfig
+                ?: io.yosemitekids.app.data.ConfigStore(this@PlayerActivity).load()
+                    .also { familyConfig = it }
+            val picks = if (!cfg.suggestSimilar) emptyList() else {
+                val cache = io.yosemitekids.app.data.VideoCache(this@PlayerActivity)
+                val known = io.yosemitekids.app.data.SourceCache(this@PlayerActivity).load()
+                    .flatMap { cache.load(it.id) }
+                val candidates = known.asSequence()
+                    .filter { it.url != pageUrl && it.url !in queue }
+                    // Family-wide and this kid's own blocks, and nothing they
+                    // have already finished — the same fence autoplay keeps.
+                    .filter {
+                        cfg.isBlockedFor(it.videoId, gateProfileId) != true &&
+                            history.progress(it.url)?.isFinished != true
+                    }
+                    .distinctBy { it.url }
+                    .map { VideoItem(it, null) }
+                    .toList()
+                suggestionsFor(listOf(title), candidates, emptyMap(), SIMILAR_MAX).map { it.video }
+            }
+            if (isActive && currentPageUrl == pageUrl) similar.value = picks
+        }
     }
 
     /** The moon: "stop after this one", with the pill that says so. */
@@ -1160,8 +1588,11 @@ class PlayerActivity : ComponentActivity() {
             endCard.value = EndCard(
                 nextTitle = if (hasNext) queueTitles.getOrNull(i + 1) else null,
                 nextThumb = if (hasNext) queueThumbs.getOrNull(i + 1) else null,
+                nextChannel = if (hasNext) queueChannels.getOrNull(i + 1)?.ifBlank { null } ?: currentChannel else null,
+                nextDurationSeconds = if (hasNext) queueDurations.getOrNull(i + 1)?.takeIf { it > 0 } else null,
                 hasNext = hasNext,
                 secondsLeft = seconds,
+                totalSeconds = seconds,
                 more = more
             )
             var left = seconds
@@ -1221,17 +1652,8 @@ class PlayerActivity : ComponentActivity() {
 
     /** The heart: save or unsave the playing video for this kid, with a pop. */
     private fun toggleFavorite() {
-        val url = currentPageUrl ?: return
-        val i = indexState.intValue
-        val duration = queueDurations.getOrNull(i)?.takeIf { it > 0 }
-            ?: ((player?.duration ?: 0L) / 1000).coerceAtLeast(0)
-        val video = io.yosemitekids.app.data.Video(
-            url = url,
-            title = currentTitle,
-            channelName = currentChannel,
-            thumbnailUrl = queueThumbs.getOrNull(i)?.ifEmpty { null },
-            durationSeconds = duration
-        )
+        val video = currentVideo() ?: return
+        val url = video.url
         val nowFavorite = !isFavorite.value
         isFavorite.value = nowFavorite
         haptic()
@@ -1314,12 +1736,25 @@ class PlayerActivity : ComponentActivity() {
             val channelName = currentChannel
             launch(Dispatchers.IO) {
                 val fav = favorites.urls().contains(pageUrl)
+                val later = watchLater.urls().contains(pageUrl)
+                val queued = io.yosemitekids.app.data.QueueStore(this@PlayerActivity, profileSuffix)
+                    .urls().contains(pageUrl)
                 val source = io.yosemitekids.app.data.SourceCache(this@PlayerActivity).load()
                     .firstOrNull { it.name == channelName }
                 if (isActive) {
                     isFavorite.value = fav
+                    inWatchLater.value = later
+                    inQueue.value = queued
                     channelSourceId = source?.id
                     if (source?.avatarUrl != null) channelAvatar.value = source.avatarUrl
+                    // The cache row for this video carries the one thing the
+                    // intent does not: when it came out. Same read the
+                    // candidates below make, memoised in VideoCache.
+                    val cached = if (source != null) {
+                        io.yosemitekids.app.data.VideoCache(this@PlayerActivity).load(source.id)
+                    } else emptyList()
+                    currentPublishedAt.value = cached.firstOrNull { it.url == pageUrl }?.publishedAt
+                    channelVideoCount.intValue = cached.size
                     // The portrait list under the video: the same channel
                     // candidates autoplay will draw from, computed now so the
                     // list is there before the video is (cache read, off-main).
@@ -1388,6 +1823,8 @@ class PlayerActivity : ComponentActivity() {
             ListenService.channelName = currentChannel
             playbackState.value = pb
             everPlayed.value = true
+            similar.value = emptyList()
+            loadSimilar(pb.title, pageUrl)
             attachSources(
                 pb,
                 audioOnly = listenActive && pb.audioUrl != null,
@@ -1552,16 +1989,9 @@ class PlayerActivity : ComponentActivity() {
         }
         exo.playWhenReady = wasPlaying
         pokeControls() // brief peek at the title and position at start
-        // Fresh video: the chip shouldn't wait five seconds for the first tick.
-        if (resumeMs == null) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                val drain =
-                    if (listenActive) listenDrainPercent(timePercent, listenPercent)
-                    else timePercent
-                val left = sessionGuard.remainingMs(drain, listenActive)
-                if (timeUpMessage.value == null) remainingLeftMs.value = left
-            }
-        }
+        // Fresh video: the countdown shouldn't wait five seconds for the first
+        // tick, and a cross-channel step may have changed the drain rate.
+        if (resumeMs == null) reseedCountdown()
     }
 
     /**
@@ -1681,7 +2111,7 @@ class PlayerActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = YosemiteDarkColors, typography = YosemiteTypography) {
                 Box(
-                    Modifier.fillMaxSize().background(Color.Black),
+                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim),
                     contentAlignment = Alignment.Center
                 ) {
                     BlockedCard(reason, isTv = isTv) { finish() }
@@ -1826,25 +2256,30 @@ class PlayerActivity : ComponentActivity() {
                     trackCursor.intValue = (trackCursor.intValue - 1).coerceAtLeast(0); true
                 }
                 android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    trackCursor.intValue = (trackCursor.intValue + 1).coerceAtMost(TV_TOOLBAR_LAST); true
+                    trackCursor.intValue =
+                        (trackCursor.intValue + 1).coerceAtMost(TvToolbarSlot.entries.lastIndex); true
                 }
                 android.view.KeyEvent.KEYCODE_DPAD_CENTER,
                 android.view.KeyEvent.KEYCODE_ENTER -> {
-                    when (trackCursor.intValue) {
-                        TV_TOOLBAR_AUDIO -> {
+                    // Exhaustive: a slot added to TvToolbarSlot with no branch
+                    // here does not compile, which is the whole point of the enum.
+                    when (TvToolbarSlot.entries[trackCursor.intValue.coerceIn(0, TvToolbarSlot.entries.lastIndex)]) {
+                        TvToolbarSlot.Audio -> {
                             trackCursor.intValue = selectedAudioTrack.intValue
                             trackPanel.value = TvTrackPanel.Audio
                         }
-                        TV_TOOLBAR_SUBTITLES -> {
+                        TvToolbarSlot.Subtitles -> {
                             trackCursor.intValue = if (captionsOn) {
                                 selectedSubtitleTrack.intValue + 1
                             } else 0
                             trackPanel.value = TvTrackPanel.Subtitles
                         }
-                        // The phone's heart and avatar, reachable from the remote:
+                        // The phone's tiles and avatar, reachable from the remote:
                         // the toolbar is the one place a TV kid can "press" something.
-                        TV_TOOLBAR_FAVORITE -> toggleFavorite()
-                        TV_TOOLBAR_CHANNEL -> {
+                        TvToolbarSlot.Favorite -> toggleFavorite()
+                        TvToolbarSlot.WatchLater -> toggleWatchLater()
+                        TvToolbarSlot.Queue -> toggleQueue()
+                        TvToolbarSlot.Channel -> {
                             // Only when the uploader is a whitelisted channel: a
                             // playlist's uploader often isn't, and finishing the
                             // player to open nothing would dump the kid mid-video.
@@ -1865,7 +2300,7 @@ class PlayerActivity : ComponentActivity() {
                 else -> false
             }
             TvTrackPanel.Audio -> handleOptionKey(
-                keyCode, pb.audioTracks.size.coerceAtLeast(1), toolbarCursor = 0
+                keyCode, pb.audioTracks.size.coerceAtLeast(1), toolbarCursor = TvToolbarSlot.Audio.ordinal
             ) {
                 val chosen = if (pb.audioTracks.isEmpty()) 0
                     else trackCursor.intValue.coerceIn(0, pb.audioTracks.lastIndex)
@@ -1878,7 +2313,7 @@ class PlayerActivity : ComponentActivity() {
                 )
             }
             TvTrackPanel.Subtitles -> handleOptionKey(
-                keyCode, pb.subtitles.size + 1, toolbarCursor = 1
+                keyCode, pb.subtitles.size + 1, toolbarCursor = TvToolbarSlot.Subtitles.ordinal
             ) {
                 val chosen = trackCursor.intValue - 1
                 selectedSubtitleTrack.intValue = chosen
@@ -2047,7 +2482,14 @@ class PlayerActivity : ComponentActivity() {
     private fun pipSupported(): Boolean =
         !isTv && packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
 
-    /** Shrinking only makes sense with a video on and playing, and no card over it. */
+    /**
+     * Shrinking only makes sense with a video on and playing, and no card over
+     * it. The daily countdown is enumerated here on purpose and NOT a blocker:
+     * it is a chip over a playing video, not a card, and a kid with four
+     * minutes left may still shrink the video to the corner — the chip simply
+     * hides in the window (PlayerStage draws nothing in PiP) and the time-up
+     * card arrives there as it always has.
+     */
     private fun pipEligible(): Boolean =
         pipSupported() && player != null && everPlayed.value && wantsPlay.value &&
             timeUpMessage.value == null && blockedGently.value == null &&
@@ -2192,12 +2634,22 @@ private data class Notice(val text: String, val at: Long = System.currentTimeMil
 
 private enum class TvTrackPanel { Hidden, Toolbar, Audio, Subtitles }
 
-// Cursor positions on the TV toolbar (▼ from the player), left to right.
-private const val TV_TOOLBAR_AUDIO = 0
-private const val TV_TOOLBAR_SUBTITLES = 1
-private const val TV_TOOLBAR_FAVORITE = 2
-private const val TV_TOOLBAR_CHANNEL = 3
-private const val TV_TOOLBAR_LAST = TV_TOOLBAR_CHANNEL
+/**
+ * The TV toolbar's slots (▼ from the player), left to right — the order the
+ * cursor walks them AND the order the overlay draws them. One list on purpose:
+ * the key handler `when`s over it and the overlay iterates it, so a slot added
+ * here is a compile error until both know what it does. The cursor itself
+ * stays an Int index into [entries]; nothing here takes focus (guard 37).
+ */
+private enum class TvToolbarSlot { Audio, Subtitles, Favorite, WatchLater, Queue, Channel }
+
+/** How many "Similar" picks the tab under the video shows. */
+private const val SIMILAR_MAX = 12
+
+/** The three lists under the portrait video, as tabs. */
+private enum class PlayerTab(val label: String) {
+    UpNext("Up next"), MoreFromChannel("More from channel"), Similar("Similar")
+}
 
 /** Keys that would seek, step or toggle the player while an end card is up. Volume and Back pass. */
 private val END_CARD_SWALLOWED_KEYS = setOf(
@@ -2218,8 +2670,13 @@ private val END_CARD_SWALLOWED_KEYS = setOf(
 private data class EndCard(
     val nextTitle: String?,
     val nextThumb: String?,
+    val nextChannel: String?,
+    /** Its length, for the badge on the poster; null when the lineup did not say. */
+    val nextDurationSeconds: Long?,
     val hasNext: Boolean,
     val secondsLeft: Int,
+    /** What [secondsLeft] started from, so the ring knows how full it is. */
+    val totalSeconds: Int,
     /** Up to three more from the same channel, tappable (phones). */
     val more: List<io.yosemitekids.app.data.Video> = emptyList()
 )
@@ -2271,12 +2728,13 @@ private fun BoxScope.NoticeOverlay(state: MutableState<Notice?>) {
             androidx.compose.animation.fadeOut(),
         modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp)
     ) {
+        val tokens = kidTokens
         Text(
             shown?.text.orEmpty(),
-            color = Color.White,
+            color = tokens.onArtwork,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier
-                .background(Color(0xCC000000), shape = RoundedCornerShape(24.dp))
+                .background(tokens.artworkScrim, shape = RoundedCornerShape(24.dp))
                 .padding(horizontal = 20.dp, vertical = 10.dp)
         )
     }
@@ -2314,22 +2772,30 @@ private fun BoxScope.SeekRipple(state: State<Pair<Int, Long>?>) {
             .align(if (delta < 0) Alignment.CenterStart else Alignment.CenterEnd)
             .padding(horizontal = 48.dp)
     ) {
+        val tokens = kidTokens
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(112.dp)
                 .clip(CircleShape)
-                .background(Color(0x59FFFFFF))
+                .background(tokens.onArtwork.copy(alpha = 0.35f))
         ) {
             Text(
                 if (delta < 0) "◀◀\n${-delta} s" else "▶▶\n$delta s",
-                color = Color.White,
+                color = tokens.onArtwork,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
             )
         }
     }
 }
+
+/**
+ * Ink for a glyph on a button filled with [KidTokens.onArtwork] — the pause
+ * bars, a lit CC. Not `onBackground`: that is the page's text colour and
+ * flips to near-white on the dark look, where the button is still white.
+ */
+private fun KidTokens.inkOnArtworkFill(): Color = readableOn(onArtwork)
 
 /** A pill-shaped kid button: big, rounded, one job. On TV the remote's cursor
  *  highlights it instead of touch focus (see the activity's key handling). */
@@ -2344,16 +2810,17 @@ internal fun KidButton(
     val scale by androidx.compose.animation.core.animateFloatAsState(
         if (highlighted) 1.06f else 1f, label = "kidButtonScale"
     )
+    val tokens = kidTokens
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .scale(scale)
             .height(56.dp)
             .clip(RoundedCornerShape(28.dp))
-            .background(if (primary) YosemiteDarkColors.primary else Color(0x33FFFFFF))
+            .background(if (primary) MaterialTheme.colorScheme.primary else tokens.onArtwork.copy(alpha = 0.2f))
             .border(
                 width = if (highlighted) 3.dp else 0.dp,
-                color = if (highlighted) Color.White else Color.Transparent,
+                color = if (highlighted) tokens.onArtwork else Color.Transparent,
                 shape = RoundedCornerShape(28.dp)
             )
             // Touch only: a focusable here would steal the remote's keys from
@@ -2363,7 +2830,7 @@ internal fun KidButton(
     ) {
         Text(
             label,
-            color = if (primary) YosemiteDarkColors.onPrimary else Color.White,
+            color = if (primary) MaterialTheme.colorScheme.onPrimary else tokens.onArtwork,
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             maxLines = 1
         )
@@ -2401,7 +2868,7 @@ internal fun BlockedCard(message: String, isTv: Boolean, onOk: () -> Unit) {
         Spacer(Modifier.height(20.dp))
         Text(
             text,
-            color = Color.White,
+            color = kidTokens.onArtwork,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
         )
@@ -2427,14 +2894,14 @@ private fun ErrorCard(isTv: Boolean, cursor: Int, onRetry: () -> Unit, onBack: (
         Spacer(Modifier.height(16.dp))
         Text(
             "Hmm, this video won't play right now.",
-            color = Color.White,
+            color = kidTokens.onArtwork,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
         )
         Spacer(Modifier.height(8.dp))
         Text(
             "Try again, or pick a different one.",
-            color = Color.White.copy(alpha = 0.7f),
+            color = kidTokens.onArtwork.copy(alpha = 0.7f),
             style = MaterialTheme.typography.bodyLarge
         )
         Spacer(Modifier.height(28.dp))
@@ -2447,9 +2914,16 @@ private fun ErrorCard(isTv: Boolean, cursor: Int, onRetry: () -> Unit, onBack: (
 
 /**
  * The end-of-video card over the held last frame. Mid-lineup it previews what
- * comes next and counts down; on the last video it celebrates and offers a
+ * comes next — the poster with the play disc in it, the title, the channel —
+ * and counts down in a ring; on the last video it celebrates and offers a
  * replay. Auto-advance is the default, but never silent — the countdown is
  * the whole point.
+ *
+ * The ring is the ACTION colour and never amber: amber on this screen is the
+ * daily countdown, and "playing in 5" is not a warning. The design draws no
+ * buttons under it; the two stay, because they are what the TV cursor walks
+ * (handleTwoButtonKey) and what a finger presses without hunting for the
+ * poster — on a phone the poster is a third target for the same thing.
  */
 @Composable
 private fun BoxScope.EndCardOverlay(
@@ -2464,8 +2938,11 @@ private fun BoxScope.EndCardOverlay(
     compact: Boolean = false
 ) {
     val showMore = !isTv && !compact && card.more.isNotEmpty()
+    val tokens = kidTokens
+    val onArtwork = tokens.onArtwork
+    val fraction = if (card.totalSeconds > 0) card.secondsLeft.toFloat() / card.totalSeconds else 0f
     Box(
-        Modifier.fillMaxSize().background(Color(0xB3000000)),
+        Modifier.fillMaxSize().background(tokens.artworkScrim.copy(alpha = 0.72f)),
         contentAlignment = Alignment.Center
     ) {
         // Side by side: a landscape phone is wide and short, and a stacked
@@ -2475,101 +2952,197 @@ private fun BoxScope.EndCardOverlay(
             horizontalArrangement = Arrangement.spacedBy(44.dp),
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
         ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            if (card.hasNext) {
-                Text(
-                    "Up next",
-                    color = Color.White.copy(alpha = 0.7f),
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
-                if (card.nextThumb != null && !compact) {
-                    coil.compose.AsyncImage(
-                        model = card.nextThumb,
-                        contentDescription = card.nextTitle,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier
-                            .width(if (isTv) 320.dp else 208.dp)
-                            .height(if (isTv) 180.dp else 117.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0x33FFFFFF))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (card.hasNext) {
+                    MicroLabel("Up next", onArtwork.copy(alpha = 0.7f), isTv)
+                    Spacer(Modifier.height(if (compact) 4.dp else 10.dp))
+                    if (!compact) {
+                        // TV geometry is PROVISIONAL: the handoff's 720p frame
+                        // through tvUnits, not yet seen on a television.
+                        val posterW = if (isTv) tvUnits(420f) else 208.dp
+                        val posterH = if (isTv) tvUnits(236f) else 117.dp
+                        val disc = if (isTv) tvUnits(96f) else 64.dp
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(posterW, posterH)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(onArtwork.copy(alpha = 0.2f))
+                                .border(3.dp, tokens.action, RoundedCornerShape(16.dp))
+                                // Touch only: on TV the cursor is on the buttons below.
+                                .then(if (isTv) Modifier else Modifier.clickable { onPrimary() })
+                        ) {
+                            PosterImage(card.nextThumb, card.nextTitle, Modifier.fillMaxSize())
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.size(disc).clip(CircleShape).background(tokens.action)
+                            ) {
+                                PlayPauseGlyph(playing = false, size = disc * 0.5f, color = tokens.onAction)
+                            }
+                            card.nextDurationSeconds?.let {
+                                DurationBadge(formatClock(it), Modifier.align(Alignment.BottomEnd).padding(8.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    Text(
+                        card.nextTitle ?: "The next video",
+                        color = onArtwork,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        style = if (isTv) {
+                            MaterialTheme.typography.headlineSmall.copy(
+                                fontSize = tvTypeUnits(26f), fontWeight = FontWeight.Bold
+                            )
+                        } else MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.width(if (isTv) tvUnits(560f) else if (compact) 300.dp else 420.dp)
                     )
-                    Spacer(Modifier.height(8.dp))
-                }
-                Text(
-                    card.nextTitle ?: "The next video",
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.width(if (isTv) 520.dp else if (compact) 300.dp else 420.dp)
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Playing in ${card.secondsLeft}…",
-                    color = YosemiteDarkColors.primary,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    KidButton("▶  Play now", primary = true, highlighted = isTv && cursor == 0, isTv = isTv, onClick = onPrimary)
-                    KidButton("Not now", primary = false, highlighted = isTv && cursor == 1, isTv = isTv, onClick = onSecondary)
-                }
-            } else {
-                Text(
-                    "🎉",
-                    fontSize = androidx.compose.ui.unit.TextUnit(if (compact) 36f else 64f, androidx.compose.ui.unit.TextUnitType.Sp)
-                )
-                Spacer(Modifier.height(if (compact) 2.dp else 8.dp))
-                Text(
-                    "That's the end!",
-                    color = Color.White,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Back to the shelf in ${card.secondsLeft}…",
-                    color = Color.White.copy(alpha = 0.6f),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(Modifier.height(if (compact) 8.dp else 16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    KidButton("↺  Watch again", primary = true, highlighted = isTv && cursor == 0, isTv = isTv, onClick = onPrimary)
-                    KidButton("✓  All done", primary = false, highlighted = isTv && cursor == 1, isTv = isTv, onClick = onSecondary)
+                    card.nextChannel?.let {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            it,
+                            color = onArtwork.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
+                    EndCountdownPill(
+                        "Playing in ${card.secondsLeft} second" + if (card.secondsLeft == 1) "" else "s",
+                        fraction, card.secondsLeft, isTv
+                    )
+                    Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        KidButton("▶  Play now", primary = true, highlighted = isTv && cursor == 0, isTv = isTv, onClick = onPrimary)
+                        KidButton("Not now", primary = false, highlighted = isTv && cursor == 1, isTv = isTv, onClick = onSecondary)
+                    }
+                } else {
+                    Text(
+                        "🎉",
+                        fontSize = TextUnit(if (compact) 36f else 64f, TextUnitType.Sp)
+                    )
+                    Spacer(Modifier.height(if (compact) 2.dp else 8.dp))
+                    Text(
+                        "That's the end!",
+                        color = onArtwork,
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
+                    EndCountdownPill("Back to the shelf in ${card.secondsLeft}", fraction, card.secondsLeft, isTv)
+                    Spacer(Modifier.height(if (compact) 8.dp else 16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        KidButton("↺  Watch again", primary = true, highlighted = isTv && cursor == 0, isTv = isTv, onClick = onPrimary)
+                        KidButton("✓  All done", primary = false, highlighted = isTv && cursor == 1, isTv = isTv, onClick = onSecondary)
+                    }
                 }
             }
-        }
-        // "What else is there" is one tap away — three more from the same
-        // channel. Touch only: the TV's two-button cursor stays simple.
-        if (showMore) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "More from $channel",
-                    color = Color.White.copy(alpha = 0.7f),
-                    style = MaterialTheme.typography.labelLarge
-                )
-                card.more.forEach { v ->
-                    SmallVideoRow(v.title, v.thumbnailUrl, Modifier.width(360.dp)) { onPick(v) }
+            // "What else is there" is one tap away — three more from the same
+            // channel. Touch only: the TV's two-button cursor stays simple.
+            if (showMore) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "More from $channel",
+                        color = onArtwork.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    card.more.forEach { v ->
+                        SmallVideoRow(
+                            v.title, v.thumbnailUrl, Modifier.width(360.dp),
+                            durationSeconds = v.durationSeconds
+                        ) { onPick(v) }
+                    }
                 }
             }
-        }
         }
     }
+}
+
+/** "Playing in 5 seconds" behind a ring that empties as they go — the action colour, see [EndCardOverlay]. */
+@Composable
+private fun EndCountdownPill(text: String, fraction: Float, seconds: Int, isTv: Boolean) {
+    val tokens = kidTokens
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .background(tokens.artworkScrim.copy(alpha = 0.9f), RoundedCornerShape(24.dp))
+            .padding(start = 8.dp, end = 18.dp, top = 6.dp, bottom = 6.dp)
+    ) {
+        CountdownRing(
+            fraction = fraction,
+            color = tokens.action,
+            track = tokens.onArtwork.copy(alpha = 0.14f),
+            size = if (isTv) 36.dp else 30.dp,
+            stroke = 3.dp
+        ) {
+            Text(
+                "$seconds",
+                color = tokens.onArtwork,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace
+                )
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text,
+            color = tokens.onArtwork,
+            maxLines = 1,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+        )
+    }
+}
+
+/** The design's mono uppercase micro-label: "UP NEXT", "· TODAY", "30 VIDEOS". */
+@Composable
+private fun MicroLabel(text: String, color: Color, isTv: Boolean, modifier: Modifier = Modifier) {
+    Text(
+        text.uppercase(),
+        color = color,
+        maxLines = 1,
+        style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = if (isTv) 12.sp else 9.5.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = TextUnit(0.14f, TextUnitType.Em),
+            fontFamily = FontFamily.Monospace
+        ),
+        modifier = modifier
+    )
+}
+
+/** "26:34" on a poster's corner, the same badge every tile in the app wears. */
+@Composable
+private fun DurationBadge(text: String, modifier: Modifier = Modifier) {
+    val tokens = kidTokens
+    Text(
+        text,
+        color = tokens.onArtwork,
+        maxLines = 1,
+        style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 10.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace
+        ),
+        modifier = modifier
+            .background(tokens.artworkScrim, RoundedCornerShape(5.dp))
+            .padding(horizontal = 5.dp, vertical = 2.dp)
+    )
 }
 
 /**
  * A poster with its title beside it — the list shape of YouTube's portrait
  * "Up next", shared by the end card's "More from" column and the portrait
- * layout's lists. Kid-sized: a 72 dp poster is a target, not a thumbnail.
+ * layout's tabs. Kid-sized: a 76 dp poster is a target, not a thumbnail.
  */
 @Composable
 private fun SmallVideoRow(
     title: String,
     thumb: String?,
     modifier: Modifier = Modifier,
-    /** "Channel · 4:53", the quiet line under the title. */
+    /** "Channel · 4:53" or "today", the quiet line under the title. */
     subtitle: String? = null,
+    /** Length, as the badge on the poster's corner; null or 0 draws none. */
+    durationSeconds: Long? = null,
     onClick: () -> Unit
 ) {
     Row(
@@ -2579,32 +3152,37 @@ private fun SmallVideoRow(
             .clickable { onClick() }
             .padding(4.dp)
     ) {
-        coil.compose.AsyncImage(
-            model = thumb,
-            contentDescription = title,
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-            modifier = Modifier
+        // Scheme colours, not the on-artwork token: this row sits on the page
+        // under the portrait video as well as on the end card's scrim, and
+        // white text on the light look's paper would vanish.
+        Box(
+            Modifier
                 .width(136.dp)
                 .height(76.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0x33FFFFFF))
-        )
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            PosterImage(thumb, title, Modifier.fillMaxSize())
+            if (durationSeconds != null && durationSeconds > 0) {
+                DurationBadge(formatClock(durationSeconds), Modifier.align(Alignment.BottomEnd).padding(5.dp))
+            }
+        }
         Spacer(Modifier.width(12.dp))
         Column {
             Text(
                 title,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 2,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleSmall
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
             )
             if (subtitle != null) {
                 Spacer(Modifier.height(2.dp))
                 Text(
                     subtitle,
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -2612,49 +3190,165 @@ private fun SmallVideoRow(
     }
 }
 
-/** The heart: save for later, with the pop. Filled and red once it's theirs. */
+/**
+ * One control on the stage: a rounded tile over the scrim with a glyph in
+ * it. Phones tap it; on TV it is a cursor slot and [highlighted] is where
+ * the remote is — nothing here takes focus (guard 37). The tile fills only
+ * for the cursor; a control's own state (a heart that is already theirs)
+ * colours the glyph instead, so state and cursor cannot be confused.
+ *
+ * [content] is handed the glyph colour and the ground it sits on, because a
+ * lit CC box is drawn in the glyph colour with its letters in the ground's.
+ */
 @Composable
-private fun HeartButton(isFavorite: Boolean, onClick: () -> Unit) {
+private fun OverlayTile(
+    label: String,
+    isTv: Boolean,
+    highlighted: Boolean,
+    onClick: (() -> Unit)?,
+    /** The glyph's colour at rest — the state colour, or plain on-artwork. */
+    tint: Color,
+    size: Dp = 44.dp,
+    content: @Composable (glyph: Color, ground: Color) -> Unit
+) {
+    val tokens = kidTokens
+    val ground = if (highlighted) tokens.onArtwork else tokens.artworkScrim.copy(alpha = 0.55f)
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .clickable { onClick() }
+            .size(size)
+            .clip(RoundedCornerShape(12.dp))
+            .background(ground)
+            .then(if (!isTv && onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .semantics { contentDescription = label }
     ) {
-        Icon(
-            if (isFavorite) androidx.compose.material.icons.Icons.Filled.Favorite
-            else androidx.compose.material.icons.Icons.Filled.FavoriteBorder,
-            contentDescription = if (isFavorite) "In your Favorites" else "Add to Favorites",
-            tint = if (isFavorite) Color(0xFFFF5A79) else Color.White,
-            modifier = Modifier.size(28.dp)
+        content(if (highlighted) tokens.inkOnArtworkFill() else tint, ground)
+    }
+}
+
+/**
+ * "Autoplay ON" — the parent's switch, shown so a kid knows what happens at
+ * the end of this one, and READ-ONLY on purpose: pressing it would write a
+ * parent's setting from the kid's side. Their own lever is the moon ("stop
+ * after this one"). On TV it is not a cursor slot for the same reason.
+ */
+@Composable
+private fun AutoplayPill(on: Boolean, isTv: Boolean, compact: Boolean) {
+    val tokens = kidTokens
+    val h = if (isTv) 44.dp else if (compact) 30.dp else 34.dp
+    val shape = RoundedCornerShape(h / 2)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .height(h)
+            .clip(shape)
+            .background(tokens.artworkScrim.copy(alpha = 0.55f))
+            .border(1.5.dp, if (on) tokens.action else tokens.onArtwork.copy(alpha = 0.3f), shape)
+            .padding(horizontal = if (isTv) 14.dp else 10.dp)
+            .semantics {
+                contentDescription =
+                    if (on) "Autoplay is on. A grown-up's setting." else "Autoplay is off. A grown-up's setting."
+            }
+    ) {
+        Text(
+            "Autoplay",
+            color = tokens.onArtwork,
+            maxLines = 1,
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontWeight = FontWeight.Bold, fontSize = if (isTv) 15.sp else 12.5.sp
+            )
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            if (on) "ON" else "OFF",
+            color = if (on) tokens.action else tokens.onArtwork.copy(alpha = 0.6f),
+            maxLines = 1,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
+                fontSize = if (isTv) 11.sp else 9.5.sp
+            )
         )
     }
 }
 
-/** The moon: stop after this one; lit while armed. */
+/** The CC box: outlined at rest, filled in the glyph colour when captions are on. */
 @Composable
-private fun MoonButton(stopAfterThis: Boolean, onClick: () -> Unit) {
+private fun CcGlyph(lit: Boolean, glyph: Color, ground: Color) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(if (stopAfterThis) Color(0x59FFFFFF) else Color.Transparent)
-            .clickable { onClick() }
+            .size(width = 26.dp, height = 18.dp)
+            .background(if (lit) glyph else Color.Transparent, RoundedCornerShape(3.dp))
+            .border(2.dp, glyph, RoundedCornerShape(3.dp))
     ) {
-        Icon(
-            YosemiteIcons.Moon,
-            contentDescription = "Stop after this one",
-            tint = if (stopAfterThis) Color(0xFFFFD54F) else Color.White,
-            modifier = Modifier.size(26.dp)
+        Text(
+            "CC",
+            color = if (lit) ground else glyph,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp)
         )
+    }
+}
+
+/** A speaker and its sound, drawn: the TV's audio-track slot. */
+@Composable
+private fun AudioGlyph(ink: Color) {
+    Box(contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .offset(x = (-7).dp)
+                .size(width = 7.dp, height = 12.dp)
+                .background(ink, RoundedCornerShape(1.dp))
+        )
+        Box(
+            Modifier
+                .offset(x = 1.dp)
+                .size(width = 10.dp, height = 18.dp)
+                .clip(
+                    androidx.compose.foundation.shape.GenericShape { size, _ ->
+                        moveTo(0f, size.height * 0.28f)
+                        lineTo(size.width * 0.55f, 0f)
+                        lineTo(size.width, 0f)
+                        lineTo(size.width, size.height)
+                        lineTo(size.width * 0.55f, size.height)
+                        lineTo(0f, size.height * 0.72f)
+                        close()
+                    }
+                )
+                .background(ink)
+        )
+        Text(
+            ")))",
+            color = ink,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            modifier = Modifier.padding(start = 22.dp)
+        )
+    }
+}
+
+/** The channel's face in a slot: selecting it leaves for the channel page. */
+@Composable
+private fun AvatarGlyph(avatarUrl: String?, ground: Color) {
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(ground)
+    ) {
+        if (avatarUrl != null) {
+            PosterImage(avatarUrl, "Channel", Modifier.fillMaxSize())
+        } else {
+            Text(
+                "📺",
+                modifier = Modifier.align(Alignment.Center),
+                fontSize = TextUnit(18f, TextUnitType.Sp)
+            )
+        }
     }
 }
 
 /** Picture-in-picture: a frame with a small filled one in its corner. Drawn, like the transport glyphs. */
 @Composable
-private fun PipGlyph(size: androidx.compose.ui.unit.Dp, color: Color) {
+private fun PipGlyph(size: Dp, color: Color) {
     androidx.compose.foundation.Canvas(Modifier.size(size)) {
         val w = this.size.width
         val h = this.size.height
@@ -2677,7 +3371,7 @@ private fun PipGlyph(size: androidx.compose.ui.unit.Dp, color: Color) {
 
 /** ⛶: four corner brackets pointing out (go full screen) or in (come back). */
 @Composable
-private fun FullscreenGlyph(expand: Boolean, size: androidx.compose.ui.unit.Dp, color: Color) {
+private fun FullscreenGlyph(expand: Boolean, size: Dp, color: Color) {
     androidx.compose.foundation.Canvas(Modifier.size(size)) {
         val w = this.size.width
         val stroke = w * 0.1f
@@ -2705,7 +3399,7 @@ private fun FullscreenGlyph(expand: Boolean, size: androidx.compose.ui.unit.Dp, 
 
 /** Play triangle or pause bars, drawn (no icon pack: the extended icon set is megabytes of dex). */
 @Composable
-private fun PlayPauseGlyph(playing: Boolean, size: androidx.compose.ui.unit.Dp, color: Color) {
+private fun PlayPauseGlyph(playing: Boolean, size: Dp, color: Color) {
     androidx.compose.foundation.Canvas(Modifier.size(size)) {
         val w = this.size.width
         val h = this.size.height
@@ -2737,7 +3431,7 @@ private fun PlayPauseGlyph(playing: Boolean, size: androidx.compose.ui.unit.Dp, 
 
 /** ⏮ / ⏭ drawn: a bar and a triangle pointing at it. */
 @Composable
-private fun SkipGlyph(forward: Boolean, size: androidx.compose.ui.unit.Dp, color: Color) {
+private fun SkipGlyph(forward: Boolean, size: Dp, color: Color) {
     androidx.compose.foundation.Canvas(Modifier.size(size)) {
         val w = this.size.width
         val h = this.size.height
@@ -2757,21 +3451,6 @@ private fun SkipGlyph(forward: Boolean, size: androidx.compose.ui.unit.Dp, color
                 androidx.compose.ui.geometry.Size(barW, h * 0.56f))
         }
     }
-}
-
-/** Time-left chip in the top bar; turns amber inside the last five minutes. */
-@Composable
-private fun RemainingChip(ms: Long) {
-    val urgent = ms <= 5 * 60_000L
-    Text(
-        "⏳ " + remainingLabel(ms),
-        color = Color.White,
-        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-        maxLines = 1,
-        modifier = Modifier
-            .background(if (urgent) Color(0xE6B26A00) else Color(0x80000000), RoundedCornerShape(16.dp))
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-    )
 }
 
 /**
@@ -2814,6 +3493,7 @@ private fun Scrubber(
                 onSeekTo(((offset.x / size.width).coerceIn(0f, 1f) * durationMs).toLong())
             }
         }
+    val onArtwork = kidTokens.onArtwork
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
@@ -2822,12 +3502,12 @@ private fun Scrubber(
     ) {
         Box(
             Modifier.align(Alignment.CenterStart).fillMaxWidth().height(4.dp)
-                .background(Color(0x40FFFFFF))
+                .background(onArtwork.copy(alpha = 0.25f))
         )
         Box(
             Modifier.align(Alignment.CenterStart)
                 .fillMaxWidth((bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f))
-                .height(4.dp).background(Color(0x8CFFFFFF))
+                .height(4.dp).background(onArtwork.copy(alpha = 0.55f))
         )
         // Green skip marks sit under playback state: an already-viewed
         // stretch stays red, while upcoming sponsor stretches stay green.
@@ -2853,20 +3533,28 @@ private fun Scrubber(
     }
 }
 
+/** How much of the TV's top row the daily countdown chip may take, so the title stops short of it. */
+private val TV_COUNTDOWN_RESERVE = tvUnits(400f)
+
 /**
- * The kid-sized player chrome, one composable for both form factors. It
- * shows for a few seconds after any key or tap, stays while paused (a frozen
- * frame with nothing on it reads as broken), while a scrub is in progress, and
- * while a TV track sheet is open. Phones get the transport buttons; on TV the
- * remote is the transport, so the middle shows only the state glyph.
+ * The kid-sized player chrome, one composable for both form factors and both
+ * phone layouts, told what it may do rather than which device it is on:
+ * phones get the transport, the live scrubber and tappable tiles; on TV the
+ * remote is the transport, the same tiles are cursor slots
+ * ([TvToolbarSlot], walked by the activity's onKeyDown — nothing here takes
+ * focus, guard 37), and the transport row is a picture of the state.
+ *
+ * It shows for a few seconds after any key or tap, stays while paused (a
+ * frozen frame with nothing on it reads as broken), while a scrub is in
+ * progress, and while a TV track sheet is open.
  */
 @Composable
 private fun BoxScope.PlayerControlsOverlay(
     isTv: Boolean,
     /**
-     * The portrait video slot: title, channel, heart and moon live below the
-     * video there, so the chrome is only what steers playback, at sizes that
-     * fit a 16:9 strip.
+     * The portrait video slot: title, channel, tiles and the countdown live
+     * on the page below the video there, so the chrome is only what steers
+     * playback, at sizes that fit a 16:9 strip.
      */
     compact: Boolean = false,
     /** Shrink into the PiP window (phones). */
@@ -2877,7 +3565,12 @@ private fun BoxScope.PlayerControlsOverlay(
     wantsPlay: State<Boolean>,
     title: String,
     channel: String,
-    remainingMs: State<Long?>,
+    /** When the video came out, for the release-time line; null hides it (the parent's switch, or an unknown date). */
+    publishedAt: Long?,
+    /** The daily countdown chip is riding the stage's top-right corner: the TV's title line keeps clear of it. */
+    countdownUp: Boolean,
+    /** The parent's switch, shown and never written here (see [AutoplayPill]). */
+    autoplayOn: Boolean,
     sponsorSegments: List<io.yosemitekids.app.data.SponsorBlock.Segment>,
     panelState: State<TvTrackPanel>,
     cursorState: State<Int>,
@@ -2892,6 +3585,10 @@ private fun BoxScope.PlayerControlsOverlay(
     onOpenChannel: () -> Unit,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
+    inWatchLater: Boolean,
+    onToggleWatchLater: () -> Unit,
+    inQueue: Boolean,
+    onToggleQueue: () -> Unit,
     stopAfterThis: Boolean,
     onToggleStopAfter: () -> Unit,
     onBack: () -> Unit,
@@ -2908,7 +3605,6 @@ private fun BoxScope.PlayerControlsOverlay(
     val playing by wantsPlay
     val panel by panelState
     val cursor by cursorState
-    val left by remainingMs
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var bufferedMs by remember { mutableLongStateOf(0L) }
@@ -2918,6 +3614,10 @@ private fun BoxScope.PlayerControlsOverlay(
     fun wanted() = now < until || !playing || scrubFraction != null || panel != TvTrackPanel.Hidden
     val visible = wanted()
     LaunchedEffect(until, playing, scrubFraction != null, panel) {
+        // Never breaks. It used to stop the moment the chrome faded, and
+        // the clock it feeds then froze wherever it was — right under the
+        // countdown chip, which stays up when this fades. Slower while
+        // hidden, because nothing drawn needs four reads a second then.
         while (isActive) {
             now = System.currentTimeMillis()
             playerProvider()?.let {
@@ -2925,12 +3625,16 @@ private fun BoxScope.PlayerControlsOverlay(
                 durationMs = it.duration.coerceAtLeast(0)
                 bufferedMs = it.bufferedPosition.coerceAtLeast(0)
             }
-            if (!wanted()) break
-            delay(250)
+            delay(if (wanted()) 250 else 1_000)
         }
     }
 
     val edge = if (isTv) 32.dp else if (compact) 8.dp else 16.dp
+    val tokens = kidTokens
+    val onArtwork = tokens.onArtwork
+    val ink = tokens.inkOnArtworkFill()
+    val onToolbar = isTv && panel == TvTrackPanel.Toolbar
+    val slot = TvToolbarSlot.entries[cursor.coerceIn(0, TvToolbarSlot.entries.lastIndex)]
     androidx.compose.animation.AnimatedVisibility(
         visible = visible && durationMs > 0,
         enter = androidx.compose.animation.fadeIn(),
@@ -2939,26 +3643,32 @@ private fun BoxScope.PlayerControlsOverlay(
     ) {
         Box(Modifier.fillMaxSize()) {
             Box(
-                Modifier.align(Alignment.TopCenter).fillMaxWidth().height(if (compact) 72.dp else 140.dp).background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(Color(0xB3000000), Color.Transparent)
+                Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                    .height(if (isTv) 160.dp else if (compact) 72.dp else 140.dp)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(tokens.artworkScrim.copy(alpha = 0.7f), Color.Transparent)
+                        )
                     )
-                )
             )
             Box(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(if (compact) 96.dp else 180.dp).background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(Color.Transparent, Color(0xCC000000))
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .height(if (isTv) 220.dp else if (compact) 96.dp else 180.dp)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(Color.Transparent, tokens.artworkScrim)
+                        )
                     )
-                )
             )
-            // Top bar: back (phones), title + channel, time left, captions (phones).
+            // Top row. TV: the title, the channel and when it came out, as the
+            // design's top scrim. Phone: back, then (landscape only) the same
+            // line at phone size, then Autoplay, CC and the PiP button.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
-                    .padding(horizontal = edge, vertical = if (isTv) 20.dp else if (compact) 2.dp else 10.dp)
+                    .padding(horizontal = edge, vertical = if (isTv) 24.dp else if (compact) 2.dp else 10.dp)
             ) {
                 if (!isTv) {
                     androidx.compose.material3.IconButton(
@@ -2968,106 +3678,119 @@ private fun BoxScope.PlayerControlsOverlay(
                         Icon(
                             androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color.White,
+                            tint = onArtwork,
                             modifier = Modifier.size(if (compact) 26.dp else 30.dp)
                         )
                     }
                     Spacer(Modifier.width(4.dp))
                 }
                 if (compact) Spacer(Modifier.weight(1f))
-                // The channel's face: tap to see the rest of its videos. On
-                // TV it's a label only (the remote has no cursor for it).
-                if (avatarUrl != null && !compact) {
-                    Box(
+                if (isTv) {
+                    // TV geometry is PROVISIONAL (tvUnits): not yet seen on a set.
+                    Column(
                         Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x33FFFFFF))
-                            .then(if (isTv) Modifier else Modifier.clickable { onOpenChannel() })
+                            .weight(1f)
+                            .padding(end = if (countdownUp) TV_COUNTDOWN_RESERVE else 0.dp)
                     ) {
-                        coil.compose.AsyncImage(
-                            model = avatarUrl,
-                            contentDescription = channel,
-                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    Spacer(Modifier.width(10.dp))
-                }
-                if (!compact) Column(
-                    Modifier
-                        .weight(1f)
-                        .then(if (isTv || avatarUrl == null) Modifier else Modifier.clickable { onOpenChannel() })
-                ) {
-                    Text(
-                        title,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    if (channel.isNotBlank()) Text(
-                        if (isTv) channel else "$channel  ›",
-                        color = Color.White.copy(alpha = 0.7f),
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                left?.let { ms ->
-                    Spacer(Modifier.width(12.dp))
-                    RemainingChip(ms)
-                }
-                if (!isTv && !compact) {
-                    // Heart: save for later, with the pop. Moon: stop after this one.
-                    Spacer(Modifier.width(4.dp))
-                    HeartButton(isFavorite, onToggleFavorite)
-                    MoonButton(stopAfterThis, onToggleStopAfter)
-                }
-                if (!isTv && playback?.subtitles?.isNotEmpty() == true) {
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .clickable { onToggleCaptions() }
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(width = 30.dp, height = 22.dp)
-                                .background(
-                                    if (captionsOn) Color.White else Color.Transparent,
-                                    RoundedCornerShape(3.dp)
-                                )
-                                .border(2.dp, Color.White, RoundedCornerShape(3.dp))
-                        ) {
-                            Text(
-                                "CC",
-                                color = if (captionsOn) Color(0xFF0F0F0F) else Color.White,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                        Text(
+                            title,
+                            color = onArtwork,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontSize = tvTypeUnits(30f), fontWeight = FontWeight.Bold
                             )
+                        )
+                        Spacer(Modifier.height(tvUnits(8f)))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ChannelArt(
+                                avatarUrl, channel, tvUnits(32f),
+                                radius = tvUnits(8f), fallback = onArtwork.copy(alpha = 0.2f)
+                            )
+                            Spacer(Modifier.width(tvUnits(10f)))
+                            if (channel.isNotBlank()) Text(
+                                channel,
+                                color = onArtwork.copy(alpha = 0.85f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = tvTypeUnits(18f), fontWeight = FontWeight.Bold
+                                ),
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            relativeAge(publishedAt)?.let { age ->
+                                Spacer(Modifier.width(tvUnits(12f)))
+                                MicroLabel("· $age", onArtwork.copy(alpha = 0.6f), isTv = true)
+                            }
                         }
                     }
-                }
-                if (!isTv && onMinimise != null) {
-                    // Shrink to the floating window and keep browsing.
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .clickable { onMinimise() }
+                } else if (!compact) {
+                    // The channel's face: tap to see the rest of its videos.
+                    if (avatarUrl != null) {
+                        Box(
+                            Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(onArtwork.copy(alpha = 0.2f))
+                                .clickable { onOpenChannel() }
+                        ) {
+                            PosterImage(avatarUrl, channel, Modifier.fillMaxSize())
+                        }
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .then(if (avatarUrl == null) Modifier else Modifier.clickable { onOpenChannel() })
                     ) {
-                        PipGlyph(size = 26.dp, color = Color.White)
+                        Text(
+                            title,
+                            color = onArtwork,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        val line = metaLine(channel, relativeAge(publishedAt))
+                        if (line.isNotBlank()) Text(
+                            if (avatarUrl != null) "$line  ›" else line,
+                            color = onArtwork.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
+                if (!isTv) {
+                    val tile = if (compact) 36.dp else 44.dp
+                    AutoplayPill(autoplayOn, isTv = false, compact = compact)
+                    if (playback?.subtitles?.isNotEmpty() == true) {
+                        Spacer(Modifier.width(8.dp))
+                        OverlayTile(
+                            if (captionsOn) "Subtitles on" else "Subtitles off",
+                            isTv = false, highlighted = false, onClick = onToggleCaptions,
+                            tint = onArtwork, size = tile
+                        ) { glyph, ground -> CcGlyph(captionsOn, glyph, ground) }
+                    }
+                    if (onMinimise != null) {
+                        // Shrink to the floating window and keep browsing.
+                        Spacer(Modifier.width(8.dp))
+                        OverlayTile(
+                            "Keep watching in a small window",
+                            isTv = false, highlighted = false, onClick = onMinimise,
+                            tint = onArtwork, size = tile
+                        ) { glyph, _ -> PipGlyph(size = 24.dp, color = glyph) }
                     }
                 }
             }
-            // Middle: phones get the transport; TV gets the state glyph.
+            // Middle: the phone's transport. ⏮ ⏭ step the LINEUP, not ±10 s —
+            // that is what the glyphs mean on every player a kid has seen,
+            // and the ±10 s hop is the double tap on the video's edges (the
+            // touch layer in PlayerStage). Restyled to the design's sizes;
+            // the behaviour is the one they already learned.
             if (!isTv) {
-                val side = if (compact) 44.dp else 60.dp
-                val main = if (compact) 64.dp else 88.dp
+                val side = if (compact) 44.dp else 52.dp
+                val main = if (compact) 64.dp else 78.dp
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(if (compact) 28.dp else 40.dp),
@@ -3078,50 +3801,42 @@ private fun BoxScope.PlayerControlsOverlay(
                         modifier = Modifier
                             .size(side)
                             .clip(CircleShape)
-                            .background(Color(0x33FFFFFF))
+                            .background(tokens.artworkScrim.copy(alpha = 0.55f))
                             .then(
                                 if (hasPrevious) Modifier.clickable { onPrevious() }
                                 else Modifier
                             )
+                            .semantics { contentDescription = "Previous video" }
                     ) {
                         SkipGlyph(forward = false, size = side / 2,
-                            color = if (hasPrevious) Color.White else Color(0x66FFFFFF))
+                            color = if (hasPrevious) onArtwork else onArtwork.copy(alpha = 0.4f))
                     }
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .size(main)
                             .clip(CircleShape)
-                            .background(Color.White)
+                            .background(onArtwork)
                             .clickable { onTogglePlay() }
+                            .semantics { contentDescription = if (playing) "Pause" else "Play" }
                     ) {
-                        PlayPauseGlyph(playing = playing, size = main * 0.55f, color = Color(0xFF0F0F0F))
+                        PlayPauseGlyph(playing = playing, size = main * 0.55f, color = ink)
                     }
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .size(side)
                             .clip(CircleShape)
-                            .background(Color(0x33FFFFFF))
+                            .background(tokens.artworkScrim.copy(alpha = 0.55f))
                             .then(
                                 if (hasNext) Modifier.clickable { onNext() }
                                 else Modifier
                             )
+                            .semantics { contentDescription = "Next video" }
                     ) {
                         SkipGlyph(forward = true, size = side / 2,
-                            color = if (hasNext) Color.White else Color(0x66FFFFFF))
+                            color = if (hasNext) onArtwork else onArtwork.copy(alpha = 0.4f))
                     }
-                }
-            } else if (!playing) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(96.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xCCFFFFFF))
-                ) {
-                    PlayPauseGlyph(playing = false, size = 52.dp, color = Color(0xFF0F0F0F))
                 }
             }
             if (isTv && (panel == TvTrackPanel.Audio || panel == TvTrackPanel.Subtitles)) {
@@ -3138,202 +3853,211 @@ private fun BoxScope.PlayerControlsOverlay(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = edge, vertical = if (isTv) 18.dp else if (compact) 0.dp else 8.dp)
+                    .padding(horizontal = edge, vertical = if (isTv) 20.dp else if (compact) 0.dp else 8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val shownPos = scrubFraction?.let { (it * durationMs).toLong() } ?: positionMs
-                    Text(
-                        formatClock(shownPos / 1000) + " / " + formatClock(durationMs / 1000),
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (hasNext) {
-                            Text(
-                                "Next: " + (nextTitle ?: "one more"),
-                                color = Color.White.copy(alpha = 0.75f),
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.widthIn(max = if (compact) 150.dp else 320.dp)
+                    if (isTv) {
+                        TvTransportState(playing, hasPrevious, hasNext, onArtwork, ink, tokens)
+                    } else {
+                        val shownPos = scrubFraction?.let { (it * durationMs).toLong() } ?: positionMs
+                        Text(
+                            formatClock(shownPos / 1000) + " / " + formatClock(durationMs / 1000),
+                            color = onArtwork,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                                fontSize = if (compact) 14.sp else 16.sp
                             )
-                            Spacer(Modifier.width(if (compact) 8.dp else 16.dp))
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    // The line that names things: the slot the remote is on
+                    // (the glyphs alone are a guess from the couch), else
+                    // what plays next. One slot, so neither can crowd the row.
+                    val label = when {
+                        onToolbar -> when (slot) {
+                            TvToolbarSlot.Audio -> "Audio"
+                            TvToolbarSlot.Subtitles -> "Subtitles"
+                            TvToolbarSlot.Favorite ->
+                                if (isFavorite) "In your Favorites" else "Add to Favorites"
+                            TvToolbarSlot.WatchLater ->
+                                if (inWatchLater) "Saved for later" else "Watch later"
+                            TvToolbarSlot.Queue ->
+                                if (inQueue) "In your Up next" else "Add to Up next"
+                            TvToolbarSlot.Channel -> "More from $channel"
+                        }
+                        hasNext -> "Next: " + (nextTitle ?: "one more")
+                        else -> null
+                    }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                        if (label != null) Text(
+                            label,
+                            color = onArtwork.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.End,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(if (isTv) 10.dp else 8.dp)
+                    ) {
+                        if (isTv) {
+                            AutoplayPill(autoplayOn, isTv = true, compact = false)
+                            // Drawn in the enum's order, which is the order the
+                            // cursor walks: one list for both (see TvToolbarSlot).
+                            TvToolbarSlot.entries.forEach { s ->
+                                val here = onToolbar && s == slot
+                                when (s) {
+                                    TvToolbarSlot.Audio -> OverlayTile(
+                                        "Audio", isTv = true, highlighted = here, onClick = null, tint = onArtwork
+                                    ) { glyph, _ -> AudioGlyph(glyph) }
+                                    TvToolbarSlot.Subtitles -> OverlayTile(
+                                        "Subtitles", isTv = true, highlighted = here, onClick = null, tint = onArtwork
+                                    ) { glyph, ground -> CcGlyph(captionsOn, glyph, ground) }
+                                    TvToolbarSlot.Favorite -> OverlayTile(
+                                        "Favorite", isTv = true, highlighted = here, onClick = null,
+                                        tint = if (isFavorite) tokens.action else onArtwork
+                                    ) { glyph, _ -> FavoriteGlyph(isFavorite, glyph) }
+                                    TvToolbarSlot.WatchLater -> OverlayTile(
+                                        "Watch later", isTv = true, highlighted = here, onClick = null,
+                                        tint = if (inWatchLater) tokens.offline else onArtwork
+                                    ) { glyph, _ -> Icon(YosemiteIcons.WatchLater, null, tint = glyph, modifier = Modifier.size(22.dp)) }
+                                    TvToolbarSlot.Queue -> OverlayTile(
+                                        "Up next", isTv = true, highlighted = here, onClick = null,
+                                        tint = if (inQueue) tokens.action else onArtwork
+                                    ) { glyph, _ -> Icon(YosemiteIcons.UpNext, null, tint = glyph, modifier = Modifier.size(22.dp)) }
+                                    TvToolbarSlot.Channel -> OverlayTile(
+                                        "Channel", isTv = true, highlighted = here, onClick = null, tint = onArtwork
+                                    ) { _, _ -> AvatarGlyph(avatarUrl, onArtwork.copy(alpha = 0.2f)) }
+                                }
+                            }
+                        } else if (!compact) {
+                            // Landscape phone: the tiles the portrait page
+                            // carries under the video live here instead, plus
+                            // the moon, which is the kid's own lever.
+                            OverlayTile(
+                                if (isFavorite) "In your Favorites" else "Add to Favorites",
+                                isTv = false, highlighted = false, onClick = onToggleFavorite,
+                                tint = if (isFavorite) tokens.action else onArtwork
+                            ) { glyph, _ -> FavoriteGlyph(isFavorite, glyph) }
+                            OverlayTile(
+                                if (inWatchLater) "Saved for later" else "Watch later",
+                                isTv = false, highlighted = false, onClick = onToggleWatchLater,
+                                tint = if (inWatchLater) tokens.offline else onArtwork
+                            ) { glyph, _ -> Icon(YosemiteIcons.WatchLater, null, tint = glyph, modifier = Modifier.size(22.dp)) }
+                            OverlayTile(
+                                if (inQueue) "In your Up next" else "Add to Up next",
+                                isTv = false, highlighted = false, onClick = onToggleQueue,
+                                tint = if (inQueue) tokens.action else onArtwork
+                            ) { glyph, _ -> Icon(YosemiteIcons.UpNext, null, tint = glyph, modifier = Modifier.size(22.dp)) }
+                            // Lit in the action colour, not amber: armed is a
+                            // choice the kid made, and amber here means time
+                            // is running out.
+                            OverlayTile(
+                                "Stop after this one",
+                                isTv = false, highlighted = false, onClick = onToggleStopAfter,
+                                tint = if (stopAfterThis) tokens.action else onArtwork
+                            ) { glyph, _ -> Icon(YosemiteIcons.Moon, null, tint = glyph, modifier = Modifier.size(22.dp)) }
                         }
                         if (!isTv && onToggleFullscreen != null) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .clickable { onToggleFullscreen() }
-                            ) {
-                                FullscreenGlyph(expand = compact, size = 24.dp, color = Color.White)
-                            }
-                        }
-                        if (isTv && panel != TvTrackPanel.Hidden) {
-                            val onToolbar = panel == TvTrackPanel.Toolbar
-                            // Name the focused action: the glyphs alone are a guess
-                            // from the couch, and a heart next to a face needs no
-                            // explaining once it's spelled out.
-                            if (onToolbar) {
-                                Text(
-                                    when (cursor) {
-                                        TV_TOOLBAR_AUDIO -> "Audio"
-                                        TV_TOOLBAR_SUBTITLES -> "Subtitles"
-                                        TV_TOOLBAR_FAVORITE ->
-                                            if (isFavorite) "In your Favorites" else "Add to Favorites"
-                                        else -> "More from $channel"
-                                    },
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    maxLines = 1,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Spacer(Modifier.width(16.dp))
-                            }
-                            TvTrackIcon(
-                                TvTrackGlyph.Audio, "Audio",
-                                onToolbar && cursor == TV_TOOLBAR_AUDIO
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            TvTrackIcon(
-                                TvTrackGlyph.Captions, "Subtitles",
-                                onToolbar && cursor == TV_TOOLBAR_SUBTITLES
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            TvEmojiIcon(
-                                if (isFavorite) "❤️" else "🤍",
-                                onToolbar && cursor == TV_TOOLBAR_FAVORITE
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            TvAvatarIcon(avatarUrl, onToolbar && cursor == TV_TOOLBAR_CHANNEL)
-                            Spacer(Modifier.width(24.dp))
+                            OverlayTile(
+                                if (compact) "Full screen" else "Leave full screen",
+                                isTv = false, highlighted = false, onClick = onToggleFullscreen,
+                                tint = onArtwork, size = if (compact) 40.dp else 44.dp
+                            ) { glyph, _ -> FullscreenGlyph(expand = compact, size = 22.dp, color = glyph) }
                         }
                     }
                 }
-                Spacer(Modifier.height(if (isTv) 10.dp else if (compact) 0.dp else 2.dp))
-                Scrubber(
-                    positionMs = positionMs,
-                    durationMs = durationMs,
-                    bufferedMs = bufferedMs,
-                    sponsorSegments = sponsorSegments,
-                    interactive = !isTv,
-                    scrubFraction = scrubFraction,
-                    onScrubChange = { f -> scrubFraction = f; if (f != null) onPoke() },
-                    onSeekTo = onSeekTo
-                )
+                Spacer(Modifier.height(if (isTv) 12.dp else if (compact) 0.dp else 4.dp))
+                val scrubber: @Composable () -> Unit = {
+                    Scrubber(
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        bufferedMs = bufferedMs,
+                        sponsorSegments = sponsorSegments,
+                        interactive = !isTv,
+                        scrubFraction = scrubFraction,
+                        onScrubChange = { f -> scrubFraction = f; if (f != null) onPoke() },
+                        onSeekTo = onSeekTo
+                    )
+                }
+                if (isTv) {
+                    // The design's TV bar: the time at either end of it.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val clock = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                            fontSize = tvTypeUnits(18f)
+                        )
+                        Text(formatClock(positionMs / 1000), color = onArtwork, maxLines = 1, style = clock)
+                        Spacer(Modifier.width(14.dp))
+                        Box(Modifier.weight(1f)) { scrubber() }
+                        Spacer(Modifier.width(14.dp))
+                        Text(formatClock(durationMs / 1000), color = onArtwork.copy(alpha = 0.7f), maxLines = 1, style = clock)
+                    }
+                } else scrubber()
             }
         }
     }
 }
 
-private enum class TvTrackGlyph { Audio, Captions }
-
-/** A toolbar slot drawn with an emoji (the heart), in the same ring as the track icons. */
+/** The heart, filled once it's theirs. */
 @Composable
-private fun TvEmojiIcon(text: String, selected: Boolean) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(if (selected) Color.White else Color.Transparent)
-    ) {
-        Text(text, fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp))
-    }
+private fun FavoriteGlyph(isFavorite: Boolean, glyph: Color) {
+    Icon(
+        if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+        contentDescription = null,
+        tint = glyph,
+        modifier = Modifier.size(22.dp)
+    )
 }
 
-/** The channel's face as a toolbar slot: selecting it leaves for the channel page. */
+/**
+ * The TV's transport row, bottom-left as the design draws it: a picture of
+ * the state, not buttons — the remote is the transport (OK toggles, ◀ ▶
+ * seek, channel up/down step the lineup). Sizes are PROVISIONAL (tvUnits).
+ */
 @Composable
-private fun TvAvatarIcon(avatarUrl: String?, selected: Boolean) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(if (selected) Color.White else Color.Transparent)
+private fun TvTransportState(
+    playing: Boolean,
+    hasPrevious: Boolean,
+    hasNext: Boolean,
+    onArtwork: Color,
+    ink: Color,
+    tokens: KidTokens
+) {
+    val side = tvUnits(70f)
+    val main = tvUnits(96f)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(tvUnits(20f))
     ) {
         Box(
-            Modifier
-                .size(34.dp)
-                .clip(CircleShape)
-                .background(Color(0x33FFFFFF))
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(side).clip(CircleShape).background(tokens.artworkScrim.copy(alpha = 0.55f))
         ) {
-            if (avatarUrl != null) {
-                coil.compose.AsyncImage(
-                    model = avatarUrl,
-                    contentDescription = "Channel",
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Text(
-                    "📺",
-                    modifier = Modifier.align(Alignment.Center),
-                    fontSize = androidx.compose.ui.unit.TextUnit(18f, androidx.compose.ui.unit.TextUnitType.Sp)
-                )
-            }
+            SkipGlyph(forward = false, size = side / 2, color = if (hasPrevious) onArtwork else onArtwork.copy(alpha = 0.4f))
         }
-    }
-}
-
-@Composable
-private fun TvTrackIcon(glyph: TvTrackGlyph, label: String, selected: Boolean) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(if (selected) Color.White else Color.Transparent)
-    ) {
-        val ink = if (selected) Color(0xFF0F0F0F) else Color.White
-        when (glyph) {
-            TvTrackGlyph.Audio -> Box(contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier
-                        .offset(x = (-7).dp)
-                        .size(width = 7.dp, height = 12.dp)
-                        .background(ink, RoundedCornerShape(1.dp))
-                )
-                Box(
-                    Modifier
-                        .offset(x = 1.dp)
-                        .size(width = 10.dp, height = 18.dp)
-                        .clip(
-                            androidx.compose.foundation.shape.GenericShape { size, _ ->
-                                moveTo(0f, size.height * 0.28f)
-                                lineTo(size.width * 0.55f, 0f)
-                                lineTo(size.width, 0f)
-                                lineTo(size.width, size.height)
-                                lineTo(size.width * 0.55f, size.height)
-                                lineTo(0f, size.height * 0.72f)
-                                close()
-                            }
-                        )
-                        .background(ink)
-                )
-                Text(
-                    ")))",
-                    color = ink,
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(start = 22.dp)
-                )
-            }
-            TvTrackGlyph.Captions -> Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(width = 30.dp, height = 22.dp)
-                    .border(2.dp, ink, RoundedCornerShape(3.dp))
-            ) {
-                Text(
-                    "CC",
-                    color = ink,
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
-                )
-            }
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(main)
+                .clip(CircleShape)
+                .background(onArtwork)
+                .border(tvUnits(4f), tokens.action.copy(alpha = 0.55f), CircleShape)
+        ) {
+            PlayPauseGlyph(playing = playing, size = main * 0.55f, color = ink)
+        }
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(side).clip(CircleShape).background(tokens.artworkScrim.copy(alpha = 0.55f))
+        ) {
+            SkipGlyph(forward = true, size = side / 2, color = if (hasNext) onArtwork else onArtwork.copy(alpha = 0.4f))
         }
     }
 }
@@ -3361,17 +4085,18 @@ private fun BoxScope.TvTrackSheet(
                 Triple(track.name, captionsOn && index == selectedSubtitle, index + 1)
             }
     }
+    val tokens = kidTokens
     Column(
         modifier = Modifier
             .align(Alignment.BottomStart)
             .padding(start = 48.dp, bottom = 118.dp)
             .width(330.dp)
-            .background(Color(0xE6000000), RoundedCornerShape(8.dp))
+            .background(tokens.artworkScrim.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
             .padding(vertical = 8.dp)
     ) {
         Text(
             if (panel == TvTrackPanel.Audio) "Audio" else "Subtitles",
-            color = Color.White,
+            color = tokens.onArtwork,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
         )
@@ -3382,7 +4107,7 @@ private fun BoxScope.TvTrackSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        if (index == cursor) Color(0x33FFFFFF) else Color.Transparent
+                        if (index == cursor) tokens.onArtwork.copy(alpha = 0.2f) else Color.Transparent
                     )
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
@@ -3391,14 +4116,14 @@ private fun BoxScope.TvTrackSheet(
                         Icon(
                             Icons.Filled.Check,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = tokens.onArtwork,
                             modifier = Modifier.size(20.dp)
                         )
                     }
                 }
                 Text(
                     label,
-                    color = Color.White,
+                    color = tokens.onArtwork,
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 1,
                     modifier = Modifier.padding(start = 12.dp)

@@ -59,7 +59,7 @@ private fun PosterBadge(
         modifier = modifier
             .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
             .clip(androidx.compose.foundation.shape.CircleShape)
-            .background(Color(0x66000000))
+            .background(kidTokens.artworkScrim.copy(alpha = 0.4f))
             .padding(6.dp)
     )
 }
@@ -372,15 +372,15 @@ internal fun BoxScope.DownloadStatusBadge(
                 .align(Alignment.TopEnd)
                 .padding(4.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(Color(0x66000000))
+                .background(kidTokens.artworkScrim.copy(alpha = 0.4f))
                 .padding(6.dp)
         ) {
             CircularProgressIndicator(
                 progress = { fraction },
                 modifier = Modifier.size(18.dp),
                 strokeWidth = 2.dp,
-                color = Color.White,
-                trackColor = Color(0x40FFFFFF)
+                color = kidTokens.onArtwork,
+                trackColor = kidTokens.onArtwork.copy(alpha = 0.25f)
             )
         }
         item.video.url in downloadPending -> PosterBadge(

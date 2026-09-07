@@ -288,12 +288,12 @@ private fun PlaylistChip(playlist: PlaylistRef, width: Dp, onClick: () -> Unit) 
             if (playlist.videoCount > 0) {
                 Text(
                     "${playlist.videoCount}",
-                    color = Color.White,
+                    color = kidTokens.onArtwork,
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(5.dp)
-                        .background(Color(0xCC000000), RoundedCornerShape(4.dp))
+                        .background(kidTokens.artworkScrim, RoundedCornerShape(4.dp))
                         .padding(horizontal = 5.dp, vertical = 2.dp)
                 )
             }
@@ -373,12 +373,12 @@ internal fun ShelfVideoTile(
                 if (item.video.durationSeconds > 0) {
                     Text(
                         formatClock(item.video.durationSeconds),
-                        color = Color.White,
+                        color = kidTokens.onArtwork,
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(6.dp)
-                            .background(Color(0xCC000000), RoundedCornerShape(4.dp))
+                            .background(kidTokens.artworkScrim, RoundedCornerShape(4.dp))
                             .padding(horizontal = 5.dp, vertical = 2.dp)
                     )
                 }
