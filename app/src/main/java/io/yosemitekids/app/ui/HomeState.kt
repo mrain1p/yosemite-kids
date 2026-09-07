@@ -144,12 +144,37 @@ data class UiState(
      *  cleared by the ViewModel after a few seconds. */
     val notice: String? = null,
     /**
-     * Wall-clock watching left before some rule stops playback, at normal
-     * drain — the header's time chip. Null when no rule applies (no chip).
+     * Every rule that could stop playback, at normal drain, each with the
+     * clock it counts on — the *authoritative* read behind the header's time
+     * pill. Empty when no rule applies, and then there is no pill at all.
+     *
+     * Not a single number, because the chrome shows this value continuously
+     * and re-reading [io.yosemitekids.app.data.SessionGuard] every second
+     * would write to disk every second. `rememberTimeLeftMs` ages these
+     * between reads instead, which needs to know which of them ticks on the
+     * wall clock — see [io.yosemitekids.app.data.LimitKind].
      */
-    val remainingMs: Long? = null,
+    val remaining: List<Remaining> = emptyList(),
     /** What would stop a play press right now (bedtime, break, budget), or null. */
     val blockReason: String? = null,
+    /**
+     * The blocked windows the parent set, straight from the store this device
+     * enforces from — the row of pills on the You page names them.
+     */
+    val timeWindows: List<TimeWindow> = emptyList(),
+    /** Minutes watched today on this device, and today's allowance (null = no limit). */
+    val watchedTodayMin: Int = 0,
+    val budgetTodayMin: Int? = null,
+    /**
+     * No network right now. Live: a callback in `MainActivity` sets it on
+     * every connectivity change, so the You page's offline banner appears and
+     * disappears with the Wi-Fi rather than reporting how things stood at launch.
+     */
+    val offline: Boolean = false,
+    /** Downloaded video URL → bytes on disk, for the "channel · 142 MB" line. */
+    val downloadSizes: Map<String, Long> = emptyMap(),
+    /** The download in flight right now: video URL and its fraction (0..1). */
+    val downloadProgress: Pair<String, Float>? = null,
     /**
      * The family has channels but every one is hidden from this kid right
      * now (held by screening, or all their videos blocked). Distinct from an

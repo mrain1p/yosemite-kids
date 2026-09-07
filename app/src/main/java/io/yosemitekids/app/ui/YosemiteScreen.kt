@@ -188,6 +188,13 @@ fun YosemiteScreen(
     val isTv = LocalFormFactor.current.isTv
     val phone = !isTv
 
+    // ONE live time-left value for the whole app's chrome, made here and
+    // handed down unread — the phone's top bar on every tab, and the
+    // television's rail card when that lands. Two tickers would drift by a
+    // second and a kid would see two different numbers on one screen. See
+    // TimeLeft.kt for why this is interpolated rather than polled.
+    val timeLeft = rememberTimeLeftMs(state.remaining, blocked = state.blockReason != null)
+
     // The kid's corner behind the header avatar, and the look editor it (and
     // the You tab) opens. Both are dialogs, so they sit over any screen.
     var hubOpen by remember { mutableStateOf(false) }
@@ -363,7 +370,7 @@ fun YosemiteScreen(
                             header = {
                                 HomeHeader(
                                     onOpenSettings, activeProfile, onSwitchProfile, vm::search,
-                                    s.remainingMs, s.blockReason, greet = true,
+                                    timeLeft, s.blockReason, greet = true,
                                     busy = s.refreshing || s.syncing,
                                     // The phone's search is a page behind the top
                                     // bar's icon; the TV unfolds a field in place.
@@ -396,7 +403,7 @@ fun YosemiteScreen(
                         profile = activeProfile,
                         onOpenHub = openHub,
                         onOpenSearch = vm::openSearch,
-                        remainingMs = s.remainingMs?.takeIf { s.blockReason == null },
+                        timeLeft = timeLeft,
                         busy = s.refreshing || s.syncing
                     ) else Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -437,6 +444,7 @@ fun YosemiteScreen(
                         state = s,
                         profile = activeProfile,
                         isTv = isTv,
+                        timeLeft = timeLeft,
                         onPlay = onPlay,
                         onOpenMenu = { feedMenuFor = it },
                         // "Change my look" lives behind the avatar now, on

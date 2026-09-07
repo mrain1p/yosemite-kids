@@ -7,6 +7,76 @@ import java.util.Date
 import java.util.Locale
 
 /**
+ * Which rule a remaining figure belongs to — and therefore which clock it
+ * counts down on.
+ *
+ * This distinction is the whole reason the app's chrome can show a *live*
+ * number without asking [SessionGuard] again every second. Budget and
+ * sitting remainders have already been divided by the source's drain rate by
+ * the time they leave [SessionGuard.remainingAll], so they fall one
+ * millisecond per millisecond **of playback** and not at all while nothing is
+ * playing. A blocked window is a stretch of the clock on the wall: bedtime
+ * arrives whether the kid is watching, paused, or reading the You page — and
+ * paused is exactly when a kid is most likely to be looking at the number.
+ */
+enum class LimitKind {
+    /** Today's budget: sittings × length, plus grants. */
+    BUDGET,
+    /** The sitting cap before a break is forced. */
+    SITTING,
+    /** A blocked window (bedtime, school hours) closing in. */
+    WINDOW,
+    /** A parent's timeout: nothing is left, and nothing will give it back today. */
+    PAUSED;
+
+    /**
+     * True when this number falls on the wall clock rather than on playback.
+     *
+     * An exhaustive `when` on purpose: adding a kind and forgetting to say
+     * which clock it runs on would silently freeze it in the chrome, which is
+     * the failure this whole type exists to prevent. This way it does not
+     * compile.
+     */
+    val onWallClock: Boolean
+        get() = when (this) {
+            WINDOW, PAUSED -> true
+            BUDGET, SITTING -> false
+        }
+}
+
+/** One rule's wall-clock milliseconds left, and the clock it counts on. */
+data class Remaining(val ms: Long, val kind: LimitKind)
+
+/**
+ * What the chrome should be showing [sinceMs] after [reads] were taken, of
+ * which [playedMs] was spent actually playing. Null when no rule applies —
+ * and null means the pill is **hidden**, never a placeholder.
+ *
+ * Pure, and deliberately so: it is the one piece of this that runs every
+ * second, and it has to be provable without a device. Re-reading
+ * [SessionGuard.remainingAll] at 1 Hz instead is not merely wasteful — it
+ * calls `rolloverIfNewDay()`, which *writes* to preferences.
+ *
+ * Every candidate is carried, not just the binding one, and each is aged on
+ * its own clock before the minimum is taken. Ageing only the binding
+ * candidate would be wrong in the ordinary case: with twelve budget-minutes
+ * left and bedtime thirteen minutes away the budget binds, but three minutes
+ * of staring at the You page later bedtime is ten away and the budget is
+ * still twelve. The switch between them happens here, between reads.
+ */
+fun interpolateRemainingMs(reads: List<Remaining>, sinceMs: Long, playedMs: Long = 0L): Long? {
+    if (reads.isEmpty()) return null
+    // Clamped rather than trusted: a wall clock that steps backwards must not
+    // hand the kid time back, and no more of an interval can be spent playing
+    // than the interval itself lasted.
+    val since = sinceMs.coerceAtLeast(0L)
+    val played = playedMs.coerceIn(0L, since)
+    return reads.minOf { r ->
+        (r.ms - if (r.kind.onWallClock) since else played).coerceAtLeast(0L)
+    }
+}
+
+/**
  * Enforces the parent's screen-time rules, configured in the settings UI
  * (see [Limits]).
  *
@@ -306,15 +376,34 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
      * "5 minutes left" warning, so it must never say more time than tick() will
      * actually allow.
      */
-    fun remainingMs(multiplierPercent: Int = 100, listening: Boolean = false): Long? {
+    fun remainingMs(multiplierPercent: Int = 100, listening: Boolean = false): Long? =
+        remainingAll(multiplierPercent, listening).minOfOrNull { it.ms }
+
+    /**
+     * The same answer, one entry per rule that could stop playback, each
+     * saying which clock it counts on ([LimitKind]).
+     *
+     * [remainingMs] is the minimum of these, so the two can never disagree.
+     * This is the shape the chrome needs: a caller that only knows the
+     * minimum cannot age it correctly, because "hold the number while nothing
+     * is playing" is right for the budget and wrong for bedtime. Prefs reads
+     * and a possible day rollover write — call it off-main, on the cadence
+     * the caller already has, and put [interpolateRemainingMs] in between.
+     */
+    fun remainingAll(multiplierPercent: Int = 100, listening: Boolean = false): List<Remaining> {
         rolloverIfNewDay()
         val l = limits()
-        if (isPaused(l)) return 0
-        val candidates = mutableListOf<Long>()
+        // A parent timeout is the whole answer: no other rule can give time
+        // back while it stands, and nothing about it ticks.
+        if (isPaused(l)) return listOf(Remaining(0, LimitKind.PAUSED))
+        val candidates = mutableListOf<Remaining>()
         if (multiplierPercent > 0) {
             dailyBudgetMs(l)?.let { budget ->
-                candidates += (budget - prefs.getLong("dailyWatchedMs", 0))
-                    .coerceAtLeast(0) * 100 / multiplierPercent
+                candidates += Remaining(
+                    (budget - prefs.getLong("dailyWatchedMs", 0))
+                        .coerceAtLeast(0) * 100 / multiplierPercent,
+                    LimitKind.BUDGET
+                )
             }
             // The sitting cap only counts while it can actually lock (break
             // set, and no unspent skip waiting to waive it). A break-length
@@ -331,12 +420,25 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
                 val sitting =
                     if (lastWatch > 0 && System.currentTimeMillis() - lastWatch >= gapMs) 0L
                     else prefs.getLong("sittingWatchedMs", 0)
-                candidates += (cap * 60_000L - sitting).coerceAtLeast(0) * 100 / multiplierPercent
+                candidates += Remaining(
+                    (cap * 60_000L - sitting).coerceAtLeast(0) * 100 / multiplierPercent,
+                    LimitKind.SITTING
+                )
             }
         }
-        msUntilWindow(l, listening)?.let { candidates += it }
-        return candidates.minOrNull()?.coerceAtLeast(0)
+        msUntilWindow(l, listening)?.let {
+            candidates += Remaining(it.coerceAtLeast(0), LimitKind.WINDOW)
+        }
+        return candidates
     }
+
+    /**
+     * The blocked windows this device is enforcing, for the kid's own page to
+     * name them. Read from the same store [checkStart] enforces from, so the
+     * card on You can never list a window the TV is not actually applying.
+     * A prefs read plus a JSON parse — off-main.
+     */
+    fun windows(): List<TimeWindow> = limits().windows
 
     /**
      * What would stop a play press right now, phrased for the kid, or null when

@@ -1044,6 +1044,31 @@ foreach ($id in $shelfIds) {
     }
 }
 
+# 34. The chrome's time-left ticks by interpolation, never by re-reading.
+#     SessionGuard.remainingAll() runs rolloverIfNewDay(), which WRITES to
+#     preferences. The number it feeds now rides permanent chrome on every
+#     screen and updates once a second, so the obvious "fix" for a stale
+#     figure - ask again, faster - is a disk write per second on a television
+#     that may sit on one page for hours. It would also look completely
+#     correct in review and in a screenshot.
+#
+#     So TimeLeft.kt owns the tick and is forbidden to call the guard: it ages
+#     the last authoritative read through interpolateRemainingMs and nothing
+#     else. Comments may name SessionGuard - explaining why is the point - so
+#     only code lines are searched.
+$tlPath = "app/src/main/java/io/yosemitekids/app/ui/TimeLeft.kt"
+if (-not (Test-Path $tlPath)) {
+    Fail-Guard "$tlPath is gone; guard 34 is blind. The chrome's live time-left value lives there."
+}
+$tlCode = @(Get-Content $tlPath | Where-Object { $_.Trim() -notmatch '^(//|\*|/\*)' })
+$tlBad = @($tlCode | Where-Object { $_ -match "SessionGuard|sessionGuard" })
+if ($tlBad.Count -gt 0) {
+    Fail-Guard "TimeLeft.kt reads SessionGuard. The 1 Hz value must be interpolated from the last authoritative read (interpolateRemainingMs), not re-read - remainingAll() writes to prefs through rolloverIfNewDay(). Found: $($tlBad -join '; ')"
+}
+if (($tlCode -join "`n") -notmatch "interpolateRemainingMs\(") {
+    Fail-Guard "TimeLeft.kt no longer calls interpolateRemainingMs. Whatever now produces the chrome's time-left must be a pure function with a test, or the value goes stale again."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

@@ -110,8 +110,13 @@ internal fun PhoneTopBar(
     modifier: Modifier = Modifier,
     /** A page's own line under the title, drawn as a mono micro-label. */
     subtitle: String? = null,
-    /** Minutes left today. Null, or blocked outright, and the pill stays away. */
-    remainingMs: Long? = null,
+    /**
+     * The live minutes left today, ticking once a second (see `TimeLeft.kt`).
+     * Passed as a [androidx.compose.runtime.State] and handed straight on
+     * without being read here, so the second-by-second recomposition stops at
+     * the pill instead of redrawing the whole bar. [NoTimeLeft] draws nothing.
+     */
+    timeLeft: androidx.compose.runtime.State<Long?> = NoTimeLeft,
     /** Something is arriving; draws the slow arc round the avatar. */
     busy: Boolean = false
 ) {
@@ -159,7 +164,7 @@ internal fun PhoneTopBar(
                 )
             )
         }
-        if (remainingMs != null) TimeChip(remainingMs)
+        TimeLeftPill(timeLeft)
         if (onOpenSearch != null) {
             Box(
                 contentAlignment = Alignment.Center,

@@ -423,6 +423,31 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         ConfigEvents.onConfigChanged = null
                     }
                 }
+                // "You're offline" has to *become* true and false. The kid's
+                // page draws a banner from it, and a banner that was only
+                // right at launch is worse than none: it tells a child their
+                // downloads are all they have while the Wi-Fi is back, or
+                // says nothing while the router is down and every row is
+                // empty. The ViewModel's isOffline lambda answers "right
+                // now"; this is what asks again when the answer changes.
+                DisposableEffect(vm) {
+                    val cm = appContext.getSystemService(
+                        android.content.Context.CONNECTIVITY_SERVICE
+                    ) as android.net.ConnectivityManager
+                    val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+                        override fun onAvailable(network: android.net.Network) = vm.setOffline(false)
+                        // onLost fires per network: a phone dropping Wi-Fi
+                        // onto mobile data is not offline, so re-ask rather
+                        // than believing the loss.
+                        override fun onLost(network: android.net.Network) =
+                            vm.setOffline(cm.activeNetwork == null)
+                    }
+                    // Wrapped: registering a default callback throws on a
+                    // device with connectivity locked down, and a banner is
+                    // not worth taking the app out.
+                    runCatching { cm.registerDefaultNetworkCallback(callback) }
+                    onDispose { runCatching { cm.unregisterNetworkCallback(callback) } }
+                }
                 // Phone: pairing flow started by scanning a TV's QR code.
                 when (val flow = pairFlow.value) {
                     is PairFlow.Confirm -> AlertDialog(

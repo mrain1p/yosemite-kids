@@ -909,6 +909,28 @@ for id in $shelf_ids; do
     guard_fail "HomeShelf.$id has no branch in HomeShelves.kt. A shelf a parent can order and the home cannot draw fails silently, on both form factors."
 done
 
+# 34. The chrome's time-left ticks by interpolation, never by re-reading.
+#     SessionGuard.remainingAll() runs rolloverIfNewDay(), which WRITES to
+#     preferences. The number it feeds now rides permanent chrome on every
+#     screen and updates once a second, so the obvious "fix" for a stale
+#     figure - ask again, faster - is a disk write per second on a television
+#     that may sit on one page for hours. It would also look completely
+#     correct in review and in a screenshot.
+#
+#     So TimeLeft.kt owns the tick and is forbidden to call the guard: it ages
+#     the last authoritative read through interpolateRemainingMs and nothing
+#     else. Comments may name SessionGuard - explaining why is the point - so
+#     only code lines are searched.
+tl_src=app/src/main/java/io/yosemitekids/app/ui/TimeLeft.kt
+[ -f "$tl_src" ] ||
+  guard_fail "$tl_src is gone; guard 34 is blind. The chrome's live time-left value lives there."
+tl_code=$(grep -vE '^[[:space:]]*(//|\*|/\*)' "$tl_src" || true)
+tl_bad=$(echo "$tl_code" | grep -nE "SessionGuard|sessionGuard" || true)
+[ -z "$tl_bad" ] ||
+  guard_fail "TimeLeft.kt reads SessionGuard. The 1 Hz value must be interpolated from the last authoritative read (interpolateRemainingMs), not re-read - remainingAll() writes to prefs through rolloverIfNewDay(). Found: $tl_bad"
+echo "$tl_code" | grep -q "interpolateRemainingMs(" ||
+  guard_fail "TimeLeft.kt no longer calls interpolateRemainingMs. Whatever now produces the chrome's time-left must be a pure function with a test, or the value goes stale again."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 

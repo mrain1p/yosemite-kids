@@ -244,7 +244,7 @@ internal fun ChannelGrid(
     activeProfile: io.yosemitekids.app.data.Profile? = null,
     onSwitchProfile: (() -> Unit)? = null,
     onSearch: (String) -> Unit = {},
-    remainingMs: Long? = null,
+    timeLeft: androidx.compose.runtime.State<Long?> = NoTimeLeft,
     blockReason: String? = null,
     allHeld: Boolean = false
 ) {
@@ -261,7 +261,7 @@ internal fun ChannelGrid(
     ) {
         // Branding + settings scroll away like everything else — content is king.
         item(key = "app-header", span = { GridItemSpan(maxLineSpan) }) {
-            HomeHeader(onOpenSettings, activeProfile, onSwitchProfile, onSearch, remainingMs, blockReason)
+            HomeHeader(onOpenSettings, activeProfile, onSwitchProfile, onSearch, timeLeft, blockReason)
         }
         // Keep-watching scrolls away with the rest — not sticky.
         if (keepWatching.isNotEmpty()) {
@@ -422,7 +422,13 @@ internal fun HomeHeader(
     activeProfile: io.yosemitekids.app.data.Profile? = null,
     onSwitchProfile: (() -> Unit)? = null,
     onSearch: (String) -> Unit = {},
-    remainingMs: Long? = null,
+    /**
+     * The live time-left value (see `TimeLeft.kt`). Handed on without being
+     * read here, so the once-a-second tick recomposes the pill and not the
+     * whole header. It is already null while a rule blocks watching — the
+     * banner below says why instead, and says it in words.
+     */
+    timeLeft: androidx.compose.runtime.State<Long?> = NoTimeLeft,
     blockReason: String? = null,
     /** Phones greet the kid by name; TV keeps the wordmark. */
     greet: Boolean = false,
@@ -461,9 +467,7 @@ internal fun HomeHeader(
                 profile = activeProfile,
                 onOpenHub = onOpenHub ?: onSwitchProfile,
                 onOpenSearch = onOpenSearch,
-                // Hidden while a rule blocks watching outright — the banner
-                // below says why instead, and says it in words.
-                remainingMs = remainingMs?.takeIf { blockReason == null },
+                timeLeft = timeLeft,
                 busy = busy
             )
             blockReason?.let { Box(Modifier.padding(horizontal = 16.dp)) { BlockedBanner(it) } }
@@ -511,11 +515,11 @@ internal fun HomeHeader(
             )
             // Time left rides the header line rather than taking a band of
             // its own. Hidden while a rule blocks watching outright — the
-            // banner below says why instead.
-            if (remainingMs != null && blockReason == null) {
-                Spacer(Modifier.width(10.dp))
-                TimeChip(remainingMs)
-            }
+            // banner below says why instead. The spacer goes with it: an
+            // absent pill must not leave a gap where a number used to be, and
+            // the check belongs inside the pill so this header is not
+            // recomposed once a second to ask.
+            TimeLeftPill(timeLeft, leadingGap = 10.dp)
         }
         // Search is a task, not a place: one icon in every header. Phones
         // open the search page; the TV (no tabs, no page) unfolds the field.

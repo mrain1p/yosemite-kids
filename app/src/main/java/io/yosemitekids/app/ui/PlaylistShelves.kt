@@ -326,6 +326,18 @@ internal fun ShelfVideoTile(
     onOpenMenu: ((VideoItem) -> Unit)?,
     modifier: Modifier = Modifier,
     width: Dp = 236.dp,
+    /**
+     * Replaces the "channel · today" line. The Downloads shelf says
+     * "channel · 142 MB" instead: on that row what matters about a video is
+     * that it is here and what it cost, not when it went up.
+     */
+    metaOverride: String? = null,
+    /**
+     * Drawn last, over the poster: the SAVED flag, or the percentage and bar
+     * of a download still arriving. A slot rather than a second copy of this
+     * tile, so a change to what a shelf card *is* still lands everywhere.
+     */
+    posterOverlay: (@Composable androidx.compose.foundation.layout.BoxScope.() -> Unit)? = null,
     formFactor: FormFactor = LocalFormFactor.current
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -373,6 +385,7 @@ internal fun ShelfVideoTile(
                 // Part-watched only: a finished video says so beside its meta
                 // line instead, and a card is never both. See [CardMetaRow].
                 item.progress?.takeIf { !finished }?.let { fraction -> WatchedProgressBar(fraction) }
+                posterOverlay?.invoke(this)
             }
             Row(
                 verticalAlignment = Alignment.Top,
@@ -383,7 +396,8 @@ internal fun ShelfVideoTile(
                 Column {
                     CardTitle(item.video.title, focused, railCardTitleStyle(formFactor))
                     CardMetaRow(
-                        meta = videoMeta(item.video.channelName, item.video.publishedAt),
+                        meta = metaOverride
+                            ?: videoMeta(item.video.channelName, item.video.publishedAt),
                         watched = finished,
                         style = cardMetaStyle(formFactor)
                     )

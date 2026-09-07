@@ -34,6 +34,27 @@ private const val YOU_PAGE_MAX = 60
 /** Parent-picked playlist rows fetched per channel visit (each is one page request when uncached). */
 private const val PLAYLIST_SHELVES_MAX = 3
 
+/**
+ * One authoritative screen-time read: everything the chrome and the kid's own
+ * page need to know about today's rules, taken together so they can never
+ * describe two different moments.
+ */
+private data class ScreenTimeRead(
+    val remaining: List<io.yosemitekids.app.data.Remaining>,
+    val blockReason: String?,
+    val windows: List<TimeWindow>,
+    val watchedTodayMin: Int,
+    val budgetTodayMin: Int?
+)
+
+private fun UiState.withScreenTime(r: ScreenTimeRead): UiState = copy(
+    remaining = r.remaining,
+    blockReason = r.blockReason,
+    timeWindows = r.windows,
+    watchedTodayMin = r.watchedTodayMin,
+    budgetTodayMin = r.budgetTodayMin
+)
+
 class MainViewModel(
     private val whitelist: WhitelistRepository,
     private val history: WatchHistoryStore,
@@ -155,6 +176,27 @@ class MainViewModel(
 
     private fun visibleDownloadUrls(): Set<String> =
         visibleDownloads().map { it.url }.toSet()
+
+    /**
+     * Downloads still on their way — waiting on the parent's approval, queued,
+     * or fetching. Not playable yet, which the card says with a percentage
+     * over a scrim; the same hold menu still cancels them.
+     */
+    private fun downloadsInFlight(): List<Video> =
+        downloadStore?.entries().orEmpty()
+            .filter { it.status != DownloadStatus.DONE }
+            .filter { it.video.channelName !in hiddenChannelNames }
+            .sortedByDescending { it.requestedAt }
+            .map { it.video }
+
+    /** Downloaded video URL → bytes on disk, for the "channel · 142 MB" line. */
+    private fun downloadSizes(): Map<String, Long> =
+        downloadStore?.let { store ->
+            store.entries()
+                .filter { it.status == DownloadStatus.DONE }
+                .mapNotNull { e -> e.video.videoId?.let { e.video.url to store.sizeOf(it) } }
+                .toMap()
+        }.orEmpty()
 
     /** Set by the hosting composition; false while another kid's home is up. */
     @Volatile
@@ -598,11 +640,26 @@ class MainViewModel(
     }
 
     /**
-     * The header's screen-time readout: minutes left at normal drain, and what
-     * (if anything) blocks a play press right now. Prefs reads — call off-main.
+     * The chrome's screen-time readout: every rule that could stop playback at
+     * normal drain, and what (if anything) blocks a play press right now.
+     *
+     * The AUTHORITATIVE read, and deliberately infrequent — a home publish,
+     * coming back from the player, the five-minute sweep. `remainingAll` runs
+     * `rolloverIfNewDay()`, which writes; the once-a-second number the kid
+     * actually watches is interpolated from this in `TimeLeft.kt` and never
+     * re-read. Prefs reads and a possible write — call off-main.
+     *
+     * Always 100%: this is the day's figure that rides every screen. The
+     * player computes its own at the playing source's drain rate, which is a
+     * different number on purpose.
      */
-    private fun screenTime(): Pair<Long?, String?> =
-        sessionGuard.remainingMs(100) to sessionGuard.blockReason(100)
+    private fun screenTime(): ScreenTimeRead = ScreenTimeRead(
+        remaining = sessionGuard.remainingAll(100),
+        blockReason = sessionGuard.blockReason(100),
+        windows = sessionGuard.windows(),
+        watchedTodayMin = sessionGuard.watchedTodayMin(),
+        budgetTodayMin = sessionGuard.snapshot().budgetTodayMin
+    )
 
     /** Update home-screen tiles without ever disturbing the screen the kid is on. */
     private suspend fun publishChannels(channels: List<Source>) {
@@ -614,7 +671,7 @@ class MainViewModel(
         val (tiles, keepWatching, badges) = withContext(Dispatchers.IO) {
             Triple(sortByUsage(visibleSources(distinct)), keepWatchingRow(), computeNewBadges())
         }
-        val (left, reason) = withContext(Dispatchers.IO) { screenTime() }
+        val time = withContext(Dispatchers.IO) { screenTime() }
         val (feed, recent) = withContext(Dispatchers.IO) { buildFeed(tiles) to historyRow() }
         val suggested = withContext(Dispatchers.IO) { suggestionsRow(tiles) }
         // Pins resolve against `tiles`, never against `sources` or the
@@ -622,7 +679,7 @@ class MainViewModel(
         val pins = withContext(Dispatchers.IO) { pinnedRow(tiles) }
         val previews = withContext(Dispatchers.IO) { channelPreviews(tiles) }
         val onHome = _state.value.screen == Screen.Home
-        _state.value = _state.value.copy(
+        _state.value = _state.value.withScreenTime(time).copy(
             channels = tiles,
             pinned = pins,
             channelPreviews = previews,
@@ -633,8 +690,6 @@ class MainViewModel(
             suggested = suggested,
             channelAvatars = distinct.associate { it.name to it.avatarUrl },
             allHeld = distinct.isNotEmpty() && tiles.isEmpty(),
-            remainingMs = left,
-            blockReason = reason,
             loading = if (onHome) false else _state.value.loading
         )
     }
@@ -676,9 +731,13 @@ class MainViewModel(
             YouShelf(Screen.Queue, "📚", "Up next", annotate(queueStore.load()).take(YOU_PAGE_MAX)),
             YouShelf(Screen.History, "🕘", "History", historyRow),
             // Downloads were approved by the parent one by one: no re-screening.
+            // Whatever is still arriving leads the row, because that is what
+            // the kid is waiting on; the design draws it with its own
+            // percentage over the poster rather than hiding it until it lands.
             YouShelf(
                 Screen.Downloads, "⬇️", "Downloads",
-                visibleDownloads().map { VideoItem(it, history.progress(it.url)?.fraction) }.take(YOU_PAGE_MAX)
+                (downloadsInFlight() + visibleDownloads())
+                    .map { VideoItem(it, history.progress(it.url)?.fraction) }.take(YOU_PAGE_MAX)
             )
         // The four shelves are always there, empty or not — the page has one
         // shape, and an empty row says what would fill it. Downloads only
@@ -701,13 +760,25 @@ class MainViewModel(
 
     private fun reloadYou() {
         viewModelScope.launch {
-            val shelves = withContext(Dispatchers.IO) {
+            // The blocked-window pills and the "40 of 60 minutes used" label
+            // are the same read the pill is anchored to, so the card and the
+            // chrome above it can never describe two different moments.
+            val (shelves, time) = withContext(Dispatchers.IO) {
                 pruneFinishedSavedLists()
                 pruneFinishedQueue()
-                youShelves()
+                youShelves() to screenTime()
             }
-            if (_state.value.screen == Screen.You) _state.value = _state.value.copy(youShelves = shelves)
+            val sizes = withContext(Dispatchers.IO) { downloadSizes() }
+            if (_state.value.screen == Screen.You) {
+                _state.value = _state.value.withScreenTime(time)
+                    .copy(youShelves = shelves, downloadSizes = sizes)
+            }
         }
+    }
+
+    /** The kid's page shows the network state; a callback keeps it honest. */
+    fun setOffline(offline: Boolean) {
+        if (_state.value.offline != offline) _state.value = _state.value.copy(offline = offline)
     }
 
     /** The grid of every channel — "Show all" behind the home row. */
@@ -1197,13 +1268,17 @@ class MainViewModel(
                 pruneFinishedQueue()
                 Triple(watchlistStore.urls(), watchLaterStore.urls(), queueStore.urls())
             }
+            // Back from the player is exactly when the number has moved — and
+            // the pill is chrome on every page now, not just Home, so this
+            // read happens whatever screen the kid came back to. It is also
+            // the only re-read between five-minute sweeps: the once-a-second
+            // value the kid watches is interpolated from it, never re-read.
+            val time = withContext(Dispatchers.IO) { screenTime() }
             if (_state.value.screen == Screen.You) reloadYou()
             if (_state.value.screen == Screen.Home) {
                 val (keepWatching, badges) = withContext(Dispatchers.IO) {
                     keepWatchingRow() to computeNewBadges()
                 }
-                // Back from the player is exactly when the chip has moved.
-                val (left, reason) = withContext(Dispatchers.IO) { screenTime() }
                 val (feed, recent) = withContext(Dispatchers.IO) {
                     buildFeed(_state.value.channels) to historyRow()
                 }
@@ -1212,7 +1287,7 @@ class MainViewModel(
                 val suggested = withContext(Dispatchers.IO) {
                     suggestionsRow(_state.value.channels)
                 }
-                _state.value = _state.value.copy(
+                _state.value = _state.value.withScreenTime(time).copy(
                     keepWatching = keepWatching,
                     newBadges = badges,
                     feed = feed,
@@ -1220,13 +1295,11 @@ class MainViewModel(
                     suggested = suggested,
                     watchlisted = watchlisted,
                     watchLater = watchLater,
-                    queued = queued,
-                    remainingMs = left,
-                    blockReason = reason
+                    queued = queued
                 )
                 return@launch
             }
-            _state.value = _state.value.copy(
+            _state.value = _state.value.withScreenTime(time).copy(
                 watchlisted = watchlisted, watchLater = watchLater, queued = queued
             )
             if (_state.value.screen == Screen.Downloads) {
@@ -1885,7 +1958,9 @@ class MainViewModel(
                 recentSearches = recent
             )
             // Car trip / flight: no network but saved videos — open the offline shelf.
-            if (isOffline() && dl.second.isNotEmpty()) openDownloads()
+            val offline = isOffline()
+            setOffline(offline)
+            if (offline && dl.second.isNotEmpty()) openDownloads()
         }
         refresh()
         syncWatchState()
@@ -1897,6 +1972,12 @@ class MainViewModel(
         // LocalLibrary rides the same change signal since it feeds the same shelf.
         viewModelScope.launch {
             DownloadEvents.changes.collect { refreshDownloadState() }
+        }
+        // The bar under the download the kid is watching arrive. Separate from
+        // `changes` on purpose: this fires many times per file and must not
+        // drag a store re-read along with it.
+        viewModelScope.launch {
+            DownloadEvents.progress.collect { _state.value = _state.value.copy(downloadProgress = it) }
         }
         // A parent's phone just granted time or changed the rules. Keyed
         // per-kid ViewModels all hear it; only the home actually on screen
@@ -1913,6 +1994,13 @@ class MainViewModel(
                 // Keyed per-kid ViewModels outlive a profile switch in the
                 // activity's store; only the one on screen gets to poll.
                 if (!uiActive) continue
+                // Re-anchor the time pill wherever the kid is. refreshIfIdle
+                // only rebuilds Home, and the pill is chrome on every page —
+                // without this, a kid parked on You for an hour would ride an
+                // hour-old anchor. This IS the authoritative cadence: the
+                // seconds in between are interpolated, never re-read.
+                val time = withContext(Dispatchers.IO) { screenTime() }
+                _state.value = _state.value.withScreenTime(time)
                 refreshIfIdle()
                 syncWatchState()
                 syncConfigState()

@@ -387,6 +387,21 @@ fun remainingShort(ms: Long): String {
 }
 
 /**
+ * "142 MB". The parent's storage list and the kid's Downloads row say the
+ * same number in the same words — it moved here the moment the second caller
+ * appeared, rather than being written twice with two different idea of what a
+ * megabyte is.
+ *
+ * SI, not binary, because that is what a phone's own storage screen says and
+ * the number is going to be compared with it.
+ */
+fun formatBytes(bytes: Long): String = when {
+    bytes >= 1_000_000_000 -> "%.1f GB".format(bytes / 1_000_000_000.0)
+    bytes >= 1_000_000 -> "%.0f MB".format(bytes / 1_000_000.0)
+    else -> "%.0f kB".format(bytes / 1_000.0)
+}
+
+/**
  * SponsorBlock-marked stretches on the player scrubber. Green by the same
  * borrowed-convention logic as [WatchedProgressRed]: SmartTube et al. taught
  * viewers that green-on-the-bar means "this part will be skipped".
