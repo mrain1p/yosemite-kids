@@ -2,6 +2,7 @@ package io.yosemitekids.app.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,9 +26,17 @@ internal fun SearchField(
     initial: String = "",
     /** Voice input is phone/tablet only; the TV keyboard has its own mic. */
     voice: Boolean = false,
-    onVoiceUnavailable: () -> Unit = {}
+    onVoiceUnavailable: () -> Unit = {},
+    /**
+     * Take focus on arrival. On a television this IS the voice path: the
+     * system keyboard raises with the remote's mic the moment the field is
+     * focused, and the design draws no keyboard of its own for that reason.
+     */
+    autoFocus: Boolean = false
 ) {
     var query by remember(initial) { mutableStateOf(initial) }
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(autoFocus) { if (autoFocus) focus.requestFocus() }
     val context = androidx.compose.ui.platform.LocalContext.current
     val speech = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
@@ -44,7 +53,7 @@ internal fun SearchField(
     OutlinedTextField(
         value = query,
         onValueChange = { query = it },
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).focusRequester(focus),
         placeholder = { Text("Search your channels") },
         singleLine = true,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),

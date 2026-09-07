@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
@@ -577,8 +578,12 @@ fun YosemiteScreen(
                         }
                         Text("Search", style = MaterialTheme.typography.titleLarge)
                     }
+                    // On a television the field takes focus on arrival so the
+                    // system keyboard — which carries the remote's mic — raises
+                    // itself. That is the whole TV voice path: the OS owns it.
+                    // The recogniser button stays a phone thing (see SearchField).
                     SearchField(
-                        onSearch = vm::search, voice = phone,
+                        onSearch = vm::search, voice = phone, autoFocus = isTv,
                         onVoiceUnavailable = { vm.showNoticeExternal("Voice search isn't on this device yet") }
                     )
                     Text(
@@ -588,15 +593,27 @@ fun YosemiteScreen(
                         modifier = Modifier.padding(horizontal = 4.dp)
                     )
                     if (s.recentSearches.isNotEmpty()) {
-                        SectionRow("Recent", action = "Clear", onAction = vm::clearRecentSearches)
+                        SectionRow("You looked for", action = "Clear all", onAction = vm::clearRecentSearches)
                         @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             s.recentSearches.forEach { q ->
-                                AssistChip(
-                                    onClick = { vm.search(q) },
-                                    label = { Text(q, style = MaterialTheme.typography.titleSmall) },
-                                    modifier = Modifier.height(44.dp)
-                                )
+                                // Two targets, both 44dp and both d-pad reachable:
+                                // the chip searches again, the × forgets just this
+                                // one. Search history is the one thing a kid may
+                                // delete on their own, so the × is real.
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    AssistChip(
+                                        onClick = { vm.search(q) },
+                                        label = { Text(q, style = MaterialTheme.typography.titleSmall) },
+                                        modifier = Modifier.height(44.dp).tvFocusHighlight()
+                                    )
+                                    IconButton(
+                                        onClick = { vm.removeRecentSearch(q) },
+                                        modifier = Modifier.size(44.dp).tvFocusHighlight()
+                                    ) {
+                                        Icon(Icons.Filled.Close, contentDescription = "Forget “$q”", modifier = Modifier.size(18.dp))
+                                    }
+                                }
                             }
                         }
                     }

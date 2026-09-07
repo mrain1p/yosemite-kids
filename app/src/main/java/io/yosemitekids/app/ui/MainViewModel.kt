@@ -803,6 +803,16 @@ class MainViewModel(
         }
     }
 
+    /** The × on one recent-search chip. See [SearchHistoryStore.remove]. */
+    fun removeRecentSearch(query: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { searchHistory?.remove(query) }
+            _state.value = _state.value.copy(
+                recentSearches = _state.value.recentSearches.filterNot { it.equals(query, ignoreCase = true) }
+            )
+        }
+    }
+
     /**
      * The player's channel avatar was tapped: open that channel's grid. Matched
      * by name — the player only ever knows the uploader's name.
