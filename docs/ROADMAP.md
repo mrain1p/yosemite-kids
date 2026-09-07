@@ -171,6 +171,49 @@ who wants a shared budget and refuses to run a hub. Decide between the two
 before starting; do not start from the plan's ledger by default. *Medium
 either way, and much smaller if the hub is required.*
 
+**K. Staying under YouTube's bot detection — review, and finish the
+protections.** Raised 2026-09-06 while weighing a hub-served player for
+Apple devices. The concern is real but it is not new, and it is not the
+player: fetching video BYTES comes from Google's content servers, which are
+not where bot detection lives. The exposure is *extraction* — the watch page
+and player code — and the crawler already does far more of that than any
+amount of watching would.
+
+Already in place, and worth not rebuilding:
+- `HubCrawl` backs off exponentially on consecutive failed runs, 15 min
+  doubling to a 6 h cap, and one good run resets it.
+- `HubCrawl.probeYouTube` runs before the hub will claim the index at all,
+  so a hub that cannot reach YouTube never takes the job from a phone.
+- The crawl is paced at `IndexCrawler.CRAWL_DELAY_MS` (4 s) per fetch
+  attempt, in bounded batches of `IndexCrawlRun.PAGES_PER_RUN` (60), which
+  averages about four requests a minute.
+- Guard 7 confines the hub to YouTube's hosts, so nothing else on that box
+  can widen the footprint by accident.
+- `scripts/upstream.*` and the weekly scheduled check exist because the
+  most common cause of "extraction stopped working" is an extractor that
+  needs updating, NOT a ban — and the two look identical from here.
+
+Not built, and what this item is for:
+1. **Cache resolved streams.** A media address stays valid for hours, so a
+   replay should cost no new extraction. Nothing caches them today.
+2. **The crawl stands aside while a child is watching.** Finishing the index
+   a few hours later is worth nothing next to a video that will not start.
+3. **A switch to stop crawling**, so a parent who suspects trouble can
+   remove the cause without editing a compose file.
+4. **Say what to do when it fails.** The search-index card shows a red dot;
+   it should say "check for an extractor update" rather than leaving a
+   parent guessing between a ban, an outage and a broken build.
+5. **Never route the hub through a VPN.** Worth writing into `HUB.md` as a
+   warning rather than leaving to instinct: `gluetun` is on this NAS, and
+   putting the hub behind it swaps a residential address, which is treated
+   leniently, for a data-centre one, which is treated far worse. This is the
+   single easiest way to make the problem real.
+
+Named honestly: none of this changes the structural bet. If Google closes
+third-party extraction the app stops, and that was true the day this was
+forked. These reduce the odds of provoking it and shorten the recovery, and
+that is all they do. *Small, and mostly independent of each other.*
+
 ---
 
 ## 3. Known-wrong docs — cleared 2026-09-06
