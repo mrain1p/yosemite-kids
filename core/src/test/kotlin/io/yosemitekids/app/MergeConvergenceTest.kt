@@ -5,6 +5,7 @@ import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.ConfigMerge
 import io.yosemitekids.app.data.ConfigStamp
 import io.yosemitekids.app.data.Limits
+import io.yosemitekids.app.data.Pin
 import io.yosemitekids.app.data.Profile
 import io.yosemitekids.app.data.SourceKind
 import io.yosemitekids.app.data.SyncMeta
@@ -55,6 +56,7 @@ class MergeConvergenceTest {
         ai: AiConfig = AiConfig(),
         autoplay: Boolean = true,
         master: String? = null,
+        pins: List<Pin> = emptyList(),
         at: Map<String, Long> = emptyMap(),
         gone: Map<String, Long> = emptyMap()
     ): String = pinUpdatedAt(
@@ -68,6 +70,7 @@ class MergeConvergenceTest {
                 profiles = profiles,
                 autoplayNext = autoplay,
                 masterDeviceToken = master,
+                pins = pins,
                 sync = if (at.isEmpty() && gone.isEmpty()) SyncMeta.EMPTY
                 else SyncMeta(docAt = (at.values + gone.values + 0L).max(), at = at, gone = gone)
             )
@@ -172,6 +175,47 @@ class MergeConvergenceTest {
             "family limits with no stamp on either side",
             doc(limits = Limits(sessionMinutes = 45), at = mapOf(ConfigStamp.SETTINGS to T)),
             doc(limits = Limits(sessionMinutes = 30), at = mapOf(ConfigStamp.SETTINGS to T))
+        ),
+        // The pinned hero: an ordered, parent-authored list, which is the
+        // shape that converges worst. One unit per card and the rank inside
+        // it, so these three have to settle like everything above.
+        Triple(
+            "two cards pinned on two phones",
+            doc(
+                sources = listOf(entry("UCaaa"), entry("UCbbb")), profiles = listOf(kid),
+                pins = listOf(Pin("k1", "UCaaa", 100)),
+                at = mapOf(
+                    ConfigStamp.src("UCaaa") to T, ConfigStamp.src("UCbbb") to T, ConfigStamp.kid("k1") to T,
+                    ConfigStamp.pin("k1", "UCaaa") to T + 1
+                )
+            ),
+            doc(
+                sources = listOf(entry("UCaaa"), entry("UCbbb")), profiles = listOf(kid),
+                pins = listOf(Pin("k1", "UCbbb", 100)),
+                at = mapOf(
+                    ConfigStamp.src("UCaaa") to T, ConfigStamp.src("UCbbb") to T, ConfigStamp.kid("k1") to T,
+                    ConfigStamp.pin("k1", "UCbbb") to T + 2
+                )
+            )
+        ),
+        Triple(
+            "the same card moved on two phones, equal stamps",
+            doc(
+                sources = listOf(entry("UCaaa")), pins = listOf(Pin(null, "UCaaa", 100)),
+                at = mapOf(ConfigStamp.src("UCaaa") to T, ConfigStamp.pin(null, "UCaaa") to T + 1)
+            ),
+            doc(
+                sources = listOf(entry("UCaaa")), pins = listOf(Pin(null, "UCaaa", 300)),
+                at = mapOf(ConfigStamp.src("UCaaa") to T, ConfigStamp.pin(null, "UCaaa") to T + 1)
+            )
+        ),
+        Triple(
+            "a card against the tombstones of its source and itself",
+            doc(
+                sources = listOf(entry("UCaaa")), pins = listOf(Pin(null, "UCaaa", 100)),
+                at = mapOf(ConfigStamp.src("UCaaa") to T, ConfigStamp.pin(null, "UCaaa") to T + 1)
+            ),
+            doc(gone = mapOf(ConfigStamp.src("UCaaa") to T + 2, ConfigStamp.pin(null, "UCaaa") to T + 2))
         )
     )
 

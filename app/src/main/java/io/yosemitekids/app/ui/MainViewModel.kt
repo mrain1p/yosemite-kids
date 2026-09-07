@@ -567,22 +567,20 @@ class MainViewModel(
         }
 
     /**
-     * The parent's pinned hero, standing in for configuration that does not
-     * exist yet.
+     * The parent's pinned hero for this kid, as the URLs of the whitelist
+     * entries it names — read from the config (`Whitelist.pinsFor`, resolved
+     * the way `limitsFor` is) on every whitelist load. URLs rather than ids
+     * because resolution canonicalizes `@handle` and `user/` ids to UC… form,
+     * and this file already joins entries to tiles by URL for exactly that
+     * reason.
      *
-     * TODO(front-end, pinned-hero config phase): the real list is the parent's.
-     * That means a `pinned` field on Whitelist, its own section in ConfigMerge
-     * with a tombstone rule and a stamp, an editor on the phone and the
-     * matching page on the hub, and a row in docs/LAN-API.md. It is
-     * deliberately a phase of its own: putting a new field in config.json is
-     * the sectioned merge's problem, and those rules are not the home screen's.
-     *
-     * Until then the stand-in is DERIVED rather than a literal list of ids. A
-     * literal would name one family's channels and leave every other home with
-     * an empty hero — and a shelf nobody can see is a shelf nobody can review.
-     * So: the first two of this kid's own sources, in whitelist order.
+     * Empty on every install until the editor ships: this build carries,
+     * stamps and merges the list (release one of two) and nothing sets it. A
+     * derived stand-in — the kid's first two sources — stood here before and
+     * went the day the field arrived: a hero that is not the parent's is a
+     * hero that vanishes the moment they pin their first card.
      */
-    private fun standInPins(): List<String> = sources.take(2).map { it.id }
+    private var pinnedUrls: List<String> = emptyList()
 
     /**
      * The hero's cards.
@@ -596,7 +594,9 @@ class MainViewModel(
      */
     private fun pinnedRow(visible: List<Source>): List<PinnedItem> =
         resolvePins(
-            pinned = standInPins(),
+            // Translated through `visible` itself, so an entry this kid may
+            // not see yields no id and the join stays fail-closed.
+            pinned = visible.associateBy { it.url }.let { byUrl -> pinnedUrls.mapNotNull { byUrl[it]?.id } },
             visible = visible,
             newCount = { newVideoCount(it.id) },
             videoCount = { source ->
@@ -916,6 +916,9 @@ class MainViewModel(
                 suggestSimilar = list.suggestSimilar
                 playlistPicks = list.sources.filter { it.playlistIds.isNotEmpty() }
                     .associate { it.url to it.playlistIds }
+                pinnedUrls = list.pinsFor(activeProfileId).mapNotNull { p ->
+                    list.sources.firstOrNull { it.id == p.sourceId }?.url
+                }
                 _state.value = _state.value.copy(
                     channelSort = effectiveChannelSort(),
                     homeFilter = effectiveHomeFilter(),

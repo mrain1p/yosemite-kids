@@ -33,6 +33,24 @@ object ConfigStamp {
     fun grant(id: String) = "grant|$id"
 
     /**
+     * One card of the pinned hero, keyed by the kid and the source it names;
+     * the rank rides inside as a value. `home.pin`, not `pin`: `kid.pin|<id>`
+     * is a child's login code and sits one character away in the same
+     * fail-absent list, and a namespace that reads as its sibling's is one
+     * somebody will one day treat as it.
+     */
+    fun pin(kidId: String?, sourceId: String) = "home.pin|${kidId ?: PIN_FAMILY}|$sourceId"
+    fun pin(p: Pin) = pin(p.kidId, p.sourceId)
+
+    /**
+     * The kid segment of a family card — [Pin.kidId] null, the row a
+     * household with no profiles sees. Never a valid profile id, so it cannot
+     * collide with a kid, and `ConfigJson.pinsFromJson` refuses it as a
+     * literal kid so one card cannot spell its key two ways.
+     */
+    const val PIN_FAMILY = "*"
+
+    /**
      * Per-kid overlays. The shape must match ConfigMerge.mergeOverlay, which
      * builds "$ns|$videoId|$kidId" from overlayKeys — a different spelling
      * here would mint stamps the merge never looks at, which is worse than
@@ -236,6 +254,58 @@ object ConfigStamp {
             }
         }
 
+        // --- The pinned hero --------------------------------------------
+        // One unit per card, keyed by (kid, source) the way a grant is keyed
+        // by its id, and the rank is a value inside the unit: a reorder
+        // touches exactly the cards that moved, and two parents pinning
+        // different things are two units that both land. Two parents moving
+        // the SAME card are one unit, and the later stamp wins — per card,
+        // silently. That is the trade: one whole-list value would be just as
+        // silent and would lose one parent's whole row.
+        fun sourceName(id: String): String =
+            (sources + base.sources + previous.sources).firstOrNull { it.id == id }?.let { label(it) } ?: id
+        fun forWhom(kidId: String?): String = kidId?.let { id ->
+            " for " + ((profiles + base.profiles + previous.profiles).firstOrNull { it.id == id }?.name ?: "a kid")
+        }.orEmpty()
+        val prevPin = previous.pins.associateBy { pin(it) }
+        val basePin = base.pins.associateBy { pin(it) }
+        val nextPin = next.pins.associateBy { pin(it) }
+        val pins = ArrayList<Pin>()
+        nextPin.forEach { (key, p) ->
+            pins += p
+            val b = basePin[key]
+            when {
+                b == null -> {
+                    readd(key)
+                    changes += line("home.pin.add", "pinned ${sourceName(p.sourceId)}${forWhom(p.kidId)}", who, by, mint)
+                }
+                b.rank != p.rank -> {
+                    touch(key)
+                    changes += line("home.pin.move", "moved ${sourceName(p.sourceId)}${forWhom(p.kidId)}", who, by, mint)
+                }
+            }
+        }
+        (basePin.keys - nextPin.keys).forEach { key ->
+            remove(key)
+            val p = basePin.getValue(key)
+            changes += line("home.pin.remove", "unpinned ${sourceName(p.sourceId)}${forWhom(p.kidId)}", who, by, mint)
+        }
+        (prevPin.keys - basePin.keys - nextPin.keys).forEach { pins += prevPin.getValue(it) }
+        // Coupled to the two lists above, deliberately. A card names a source
+        // and a kid and outlives neither, so whatever removed its subject in
+        // this save — this parent, a merge that landed under the open form, a
+        // hand edit — the card is tombstoned here, in the same write. The
+        // merge refuses the same shape in its own loop, but a refusal is not
+        // a tombstone: a card a stale peer still lists is refused again on
+        // every merge, and returns for good the day the source is
+        // deliberately re-added. A tombstone settles it.
+        pins.removeAll { p ->
+            val orphaned = sources.none { it.id == p.sourceId } ||
+                (p.kidId != null && profiles.none { it.id == p.kidId })
+            if (orphaned) remove(pin(p))
+            orphaned
+        }
+
         // --- Sets -------------------------------------------------------
         val blocked = setUnit(
             previous.blockedVideoIds, base.blockedVideoIds, next.blockedVideoIds,
@@ -326,6 +396,7 @@ object ConfigStamp {
             sources = sources,
             profiles = profiles,
             grants = grants,
+            pins = pins,
             blockedVideoIds = blocked,
             aiAllowedVideoIds = aiAllowed,
             blockedFor = blockedFor,

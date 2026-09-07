@@ -134,6 +134,21 @@ object ConfigMerge {
             out += Change("grant", "removes ${g.minutes} extra minutes for ${Grants.whose(g, a.profiles)} on ${g.date}")
         }
 
+        // --- The pinned hero -------------------------------------------
+        val pinsWas = a.pins.associateBy { ConfigStamp.pin(it) }
+        val pinsNow = b.pins.associateBy { ConfigStamp.pin(it) }
+        (pinsNow.keys - pinsWas.keys).sorted().forEach {
+            out += Change("home.pin", "pins ${pinName(pinsNow.getValue(it), b)}")
+        }
+        (pinsWas.keys - pinsNow.keys).sorted().forEach {
+            out += Change("home.pin", "unpins ${pinName(pinsWas.getValue(it), a)}")
+        }
+        // A rank is content: the same cards in another order is a change the
+        // kid sees, so `identical` must say no to it.
+        if ((pinsWas.keys intersect pinsNow.keys).any { pinsWas.getValue(it).rank != pinsNow.getValue(it).rank }) {
+            out += Change("home.pin", "reorders the pinned row")
+        }
+
         // --- Blocks and allow lists ------------------------------------
         countChange(
             a.blockedVideoIds.size, b.blockedVideoIds.size, "blocked video", "blocked videos"
@@ -289,6 +304,11 @@ object ConfigMerge {
 
     private fun name(e: WhitelistEntry): String = e.label?.takeIf { it.isNotBlank() } ?: e.id
 
+    /** "Bluey for Leo", or just "Bluey" on the family's own row. */
+    private fun pinName(p: Pin, w: Whitelist): String =
+        (w.sources.firstOrNull { it.id == p.sourceId }?.let { name(it) } ?: p.sourceId) +
+            (p.kidId?.let { id -> " for " + (w.profile(id)?.name ?: "a kid") }).orEmpty()
+
     /**
      * Screen-time differences for one kid, or for the family when [who] is
      * null. Phrased as "45 to 30 min" rather than as field names: this is the
@@ -439,7 +459,11 @@ object ConfigMerge {
         // A grant fails absent like a channel: the tombstone the stamper
         // mints when its day has passed must beat a stale copy still listing
         // it, or expiry would never settle.
-        "src", "kid", "kid.pin", "allow", "afor", "dev", "grant" -> Safe.ABSENT
+        // A card of the pinned hero fails absent too: the stamper tombstones
+        // it alongside its source or its kid, and that must beat a stale
+        // copy still listing it, or a deleted channel's card would outlive
+        // the channel.
+        "src", "kid", "kid.pin", "allow", "afor", "dev", "grant", "home.pin" -> Safe.ABSENT
         else -> Safe.SCALAR
     }
 
@@ -707,6 +731,54 @@ object ConfigMerge {
             )
         }
 
+        // --- the pinned hero ---------------------------------------------
+        // One unit per card, keyed by (kid, source); the rank is a value
+        // inside it. The array is rebuilt in (rank, key) order and NEVER in
+        // stamp order like the loops above: here the order IS the content,
+        // and "whoever edited last comes first" would be the merge quietly
+        // rewriting a parent's row on every push. Two parents moving the
+        // same card resolve by the later stamp, per card, without a word —
+        // the price of not losing a whole row to a whole-list value.
+        run {
+            val lm = pinsByKey(L.root)
+            val rm = pinsByKey(R.root)
+            // A card whose source or kid the merged document does not list is
+            // not kept, and neither is its stamp. The stamper tombstones such
+            // cards on the device that removed the subject; this is the racing
+            // case — one parent pinned what the other was deleting, and neither
+            // saw the other — where no tombstone exists yet. Dropping the card
+            // and keeping its stamp looked harmless and was not: a stamp for a
+            // unit nobody lists is dropped by the NEXT merge (only tombstones
+            // travel unvisited), so the document moved once more after it had
+            // "settled". Both go together, decided here where the entries and
+            // profiles loops above have already said what survives, and the
+            // merge mints nothing. The day the source is deliberately re-added
+            // a stale copy's card returns with it, which is the lesser surprise.
+            val sources = idsOf(out, "entries").toSet()
+            val kids = idsOf(out, "profiles").toSet()
+            val kept = ArrayList<Pair<String, JSONObject>>()
+            (lm.keys + rm.keys).forEach { key ->
+                val d = decide(key)
+                if (d.gone > 0) gone[key] = d.gone
+                if (!d.present) return@forEach
+                val mine = lm[key]
+                val theirs = rm[key]
+                val pick = pickValue(d, mine, theirs) ?: return@forEach
+                val kid = pick.optString("kid")
+                if (pick.optString("src") !in sources || (kid.isNotEmpty() && kid !in kids)) return@forEach
+                collide(key, "home.pin", d, mine?.toString(), theirs?.toString())
+                at[key] = d.at
+                kept += key to pick
+            }
+            putHome(
+                out, locRoot,
+                JSONArray().also { arr ->
+                    kept.sortedWith(compareBy({ it.second.optInt("rank") }, { it.first }))
+                        .forEach { arr.put(it.second) }
+                }
+            )
+        }
+
         // --- sets --------------------------------------------------------
         mergeSet(L.root, R.root, out, locRoot, "blocked", ConfigStamp::blk, ::decide, at, gone)
         mergeSet(L.root, R.root, out, locRoot, "aiAllowed", ConfigStamp::allow, ::decide, at, gone)
@@ -951,6 +1023,7 @@ object ConfigMerge {
         idsOf(root, "entries").forEachIndexed { i, id -> at[ConfigStamp.src(id)] = i + 1L }
         idsOf(root, "profiles").forEachIndexed { i, id -> at[ConfigStamp.kid(id)] = i + 1L }
         idsOf(root, "grants").forEachIndexed { i, id -> at[ConfigStamp.grant(id)] = i + 1L }
+        pinsByKey(root).keys.forEachIndexed { i, key -> at[key] = i + 1L }
         strsOf(root, "blocked").forEach { at[ConfigStamp.blk(it)] = 1L }
         strsOf(root, "aiAllowed").forEach { at[ConfigStamp.allow(it)] = 1L }
         overlayKeys(root, "blockedFor").forEach { at["for|$it"] = 1L }
@@ -1049,6 +1122,37 @@ object ConfigMerge {
             strsOf(o, videoId).forEach { kidId -> out += "$videoId|$kidId" }
         }
         return out
+    }
+
+    /**
+     * The cards of the pinned hero by unit key, read at the JSON level so a
+     * card carrying a field this build has no name for travels whole. First
+     * wins on a duplicate, as [byId] does. A card with no source is not a
+     * card and mints no key.
+     */
+    private fun pinsByKey(root: JSONObject): Map<String, JSONObject> {
+        val out = LinkedHashMap<String, JSONObject>()
+        val home = root.optJSONObject("home") ?: return out
+        jsonObjects(home, "pins").forEach { o ->
+            val src = o.optString("src")
+            if (src.isNotBlank()) out.putIfAbsent(ConfigStamp.pin(o.optString("kid").ifEmpty { null }, src), o)
+        }
+        return out
+    }
+
+    /**
+     * Write the hero back inside `home`, keeping whatever else the local
+     * document's `home` carried: the next home-screen field a newer build
+     * puts there survives a hop through this one the way unknown roots do.
+     * Same convention as [putLike] for the container itself — an empty
+     * result keeps the key only if the local document had it, so a document
+     * merged against itself reads as unchanged.
+     */
+    private fun putHome(out: JSONObject, local: JSONObject, pins: JSONArray) {
+        val was = local.optJSONObject("home")
+        val home = JSONObject(was?.toString() ?: "{}")
+        if (pins.length() > 0 || was?.has("pins") == true) home.put("pins", pins) else home.remove("pins")
+        if (home.length() > 0 || was != null) out.put("home", home) else out.remove("home")
     }
 
     private fun settingsOf(root: JSONObject): JSONObject =
@@ -1374,6 +1478,10 @@ object ConfigMerge {
             }
             if (cleaned.length() > 0) root.put("deviceProfiles", cleaned) else root.remove("deviceProfiles")
         }
+
+        // The pinned hero's cards are not scrubbed here: their loop refuses a
+        // card whose source or kid did not survive, and its stamp with it —
+        // see the comment there for why the stamp has to go too.
 
         // Blocked and allowed for the same kid is a child-safety question, so
         // it is never decided by a generic tie-break: the block holds.

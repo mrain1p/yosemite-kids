@@ -159,6 +159,26 @@ object ConfigJson {
                         append(g.date); append(','); append(g.minutes); append(';')
                     }
                 }
+                // Append-only-when-set, at the tail — and here the "when set"
+                // is the whole two-release plan. rawJson() is toJson(load()),
+                // so a build that does not model `home` drops it on the round
+                // trip; if an EMPTY list left a mark here, that build's hash
+                // could never equal a newer device's, ConfigSync.reconcile
+                // compares exactly those hashes, and the pair would take the
+                // Merge arm on every sweep forever — the spinning sync ring
+                // ConfigSync.applyArrived's comment records happening once,
+                // and structural this time, because the hub is a separate
+                // release train. An empty list hashes as no list
+                // (PinsConfigTest is the gate); a set one must move the hash,
+                // or the offline reconcile never carries a card to the TV.
+                // The rank is in it: a reorder is what the kid sees.
+                if (w.pins.isNotEmpty()) {
+                    append(";HP:")
+                    Pins.ordered(w.pins).forEach { p ->
+                        append(p.kidId ?: ""); append(','); append(p.sourceId); append(',')
+                        append(p.rank); append(';')
+                    }
+                }
             }
             return java.security.MessageDigest.getInstance("SHA-256")
                 .digest(canonical.toByteArray())
@@ -261,6 +281,14 @@ object ConfigJson {
             // from its own root, so the key does not survive a hop through one
             // — the LAN grant is that build's path (see LanServer /grant).
             if (w.grants.isNotEmpty()) root.put("grants", JSONArray(grantsToJson(w.grants)))
+            // Only once a card is pinned, and inside a `home` object so the
+            // next home-screen field has somewhere to go without a root of
+            // its own. An empty list writes nothing: every install on this
+            // release holds one, and a family that never pins keeps its bytes
+            // and its hash — see fingerprint for why that is load-bearing.
+            if (w.pins.isNotEmpty()) {
+                root.put("home", JSONObject().put("pins", JSONArray(pinsToJson(w.pins))))
+            }
             // Last, and only when there is anything to say: a family that has
             // never edited since upgrading writes a byte-identical file, so no
             // fingerprint moves and no fleet-wide re-push fires at upgrade.
@@ -443,6 +471,48 @@ object ConfigJson {
         private val GRANT_ID = Regex("[0-9a-f]{8}")
         private val GRANT_DATE = Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
+        /** The pinned hero as a JSON array string — the `home.pins` key, in canonical order. */
+        fun pinsToJson(pins: List<Pin>): String =
+            JSONArray().apply {
+                Pins.ordered(pins).forEach { p ->
+                    put(JSONObject().apply {
+                        // Omitted for the family's own row: absent is what a
+                        // grant writes for "everyone", and reads the same way.
+                        p.kidId?.let { put("kid", it) }
+                        put("src", p.sourceId)
+                        put("rank", p.rank)
+                    })
+                }
+            }.toString()
+
+        /**
+         * Per-card, like grants: one card a build cannot read drops alone. The
+         * kid and the source become delimiters downstream — the unit key
+         * `home.pin|<kid>|<src>` and the fingerprint — so either carrying one
+         * is refused rather than letting two different documents hash alike
+         * or two cards mint one key, and the family segment is refused as a
+         * literal kid for the same reason. Nothing here enforces a cap: the
+         * two-or-three is the editor's rule and the renderer's, and a fourth
+         * card from a newer build must survive this parser.
+         */
+        fun pinsFromJson(text: String?): List<Pin> = runCatching {
+            val arr = JSONArray(text ?: return emptyList())
+            (0 until arr.length()).mapNotNull { i ->
+                runCatching {
+                    val o = arr.getJSONObject(i)
+                    val src = o.getString("src")
+                    val kid = o.optString("kid").ifEmpty { null }
+                    if (!o.has("rank") || !PIN_PART.matches(src) || kid == ConfigStamp.PIN_FAMILY ||
+                        (kid != null && !PIN_PART.matches(kid))
+                    ) return@runCatching null
+                    Pin(kidId = kid, sourceId = src, rank = o.getInt("rank"))
+                }.getOrNull()
+            }
+        }.getOrDefault(emptyList())
+
+        /** No delimiter of the key or the fingerprint and no whitespace; otherwise any id the whitelist can hold. */
+        private val PIN_PART = Regex("[^|;,=\\s]+")
+
         private fun limitsFromJson(lo: JSONObject): Limits {
             fun opt(name: String): Int? = if (lo.has(name)) lo.getInt(name) else null
             // A config written before windows existed carries only the bedtime
@@ -572,6 +642,11 @@ object ConfigJson {
                 // Per-entry lenient, like the sync blob below: a grant a build
                 // cannot read costs the kid those minutes, never the config.
                 grants = grantsFromJson(root.optJSONArray("grants")?.toString()),
+                // Per-card lenient, like grants, and under `home`: a build
+                // that does not model it parses past one key, and its merge
+                // carries that key from its own root untouched.
+                pins = pinsFromJson(root.optJSONObject("home")?.optJSONArray("pins")?.toString())
+                    .distinctBy { ConfigStamp.pin(it) },
                 // Outside the throwing path on purpose: a malformed or
                 // future-versioned blob must cost the family its bookkeeping,
                 // never its channels. See ConfigMerge.syncFromJson.

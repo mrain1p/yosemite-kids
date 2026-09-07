@@ -96,13 +96,20 @@ object HubWeb {
      * differ — dropping an `aiAllowed` or `allowedFor` entry hides a video
      * again, which is the safe way to fail, while dropping a `blockedFor` entry
      * lifts a block for one kid, which is not.
+     *
+     * `home` is the pinned hero's container, patchable ahead of anything on
+     * this page that patches it: the editor is the next release, on both
+     * faces (SettingsSurface.NOT_A_CONTROL records the debt). Safe to open
+     * now because the stamper diffs it per card, so a whole-object patch from
+     * a browser is the same shape as the phone's whole-form save — and a card
+     * left out of it is an unpin, which is what leaving a card out means.
      */
     private val PATCHABLE = setOf(
         "entries", "blocked", "profiles", "limits", "ai", "deviceProfiles",
         "sponsorSkip", "autoplay", "suggest", "listen",
         "qualityTv", "qualityPhone",
         "showVideoAge", "pageSize", "channelLayout", "channelOrder",
-        "aiAllowed", "blockedFor", "allowedFor"
+        "aiAllowed", "blockedFor", "allowedFor", "home"
     )
 
     /** Everything the page renders, in one round trip. */

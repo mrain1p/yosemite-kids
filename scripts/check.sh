@@ -675,6 +675,11 @@ mtext=$(cat "$manifest")
 #        name WITH a reason. A field with nothing to set it is a field a parent
 #        cannot reach on either face, and it fails here on the day it is added
 #        rather than in a message from a family six months later.
+#        Whitelist, Limits and AiConfig only: the classes nested inside them
+#        (WhitelistEntry, Profile, TimeWindow, Grant, Pin) are not walked, so
+#        a leaf like Pin.rank is covered only by whatever claims its
+#        container. Extend the list below, and its twin in check.ps1, if that
+#        ever stops being enough.
 class_props() {   # $1 = data class name; prints its declared properties
   # One line, because the lint at the top of this file reads a line at a time.
   awk -v head="data class $1(" 'index($0, head) == 1 { inside = 1; next } inside && /^\)/ { exit } inside' "$wl" | grep -oE "^    val [A-Za-z]+" | awk '{ print $2 }' || true
@@ -930,6 +935,37 @@ tl_bad=$(echo "$tl_code" | grep -nE "SessionGuard|sessionGuard" || true)
   guard_fail "TimeLeft.kt reads SessionGuard. The 1 Hz value must be interpolated from the last authoritative read (interpolateRemainingMs), not re-read - remainingAll() writes to prefs through rolloverIfNewDay(). Found: $tl_bad"
 echo "$tl_code" | grep -q "interpolateRemainingMs(" ||
   guard_fail "TimeLeft.kt no longer calls interpolateRemainingMs. Whatever now produces the chrome's time-left must be a pure function with a test, or the value goes stale again."
+
+# 38. Every unit ConfigStamp can mint is a unit ConfigMerge.merge decides.
+#     A field can be added to Whitelist, toJson and fromJson, stamped in
+#     ConfigStamp, claimed or exempted in SettingsSurface, and pass guard
+#     26(a) and every test — and still never merge. The merge is a set of
+#     hand-written loops, one per namespace, and a namespace with no loop is
+#     rebuilt from the local document and never read from the peer. Nothing
+#     throws: a co-parent's edit in that namespace is dropped by the first
+#     device that merges it, silently, forever — which is exactly how per-kid
+#     blocks and device assignments were once lost (the stamper's "Per-kid
+#     overlays" comment records it). So every key ConfigStamp mints — a
+#     `fun x(...) = "ns|..."` or a `const val X = "ns"` — must be named below
+#     `fun merge(` in ConfigMerge.kt: as ConfigStamp.x, ConfigStamp::x, or the
+#     bare "ns" literal the overlay loops take. Only the namespace is checked;
+#     whether the loop is RIGHT is what core/src/test is for.
+stamp_src=core/src/main/kotlin/io/yosemitekids/app/data/ConfigStamp.kt
+merge_src=core/src/main/kotlin/io/yosemitekids/app/data/ConfigMerge.kt
+merge_body=$(sed -n '/fun merge(/,$p' "$merge_src")
+[ -n "$merge_body" ] || guard_fail "guard 38 cannot find fun merge( in ConfigMerge.kt; it is blind."
+# One "name ns" per line: the Kotlin member and the namespace it mints.
+stamp_units=$(grep -E '^    (fun [a-zA-Z]+\([^)]*\) *= *"[a-z.]+\||const val [A-Z_]+ *= *"[a-z.]+")' "$stamp_src" | sed -E 's/^    (fun|const val) ([A-Za-z_]+).*= *"([a-z.]+).*$/\2 \3/' || true)
+unit_count=$(printf "%s\n" "$stamp_units" | grep -c . || true)
+[ "$unit_count" -ge 10 ] || guard_fail "guard 38 read only $unit_count unit keys out of ConfigStamp.kt; it is blind."
+while read -r name ns; do
+  [ -n "$name" ] || continue
+  printf "%s" "$merge_body" | grep -qE "ConfigStamp(\.|::)$name\b" ||
+    printf "%s" "$merge_body" | grep -qF "\"$ns\"" ||
+    guard_fail "ConfigStamp mints the unit \"$ns\" (ConfigStamp.$name) and nothing in ConfigMerge.merge decides it, so a co-parent's edit there is dropped by the first peer that merges it. Give the namespace a loop in merge() — the grants or pinned-hero block is the shape — and prove it in core/src/test."
+done <<EOF
+$stamp_units
+EOF
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

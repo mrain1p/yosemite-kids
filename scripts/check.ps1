@@ -781,6 +781,11 @@ function Get-ClassProps($src, $name) {
 #        name WITH a reason. A field with nothing to set it is a field a parent
 #        cannot reach on either face, and it fails here on the day it is added
 #        rather than in a message from a family six months later.
+#        Whitelist, Limits and AiConfig only: the classes nested inside them
+#        (WhitelistEntry, Profile, TimeWindow, Grant, Pin) are not walked, so
+#        a leaf like Pin.rank is covered only by whatever claims its
+#        container. Extend this list, and its twin in check.sh, if that ever
+#        stops being enough.
 foreach ($cls in @(@("Whitelist", ""), @("Limits", "limits."), @("AiConfig", "ai."))) {
     $props = Get-ClassProps $whitelistSrc $cls[0]
     if ($props.Count -eq 0) {
@@ -1067,6 +1072,40 @@ if ($tlBad.Count -gt 0) {
 }
 if (($tlCode -join "`n") -notmatch "interpolateRemainingMs\(") {
     Fail-Guard "TimeLeft.kt no longer calls interpolateRemainingMs. Whatever now produces the chrome's time-left must be a pure function with a test, or the value goes stale again."
+}
+
+# 38. Every unit ConfigStamp can mint is a unit ConfigMerge.merge decides.
+#     A field can be added to Whitelist, toJson and fromJson, stamped in
+#     ConfigStamp, claimed or exempted in SettingsSurface, and pass guard
+#     26(a) and every test - and still never merge. The merge is a set of
+#     hand-written loops, one per namespace, and a namespace with no loop is
+#     rebuilt from the local document and never read from the peer. Nothing
+#     throws: a co-parent's edit in that namespace is dropped by the first
+#     device that merges it, silently, forever - which is exactly how per-kid
+#     blocks and device assignments were once lost (the stamper's "Per-kid
+#     overlays" comment records it). So every key ConfigStamp mints - a
+#     `fun x(...) = "ns|..."` or a `const val X = "ns"` - must be named below
+#     `fun merge(` in ConfigMerge.kt: as ConfigStamp.x, ConfigStamp::x, or the
+#     bare "ns" literal the overlay loops take. Only the namespace is checked;
+#     whether the loop is RIGHT is what core/src/test is for.
+$stampSrc38 = Get-Content "core/src/main/kotlin/io/yosemitekids/app/data/ConfigStamp.kt" -Raw
+$mergeSrc38 = Get-Content "core/src/main/kotlin/io/yosemitekids/app/data/ConfigMerge.kt" -Raw
+$mergeAt38 = $mergeSrc38.IndexOf("fun merge(")
+if ($mergeAt38 -lt 0) { Fail-Guard "guard 38 cannot find fun merge( in ConfigMerge.kt; it is blind." }
+$mergeBody38 = $mergeSrc38.Substring($mergeAt38)
+$units38 = @()
+foreach ($m in [regex]::Matches($stampSrc38, '(?m)^    fun ([a-zA-Z]+)\([^)]*\)\s*=\s*"([a-z.]+)\|')) {
+    $units38 += ,@($m.Groups[1].Value, $m.Groups[2].Value)
+}
+foreach ($m in [regex]::Matches($stampSrc38, '(?m)^    const val ([A-Z_]+)\s*=\s*"([a-z.]+)"')) {
+    $units38 += ,@($m.Groups[1].Value, $m.Groups[2].Value)
+}
+if ($units38.Count -lt 10) { Fail-Guard "guard 38 read only $($units38.Count) unit keys out of ConfigStamp.kt; it is blind." }
+foreach ($u in $units38) {
+    $name38 = $u[0]; $ns38 = $u[1]
+    if ($mergeBody38 -notmatch "ConfigStamp(\.|::)$name38\b" -and -not $mergeBody38.Contains('"' + $ns38 + '"')) {
+        Fail-Guard "ConfigStamp mints the unit ""$ns38"" (ConfigStamp.$name38) and nothing in ConfigMerge.merge decides it, so a co-parent's edit there is dropped by the first peer that merges it. Give the namespace a loop in merge() - the grants or pinned-hero block is the shape - and prove it in core/src/test."
+    }
 }
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }

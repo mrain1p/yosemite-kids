@@ -304,6 +304,15 @@ data class Whitelist(
      */
     val grants: List<Grant> = emptyList(),
     /**
+     * The home screen's pinned hero, every kid's row in one list — one [Pin]
+     * per card, [pinsFor] picks a kid's. Nothing sets it yet: this build
+     * carries, stamps, merges and backs it up so the editor can ship in the
+     * next release against a fleet that already agrees on the bytes, which
+     * is why an empty list must write nothing and hash as nothing
+     * (`PinsConfigTest`). See [Pin] for why it is shaped as it is.
+     */
+    val pins: List<Pin> = emptyList(),
+    /**
      * Sync bookkeeping: when each part of this config was last edited, what
      * has been deleted, and the recent change log. Never enforced, never read
      * by a screen — it exists so two parents' edits can be merged instead of
@@ -329,6 +338,18 @@ data class Whitelist(
         val family = limits.pausedUntilMillis ?: return p.limits
         val own = p.limits.pausedUntilMillis ?: 0L
         return p.limits.copy(pausedUntilMillis = maxOf(family, own))
+    }
+
+    /**
+     * The pinned hero for one kid, in the parent's order. Resolved the way
+     * [limitsFor] resolves rules and by no second rule: a kid who exists
+     * gets their own row and nothing else, and a profile id that resolves to
+     * nobody — a household with no profiles, a device dedicated to a kid
+     * since removed — gets the family's own row, the cards with no kid.
+     */
+    fun pinsFor(profileId: String?): List<Pin> {
+        val p = profile(profileId) ?: return Pins.ordered(pins.filter { it.kidId == null })
+        return Pins.ordered(pins.filter { it.kidId == p.id })
     }
 
     fun isBlockedFor(videoId: String?, profileId: String?): Boolean {

@@ -561,7 +561,13 @@ object SettingsSurface {
             "by a parent. Both faces show who holds it and neither offers to set it",
         "ai.rulesVersion" to "bumped by SettingsForm.toConfig when the rules, the age, " +
             "the model or the endpoint change, so every device re-screens. A parent " +
-            "setting it by hand would silently un-screen a catalogue"
+            "setting it by hand would silently un-screen a catalogue",
+        "pins" to "the home screen's pinned hero, release one of two. This build " +
+            "carries, stamps, merges and backs the list up and nothing sets it, so " +
+            "every install's list is empty and no existing hash moves - the " +
+            "fingerprint tail appears only once a card is pinned (PinsConfigTest is " +
+            "the gate). The editor is the next release: give it a control on both " +
+            "faces then, and take this line out"
     )
 
     /** [Where.BOTH] groups still to be built on the hub. */
