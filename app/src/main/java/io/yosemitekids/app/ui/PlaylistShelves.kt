@@ -44,10 +44,15 @@ internal fun LazyGridScope.playlistRow(
     onSeeAll: (() -> Unit)? = null
 ) {
     if (playlists.isEmpty()) return
+    // The home's shelf furniture, not this file's own: a channel page and the
+    // home are the same kind of page one level apart, and a heading that is
+    // bold-17 with a mono count here and a Material title with a teal button
+    // there is the drift a kid notices without being able to name it.
     item(key = "pl:title", span = { GridItemSpan(maxLineSpan) }) {
-        SectionRow(
+        ShelfHeader(
             "Playlists",
-            action = if (onSeeAll != null) "See all (${playlists.size})" else null,
+            count = playlists.size,
+            action = if (onSeeAll != null) "See all" else null,
             onAction = onSeeAll
         )
     }
@@ -163,8 +168,9 @@ internal fun LazyGridScope.playlistShelves(
     shelves.forEach { shelf ->
         if (shelf.items.isEmpty()) return@forEach
         item(key = "pls:title:${shelf.playlist.id}", span = { GridItemSpan(maxLineSpan) }) {
-            SectionRow(
+            ShelfHeader(
                 cleanPlaylistName(shelf.playlist.name, channelName),
+                count = shelf.items.size,
                 action = "See all", onAction = { onOpenPlaylist(shelf.playlist) }
             )
         }
@@ -183,27 +189,16 @@ internal fun LazyGridScope.newForYouRow(
     onOpenMenu: ((VideoItem) -> Unit)?
 ) {
     if (items.isEmpty()) return
-    item(key = "nfy:title", span = { GridItemSpan(maxLineSpan) }) { SectionRow("New for you") }
+    // "New for you" and not the handoff's "New videos": the words in this app
+    // are its own, the same call [FeedControlRow] makes about its chips.
+    item(key = "nfy:title", span = { GridItemSpan(maxLineSpan) }) {
+        ShelfHeader("New for you", count = items.size)
+    }
     item(key = "nfy:row", span = { GridItemSpan(maxLineSpan) }) {
         VideoShelfRow(items, isTv, avatarFor, onPlay, onOpenMenu)
     }
 }
 
-/**
- * The rule, the "All videos" title and the kid's sort chips under it — the
- * grid's own header, so the sort sits with what it sorts rather than at
- * the top of the page over rows it doesn't touch.
- */
-internal fun LazyGridScope.allVideosHeader(
-    filter: String,
-    onFilter: ((String) -> Unit)?,
-    title: String = "All videos"
-) {
-    item(key = "all:divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
-    item(key = "all:title", span = { GridItemSpan(maxLineSpan) }) {
-        SectionRow(title, trailing = onFilter?.let { set -> { VideoFilterChips(filter, set) } })
-    }
-}
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable

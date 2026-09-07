@@ -314,6 +314,15 @@ internal fun videoMeta(channel: String, publishedAt: Long?): String =
     metaLine(channel, if (LocalShowVideoAge.current) relativeAge(publishedAt) else null)
 
 /**
+ * The age half alone, for a row that has already named the channel — the
+ * newest-video line on a channel row. Through [videoMeta] rather than
+ * [relativeAge] directly, so the parent's switch governs this line too and
+ * there is still exactly one place that reads it.
+ */
+@Composable
+internal fun videoAgeMeta(publishedAt: Long?): String = videoMeta(channel = "", publishedAt = publishedAt)
+
+/**
  * The right end of every page header: search, then the kid's face. The
  * avatar is the door to their corner — switch, change my look, the locked
  * parent settings — and it is on every screen except the player, so a kid

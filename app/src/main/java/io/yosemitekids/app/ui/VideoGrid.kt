@@ -182,15 +182,6 @@ internal fun VideoGrid(
     onOpenChannel: ((String) -> Unit)? = null,
     grabFocus: Boolean = false,
     onNearEnd: (() -> Unit)? = null,
-    /**
-     * A non-video tile dropped in at this index — the channel's "Watched"
-     * shelf. Pinned mid-grid on purpose (see [UiState.watchedTileAt]), so it
-     * is not simply appended at the end.
-     */
-    extraTileAt: Int? = null,
-    /** Handed a focus requester only when it leads the grid, so a channel with
-     *  nothing unwatched still has somewhere for the remote to land. */
-    extraTile: (@Composable (androidx.compose.ui.focus.FocusRequester?) -> Unit)? = null,
     /** One-shot jump, see [UiState.scrollTo]. Report back via [onScrolled]. */
     scrollTo: Int? = null,
     onScrolled: (() -> Unit)? = null,
@@ -203,9 +194,10 @@ internal fun VideoGrid(
      */
     header: (androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit)? = null
 ) {
-    // A channel whose every video has been watched still needs its shelf: the
-    // grid is empty, but the way to the watched ones must not vanish with it.
-    if (videos.isEmpty() && extraTile == null && header == null) {
+    // A channel whose every video has been watched still needs its page: the
+    // grid is empty, but the header carries the block, the rails and the
+    // Watched pill, which is the way to the ones they have already seen.
+    if (videos.isEmpty() && header == null) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -310,12 +302,7 @@ internal fun VideoGrid(
         modifier = Modifier.dpadHeldScrollThrottle()
     ) {
         header?.invoke(this)
-        // Split around the injected tile rather than appending it: its index is
-        // pinned to the first page, and pages loaded later join the tail below.
-        val cut = extraTileAt?.coerceIn(0, paged.size)?.takeIf { extraTile != null }
-        val head = if (cut == null) paged else paged.take(cut)
-        val tail = if (cut == null) emptyList() else paged.drop(cut)
-        items(head, key = { it.video.url }) { item ->
+        items(paged, key = { it.video.url }) { item ->
             if (cards) VideoCard(
                 item = item,
                 avatarUrl = avatarFor(item.video.channelName),
@@ -328,29 +315,6 @@ internal fun VideoGrid(
             ) else VideoTile(
                 item = item,
                 focusRequester = firstTileFocus.takeIf { grabFocus && item == paged.first() },
-                onPlay = onPlay,
-                onOpenMenu = menuOpener,
-                downloadPending = downloadPending,
-                downloaded = downloaded,
-                showDownloadStatus = onToggleDownload != null
-            )
-        }
-        if (cut != null) item(key = "extra-tile", span = { GridItemSpan(1) }) {
-            extraTile!!(firstTileFocus.takeIf { grabFocus && head.isEmpty() })
-        }
-        items(tail, key = { it.video.url }) { item ->
-            if (cards) VideoCard(
-                item = item,
-                avatarUrl = avatarFor(item.video.channelName),
-                onPlay = onPlay,
-                onOpenMenu = menuOpener,
-                onOpenChannel = onOpenChannel,
-                statusBadge = if (onToggleDownload != null) {
-                    { DownloadStatusBadge(item, downloadPending, downloaded) }
-                } else null
-            ) else VideoTile(
-                item = item,
-                focusRequester = null,
                 onPlay = onPlay,
                 onOpenMenu = menuOpener,
                 downloadPending = downloadPending,
@@ -379,71 +343,6 @@ internal fun VideoGrid(
                     Modifier.fillMaxWidth().padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) { CircularProgressIndicator(Modifier.size(28.dp)) }
-            }
-        }
-    }
-}
-
-/**
- * The way into a channel's watched videos — the History tile that leads the
- * grid whenever there is something to find there. Sized and shaped like a
- * poster so it flows with the grid instead of breaking the row it sits in.
- */
-@Composable
-internal fun WatchedShelfTile(
-    count: Int,
-    /** Set only when the tile leads the grid — see [VideoGrid]'s TV focus. */
-    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
-    /** Phone cards are rounded; TV tiles keep the square focus-ring shape. */
-    rounded: Boolean = false,
-    formFactor: FormFactor = LocalFormFactor.current,
-    onOpen: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    Card(
-        shape = if (rounded) androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
-        else androidx.compose.ui.graphics.RectangleShape,
-        modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
-            .pressScale(interaction)
-            .tvFocusHighlight { focused = it }
-            .clickable(
-                interactionSource = interaction,
-                indication = androidx.compose.foundation.LocalIndication.current
-            ) { onOpen() }
-    ) {
-        Column {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "🕘",
-                    fontSize = androidx.compose.ui.unit.TextUnit(44f, androidx.compose.ui.unit.TextUnitType.Sp)
-                )
-                // Same red as every watched bar in the app, so the tile reads
-                // as "the watched ones" without needing to be read.
-                Box(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .background(WatchedProgressRed)
-                )
-            }
-            // The same title box and meta line as the video tiles it sits
-            // among, or the grid row it leads is a different height from the
-            // rest of the grid.
-            Column(Modifier.padding(8.dp)) {
-                CardTitle("History ($count)", focused, feedCardTitleStyle(formFactor))
-                CardMetaRow(
-                    meta = "What you've watched here",
-                    watched = false,
-                    style = cardMetaStyle(formFactor)
-                )
             }
         }
     }

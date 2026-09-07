@@ -303,7 +303,12 @@ fun YosemiteScreen(
             label = "screen",
             // A TV needs real margins: the panel edge is not the safe area, and
             // tiles running wall to wall have nowhere to put a focus ring.
-            modifier = Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 40.dp, vertical = if (phone) 2.dp else 20.dp)
+            modifier = Modifier.fillMaxSize().padding(
+                // The ten-foot margin is decided once, in FormFactor.kt, and
+                // is held above the 5% safe area by ChannelsScreenTest.
+                horizontal = if (phone) 12.dp else TV_PAGE_GUTTER,
+                vertical = if (phone) 2.dp else 20.dp
+            )
         ) { s ->
         Column(modifier = Modifier.fillMaxSize()) {
             when {
@@ -379,7 +384,12 @@ fun YosemiteScreen(
                     ) { home() }
                 }
                 s.screen is Screen.Channels -> Column(Modifier.fillMaxSize()) {
-                    val count = "${s.channels.size} channel${if (s.channels.size == 1) "" else "s"}"
+                    // "50 · 6 with new videos": how many there are, and how
+                    // many are worth opening — the second half is the reason a
+                    // kid came to this screen rather than the home feed.
+                    val fresh = s.channels.count { it.id in s.newBadges }
+                    val count = "${s.channels.size} channel${if (s.channels.size == 1) "" else "s"}" +
+                        if (fresh > 0) " · $fresh with new videos" else ""
                     if (phone) PhoneTopBar(
                         title = "Channels",
                         subtitle = count,
@@ -405,7 +415,8 @@ fun YosemiteScreen(
                     ChannelsScreen(
                         state = s,
                         onOpen = vm::openChannel,
-                        onSurprise = vm::surpriseMe,
+                        onPlay = onPlay,
+                        onSurprise = { vm.surpriseMe() },
                         onOpenQueue = vm::openQueue,
                         onOpenWatchLater = vm::openWatchLater,
                         onOpenDownloads = vm::openDownloads,
@@ -473,10 +484,16 @@ fun YosemiteScreen(
                     }
                 }
                 else -> Column(Modifier.fillMaxSize()) {
+                    // A channel draws its own name below, big, in the block at
+                    // the top of its page — so the bar above says where the
+                    // page sits instead of saying the name twice. A PLAYLIST
+                    // page has no such block, so it keeps the name up here.
+                    val hasChannelBlock = s.screen is Screen.ChannelVideos &&
+                        s.screen.source.kind == SourceKind.CHANNEL
                     val title = when (val sc = s.screen) {
                         is Screen.You -> ""
                         is Screen.Playlists -> "Playlists"
-                        is Screen.ChannelVideos -> sc.source.name
+                        is Screen.ChannelVideos -> if (hasChannelBlock) "Channels" else sc.source.name
                         is Screen.WatchedVideos -> "Watched · ${sc.source.name}"
                         is Screen.History -> "History"
                         is Screen.Surprise -> "Surprise me"
@@ -521,10 +538,11 @@ fun YosemiteScreen(
                             }
                             Spacer(Modifier.width(4.dp))
                         }
-                        // A channel page is anchored by the channel: its art,
-                        // large, then the name with a line of what's here.
-                        // Other pages carry their own icon before the title.
+                        // A playlist page is anchored by its art up here; a
+                        // channel's has moved into the block below. Other pages
+                        // carry their own icon before the title.
                         val channelSrc = (s.screen as? Screen.ChannelVideos)?.source
+                            ?.takeIf { !hasChannelBlock }
                         if (channelSrc != null) {
                             ChannelArt(channelSrc.avatarUrl, channelSrc.name, size = if (isTv) 64.dp else 56.dp)
                             Spacer(Modifier.width(if (isTv) 16.dp else 12.dp))
@@ -697,41 +715,43 @@ fun YosemiteScreen(
                             is Screen.SearchResults -> vm::screenMoreSearch
                             else -> null
                         },
-                        // Only on the channel itself, and only once there is
-                        // something behind it — an empty shelf is a dead end.
-                        extraTileAt = s.watchedTileAt
-                            ?.takeIf {
-                                s.screen is Screen.ChannelVideos &&
-                                    s.channelWatched.isNotEmpty()
-                            },
-                        extraTile = if (s.screen is Screen.ChannelVideos &&
-                            s.channelWatched.isNotEmpty() && s.watchedTileAt != null
-                        ) {
-                            { focus ->
-                                WatchedShelfTile(
-                                    count = s.channelWatched.size,
-                                    focusRequester = focus,
-                                    rounded = phone,
-                                    onOpen = vm::openChannelWatched
-                                )
-                            }
-                        } else null,
                         scrollTo = s.scrollTo,
                         onScrolled = vm::scrollHandled,
                         pageSize = s.pageSize,
-                        // Above a channel's grid: the parent-picked playlist
-                        // rows, "New for you" (the newest unstarted videos),
-                        // and the "By playlist" chip row when the parent chose
-                        // that layout — then "All videos" and the grid. Only
-                        // when at least one of them has something to show.
-                        // A channel page's shape, top to bottom: the channel's
-                        // playlists as a strip (its own organisation, pulled
-                        // in on its own), the first few as rows, "New for
-                        // you", then "All videos" with the kid's sort chips.
+                        // A channel page's shape, top to bottom: the channel
+                        // itself with the three things a kid can press without
+                        // reading anything (newest, a favourite, a surprise),
+                        // then what is new, then how the channel organises
+                        // itself — its playlists as a strip, the parent-picked
+                        // ones opened out as rows — then "Videos" with the
+                        // kid's sort chips and the way to the ones they have
+                        // already seen. Every row of it collapses when it has
+                        // nothing to show.
                         header = if (s.screen is Screen.ChannelVideos && s.screen.source.kind == SourceKind.CHANNEL) {
+                            val source = s.screen.source
                             val fresh = s.videos.filter { it.progress == null }.take(12)
+                            // "Newest" is the newest video the page is holding,
+                            // whatever order the kid has the grid in — the card
+                            // says newest and must mean it.
+                            val newest = newestVideo(s.videos.map { it.video })
+                                ?.let { v -> s.videos.first { it.video.url == v.url } }
+                            val favorite = favoriteOf(s.videos, s.watchlisted)
                             val block: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit = {
-                                val channelName = s.screen.source.name
+                                val channelName = source.name
+                                channelBlock(
+                                    source = source,
+                                    meta = channelPageMeta(
+                                        videos = s.videos.size,
+                                        playlists = s.channelPlaylists.size,
+                                        more = s.loadingMore || s.videos.size >= 30
+                                    ),
+                                    onNewest = newest?.let { { onPlay(it) } },
+                                    onFavorite = favorite?.let { { onPlay(it) } },
+                                    // Scoped to this channel: a Surprise inside
+                                    // a channel that jumped the kid to another
+                                    // one reads as the app being broken.
+                                    onSurprise = { vm.surpriseMe(source) }
+                                )
                                 // What's new first — that is what a kid came for.
                                 if (fresh.size >= 3) {
                                     newForYouRow(fresh, isTv, { s.channelAvatars[it] }, onPlay) { feedMenuFor = it }
@@ -749,7 +769,13 @@ fun YosemiteScreen(
                                     s.playlistShelves, isTv, { s.channelAvatars[it] },
                                     onPlay, { feedMenuFor = it }, vm::openPlaylist, channelName
                                 )
-                                allVideosHeader(s.channelFilter, vm::setChannelFilter)
+                                channelVideosHeader(
+                                    count = s.videos.size,
+                                    watched = s.channelWatched.size,
+                                    onWatched = vm::openChannelWatched,
+                                    filter = s.channelFilter,
+                                    onFilter = vm::setChannelFilter
+                                )
                             }
                             block
                         } else null

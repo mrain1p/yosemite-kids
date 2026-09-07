@@ -118,6 +118,16 @@ data class UiState(
     val recentSearches: List<String> = emptyList(),
     /** Source ids with uploads the kid hasn't seen yet. */
     val newBadges: Set<String> = emptySet(),
+    /**
+     * Source id → what its row on the Channels tab says beyond the name: how
+     * many videos have landed since the kid last looked, and the newest one,
+     * which is what the row's round play button plays and wears.
+     *
+     * Held in state rather than read at the call site because the answer is
+     * that channel's cache file — a fifty-channel list must not do fifty disk
+     * reads during composition.
+     */
+    val channelPreviews: Map<String, ChannelPreview> = emptyMap(),
     /** Video URLs the kid has hearted (drives the hold-menu row label). */
     val watchlisted: Set<String> = emptySet(),
     /** Video URLs saved for another day (drives the hold-menu row label and the Watch later tile). */
@@ -153,10 +163,14 @@ data class UiState(
      */
     val channelWatched: List<VideoItem> = emptyList(),
     /**
-     * Where the "Watched" tile sits in [videos] — pinned to the end of the
-     * first page rather than the end of the list, so it stays a screenful from
-     * the top instead of drifting behind hundreds of older videos as more
-     * pages load. Null until the first page has landed.
+     * Where the channel page lands when the kid comes back out of its Watched
+     * shelf, and — being null until the first page has published — the flag
+     * that says whether that page has landed at all.
+     *
+     * It used to place a "Watched" TILE in the grid; the shelf is now a pill
+     * in the Videos header, where the design puts it, so the number is only
+     * ever 0 or null. Left as a position because the paging pump still asks
+     * "has the first set landed" through it.
      */
     val watchedTileAt: Int? = null,
     /**

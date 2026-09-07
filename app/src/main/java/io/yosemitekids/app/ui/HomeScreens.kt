@@ -196,9 +196,22 @@ internal fun VideoFilterChips(selected: String, onSelect: (String) -> Unit) {
     }
 }
 
-/** Most watched · A to Z · Random · Latest video — the kid's order for the channels. */
+/**
+ * Most watched · A to Z · Random · Latest video — the kid's order for the
+ * channels.
+ *
+ * [extras] carries whatever else belongs on that line. The Channels tab puts
+ * the kid's own shelves there (Up next, Watch later, Downloads) once they have
+ * something in them: they used to be tiles among the channels, and the redrawn
+ * screen has no room for them there — the same trick [FeedControlRow] already
+ * uses to give the television's home its only door to the You tab.
+ */
 @Composable
-internal fun ChannelSortChips(selected: String, onSelect: (String) -> Unit) {
+internal fun ChannelSortChips(
+    selected: String,
+    onSelect: (String) -> Unit,
+    extras: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = null
+) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.horizontalScroll(rememberScrollState())
@@ -207,55 +220,7 @@ internal fun ChannelSortChips(selected: String, onSelect: (String) -> Unit) {
             val (label, icon) = channelSortLabel(value)
             YosemiteChip(label, selected = selected == value, icon = icon, onClick = { onSelect(value) })
         }
-    }
-}
-
-/**
- * The Channels tab on phones: every channel as a rounded tile, two to a
- * row (a 150 dp adaptive grid gave one wide tile per row on some phones),
- * with the shelves that aren't channels (Up next, Watch later, Downloads)
- * leading and the sort chips on top.
- */
-@Composable
-internal fun ChannelsScreen(
-    state: UiState,
-    onOpen: (Source) -> Unit,
-    onSurprise: () -> Unit,
-    onOpenQueue: () -> Unit,
-    onOpenWatchLater: () -> Unit,
-    onOpenDownloads: () -> Unit,
-    onSort: ((String) -> Unit)? = null
-) {
-    BoxWithConstraints {
-        // Two on a phone, as many as fit on a tablet in landscape.
-        val columns = if (maxWidth < 600.dp) GridCells.Fixed(2) else GridCells.Adaptive(minSize = 170.dp)
-        LazyVerticalGrid(
-            columns = columns,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(8.dp)
-        ) {
-            if (onSort != null) {
-                item(key = "sort", span = { GridItemSpan(maxLineSpan) }) {
-                    ChannelSortChips(state.channelSort, onSort)
-                }
-            }
-            item(key = "surprise-tile") {
-                SpecialTile("", "Surprise me", SurpriseTileCyan, rounded = true, icon = YosemiteIcons.Dice, onClick = onSurprise)
-            }
-            if (state.queued.isNotEmpty()) item(key = "queue-tile") {
-                SpecialTile("", "Up next", QueueTilePurple, rounded = true, icon = YosemiteIcons.UpNext, onClick = onOpenQueue)
-            }
-            if (state.watchLater.isNotEmpty()) item(key = "watch-later-tile") {
-                SpecialTile("", "Watch later", WatchLaterTileTeal, rounded = true, icon = YosemiteIcons.WatchLater, onClick = onOpenWatchLater)
-            }
-            if (state.downloaded.isNotEmpty()) item(key = "downloads-tile") {
-                SpecialTile("", "Downloads", DownloadsTileTeal, rounded = true, icon = YosemiteIcons.Download, onClick = onOpenDownloads)
-            }
-            items(state.channels, key = { it.id }) { channel ->
-                ChannelTile(channel, isNew = channel.id in state.newBadges, onOpen = onOpen, rounded = true)
-            }
-        }
+        extras?.invoke(this)
     }
 }
 

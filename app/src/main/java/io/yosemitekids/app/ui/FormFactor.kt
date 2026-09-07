@@ -4,6 +4,7 @@ import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.unit.dp
 
 /**
  * Which of the two shapes this app takes. One APK ships to a phone in a hand
@@ -75,3 +76,22 @@ object DeviceShape {
  * without the app needing a provider on every screen.
  */
 val LocalFormFactor = staticCompositionLocalOf { DeviceShape.current }
+
+/**
+ * The floor under every ten-foot page gutter.
+ *
+ * Five per cent of a television panel is safe area and televisions overscan:
+ * a page drawn closer to the edge than this loses its first column on somebody's
+ * set, and the family that owns that set has no way to say so. 44 review pixels
+ * of the handoff's 1280-wide TV frame, in the dp a 960 dp panel measures them in.
+ *
+ * Stated as a value rather than a comment because [TV_PAGE_GUTTER] is the number
+ * that has to clear it, and `ChannelsScreenTest` says so.
+ */
+val TV_SAFE_GUTTER = 33.dp
+
+/**
+ * The inset every kid-facing page gets from the screen host on a television —
+ * the one place the ten-foot margin is decided, so no screen has to remember it.
+ */
+val TV_PAGE_GUTTER = 40.dp

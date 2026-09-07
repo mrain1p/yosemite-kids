@@ -565,6 +565,27 @@ class MainViewModel(
         )
 
     /**
+     * What each channel's row on the Channels tab says beyond its name.
+     *
+     * The newest video comes out of the same visibility filter every other
+     * shelf uses — a video the parent blocked, or one screening is still
+     * holding, must not become the picture on a row's play button, which is
+     * the biggest "press me" on that row. Cache reads — call off-main.
+     */
+    private fun channelPreviews(visible: List<Source>): Map<String, ChannelPreview> =
+        visible.associate { source ->
+            val newest = newestVideo(
+                videoCache.load(source.id).filter {
+                    it.videoId !in blockedVideoIds && !tooShort(it) && screener?.isVisible(it) != false
+                }
+            )
+            source.id to ChannelPreview(
+                newCount = newVideoCount(source.id),
+                latest = newest?.let { VideoItem(it, history.progress(it.url)?.fraction) }
+            )
+        }
+
+    /**
      * How many videos have landed on a source since this kid last looked. The
      * NEW badge is the yes/no form of the same question; the hero says the
      * number. Zero when the kid has never opened it — "everything is new" is
@@ -599,10 +620,12 @@ class MainViewModel(
         // Pins resolve against `tiles`, never against `sources` or the
         // whitelist: `tiles` is what this kid may actually see.
         val pins = withContext(Dispatchers.IO) { pinnedRow(tiles) }
+        val previews = withContext(Dispatchers.IO) { channelPreviews(tiles) }
         val onHome = _state.value.screen == Screen.Home
         _state.value = _state.value.copy(
             channels = tiles,
             pinned = pins,
+            channelPreviews = previews,
             keepWatching = keepWatching,
             newBadges = badges,
             feed = feed,
@@ -1391,6 +1414,9 @@ class MainViewModel(
     /** Which channel a playlist page was opened from, so back returns there rather than home. */
     private var playlistParent: Source? = null
 
+    /** The same, for a Surprise drawn from one channel's page. Null for the app-wide one. */
+    private var surpriseParent: Source? = null
+
     /** Entry URL → the playlist ids the parent picked for it (config), read at refresh. */
     private var playlistPicks: Map<String, List<String>> = emptyMap()
 
@@ -1466,6 +1492,12 @@ class MainViewModel(
         val parent = playlistParent
         val screen = _state.value.screen
         when {
+            // A surprise drawn from one channel belongs to that channel.
+            screen == Screen.Surprise && surpriseParent != null -> {
+                val source = surpriseParent!!
+                surpriseParent = null
+                openChannel(source)
+            }
             // The all-playlists page belongs to its channel.
             screen is Screen.Playlists -> { playlistParent = null; openChannel(screen.source) }
             screen is Screen.WatchedVideos -> backToChannel()
@@ -1480,14 +1512,24 @@ class MainViewModel(
         }
     }
 
-    /** Random unwatched mix across whitelisted channels (playlists are excluded —
-     *  those are curated sequences with autoplay, not discovery material). */
-    fun surpriseMe() = viewModelScope.launch {
+    /**
+     * Random unwatched mix across whitelisted channels (playlists are excluded —
+     * those are curated sequences with autoplay, not discovery material).
+     *
+     * [from] scopes it to one channel: the Surprise card on a channel page
+     * means "something from *here*", and a card inside a channel that jumped
+     * the kid out to a different one is the sort of thing a five-year-old
+     * reads as the app being broken. Back then returns to that channel rather
+     * than to home, the way a playlist page does.
+     */
+    fun surpriseMe(from: Source? = null) = viewModelScope.launch {
+        surpriseParent = from
         _state.value = _state.value.copy(screen = Screen.Surprise, loading = true, videos = emptyList(), held = 0, error = null)
         feedHandle = null
         uploadsNextPage = null
 
-        val channels = sources.filter { it.kind == SourceKind.CHANNEL }
+        val channels =
+            if (from != null) listOf(from) else sources.filter { it.kind == SourceKind.CHANNEL }
 
         // Instant pool from the per-channel disk caches; fall back to a live fetch.
         val diskPool = withContext(Dispatchers.IO) { channels.flatMap { videoCache.load(it.id) } }
