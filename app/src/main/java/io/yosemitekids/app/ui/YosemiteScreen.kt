@@ -29,7 +29,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -165,7 +169,7 @@ private fun TvTopChips(screen: Screen, vm: MainViewModel) {
     Spacer(Modifier.width(8.dp))
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun YosemiteScreen(
     vm: MainViewModel,
@@ -296,6 +300,83 @@ fun YosemiteScreen(
         ) {
         Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().weight(1f)) {
+        // The television's chrome: one rail down the left edge, on every page.
+        // Hidden while the whitelist is empty, exactly as the phone's tab bar
+        // is — a fresh install shows the first-run screen and nothing else,
+        // and a rail framing it with four dead destinations is worse than no
+        // rail at all.
+        val railShown = isTv && state.channels.isNotEmpty()
+        // Two facts decide the width, and the second one is not obvious.
+        //
+        //  * The remote is in the rail: the design's own rule, and what the
+        //    kid is looking at while they choose where to go.
+        //  * The remote has not been touched yet. "Starts expanded" is
+        //    otherwise unreachable: the home's shelves request focus into
+        //    content within ~150 ms of composition (see TvHomeColumn's retry
+        //    loop), so a rail that only watched focus would collapse before
+        //    anybody pressed anything and its default state would never be
+        //    seen by a human being. So it opens, and the first key of the
+        //    session — whatever it is — closes it.
+        var railFocused by remember { mutableStateOf(false) }
+        var remoteUsed by remember { mutableStateOf(false) }
+        Row(
+            modifier = Modifier.fillMaxSize().then(
+                if (!railShown) Modifier
+                else Modifier.onPreviewKeyEvent { event ->
+                    // Observes; never consumes. The held-scroll throttles live
+                    // below this in the tree and previews run root-first, so
+                    // swallowing anything here would break them.
+                    if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
+                        remoteUsed = true
+                    }
+                    false
+                }
+            )
+        ) {
+        if (railShown) TvNavRail(
+            current = railStopFor(state.screen),
+            kidName = activeProfile?.name,
+            // The same State the phone's top bar gets, made once above. Not a
+            // second read: two tickers drift a second apart.
+            timeLeft = timeLeft,
+            expanded = railFocused || !remoteUsed,
+            onFocusChange = { railFocused = it },
+            onStop = { stop ->
+                when (stop) {
+                    RailStop.Home -> vm.goHome()
+                    RailStop.Channels -> vm.openChannels()
+                    RailStop.You -> vm.openYou()
+                    // The plain field-and-recents page, which is what exists
+                    // today: honest, reachable, and not the screen the handoff
+                    // draws. The ten-foot search screen — the voice card, the
+                    // removable recents, results four across — is the next
+                    // phase; `searchHistory` is null on a television until
+                    // then, so this page opens with no recent terms.
+                    RailStop.Search -> vm.openSearch()
+                }
+            }
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                // Whatever the rail leaves. The page therefore re-lays out
+                // when the rail opens — 834 dp of drawable page becomes 753 —
+                // and the 240 dp adaptive video grid goes from three tiles
+                // across to two while it is open. That is deliberate, and the
+                // alternative is worse: pinning the page at its collapsed
+                // width would push its right-hand column past the panel edge
+                // for as long as the menu is up, and a kid cannot press what
+                // is off the screen. It only happens while the remote is IN
+                // the rail, which is to say while the kid is looking at the
+                // rail and not at the grid. TvNavRailTest pins both widths.
+                .weight(1f)
+                // The rail is now the first focusable in the tree, so every
+                // path that loses focus — a dismissed dialog, a screen switch
+                // that lands nowhere — would otherwise resolve to the menu on
+                // the next key press instead of to the page. This puts the
+                // remote back where it was when focus comes back into content.
+                .then(if (!railShown) Modifier else Modifier.focusGroup())
+        ) {
         // Screens fade and lift in rather than cutting. Keyed on the screen
         // alone, so progress/badge updates within a screen never animate; the
         // leaving screen keeps the state it was showing (`s`), so it doesn't
@@ -313,8 +394,29 @@ fun YosemiteScreen(
             modifier = Modifier.fillMaxSize().padding(
                 // The ten-foot margin is decided once, in FormFactor.kt, and
                 // is held above the 5% safe area by ChannelsScreenTest.
-                horizontal = if (phone) 12.dp else TV_PAGE_GUTTER,
-                vertical = if (phone) 2.dp else 20.dp
+                //
+                // ASYMMETRIC WHEN THE RAIL IS THERE: the rail *is* the left
+                // gutter — it is 66 dp of chrome standing where the panel edge
+                // used to be — so the page does not need its full ten-foot
+                // margin on that side, and keeping it gave a rail and then a
+                // hand's width of nothing before the first tile.
+                //
+                // Not zero either, which is what this was first built as: on
+                // the emulator the focused hero's ring and its 6% lift landed
+                // *on* the rail, because a focus ring needs somewhere to go on
+                // both edges of a page. Half the gutter clears it. (The
+                // handoff draws 33 dp of air there; this is deliberately the
+                // narrower of the two, to give the page back what the rail
+                // took.)
+                //
+                // What is left is 834 dp of page on a 960 dp panel, against
+                // the ~880 dp every existing TV tile size was tuned for;
+                // TvNavRailTest holds the three-across grid and the three
+                // pinned heroes to still fit in it.
+                start = if (phone) 12.dp else if (railShown) TV_PAGE_GUTTER / 2 else TV_PAGE_GUTTER,
+                end = if (phone) 12.dp else TV_PAGE_GUTTER,
+                top = if (phone) 2.dp else 20.dp,
+                bottom = if (phone) 2.dp else 20.dp
             )
         ) { s ->
         Column(modifier = Modifier.fillMaxSize()) {
@@ -376,7 +478,13 @@ fun YosemiteScreen(
                                     // bar's icon; the TV unfolds a field in place.
                                     showSearch = isTv,
                                     onOpenHub = openHub,
-                                    onOpenSearch = if (isTv) null else vm::openSearch
+                                    onOpenSearch = if (isTv) null else vm::openSearch,
+                                    // With a rail beside it the header is only a
+                                    // page heading and the way into the kid's
+                                    // corner: the mark, the timer and search are
+                                    // all in the rail, and drawing them twice is
+                                    // the thing the handoff calls out by name.
+                                    railChrome = railShown
                                 )
                             },
                             onOpenSettings = onOpenSettings
@@ -444,7 +552,10 @@ fun YosemiteScreen(
                         state = s,
                         profile = activeProfile,
                         isTv = isTv,
-                        timeLeft = timeLeft,
+                        // The rail's card is the same number from the same
+                        // State; this page's own pill would put it on screen
+                        // twice, a hand's width apart, ticking together.
+                        timeLeft = if (railShown) NoTimeLeft else timeLeft,
                         onPlay = onPlay,
                         onOpenMenu = { feedMenuFor = it },
                         // "Change my look" lives behind the avatar now, on
@@ -793,6 +904,8 @@ fun YosemiteScreen(
             }
         }
         }
+        } // the page beside the rail
+        } // rail + page
         // Transient top-center pill, same look as the player's notices — today
         // it says a save-offline request was refused by the check. Slides in
         // and out like the player's, and remembers its last text for the exit.

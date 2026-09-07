@@ -216,11 +216,11 @@ internal fun PhoneTopBar(
  * centred.
  */
 @Composable
-private fun AppMarkTile(size: Dp = 34.dp) {
+internal fun AppMarkTile(size: Dp = 34.dp, radius: Dp = 11.dp) {
     val tokens = kidTokens
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.size(size).background(tokens.action, RoundedCornerShape(11.dp))
+        modifier = Modifier.size(size).background(tokens.action, RoundedCornerShape(radius))
     ) {
         androidx.compose.foundation.Canvas(Modifier.size(size)) {
             val w = this.size.width

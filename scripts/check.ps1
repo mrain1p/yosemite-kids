@@ -1069,6 +1069,44 @@ if (($tlCode -join "`n") -notmatch "interpolateRemainingMs\(") {
     Fail-Guard "TimeLeft.kt no longer calls interpolateRemainingMs. Whatever now produces the chrome's time-left must be a pure function with a test, or the value goes stale again."
 }
 
+# 35. A focus modifier only sees what comes AFTER it in the chain.
+#     Two of them, and both fail in total silence.
+#
+#     onFocusChanged reports on the focus targets that FOLLOW it, so a
+#     container watching its own subtree writes `.onFocusChanged { }
+#     .focusGroup()`. Written the other way round it observes its ancestor
+#     instead, the callback never fires for anything inside, and the feature
+#     built on it — the TV nav rail collapsing when the remote leaves it —
+#     simply never happens. Nothing throws, nothing logs, and it reads in
+#     review as a design decision rather than as a bug.
+#
+#     focusRestorer has the same shape: it needs a focus target after it to
+#     restore INTO, so it is `.focusRestorer().focusGroup()` (or straight onto
+#     a lazy container, which supplies its own). Alone at the end of a chain
+#     it is dead code that looks like a fix for the exact bug it is not
+#     fixing.
+#
+#     Only the reversed adjacency is flagged, so this cannot fire on an
+#     unrelated onFocusChanged somewhere else in the same file.
+#     Whitespace is stripped first, so a chain broken over four lines - which
+#     is every chain in this codebase - reads as one string.
+$focusSeen = $false
+foreach ($f in @(Get-ChildItem -Recurse -Filter *.kt app/src/main)) {
+    $flat = (Get-Content $f.FullName -Raw) -replace '\s', ''
+    if ($flat -match "focusGroup\(\)\.onFocusChanged") {
+        Fail-Guard "$($f.Name) writes .focusGroup().onFocusChanged. onFocusChanged only observes focus targets that FOLLOW it, so that order watches the ancestor and never fires for the group's own children. Write .onFocusChanged { }.focusGroup()."
+    }
+    $all = @([regex]::Matches($flat, '\.focusRestorer\([^)]*\)'))
+    $ok = @([regex]::Matches($flat, '\.focusRestorer\([^)]*\)\.(focusGroup|focusTarget|focusProperties)\('))
+    if ($all.Count -gt 0) { $focusSeen = $true }
+    if ($all.Count -ne $ok.Count) {
+        Fail-Guard "$($f.Name) applies .focusRestorer() with no focus target after it. It restores into the NEXT focus target in the chain; on its own it does nothing at all. Write .focusRestorer().focusGroup()."
+    }
+}
+if (-not $focusSeen) {
+    Fail-Guard "no .focusRestorer() anywhere in app/src/main; guard 35 is half blind. The TV nav rail is the first focusable in the tree, so the page beside it needs one - see YosemiteScreen.kt."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

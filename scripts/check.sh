@@ -931,6 +931,44 @@ tl_bad=$(echo "$tl_code" | grep -nE "SessionGuard|sessionGuard" || true)
 echo "$tl_code" | grep -q "interpolateRemainingMs(" ||
   guard_fail "TimeLeft.kt no longer calls interpolateRemainingMs. Whatever now produces the chrome's time-left must be a pure function with a test, or the value goes stale again."
 
+# 35. A focus modifier only sees what comes AFTER it in the chain.
+#     Two of them, and both fail in total silence.
+#
+#     onFocusChanged reports on the focus targets that FOLLOW it, so a
+#     container watching its own subtree writes `.onFocusChanged { }
+#     .focusGroup()`. Written the other way round it observes its ancestor
+#     instead, the callback never fires for anything inside, and the feature
+#     built on it - the TV nav rail collapsing when the remote leaves it -
+#     simply never happens. Nothing throws, nothing logs, and it reads in
+#     review as a design decision rather than as a bug.
+#
+#     focusRestorer has the same shape: it needs a focus target after it to
+#     restore INTO, so it is `.focusRestorer().focusGroup()` (or straight onto
+#     a lazy container, which supplies its own). Alone at the end of a chain
+#     it is dead code that looks like a fix for the exact bug it is not
+#     fixing.
+#
+#     Whitespace is stripped first, so a chain broken over four lines - which
+#     is every chain in this codebase - reads as one string.
+focus_seen=""
+for f in $(find app/src/main -name '*.kt'); do
+  flat=$(tr -d '[:space:]' < "$f")
+  case "$flat" in
+    *"focusGroup().onFocusChanged"*)
+      guard_fail "$(basename "$f") writes .focusGroup().onFocusChanged. onFocusChanged only observes focus targets that FOLLOW it, so that order watches the ancestor and never fires for the group's own children. Write .onFocusChanged { }.focusGroup()." ;;
+  esac
+  # `|| true` inside each pipeline, not after it: with `set -o pipefail` a
+  # grep that matches nothing — the case for almost every file — would
+  # otherwise end the whole gate on its own success.
+  all=$( { echo "$flat" | grep -oE '\.focusRestorer\([^)]*\)' || true; } | wc -l | tr -d ' ')
+  ok=$( { echo "$flat" | grep -oE '\.focusRestorer\([^)]*\)\.(focusGroup|focusTarget|focusProperties)\(' || true; } | wc -l | tr -d ' ')
+  [ "$all" = "0" ] || focus_seen="yes"
+  [ "$all" = "$ok" ] ||
+    guard_fail "$(basename "$f") applies .focusRestorer() with no focus target after it. It restores into the NEXT focus target in the chain; on its own it does nothing at all. Write .focusRestorer().focusGroup()."
+done
+[ -n "$focus_seen" ] ||
+  guard_fail "no .focusRestorer() anywhere in app/src/main; guard 35 is half blind. The TV nav rail is the first focusable in the tree, so the page beside it needs one - see YosemiteScreen.kt."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 
