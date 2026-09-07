@@ -351,7 +351,7 @@ private fun ChannelTile(
                     Text(
                         timeMultiplierLabel(channel.timeMultiplierPercent),
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
+                        color = kidTokens.onArtwork,
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(6.dp)
@@ -495,7 +495,7 @@ internal fun HomeHeader(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(30.dp)
-                    .background(Color(0xFF00695C), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .background(YosemiteBrandTeal, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
             ) {
                 // Drawn, not the "▶" glyph: font side bearings and line-height
                 // padding left that mark visibly off-centre in the tile. These
@@ -511,7 +511,7 @@ internal fun HomeHeader(
                         lineTo(w * 0.38f, h * 0.72f)
                         close()
                     }
-                    drawPath(play, Color.White)
+                    drawPath(play, OnYosemiteBrand)
                 }
             }
             Spacer(Modifier.width(10.dp))

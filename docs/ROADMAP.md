@@ -216,6 +216,32 @@ that is all they do. *Small, and mostly independent of each other.*
 
 ---
 
+### 2K. Front-end revamp — what 1.1.0 left open
+
+The kid-facing screens were rebuilt against a design handoff in 1.1.0 (one
+home as a section list, the pinned hero, the TV rail with Search, the
+restyled player, the live time number). Four things were deliberately left
+for the next round rather than rushed:
+
+- **`TvTopChips` still draws beside the rail.** Its UP-from-first-row
+  behaviour is documented in place; it comes out once a real-TV pass has
+  proven the rail's focus model. Deleting it finishes this bullet.
+- **Every TV dp is provisional.** Derived as design-units × 0.75 through
+  `tvUnits`, never measured. Read `adb shell wm size` and `wm density` off
+  the real Chromecast (and once with the display-size setting stepped) and
+  either confirm the factor or fix it in one place.
+- **Pins have a container but no editor** (release N of two). The editor —
+  choosing and ordering pins, then the full row editor for which home shelves
+  appear — ships only once every device and the hub image are on ≥1.1.0,
+  because an older build drops the field on round-trip and the config hashes
+  would never agree again. See `Pins.kt` and the sync skill.
+- **The hero uses the channel avatar as artwork**, upscaled. Real channel
+  banners would fix the weakest thing on the home screen.
+
+Also out of scope by decision: the kid-to-parent request flow (§2E), the
+"simple mode" density, and the per-device watch budget (§2J) — which the
+always-visible time pill now makes more noticeable, not less.
+
 ## 3. Known-wrong docs — cleared 2026-09-06
 
 All five went out with 1.0.7 and are recorded here rather than deleted,
@@ -318,3 +344,5 @@ fires: confirm the work is done, then delete the item and its row.
 | §3 hub pages not derived | `HubPage("kids"` | code |
 | §4 stats on hub | `outstandingOnHub` | code |
 | §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |
+| §2K top chips | `fun TvTopChips(` | code |
+| §2K provisional TV dp | `fun tvUnits(` | code |

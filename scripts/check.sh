@@ -1006,7 +1006,7 @@ echo "$rail_flat" | grep -qE '\.onFocusChanged\{[^}]*\}\.focusGroup\(\)' ||
 #     delete them from colour_temp: the guard fails the moment an exempt file
 #     is clean, so the exemption cannot outlive its reason.
 colour_files=$(ls app/src/main/java/io/yosemitekids/app/ui/*.kt | grep -vE '/(Theme|KidTokens|Icons|Settings[A-Za-z]*|KidsSettings|StatsScreen|SyncActivityScreen|DigestScreen)\.kt$' || true)
-colour_temp="YosemiteScreen.kt HomeScreens.kt"
+colour_temp=""
 colour_pat='Color\(0x|Color\.White|Color\.Black'
 for f in $colour_files; do
   base=$(basename "$f")
@@ -1068,6 +1068,7 @@ while read -r name ns; do
 done <<EOF
 $stamp_units
 EOF
+
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

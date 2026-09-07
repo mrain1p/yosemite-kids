@@ -1124,6 +1124,7 @@ foreach ($f in @(Get-ChildItem -Recurse -Filter *.kt app/src/main)) {
 $railFlat = (Get-Content "app/src/main/java/io/yosemitekids/app/ui/TvNavRail.kt" -Raw) -replace '\s', ''
 if ($railFlat -notmatch '\.onFocusChanged\{[^}]*\}\.focusGroup\(\)') {
     Fail-Guard "TvNavRail.kt no longer has .onFocusChanged { }.focusGroup() on the rail's Column. That pair is how the host learns the remote has left the rail; without it the rail never collapses and nothing says so."
+}
 
 # 36. No colour literal on a kid-facing screen.
 #     Every hue a kid sees comes from the scheme (the three looks and the
@@ -1144,7 +1145,7 @@ if ($railFlat -notmatch '\.onFocusChanged\{[^}]*\}\.focusGroup\(\)') {
 #     delete them from $colourTemp: the guard fails the moment an exempt file
 #     is clean, so the exemption cannot outlive its reason.
 $colourExempt = @("Theme.kt", "KidTokens.kt", "Icons.kt", "KidsSettings.kt", "StatsScreen.kt", "SyncActivityScreen.kt", "DigestScreen.kt")
-$colourTemp = @("YosemiteScreen.kt", "HomeScreens.kt")
+$colourTemp = @()
 $colourPat = 'Color\(0x|Color\.White|Color\.Black'
 foreach ($f in Get-ChildItem app/src/main/java/io/yosemitekids/app/ui/*.kt) {
     if ($colourExempt -contains $f.Name -or $f.Name -like "Settings*.kt") { continue }
@@ -1182,7 +1183,6 @@ if ($focusBad.Count -gt 0) {
     Fail-Guard "a focus modifier in the player. Its keys are the single onKeyDown cursor (TvToolbarSlot, handleTwoButtonKey); give the new control a cursor slot instead. Found: $($focusBad -join '; ')"
 }
 
-
 # 38. Every unit ConfigStamp can mint is a unit ConfigMerge.merge decides.
 #     A field can be added to Whitelist, toJson and fromJson, stamped in
 #     ConfigStamp, claimed or exempted in SettingsSurface, and pass guard
@@ -1216,6 +1216,7 @@ foreach ($u in $units38) {
         Fail-Guard "ConfigStamp mints the unit ""$ns38"" (ConfigStamp.$name38) and nothing in ConfigMerge.merge decides it, so a co-parent's edit there is dropped by the first peer that merges it. Give the namespace a loop in merge() - the grants or pinned-hero block is the shape - and prove it in core/src/test."
     }
 }
+
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 

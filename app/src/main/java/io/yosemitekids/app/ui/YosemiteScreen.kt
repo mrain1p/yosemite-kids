@@ -935,11 +935,11 @@ fun YosemiteScreen(
         ) {
             Text(
                 shownNotice.orEmpty(),
-                color = androidx.compose.ui.graphics.Color.White,
+                color = kidTokens.onArtwork,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier
                     .background(
-                        androidx.compose.ui.graphics.Color(0xCC000000),
+                        kidTokens.artworkScrim,
                         shape = RoundedCornerShape(24.dp)
                     )
                     .padding(horizontal = 20.dp, vertical = 10.dp)

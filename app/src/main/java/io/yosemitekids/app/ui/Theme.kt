@@ -60,6 +60,16 @@ val YosemiteDarkColors = darkColorScheme(
     surfaceTint = Color.Transparent
 )
 
+/**
+ * The one fixed brand anchor. The logo tile keeps the logo's own teal in
+ * every look — Dark, Light and the kid's colour alike — so the app still
+ * reads as Yosemite Kids from across the room when everything else on the
+ * page has taken the kid's tint. Deliberately not `primary`, which "My colour"
+ * moves; a mark that changes colour per kid is not a mark.
+ */
+val YosemiteBrandTeal = Color(0xFF00695C)
+val OnYosemiteBrand = Color.White
+
 /** The three looks a kid can pick, in the order the hub shows them. */
 const val THEME_DARK = "dark"
 const val THEME_LIGHT = "light"
