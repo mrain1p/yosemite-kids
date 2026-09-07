@@ -32,13 +32,24 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 
-/** One line, always the same tile height; scrolls sideways while focused. */
+/**
+ * One line, always the same tile height; scrolls sideways while focused.
+ *
+ * The single-line shape survives for text that is *not* a card title — a
+ * dialog heading, a channel name under a logo. Video titles use [CardTitle],
+ * which is two lines.
+ */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun MarqueeTitle(
@@ -54,6 +65,189 @@ internal fun MarqueeTitle(
         modifier = if (focused) Modifier.basicMarquee() else Modifier
     )
 }
+
+// ---------------------------------------------------------------------------
+// Card geometry: the one type scale and the one title box every tile inherits.
+//
+// Two rules hold this together, and both are worth stating because the
+// tempting shortcut breaks a different thing each time.
+//
+// **Type in sp, geometry in dp.** The design's sizes are pixels measured
+// against fixed frames. Written as dp they would stop honouring a family's
+// font-size setting — on a kid's app, of all places. Written as sp with the
+// tile height *also* in sp, a large-font household gets tiles that grow until
+// a rail is one card wide. So the type is sp and every box around it is dp,
+// sized from the type at the default scale.
+//
+// **A title is two lines, and the box is always two lines tall**, whether the
+// title needs them or not — that is what keeps the meta line at the same
+// height on every card in a rail. When the font scale is turned up the box
+// does not grow: [titleLinesIn] hands back fewer lines, so a large-font phone
+// degrades to one ellipsised line rather than to a clipped half-line or a
+// rail of ragged cards.
+// ---------------------------------------------------------------------------
+
+/** Every card title is drawn in a box this many lines tall. */
+internal const val CARD_TITLE_LINES = 2
+
+/**
+ * The line height a style actually draws at, in sp, whatever it declares.
+ * Styles copied from the Material scale can leave `lineHeight` unspecified,
+ * and the title box is computed from it — an unspecified value there is a
+ * zero-height card, not a compile error.
+ */
+internal val TextStyle.lineHeightSp: Float
+    get() = when {
+        lineHeight.isSp -> lineHeight.value
+        fontSize.isSp -> fontSize.value * 1.3f
+        else -> 20f
+    }
+
+/**
+ * The fixed height of a card's title box: [lines] lines of a style whose line
+ * height is [lineHeightSp], **at the default font scale**. Dp, deliberately —
+ * see the note above.
+ */
+internal fun cardTitleHeight(lineHeightSp: Float, lines: Int = CARD_TITLE_LINES): Dp =
+    (lineHeightSp * lines).dp
+
+/**
+ * How many whole lines of [lineHeight] fit in a [box] that is not allowed to
+ * grow. Never zero, and never more than [max]: at the default font scale this
+ * is exactly [CARD_TITLE_LINES], and at 1.5× it is one — which is the whole
+ * point, because the alternative is a second line sliced in half by the box.
+ */
+internal fun titleLinesIn(box: Dp, lineHeight: Dp, max: Int = CARD_TITLE_LINES): Int {
+    if (lineHeight.value <= 0f) return max
+    // A hair of slack: 40.dp / 20.dp is 1.9999997 often enough to matter.
+    return ((box / lineHeight) + 0.01f).toInt().coerceIn(1, max)
+}
+
+/**
+ * A video title on a card: two lines, a fixed box, and the marquee kept for
+ * the ones that still do not fit.
+ *
+ * The marquee is why this is not just a `Text` with `maxLines = 2`. On a TV a
+ * kid cannot tap a title to see the rest of it, so a focused tile whose title
+ * overflows collapses to a single scrolling line — the old [MarqueeTitle]
+ * behaviour, now reached only when it earns its keep. Titles that fit in two
+ * lines never move, which is most of them.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+internal fun CardTitle(
+    text: String,
+    focused: Boolean,
+    style: TextStyle,
+    modifier: Modifier = Modifier
+) {
+    val box = cardTitleHeight(style.lineHeightSp)
+    val lineHeight = with(LocalDensity.current) { style.lineHeightSp.sp.toDp() }
+    val lines = titleLinesIn(box, lineHeight)
+    // Whether the wrapped form spills out of the box. Measured rather than
+    // guessed: it depends on the width the card was actually given.
+    var overflows by remember(text, lines) { mutableStateOf(false) }
+    val scroll = focused && overflows
+    Box(modifier.height(box)) {
+        Text(
+            text,
+            maxLines = if (scroll) 1 else lines,
+            softWrap = !scroll,
+            overflow = if (scroll) TextOverflow.Clip else TextOverflow.Ellipsis,
+            style = style,
+            // Only the wrapped pass reports: the scrolling one overflows by
+            // construction, and letting it answer would latch the card into
+            // marquee for good.
+            onTextLayout = { if (!scroll) overflows = it.hasVisualOverflow },
+            modifier = if (scroll) Modifier.basicMarquee() else Modifier
+        )
+    }
+}
+
+/** The feed card's title — the full-width phone item, the TV grid tile. */
+@Composable
+internal fun feedCardTitleStyle(formFactor: FormFactor = LocalFormFactor.current): TextStyle =
+    MaterialTheme.typography.titleSmall.copy(
+        fontSize = if (formFactor.isTv) 20.sp else 15.5.sp,
+        lineHeight = if (formFactor.isTv) 26.sp else 20.sp,
+        fontWeight = if (formFactor.isTv) FontWeight.Bold else FontWeight.SemiBold
+    )
+
+/** The rail card's title — a step quieter, because a rail is scanned, not read. */
+@Composable
+internal fun railCardTitleStyle(formFactor: FormFactor = LocalFormFactor.current): TextStyle =
+    MaterialTheme.typography.titleSmall.copy(
+        fontSize = if (formFactor.isTv) 17.sp else 13.5.sp,
+        lineHeight = if (formFactor.isTv) 22.sp else 18.sp,
+        fontWeight = FontWeight.SemiBold
+    )
+
+/** "Channel · today" under a title, on either form factor. */
+@Composable
+internal fun cardMetaStyle(formFactor: FormFactor = LocalFormFactor.current): TextStyle =
+    MaterialTheme.typography.bodySmall.copy(
+        fontSize = if (formFactor.isTv) 14.5.sp else 12.5.sp,
+        lineHeight = if (formFactor.isTv) 19.sp else 16.sp
+    )
+
+/**
+ * "WATCHED", beside the meta line of a video the kid finished.
+ *
+ * Mono and uppercase because it is a label rather than a word to read, and in
+ * [KidTokens.watched] rather than the action colour — done is not a thing to
+ * press.
+ */
+@Composable
+internal fun WatchedTag(formFactor: FormFactor = LocalFormFactor.current) {
+    Text(
+        "watched".uppercase(),
+        color = kidTokens.watched,
+        maxLines = 1,
+        style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = if (formFactor.isTv) 12.sp else 9.5.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = TextUnit(0.14f, TextUnitType.Em),
+            fontFamily = FontFamily.Monospace
+        )
+    )
+}
+
+/**
+ * The line under a card's title, and the finished half of the watched state.
+ *
+ * **Watched is two signals, and they never appear together.** A part-watched
+ * video keeps the red bar along the bottom of its poster — [WatchedProgressRed]
+ * is deliberately not the brand colour, because kids read that bar by the
+ * convention YouTube taught them. A *finished* video has no progress left to
+ * report: it dims and says so here instead. They describe different states —
+ * how far you got, versus done — so a card is never both, and the poster drops
+ * its bar the moment the tag appears.
+ */
+@Composable
+internal fun CardMetaRow(
+    meta: String,
+    watched: Boolean,
+    modifier: Modifier = Modifier,
+    style: TextStyle = cardMetaStyle()
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+        Text(
+            meta,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = style,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+        if (watched) {
+            Spacer(Modifier.width(6.dp))
+            WatchedTag()
+        }
+    }
+}
+
+/** A finished video: the poster's bar gives way to the WATCHED tag here. */
+internal fun VideoItem.isFinished(): Boolean = (progress ?: 0f) >= 0.98f
 
 /**
  * Every poster and channel avatar in the app: a soft placeholder block and a
@@ -242,11 +436,12 @@ internal fun VideoCard(
     modifier: Modifier = Modifier,
     /** The avatar + channel-name row is its own target: the channel, not the video. */
     onOpenChannel: ((String) -> Unit)? = null,
-    statusBadge: (@Composable BoxScope.() -> Unit)? = null
+    statusBadge: (@Composable BoxScope.() -> Unit)? = null,
+    formFactor: FormFactor = LocalFormFactor.current
 ) {
     val interaction = remember { MutableInteractionSource() }
     val haptics = LocalHapticFeedback.current
-    val finished = (item.progress ?: 0f) >= 0.98f
+    val finished = item.isFinished()
     val clickMod = if (onOpenMenu != null) {
         Modifier.combinedClickable(
             interactionSource = interaction,
@@ -265,7 +460,9 @@ internal fun VideoCard(
     Column(
         modifier
             .pressScale(interaction)
-            .graphicsLayer { alpha = if (finished) 0.55f else 1f }
+            // 48%: far enough back that a finished video reads as done at a
+            // glance, near enough that it is still browsable — kids rewatch.
+            .graphicsLayer { alpha = if (finished) 0.48f else 1f }
             .clip(RoundedCornerShape(14.dp))
             .then(clickMod)
             .padding(bottom = 6.dp)
@@ -294,7 +491,10 @@ internal fun VideoCard(
                 )
             }
             statusBadge?.invoke(this)
-            item.progress?.let { fraction -> WatchedProgressBar(fraction) }
+            // The part-watched half of the watched state — see [CardMetaRow].
+            // A finished video has nothing left to report here and says so
+            // beside its meta line instead.
+            item.progress?.takeIf { !finished }?.let { fraction -> WatchedProgressBar(fraction) }
         }
         Row(
             verticalAlignment = Alignment.Top,
@@ -306,24 +506,26 @@ internal fun VideoCard(
             val channelTap = if (onOpenChannel != null) {
                 Modifier.clickable { onOpenChannel(item.video.channelName) }
             } else Modifier
-            ChannelArt(avatarUrl, item.video.channelName, size = 34.dp, modifier = Modifier.then(channelTap))
-            Spacer(Modifier.width(10.dp))
+            // 34 dp of face inside a 44 dp target on a phone: the drawn size
+            // is the design's, the hit area is the platform minimum, and the
+            // two are deliberately not the same number (as in [PhoneTopBar]).
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(if (formFactor.isPhone) 44.dp else 38.dp)
+                    .clip(CircleShape)
+                    .then(channelTap)
+            ) {
+                ChannelArt(avatarUrl, item.video.channelName, size = if (formFactor.isPhone) 34.dp else 38.dp)
+            }
+            Spacer(Modifier.width(8.dp))
             Column {
-                Text(
-                    item.video.title,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        lineHeight = TextUnit(19f, TextUnitType.Sp)
-                    )
-                )
+                CardTitle(item.video.title, focused = false, style = feedCardTitleStyle(formFactor))
                 // "Channel · 3 days ago": the quiet line every video app has.
-                Text(
-                    videoMeta(item.video.channelName, item.video.publishedAt),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                CardMetaRow(
+                    meta = videoMeta(item.video.channelName, item.video.publishedAt),
+                    watched = finished,
+                    style = cardMetaStyle(formFactor),
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
                         .then(channelTap)
@@ -376,17 +578,27 @@ internal fun ChannelChip(
             }
         }
         Spacer(Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Two lines here too, and a box that does not grow: "BBC Earth
+        // Science" was ellipsising to "BBC Earth …" beside "Maddie Moate",
+        // and the rail's chips have to sit on one baseline whether a name
+        // takes one line or two.
+        val nameStyle = MaterialTheme.typography.labelMedium
+        val nameBox = cardTitleHeight(nameStyle.lineHeightSp)
+        val nameLines = titleLinesIn(
+            nameBox,
+            with(LocalDensity.current) { nameStyle.lineHeightSp.sp.toDp() }
+        )
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.height(nameBox)) {
             if (isNew) {
                 NewPill()
                 Spacer(Modifier.width(4.dp))
             }
             Text(
                 name,
-                maxLines = 1,
+                maxLines = nameLines,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.labelMedium
+                style = nameStyle
             )
         }
     }
@@ -410,13 +622,17 @@ internal fun SkeletonCard(modifier: Modifier = Modifier) {
             Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                 .background(tone, RoundedCornerShape(12.dp))
         )
+        // Two title bars, because a card's title box is two lines tall: a
+        // one-bar skeleton made the grid jump the moment real titles landed.
         Row(Modifier.padding(top = 8.dp)) {
-            Box(Modifier.size(28.dp).background(tone, CircleShape))
-            Spacer(Modifier.width(8.dp))
+            Box(Modifier.size(34.dp).background(tone, CircleShape))
+            Spacer(Modifier.width(10.dp))
             Column {
                 Box(Modifier.fillMaxWidth(0.9f).height(14.dp).background(tone, RoundedCornerShape(4.dp)))
                 Spacer(Modifier.height(6.dp))
-                Box(Modifier.fillMaxWidth(0.5f).height(12.dp).background(tone, RoundedCornerShape(4.dp)))
+                Box(Modifier.fillMaxWidth(0.65f).height(14.dp).background(tone, RoundedCornerShape(4.dp)))
+                Spacer(Modifier.height(6.dp))
+                Box(Modifier.fillMaxWidth(0.5f).height(11.dp).background(tone, RoundedCornerShape(4.dp)))
             }
         }
     }

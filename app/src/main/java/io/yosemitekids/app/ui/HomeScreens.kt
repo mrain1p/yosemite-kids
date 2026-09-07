@@ -126,26 +126,23 @@ private fun KeepWatchingRow(
                             contentDescription = item.video.title,
                             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                         )
-                        item.progress?.let { fraction -> WatchedProgressBar(fraction) }
+                        item.progress?.takeIf { !item.isFinished() }
+                            ?.let { fraction -> WatchedProgressBar(fraction) }
                     }
+                    // The shared rail geometry: a two-line title in a box that
+                    // is two lines tall whether the title needs them or not,
+                    // so every card in the row ends at the same height.
                     Column(Modifier.padding(8.dp)) {
-                        MarqueeTitle(item.video.title, focused,
-                            style = MaterialTheme.typography.bodySmall)
+                        CardTitle(item.video.title, focused, railCardTitleStyle())
                         // The same meta line the grid tiles carry. These rows
                         // showed the title alone, so a parent who turned on
                         // "show when a video came out" saw no dates anywhere
                         // near the top of the home screen and reasonably
                         // concluded the setting did nothing.
-                        videoMeta(item.video.channelName, item.video.publishedAt)
-                            .takeIf { it.isNotBlank() }?.let {
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                        }
+                        CardMetaRow(
+                            meta = videoMeta(item.video.channelName, item.video.publishedAt),
+                            watched = item.isFinished()
+                        )
                     }
                 }
             }

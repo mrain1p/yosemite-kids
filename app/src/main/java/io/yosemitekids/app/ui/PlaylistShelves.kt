@@ -18,9 +18,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -330,15 +330,20 @@ internal fun ShelfVideoTile(
     onPlay: (VideoItem) -> Unit,
     onOpenMenu: ((VideoItem) -> Unit)?,
     modifier: Modifier = Modifier,
-    width: Dp = 236.dp
+    width: Dp = 236.dp,
+    formFactor: FormFactor = LocalFormFactor.current
 ) {
     var focused by remember { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
-    val finished = (item.progress ?: 0f) >= 0.98f
+    val finished = item.isFinished()
     Card(
         shape = RoundedCornerShape(12.dp),
         modifier = modifier
             .width(width)
+            // The whole card recedes, not just its poster: a finished video
+            // with a full-brightness title read as the loudest thing in the
+            // rail. Focus brings it back, because kids rewatch.
+            .graphicsLayer { alpha = if (finished && !focused) 0.48f else 1f }
             .pressScale(interaction)
             .tvFocusHighlight { focused = it }
             .then(if (onOpenMenu != null) Modifier.dpadLongPress { onOpenMenu(item) } else Modifier)
@@ -357,7 +362,6 @@ internal fun ShelfVideoTile(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
-                        .alpha(if (finished) 0.6f else 1f)
                 )
                 if (item.video.durationSeconds > 0) {
                     Text(
@@ -371,22 +375,22 @@ internal fun ShelfVideoTile(
                             .padding(horizontal = 5.dp, vertical = 2.dp)
                     )
                 }
-                item.progress?.let { fraction -> WatchedProgressBar(fraction) }
+                // Part-watched only: a finished video says so beside its meta
+                // line instead, and a card is never both. See [CardMetaRow].
+                item.progress?.takeIf { !finished }?.let { fraction -> WatchedProgressBar(fraction) }
             }
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
                 ChannelArt(avatarUrl, item.video.channelName, size = 28.dp)
                 Spacer(Modifier.width(9.dp))
                 Column {
-                    MarqueeTitle(item.video.title, focused, style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        videoMeta(item.video.channelName, item.video.publishedAt),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    CardTitle(item.video.title, focused, railCardTitleStyle(formFactor))
+                    CardMetaRow(
+                        meta = videoMeta(item.video.channelName, item.video.publishedAt),
+                        watched = finished,
+                        style = cardMetaStyle(formFactor)
                     )
                 }
             }

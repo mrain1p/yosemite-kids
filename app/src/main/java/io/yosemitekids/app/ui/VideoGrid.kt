@@ -117,15 +117,14 @@ internal fun QueueList(
                         contentDescription = item.video.title,
                         modifier = Modifier.fillMaxSize()
                     )
-                    item.progress?.let { fraction -> WatchedProgressBar(fraction) }
+                    item.progress?.takeIf { !item.isFinished() }
+                        ?.let { fraction -> WatchedProgressBar(fraction) }
                 }
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    MarqueeTitle(item.video.title, focused)
-                    Text(
-                        item.video.channelName, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    CardTitle(item.video.title, focused, feedCardTitleStyle())
+                    CardMetaRow(
+                        meta = videoMeta(item.video.channelName, item.video.publishedAt),
+                        watched = item.isFinished()
                     )
                 }
                 // Ends are no-ops (the store clamps) — buttons stay in place so
@@ -397,6 +396,7 @@ internal fun WatchedShelfTile(
     focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     /** Phone cards are rounded; TV tiles keep the square focus-ring shape. */
     rounded: Boolean = false,
+    formFactor: FormFactor = LocalFormFactor.current,
     onOpen: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -434,17 +434,15 @@ internal fun WatchedShelfTile(
                         .background(WatchedProgressRed)
                 )
             }
+            // The same title box and meta line as the video tiles it sits
+            // among, or the grid row it leads is a different height from the
+            // rest of the grid.
             Column(Modifier.padding(8.dp)) {
-                MarqueeTitle(
-                    "History ($count)", focused,
-                    style = MaterialTheme.typography.titleSmall
-                )
-                Text(
-                    "What you've watched here",
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                CardTitle("History ($count)", focused, feedCardTitleStyle(formFactor))
+                CardMetaRow(
+                    meta = "What you've watched here",
+                    watched = false,
+                    style = cardMetaStyle(formFactor)
                 )
             }
         }
@@ -503,7 +501,8 @@ private fun VideoTile(
     onOpenMenu: ((VideoItem) -> Unit)?,
     downloadPending: Set<String>,
     downloaded: Set<String>,
-    showDownloadStatus: Boolean
+    showDownloadStatus: Boolean,
+    formFactor: FormFactor = LocalFormFactor.current
 ) {
     // Tap/OK plays; hold (touch long-press or held OK on the remote)
     // opens the action menu.
@@ -538,13 +537,13 @@ private fun VideoTile(
                 indication = androidx.compose.foundation.LocalIndication.current
             ) { onPlay(item) }
     }
-    // Watched videos stay browsable (kids rewatch) but recede: dimmed
-    // unless focused, plus their full red bar below.
-    val finished = (item.progress ?: 0f) >= 0.98f
+    // Watched videos stay browsable (kids rewatch) but recede: dimmed to 48%
+    // unless focused, and saying so beside the meta line.
+    val finished = item.isFinished()
     Card(
         shape = androidx.compose.ui.graphics.RectangleShape,
         modifier = cardModifier.graphicsLayer {
-            alpha = if (finished && !focused) 0.5f else 1f
+            alpha = if (finished && !focused) 0.48f else 1f
         }
     ) {
         Column {
@@ -555,15 +554,17 @@ private fun VideoTile(
                     modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                 )
                 if (showDownloadStatus) DownloadStatusBadge(item, downloadPending, downloaded)
-                // YouTube-style watched-progress bar.
-                item.progress?.let { fraction -> WatchedProgressBar(fraction) }
+                // The part-watched signal. Finished videos carry the WATCHED
+                // tag instead — see [CardMetaRow]; a card is never both.
+                item.progress?.takeIf { !finished }?.let { fraction -> WatchedProgressBar(fraction) }
             }
             Column(Modifier.padding(8.dp)) {
-                MarqueeTitle(item.video.title, focused)
-                Text(item.video.channelName, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                CardTitle(item.video.title, focused, feedCardTitleStyle(formFactor))
+                CardMetaRow(
+                    meta = videoMeta(item.video.channelName, item.video.publishedAt),
+                    watched = finished,
+                    style = cardMetaStyle(formFactor)
+                )
             }
         }
     }
