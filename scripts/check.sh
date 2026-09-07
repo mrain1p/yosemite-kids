@@ -888,6 +888,27 @@ ffread=$(grep -rn "LocalFormFactor.current" --include=*.kt app/src/main | grep -
   guard_fail "LocalFormFactor.current is read outside a default-parameter expression. Containers may read it; a leaf takes 'formFactor: FormFactor = LocalFormFactor.current' so a preview or test can pass the other one:
 $ffread"
 
+# 33. Every shelf the home screen names is a shelf the home can draw.
+#     The home is one list of shelves now, ordered by string id, and the walk
+#     that draws it is a `when` on that id. Name a shelf in HomeShelf and
+#     forget either half - the catalogue it must appear in, or the branch that
+#     renders it - and nothing fails: the id is a legal thing to save, the
+#     parent's future editor will offer to move it, and it draws nothing at
+#     all, silently, on both form factors. The compiler cannot help: `when`
+#     over a String has no exhaustiveness, which is the price of ids that
+#     survive a build inserting a shelf in the middle.
+shelf_src=app/src/main/java/io/yosemitekids/app/ui/HomeSections.kt
+shelves_src=app/src/main/java/io/yosemitekids/app/ui/HomeShelves.kt
+shelf_ids=$(sed -n '/object HomeShelf {/,/^}/p' "$shelf_src" | grep -oE 'const val [A-Z_]+' | awk '{print $3}' || true)
+[ -n "$shelf_ids" ] || guard_fail "no ids found in object HomeShelf; guard 33 is blind."
+shelf_catalogue=$(sed -n '/val HOME_SHELVES/,/^)/p' "$shelf_src")
+for id in $shelf_ids; do
+  echo "$shelf_catalogue" | grep -q "HomeShelf\.$id\b" ||
+    guard_fail "HomeShelf.$id is not in HOME_SHELVES, so no home ever draws it. Add it to the catalogue, or delete the id."
+  grep -q "HomeShelf\.$id ->" "$shelves_src" ||
+    guard_fail "HomeShelf.$id has no branch in HomeShelves.kt. A shelf a parent can order and the home cannot draw fails silently, on both form factors."
+done
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 

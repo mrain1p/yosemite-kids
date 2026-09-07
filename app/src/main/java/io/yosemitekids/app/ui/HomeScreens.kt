@@ -23,7 +23,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,12 +31,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.yosemitekids.app.data.*
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun KeepWatchingRow(
+internal fun KeepWatchingRow(
     items: List<VideoItem>,
     onPlay: (VideoItem) -> Unit,
     /**
@@ -47,6 +47,8 @@ private fun KeepWatchingRow(
      */
     onDismiss: ((VideoItem) -> Unit)?,
     rounded: Boolean = false,
+    /** The card width — the one thing that differs between the two shapes. */
+    width: Dp = 176.dp,
     /** TV: the home's initial focus lands on this row's first tile when it is the topmost row. */
     firstFocus: androidx.compose.ui.focus.FocusRequester? = null
 ) {
@@ -117,7 +119,7 @@ private fun KeepWatchingRow(
                             }
                         }
                     )
-                    .width(if (rounded) 176.dp else 150.dp)
+                    .width(if (rounded) width else 150.dp)
             ) {
                 Column {
                     Box {
@@ -149,171 +151,6 @@ private fun KeepWatchingRow(
         }
     }
 }
-
-/**
- * The phone/tablet home: a greeting header, Keep watching, a row of round
- * channel chips with "Show all", then the feed — newest videos across every
- * channel as YouTube-style cards, two to a row. The special tiles (Surprise,
- * Favorites, …) moved to the Channels and Favorites tabs; Surprise stays in
- * the channel row where a kid looks for "something to watch".
- */
-@Composable
-internal fun PhoneHome(
-    state: UiState,
-    onPlay: (VideoItem) -> Unit,
-    onDismissKeepWatching: (VideoItem) -> Unit,
-    onOpen: (Source) -> Unit,
-    onSurprise: () -> Unit,
-    onShowAllChannels: () -> Unit,
-    onOpenMenu: (VideoItem) -> Unit,
-    onOpenChannelByName: (String) -> Unit,
-    onOpenSettings: () -> Unit,
-    activeProfile: Profile?,
-    onSwitchProfile: (() -> Unit)?,
-    onSearch: (String) -> Unit,
-    onOpenHub: (() -> Unit)? = null,
-    /** The kid's feed order (VIDEO_FILTER_*) and the chip to change it. */
-    homeFilter: String = VIDEO_FILTER_NEW,
-    onHomeFilter: ((String) -> Unit)? = null,
-    onOpenSearch: (() -> Unit)? = null,
-    /** The chip row's destinations; null hides the row (TV draws its own). */
-    onQuickAction: ((HomeQuickAction) -> Unit)? = null
-) {
-    if (state.channels.isEmpty()) {
-        EmptyHome(onOpenSettings, state.allHeld)
-        return
-    }
-    BoxWithConstraints {
-    // One card to a row on a phone, like YouTube's feed: a poster the width
-    // of the screen is what a kid recognises as "a video to watch". Two-up
-    // was cramped on phones with display scaling, which is most of them.
-    val columns = if (maxWidth < 600.dp) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 240.dp)
-    LazyVerticalGrid(
-        columns = columns,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 16.dp)
-    ) {
-        item(key = "app-header", span = { GridItemSpan(maxLineSpan) }) {
-            HomeHeader(
-                onOpenSettings, activeProfile, onSwitchProfile, onSearch,
-                state.remainingMs, state.blockReason, greet = true, busy = state.refreshing || state.syncing,
-                showSearch = false, onOpenHub = onOpenHub, onOpenSearch = onOpenSearch
-            )
-        }
-        // Channels lead: the kid's own shelf of places, and the thing they
-        // reach for first. Then what they were part-way through, then the
-        // ways in that aren't channels, then the feed.
-        item(key = "channels-title", span = { GridItemSpan(maxLineSpan) }) {
-            SectionRow("Channels", action = "Show all", onAction = onShowAllChannels)
-        }
-        item(key = "channels-row", span = { GridItemSpan(maxLineSpan) }) {
-            androidx.compose.foundation.lazy.LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                // Inset like the rest of the page: a first tile flush against
-                // the edge looked cut off.
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) {
-                items(state.channels.size, key = { state.channels[it].id }) { i ->
-                    val c = state.channels[i]
-                    ChannelChip(
-                        name = c.name, avatarUrl = c.avatarUrl,
-                        isNew = c.id in state.newBadges,
-                        onClick = { onOpen(c) }
-                    )
-                }
-            }
-        }
-        if (state.keepWatching.isNotEmpty()) {
-            // A rule between the sections: rows of different shapes ran into
-            // one another, and a kid scanning for one had no edge to find it by.
-            item(key = "kw-divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
-            item(key = "kw-title", span = { GridItemSpan(maxLineSpan) }) {
-                SectionRow("Keep watching")
-            }
-            item(key = "kw-row", span = { GridItemSpan(maxLineSpan) }) {
-                KeepWatchingRow(
-                    state.keepWatching, onPlay = onPlay, onDismiss = onDismissKeepWatching,
-                    rounded = true
-                )
-            }
-        }
-        // Taste, not recency: older videos off the family's own channels that
-        // look like what this kid already watched. Sits with Keep watching
-        // because it's the same shape; the chips below belong to the grid.
-        if (state.suggested.isNotEmpty()) {
-            item(key = "sg-divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
-            item(key = "sg-title", span = { GridItemSpan(maxLineSpan) }) {
-                SectionRow("More like what you watch")
-            }
-            item(key = "sg-row", span = { GridItemSpan(maxLineSpan) }) {
-                KeepWatchingRow(
-                    state.suggested, onPlay = onPlay, onDismiss = null, rounded = true
-                )
-            }
-        }
-        // Ways in that aren't channels: a dice, the kid's own shelf, and the
-        // two orders they ask for by name. These sat in the channel row as a
-        // fake channel, which is not what a round tile in that row means.
-        if (onQuickAction != null) {
-            item(key = "quick-chips", span = { GridItemSpan(maxLineSpan) }) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier
-                        .padding(top = 8.dp, bottom = 2.dp)
-                        .horizontalScroll(rememberScrollState())
-                ) {
-                    YosemiteChip("Surprise me", selected = false, icon = YosemiteIcons.Dice, onClick = onSurprise)
-                    YosemiteChip(
-                        "Favorites", selected = false, icon = Icons.Filled.Favorite,
-                        onClick = { onQuickAction(HomeQuickAction.Favorites) }
-                    )
-                    YosemiteChip(
-                        "Most watched", selected = false, icon = Icons.Filled.Star,
-                        onClick = { onQuickAction(HomeQuickAction.MostWatched) }
-                    )
-                    YosemiteChip(
-                        "Latest", selected = false, icon = YosemiteIcons.NewRelease,
-                        onClick = { onQuickAction(HomeQuickAction.Latest) }
-                    )
-                }
-            }
-        }
-        item(key = "feed-divider", span = { GridItemSpan(maxLineSpan) }) { SectionDivider() }
-        item(key = "feed-title", span = { GridItemSpan(maxLineSpan) }) {
-            // The title stays put and the chips ride its line; a title that
-            // changed with the sort read as a different section, and a chip
-            // row of its own cost a band of screen.
-            SectionRow(
-                "For you",
-                trailing = onHomeFilter?.let { set -> { VideoFilterChips(homeFilter, set) } }
-            )
-        }
-        if (state.feed.isEmpty()) {
-            // The caches are still warming (first launch, or a new channel):
-            // breathing placeholders read as "coming", a spinner as "stuck".
-            items(6, key = { "skeleton-$it" }) { SkeletonCard() }
-        } else {
-            items(state.feed, key = { it.video.url }) { item ->
-                VideoCard(
-                    item = item,
-                    avatarUrl = state.channelAvatars[item.video.channelName],
-                    onPlay = onPlay,
-                    onOpenMenu = onOpenMenu,
-                    onOpenChannel = onOpenChannelByName
-                )
-            }
-        }
-    }
-    }
-}
-
-/**
- * The home chip row's destinations. Surprise has its own screen; the other
- * three open a shelf the kid names rather than a filter they have to build:
- * their Favorites, and the channels in most-watched or latest-upload order.
- */
-internal enum class HomeQuickAction { Favorites, MostWatched, Latest }
 
 /** A quiet rule between two home sections. */
 @Composable
@@ -580,7 +417,7 @@ private fun ChannelTile(
  * them, and the fix is on the parent's phone — so say that, not "add channels".
  */
 @Composable
-private fun EmptyHome(onOpenSettings: () -> Unit, allHeld: Boolean = false) {
+internal fun EmptyHome(onOpenSettings: () -> Unit, allHeld: Boolean = false) {
     val focus = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Column(
@@ -786,333 +623,6 @@ internal fun HomeHeader(
     }
 }
 
-/**
- * The ten-foot home: horizontal rows under a pinned focus, like every
- * streaming app's browse screen. Keep watching first, then "New for you"
- * (the same newest-across-channels feed the phone shows as cards), the
- * channels as round chips, what was watched lately, and the special shelves.
- * The remote does everything: OK plays or opens, a held OK opens the same
- * menu a phone long-press does. No touch, so no pull-to-refresh either.
- */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-internal fun TvHomeRows(
-    channels: List<Source>,
-    newBadges: Set<String>,
-    keepWatching: List<VideoItem>,
-    /** "More like what you watch"; empty when off or when nothing is watched yet. */
-    suggested: List<VideoItem> = emptyList(),
-    /** Something is arriving — draws the slow arc round the avatar. */
-    busy: Boolean = false,
-    feed: List<VideoItem> = emptyList(),
-    recentHistory: List<VideoItem> = emptyList(),
-    channelAvatars: Map<String, String?> = emptyMap(),
-    onPlay: (VideoItem) -> Unit,
-    onOpenMenu: ((VideoItem) -> Unit)? = null,
-    onDismissKeepWatching: (VideoItem) -> Unit,
-    onOpen: (Source) -> Unit,
-    onOpenHistory: () -> Unit = {},
-    onSurprise: () -> Unit,
-    onOpenWatchlist: () -> Unit,
-    hasWatchLater: Boolean = false,
-    onOpenWatchLater: () -> Unit = {},
-    hasQueue: Boolean = false,
-    onOpenQueue: () -> Unit = {},
-    onOpenSettings: () -> Unit,
-    activeProfile: io.yosemitekids.app.data.Profile? = null,
-    onSwitchProfile: (() -> Unit)? = null,
-    onSearch: (String) -> Unit = {},
-    remainingMs: Long? = null,
-    blockReason: String? = null,
-    allHeld: Boolean = false,
-    onOpenHub: (() -> Unit)? = null,
-    onOpenYou: (() -> Unit)? = null,
-    /** The kid's chips, as one cycling chip in each row's title (a chip row per title is too much for a remote). */
-    channelSort: String = CHANNEL_ORDER_WATCHED,
-    onSort: ((String) -> Unit)? = null,
-    homeFilter: String = VIDEO_FILTER_NEW,
-    onHomeFilter: ((String) -> Unit)? = null
-) {
-    if (channels.isEmpty()) {
-        EmptyHome(onOpenSettings, allHeld)
-        return
-    }
-    // Initial focus lands on the first tile of the topmost video row, so one
-    // OK press from a cold start plays something. Re-requested when the feed
-    // first arrives: the caches paint after the channel list, and a request
-    // made before the tile exists lands nowhere.
-    val firstTileFocus = remember { androidx.compose.ui.focus.FocusRequester() }
-    // Channels lead the page now, so the remote starts there: focus that
-    // jumped to Keep watching opened the home already scrolled past them.
-    val focusKw = false
-    val focusFeed = false
-    // Once only: rows appear and disappear as the kid watches (Keep watching
-    // fills after the first play), and a second request would yank focus
-    // away from wherever the remote had put it.
-    var focusedOnce by remember { mutableStateOf(false) }
-    LaunchedEffect(focusKw, focusFeed) {
-        if (focusedOnce) return@LaunchedEffect
-        // The lazy column composes the row's tiles during its next measure,
-        // so the first request can land before the requester is attached
-        // (it throws); short retries cover that — a slow TV needs a couple
-        // of seconds.
-        repeat(20) {
-            if (runCatching { firstTileFocus.requestFocus() }.isSuccess) {
-                focusedOnce = true
-                return@LaunchedEffect
-            }
-            kotlinx.coroutines.delay(150)
-        }
-    }
-
-    androidx.compose.foundation.lazy.LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        contentPadding = PaddingValues(vertical = 8.dp)
-    ) {
-        item(key = "header") {
-            HomeHeader(
-                onOpenSettings, activeProfile, onSwitchProfile, onSearch, remainingMs, blockReason,
-                busy = busy, onOpenHub = onOpenHub
-            )
-        }
-
-
-        item(key = "channels") {
-            TvRow(
-                "Channels",
-                chip = onSort?.let { set ->
-                    {
-                        val (label, icon) = channelSortLabel(channelSort)
-                        CycleChip(
-                            label = label,
-                            icon = icon,
-                            onClick = {
-                                set(
-                                    when (channelSort) {
-                                        CHANNEL_ORDER_WATCHED -> CHANNEL_ORDER_ALPHA
-                                        CHANNEL_ORDER_ALPHA -> CHANNEL_ORDER_RANDOM
-                                        CHANNEL_ORDER_RANDOM -> CHANNEL_ORDER_LATEST
-                                        else -> CHANNEL_ORDER_WATCHED
-                                    }
-                                )
-                            }
-                        )
-                    }
-                }
-            ) {
-                androidx.compose.foundation.lazy.LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
-                ) {
-                    items(channels.size, key = { channels[it].id }) { i ->
-                        TvChannelChip(
-                            channels[i],
-                            isNew = channels[i].id in newBadges,
-                            onOpen = onOpen,
-                            modifier = if (i == 0) Modifier.focusRequester(firstTileFocus) else Modifier
-                        )
-                    }
-                }
-            }
-        }
-
-        if (keepWatching.isNotEmpty()) {
-            item(key = "kw") {
-                TvRow("Keep watching") {
-                    KeepWatchingRow(
-                        keepWatching, onPlay = onPlay, onDismiss = onDismissKeepWatching, rounded = true,
-                        firstFocus = null
-                    )
-                }
-            }
-        }
-        // Taste, not recency: older videos off the family's own channels that
-        // match what this kid already watched.
-        if (suggested.isNotEmpty()) {
-            item(key = "suggested") {
-                TvRow("More like what you watch") {
-                    KeepWatchingRow(
-                        suggested, onPlay = onPlay, onDismiss = null, rounded = true,
-                        firstFocus = null
-                    )
-                }
-            }
-        }
-        // The ways in that aren't channels, as the same chips the phone
-        // shows. They were square tiles in an "Explore" row, which put two
-        // different shapes and two different idioms on one page.
-        item(key = "quick-chips") {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp)
-            ) {
-                YosemiteChip("Surprise me", selected = false, icon = YosemiteIcons.Dice, onClick = onSurprise)
-                if (onOpenYou != null) {
-                    YosemiteChip("You", selected = false, icon = Icons.Filled.Person, onClick = onOpenYou)
-                } else {
-                    YosemiteChip("Favorites", selected = false, icon = Icons.Filled.Favorite, onClick = onOpenWatchlist)
-                    if (hasWatchLater) {
-                        YosemiteChip("Watch later", selected = false, icon = YosemiteIcons.WatchLater, onClick = onOpenWatchLater)
-                    }
-                }
-                if (hasQueue) {
-                    YosemiteChip("Up next", selected = false, icon = YosemiteIcons.UpNext, onClick = onOpenQueue)
-                }
-            }
-        }
-
-        if (feed.isNotEmpty()) {
-            item(key = "feed") {
-                TvRow(
-                    "For you",
-                    chip = onHomeFilter?.let { set ->
-                        {
-                            val (label, icon) = videoFilterLabel(homeFilter)
-                            CycleChip(
-                                label = label,
-                                icon = icon,
-                                onClick = {
-                                    set(
-                                        when (homeFilter) {
-                                            VIDEO_FILTER_NEW -> VIDEO_FILTER_RANDOM
-                                            VIDEO_FILTER_RANDOM -> VIDEO_FILTER_POPULAR
-                                            else -> VIDEO_FILTER_NEW
-                                        }
-                                    )
-                                }
-                            )
-                        }
-                    }
-                ) {
-                    androidx.compose.foundation.lazy.LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
-                    ) {
-                        items(feed.size, key = { feed[it].video.url }) { i ->
-                            val item = feed[i]
-                            ShelfVideoTile(
-                                item,
-                                avatarUrl = channelAvatars[item.video.channelName],
-                                onPlay = onPlay,
-                                onOpenMenu = onOpenMenu,
-                                modifier = if (i == 0 && focusFeed) Modifier.focusRequester(firstTileFocus) else Modifier
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        if (recentHistory.isNotEmpty()) {
-            item(key = "history") {
-                // "All history" is the row's own action, beside its title —
-                // it used to be a tile of a different shape inside the row.
-                TvRow(
-                    "Watched lately",
-                    chip = {
-                        YosemiteChip("All history", selected = false, icon = YosemiteIcons.History, onClick = onOpenHistory)
-                    }
-                ) {
-                    androidx.compose.foundation.lazy.LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
-                    ) {
-                        items(recentHistory.size, key = { recentHistory[it].video.url }) { i ->
-                            val item = recentHistory[i]
-                            ShelfVideoTile(
-                                item,
-                                avatarUrl = channelAvatars[item.video.channelName],
-                                onPlay = onPlay,
-                                onOpenMenu = onOpenMenu
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-    }
-}
-
-/** A titled TV row whose horizontal scroll pivots on the focused tile; an optional chip sits by the title. */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun TvRow(title: String, chip: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) {
-    Column {
-        if (chip == null) TvRowTitle(title) else Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(top = 8.dp)
-        ) {
-            TvRowTitle(title)
-            Spacer(Modifier.width(12.dp))
-            Box(Modifier.padding(top = 10.dp)) { chip() }
-        }
-        CompositionLocalProvider(
-            androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides TvRowPivot
-        ) { content() }
-    }
-}
-
-/** One focusable chip that steps to the next choice on OK — the remote's version of a chip row. */
-@Composable
-private fun CycleChip(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    YosemiteChip(label, selected = false, icon = icon, onClick = onClick)
-}
-
-/**
- * A channel in the TV row: the round avatar every video app uses for
- * "channel", big enough to read from the couch, with the NEW dot and the
- * screen-time price tag the square tile used to carry.
- */
-@Composable
-private fun TvChannelChip(
-    channel: Source,
-    isNew: Boolean,
-    onOpen: (Source) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var focused by remember { mutableStateOf(false) }
-    val interaction = remember { MutableInteractionSource() }
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
-            .width(136.dp)
-            .pressScale(interaction)
-            .tvFocusHighlight { focused = it }
-            .clip(RoundedCornerShape(20.dp))
-            .clickable(interactionSource = interaction, indication = LocalIndication.current) {
-                onOpen(channel)
-            }
-            .padding(vertical = 10.dp, horizontal = 6.dp)
-    ) {
-        Box {
-            ChannelArt(channel.avatarUrl, channel.name, size = 96.dp)
-            if (isNew) NewPill(Modifier.align(Alignment.TopEnd).padding(4.dp))
-            timeMultiplierColor(channel.timeMultiplierPercent)?.let { color ->
-                Text(
-                    timeMultiplierLabel(channel.timeMultiplierPercent),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .background(color, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        MarqueeTitle(
-            text = channel.name +
-                if (channel.kind == SourceKind.PLAYLIST) "  ·  playlist" else "",
-            focused = focused,
-            style = MaterialTheme.typography.labelLarge
-        )
-    }
-}
-
 // One spelling per special tile: the phone grid and the TV row draw the same
 // ones, and a repaint of one layout must not drift from the other.
 @Composable
@@ -1130,14 +640,3 @@ private fun WatchlistTile(modifier: Modifier = Modifier, onClick: () -> Unit) =
 @Composable
 private fun WatchLaterTile(modifier: Modifier = Modifier, onClick: () -> Unit) =
     SpecialTile("", "Watch later", WatchLaterTileTeal, modifier = modifier, icon = YosemiteIcons.WatchLater, onClick = onClick)
-
-@Composable
-private fun TvRowTitle(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleMedium.copy(
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-        ),
-        modifier = Modifier.padding(start = 8.dp, top = 12.dp)
-    )
-}

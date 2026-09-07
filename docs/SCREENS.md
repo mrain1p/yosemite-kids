@@ -8,8 +8,8 @@ channels, 15-minute session) or `seed --real` (the family's whitelist).
 | Screen | `Screen` value | State it reads | Composable | Reach it |
 | --- | --- | --- | --- | --- |
 | Who's watching | (activity-level) | `family.profiles`, per-kid `remainingTodayMin` | `ProfilePicker.kt` `WhosWatchingScreen` | seed a config with 2+ profiles on a shared device |
-| Home (phone) | `Home` | `channels`, `keepWatching`, `feed`, `channelAvatars`, `remainingMs`, `blockReason`, `allHeld` | `HomeScreens.kt` `PhoneHome` | `launch` |
-| Home (TV) | `Home` | same + `recentHistory` (Watched lately row) | `HomeScreens.kt` `TvHomeRows`, `PlaylistShelves.kt` `ShelfVideoTile` | TV AVD, `launch`; focus starts on the top video row |
+| Home (phone) | `Home` | `homeSections`, `pinned`, `channels`, `keepWatching`, `suggested`, `feed`, `recentHistory`, `channelAvatars`, `remainingMs`, `blockReason`, `allHeld` | `HomeShelves.kt` `KidHome` → `PhoneHomeGrid` | `launch` |
+| Home (TV) | `Home` | the same list — one home, both shapes | `HomeShelves.kt` `KidHome` → `TvHomeColumn` | TV AVD, `launch`; focus starts on the first tile of the topmost populated shelf (`firstFocusableShelf`) |
 | Channels tab | `Channels` | `channels`, `newBadges`, `queued`, `watchLater`, `downloaded` | `HomeScreens.kt` `ChannelsScreen` | tap the Channels tab / "Show all" |
 | Channel page | `ChannelVideos(source)` | `videos` (ordered by `channelLayout`), `channelWatched`, `watchedTileAt` (History tile first), `channelPlaylists` (the Playlists strip, always), `playlistShelves` (the first three playlists as rows, pinned first), `channelFilter` (sort chips under "All videos"), `held`, `loadingMore` | `YosemiteScreen.kt` → `VideoGrid` (+ `header` from `PlaylistShelves.kt`) | tap a channel chip; hold a poster for the menu; a playlist chip opens the playlist, Back returns (`goBack`); TV: Up from the grid reaches the Home / You chips |
 | Channel history | `WatchedVideos(source)` | `channelWatched` | same grid | tap the History tile on a channel page |

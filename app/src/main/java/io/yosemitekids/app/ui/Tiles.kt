@@ -182,6 +182,15 @@ internal fun railCardTitleStyle(formFactor: FormFactor = LocalFormFactor.current
         fontWeight = FontWeight.SemiBold
     )
 
+/** The channel rail's name, under the art. Quieter again than a rail title. */
+@Composable
+internal fun channelNameStyle(formFactor: FormFactor = LocalFormFactor.current): TextStyle =
+    MaterialTheme.typography.labelMedium.copy(
+        fontSize = if (formFactor.isTv) 15.sp else 12.sp,
+        lineHeight = if (formFactor.isTv) 19.sp else 16.sp,
+        fontWeight = FontWeight.SemiBold
+    )
+
 /** "Channel · today" under a title, on either form factor. */
 @Composable
 internal fun cardMetaStyle(formFactor: FormFactor = LocalFormFactor.current): TextStyle =
@@ -442,6 +451,11 @@ internal fun VideoCard(
     val interaction = remember { MutableInteractionSource() }
     val haptics = LocalHapticFeedback.current
     val finished = item.isFinished()
+    // This card is the television's feed tile too, now that the home draws one
+    // feed on both shapes — so it needs what every TV tile needs: a ring where
+    // the remote is, and a held OK for the same menu a touch hold opens.
+    // Inert on a phone, where nothing takes focus and no key events arrive.
+    var focused by remember { mutableStateOf(false) }
     val clickMod = if (onOpenMenu != null) {
         Modifier.combinedClickable(
             interactionSource = interaction,
@@ -462,8 +476,10 @@ internal fun VideoCard(
             .pressScale(interaction)
             // 48%: far enough back that a finished video reads as done at a
             // glance, near enough that it is still browsable — kids rewatch.
-            .graphicsLayer { alpha = if (finished) 0.48f else 1f }
+            .graphicsLayer { alpha = if (finished && !focused) 0.48f else 1f }
+            .tvFocusHighlight(cornerRadius = 14.dp) { focused = it }
             .clip(RoundedCornerShape(14.dp))
+            .then(if (onOpenMenu != null) Modifier.dpadLongPress { onOpenMenu(item) } else Modifier)
             .then(clickMod)
             .padding(bottom = 6.dp)
     ) {
@@ -520,7 +536,7 @@ internal fun VideoCard(
             }
             Spacer(Modifier.width(8.dp))
             Column {
-                CardTitle(item.video.title, focused = false, style = feedCardTitleStyle(formFactor))
+                CardTitle(item.video.title, focused = focused, style = feedCardTitleStyle(formFactor))
                 // "Channel · 3 days ago": the quiet line every video app has.
                 CardMetaRow(
                     meta = videoMeta(item.video.channelName, item.video.publishedAt),
@@ -537,9 +553,15 @@ internal fun VideoCard(
 }
 
 /**
- * A channel in the home row: its art as a rounded square (see [ChannelArt]
- * for why not a circle), the name under it, and a NEW pill beside the name
- * — never on the picture, where it landed on logos.
+ * A channel in the home rail: its art as a rounded square (see [ChannelArt]
+ * for why not a circle), the name under it, and a dot in the action colour
+ * when there is something new.
+ *
+ * One tile for both form factors — [art] and [column] are the whole
+ * difference, which is what let the phone's channel row and the ten-foot
+ * one become the same shelf. A dot rather than a "NEW" pill because at the
+ * ten-foot distance a word that small is a smudge, and because the dot is
+ * what marks a new channel everywhere else in the design.
  */
 @Composable
 internal fun ChannelChip(
@@ -547,52 +569,61 @@ internal fun ChannelChip(
     avatarUrl: String?,
     isNew: Boolean,
     modifier: Modifier = Modifier,
+    art: Dp = 72.dp,
+    column: Dp = 88.dp,
+    newDot: Dp = 14.dp,
     emoji: String? = null,
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     tint: Color = MaterialTheme.colorScheme.surfaceVariant,
+    nameStyle: TextStyle = channelNameStyle(),
     onClick: () -> Unit
 ) {
     val interaction = remember { MutableInteractionSource() }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
-            .width(88.dp)
+            .width(column)
             .pressScale(interaction)
+            .tvFocusHighlight(cornerRadius = 16.dp)
             .clip(RoundedCornerShape(16.dp))
             .clickable(interactionSource = interaction, indication = LocalIndication.current) { onClick() }
             .padding(vertical = 6.dp, horizontal = 4.dp)
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(72.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(tint)
-        ) {
-            when {
-                icon != null -> androidx.compose.material3.Icon(
-                    icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(34.dp)
-                )
-                emoji != null -> Text(emoji, fontSize = TextUnit(30f, TextUnitType.Sp))
-                else -> PosterImage(avatarUrl, name, Modifier.fillMaxSize())
+        Box(contentAlignment = Alignment.Center) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(art)
+                    .clip(RoundedCornerShape(art / 3.6f))
+                    .background(tint)
+            ) {
+                when {
+                    icon != null -> androidx.compose.material3.Icon(
+                        icon, contentDescription = null, tint = Color.White,
+                        modifier = Modifier.size(art * 0.47f)
+                    )
+                    emoji != null -> Text(emoji, fontSize = TextUnit(30f, TextUnitType.Sp))
+                    else -> PosterImage(avatarUrl, name, Modifier.fillMaxSize())
+                }
             }
+            if (isNew) Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .size(newDot)
+                    .background(kidTokens.action, CircleShape)
+            )
         }
         Spacer(Modifier.height(6.dp))
         // Two lines here too, and a box that does not grow: "BBC Earth
         // Science" was ellipsising to "BBC Earth …" beside "Maddie Moate",
         // and the rail's chips have to sit on one baseline whether a name
         // takes one line or two.
-        val nameStyle = MaterialTheme.typography.labelMedium
         val nameBox = cardTitleHeight(nameStyle.lineHeightSp)
         val nameLines = titleLinesIn(
             nameBox,
             with(LocalDensity.current) { nameStyle.lineHeightSp.sp.toDp() }
         )
-        Row(verticalAlignment = Alignment.Top, modifier = Modifier.height(nameBox)) {
-            if (isNew) {
-                NewPill()
-                Spacer(Modifier.width(4.dp))
-            }
+        Box(modifier = Modifier.height(nameBox)) {
             Text(
                 name,
                 maxLines = nameLines,

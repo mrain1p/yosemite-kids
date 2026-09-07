@@ -60,6 +60,15 @@ data class UiState(
     val syncing: Boolean = false,
     val error: String? = null,
     val channels: List<Source> = emptyList(),
+    /**
+     * The home's shelves, in order, with their enabled flags — the one list
+     * both form factors draw. It is state and not a hard-coded sequence of
+     * composables so that the parent's home-screen builder, when it arrives,
+     * is a change to this list and not a rewrite of the home.
+     */
+    val homeSections: List<HomeSection> = homeSections(emptyList()),
+    /** The pinned hero's cards, already filtered to what this kid may see. */
+    val pinned: List<PinnedItem> = emptyList(),
     val screen: Screen = Screen.Home,
     val videos: List<VideoItem> = emptyList(),
     /**

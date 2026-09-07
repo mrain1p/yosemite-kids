@@ -525,6 +525,58 @@ class MainViewModel(
         }
 
     /**
+     * The parent's pinned hero, standing in for configuration that does not
+     * exist yet.
+     *
+     * TODO(front-end, pinned-hero config phase): the real list is the parent's.
+     * That means a `pinned` field on Whitelist, its own section in ConfigMerge
+     * with a tombstone rule and a stamp, an editor on the phone and the
+     * matching page on the hub, and a row in docs/LAN-API.md. It is
+     * deliberately a phase of its own: putting a new field in config.json is
+     * the sectioned merge's problem, and those rules are not the home screen's.
+     *
+     * Until then the stand-in is DERIVED rather than a literal list of ids. A
+     * literal would name one family's channels and leave every other home with
+     * an empty hero — and a shelf nobody can see is a shelf nobody can review.
+     * So: the first two of this kid's own sources, in whitelist order.
+     */
+    private fun standInPins(): List<String> = sources.take(2).map { it.id }
+
+    /**
+     * The hero's cards.
+     *
+     * Which sources may appear is entirely [resolvePins]' fail-closed join
+     * against [visible] — the list the home already draws, which has been
+     * through the per-kid `visibleTo` filter *and* [visibleSources]. Resolving
+     * a pin any other way would let a channel restricted to an older sibling,
+     * or one whose whole feed is held for review, become the largest thing on
+     * a five-year-old's home screen. Cache reads — call off-main.
+     */
+    private fun pinnedRow(visible: List<Source>): List<PinnedItem> =
+        resolvePins(
+            pinned = standInPins(),
+            visible = visible,
+            newCount = { newVideoCount(it.id) },
+            videoCount = { source ->
+                videoCache.load(source.id).count {
+                    it.videoId !in blockedVideoIds && !tooShort(it) && screener?.isVisible(it) != false
+                }
+            }
+        )
+
+    /**
+     * How many videos have landed on a source since this kid last looked. The
+     * NEW badge is the yes/no form of the same question; the hero says the
+     * number. Zero when the kid has never opened it — "everything is new" is
+     * not a useful thing to shout on a first launch.
+     */
+    private fun newVideoCount(sourceId: String): Int {
+        val seen = usage.lastSeenLatest(sourceId) ?: return 0
+        val at = videoCache.load(sourceId).indexOfFirst { it.url == seen }
+        return if (at <= 0) 0 else at
+    }
+
+    /**
      * The header's screen-time readout: minutes left at normal drain, and what
      * (if anything) blocks a play press right now. Prefs reads — call off-main.
      */
@@ -544,9 +596,13 @@ class MainViewModel(
         val (left, reason) = withContext(Dispatchers.IO) { screenTime() }
         val (feed, recent) = withContext(Dispatchers.IO) { buildFeed(tiles) to historyRow() }
         val suggested = withContext(Dispatchers.IO) { suggestionsRow(tiles) }
+        // Pins resolve against `tiles`, never against `sources` or the
+        // whitelist: `tiles` is what this kid may actually see.
+        val pins = withContext(Dispatchers.IO) { pinnedRow(tiles) }
         val onHome = _state.value.screen == Screen.Home
         _state.value = _state.value.copy(
             channels = tiles,
+            pinned = pins,
             keepWatching = keepWatching,
             newBadges = badges,
             feed = feed,

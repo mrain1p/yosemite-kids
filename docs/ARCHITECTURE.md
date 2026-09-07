@@ -87,7 +87,9 @@ app/src/main/java/io/yosemitekids/app/
     │                         hold-menu actions, "Play on TV"
     ├── HomeState.kt          Screen sealed interface + UiState
     ├── YosemiteScreen.kt     Screen container: transitions, titles, back, errors
-    ├── HomeScreens.kt        Phone grid + TV rows, header (time chip, banner)
+    ├── HomeSections.kt       The home as data: shelf ids, order, pin resolve
+    ├── HomeShelves.kt        One home, both shapes: the shelf walk, the hero
+    ├── HomeScreens.kt        Shared home pieces: rails, header, Channels tab
     ├── VideoGrid.kt          Poster grid, hold menu, queue list, watched shelf
     ├── Tiles.kt              Shared tile pieces: PosterImage, pressScale, chips
     ├── FocusHighlight.kt     TV focus ring + D-pad helpers (hold, throttle)
@@ -183,14 +185,16 @@ MainActivity.onCreate
   ├─ resolveActive()     dedicated kid | single kid | remembered pick | picker
   ├─ WhosWatchingScreen  (2+ kids on a shared device)
   └─ YosemiteScreen(vm)  keyed per kid: MainViewModel over that kid's stores
+        ├─ Home = KidHome (both shapes): greeting header (TimeChip /
+        │    BlockedBanner), then UiState.homeSections in order — pinned
+        │    hero, Channels, Keep watching, More like what you watch,
+        │    Videos (control row + feed), Watched lately. Empty shelves
+        │    collapse. Phone draws it as a LazyVerticalGrid whose cells are
+        │    the feed; TV as a LazyColumn with the feed three across.
         ├─ Phone: bottom tabs Home / Channels / Favorites / Search
-        │    Home = PhoneHome: greeting header (TimeChip / BlockedBanner),
-        │           Keep watching, channel chips + Show all, "New for you"
-        │           feed (UiState.feed = interleave of per-channel caches)
         │    Channels = ChannelsScreen (rounded tiles + shelves)
         │    Favorites = Watchlist with ShelfChips (Watch later / Up next / Downloads)
         │    Search = Screen.Search (field, mic, recents) → SearchResults
-        ├─ TV: TvHomeRows (Keep watching / Channels / Explore rows)
         ├─ ChannelVideos / Surprise / WatchLater / Queue / Downloads /
         │  SearchResults / WatchedVideos — VideoGrid (cards on phone, tiles on TV)
         └─ onPlay → Intent(PlayerActivity) with EXTRA_QUEUE(+titles/thumbs/
@@ -289,7 +293,9 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Change an icon, the type scale, a chip or the channel art | `ui/Icons.kt` (the drawn Material Symbols), `Theme.kt` (`YosemiteTypography`, `relativeAge`), `ui/Components.kt` (`YosemiteChip`, `ChannelArt`, `NewPill`, `HeaderIconButton`, `metaLine`) — emoji are content (avatars, cards), never chrome |
 | Change playback quality (Auto or a ceiling) | `NetworkQuality.kt` `QualityTargets` (`userMaxHeight`, `effectiveMaxHeight`), `Whitelist.qualityTv/qualityPhone`, the Playback settings page, `PlayerActivity.setQuality` |
 | Change how many videos a grid shows before "Show more" | `Whitelist.pageSize` → `UiState.pageSize` → `VideoGrid(pageSize = …)` |
-| Change the kid's sort/filter chips or their defaults | `HomeState.orderChannels` / `filterVideos` (pure), `KidPrefs` (per-kid persistence), `MainViewModel.setChannelSort` / `setHomeFilter` / `setChannelFilter`; chips in `HomeScreens.kt` (`ChannelSortChips`, `VideoFilterChips`, TV `CycleChip`) |
+| Change the kid's sort/filter chips or their defaults | `HomeState.orderChannels` / `filterVideos` (pure), `KidPrefs` (per-kid persistence), `MainViewModel.setChannelSort` / `setHomeFilter` / `setChannelFilter`; chips in `HomeScreens.kt` (`ChannelSortChips`, `VideoFilterChips`) and `HomeShelves.kt` (`FeedControlRow`) |
+| Add, reorder or restyle a home shelf | `HomeSections.kt` (the id, the catalogue), then its branch in `HomeShelves.kt` `drawShelves` — guard 33 fails if you do only one. Sizes are `homeMetrics`; the hero is `PinnedHeroCarousel` (phone) / `PinnedHeroRow` (TV) |
+| Change what the pinned hero shows | `MainViewModel.standInPins` / `pinnedRow` (the parent's list is still a TODO), `HomeSections.resolvePins` (fail-closed, `HomeSectionsTest`) |
 | Change the You tab | `YouScreen.kt`, `MainViewModel.youShelves` / `openYou` |
 | Change what "More like what you watch" suggests | `HomeState.suggestionsFor` / `titleKeywords` (pure — `SuggestionsTest` covers it), fed by `MainViewModel.suggestionsRow`, switched by `Whitelist.suggestSimilar` |
 | Change the profile hub or the look editor | `ProfileHub.kt`; the sync-back is `data/ProfileLooks.kt` + `GET /looks` + `MainViewModel.syncConfigState` (`mergeLooks`) + `MainActivity.onChangeLook` |

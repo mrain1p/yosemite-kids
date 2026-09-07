@@ -322,83 +322,61 @@ fun YosemiteScreen(
                 }
                 s.error != null -> FriendlyError(s.error, onRetry = vm::retryCurrent)
                 s.screen is Screen.Home -> {
-                    // TV gets the ten-foot layout: horizontal rows under a pinned
-                    // focus, like every streaming app's browse screen. No touch, so
-                    // no pull-to-refresh either (auto + poll refresh cover it).
-                    if (isTv) {
-                        TvHomeRows(
-                            channels = s.channels,
-                            newBadges = s.newBadges,
-                            keepWatching = s.keepWatching,
-                            suggested = s.suggested,
-                            busy = s.refreshing || s.syncing,
-                            feed = s.feed,
-                            recentHistory = s.recentHistory,
-                            channelAvatars = s.channelAvatars,
-                            onPlay = onPlay,
-                            onOpenMenu = { feedMenuFor = it },
-                            onDismissKeepWatching = vm::dismissKeepWatching,
-                            onOpen = vm::openChannel,
-                            onOpenHistory = vm::openHistory,
-                            onSurprise = vm::surpriseMe,
-                            onOpenWatchlist = vm::openWatchlist,
-                            hasWatchLater = s.watchLater.isNotEmpty(),
-                            onOpenWatchLater = vm::openWatchLater,
-                            hasQueue = s.queued.isNotEmpty(),
-                            onOpenQueue = vm::openQueue,
-                            onOpenSettings = onOpenSettings,
-                            activeProfile = activeProfile,
-                            onSwitchProfile = onSwitchProfile,
-                            onSearch = vm::search,
-                            remainingMs = s.remainingMs,
-                            blockReason = s.blockReason,
-                            allHeld = s.allHeld,
-                            onOpenHub = openHub,
-                            onOpenYou = vm::openYou,
-                            channelSort = s.channelSort,
-                            onSort = vm::setChannelSort,
-                            homeFilter = s.homeFilter,
-                            onHomeFilter = vm::setHomeFilter
-                        )
-                    } else {
-                        PullToRefreshBox(
-                            isRefreshing = s.refreshing,
-                            onRefresh = { vm.refresh(userInitiated = true) },
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            PhoneHome(
-                                state = s,
+                    // One home, both shapes: the shelves and their order are
+                    // s.homeSections, and KidHome draws that list. What is left
+                    // here is what genuinely belongs to the surroundings — the
+                    // page header, and the pull-to-refresh a remote cannot do.
+                    val home: @Composable () -> Unit = {
+                        KidHome(
+                            state = s,
+                            actions = HomeActions(
                                 onPlay = onPlay,
-                                onDismissKeepWatching = vm::dismissKeepWatching,
                                 onOpen = vm::openChannel,
-                                onSurprise = vm::surpriseMe,
-                                onShowAllChannels = vm::openChannels,
+                                onDismissKeepWatching = vm::dismissKeepWatching,
                                 onOpenMenu = { feedMenuFor = it },
                                 onOpenChannelByName = vm::openChannelByName,
-                                onOpenSettings = onOpenSettings,
-                                activeProfile = activeProfile,
-                                onSwitchProfile = onSwitchProfile,
-                                onSearch = vm::search,
-                                onOpenHub = openHub,
-                                homeFilter = s.homeFilter,
+                                onShowAllChannels = vm::openChannels,
+                                onOpenHistory = vm::openHistory,
+                                onSurprise = vm::surpriseMe,
                                 onHomeFilter = vm::setHomeFilter,
-                                onOpenSearch = vm::openSearch,
-                                onQuickAction = { action ->
-                                    when (action) {
-                                        HomeQuickAction.Favorites -> vm.openWatchlist()
-                                        // The Channels tab, already in the order
-                                        // the chip names — one press, not two.
-                                        HomeQuickAction.MostWatched -> {
-                                            vm.setChannelSort(CHANNEL_ORDER_WATCHED); vm.openChannels()
-                                        }
-                                        HomeQuickAction.Latest -> {
-                                            vm.setChannelSort(CHANNEL_ORDER_LATEST); vm.openChannels()
-                                        }
+                                // The television has no tab bar, so the control
+                                // row carries its only door to the kid's own
+                                // shelves. A phone's tab bar already has one.
+                                extras = if (!isTv) null else {
+                                    {
+                                        YosemiteChip(
+                                            "You", selected = false,
+                                            icon = Icons.Filled.Person, onClick = vm::openYou
+                                        )
+                                        if (s.queued.isNotEmpty()) YosemiteChip(
+                                            "Up next", selected = false,
+                                            icon = YosemiteIcons.UpNext, onClick = vm::openQueue
+                                        )
                                     }
                                 }
-                            )
-                        }
+                            ),
+                            header = {
+                                HomeHeader(
+                                    onOpenSettings, activeProfile, onSwitchProfile, vm::search,
+                                    s.remainingMs, s.blockReason, greet = true,
+                                    busy = s.refreshing || s.syncing,
+                                    // The phone's search is a page behind the top
+                                    // bar's icon; the TV unfolds a field in place.
+                                    showSearch = isTv,
+                                    onOpenHub = openHub,
+                                    onOpenSearch = if (isTv) null else vm::openSearch
+                                )
+                            },
+                            onOpenSettings = onOpenSettings
+                        )
                     }
+                    // No touch on a television, so no pull-to-refresh either —
+                    // the auto and poll refreshes cover it there.
+                    if (isTv) home() else PullToRefreshBox(
+                        isRefreshing = s.refreshing,
+                        onRefresh = { vm.refresh(userInitiated = true) },
+                        modifier = Modifier.fillMaxSize()
+                    ) { home() }
                 }
                 s.screen is Screen.Channels -> Column(Modifier.fillMaxSize()) {
                     val count = "${s.channels.size} channel${if (s.channels.size == 1) "" else "s"}"
