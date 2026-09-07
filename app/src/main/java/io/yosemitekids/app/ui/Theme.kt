@@ -369,6 +369,24 @@ fun remainingLabel(ms: Long): String {
 }
 
 /**
+ * The same number, short enough to ride a top bar: "20m", "1h 5m", "<1m".
+ *
+ * [remainingLabel] is a sentence, and a sentence in the header pill cost the
+ * page title about half its width on a 380 dp phone — the title was ellipsing
+ * to "Hi, Ame…" so the chip could say "left". The long form is still what the
+ * player says and still what a screen reader reads out; this is only the
+ * glanceable spelling.
+ */
+fun remainingShort(ms: Long): String {
+    val min = (ms / 60_000L).toInt()
+    return when {
+        ms < 60_000L -> "<1m"
+        min >= 60 -> "${min / 60}h ${min % 60}m"
+        else -> "${min}m"
+    }
+}
+
+/**
  * SponsorBlock-marked stretches on the player scrubber. Green by the same
  * borrowed-convention logic as [WatchedProgressRed]: SmartTube et al. taught
  * viewers that green-on-the-bar means "this part will be skipped".

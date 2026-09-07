@@ -12,6 +12,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -400,22 +401,28 @@ fun YosemiteScreen(
                     }
                 }
                 s.screen is Screen.Channels -> Column(Modifier.fillMaxSize()) {
-                    Row(
+                    val count = "${s.channels.size} channel${if (s.channels.size == 1) "" else "s"}"
+                    if (phone) PhoneTopBar(
+                        title = "Channels",
+                        subtitle = count,
+                        profile = activeProfile,
+                        onOpenHub = openHub,
+                        onOpenSearch = vm::openSearch,
+                        remainingMs = s.remainingMs?.takeIf { s.blockReason == null },
+                        busy = s.refreshing || s.syncing
+                    ) else Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp, horizontal = 4.dp)
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text("Channels", style = MaterialTheme.typography.titleLarge)
                             Text(
-                                "${s.channels.size} channel${if (s.channels.size == 1) "" else "s"}",
+                                count,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        HeaderActions(
-                            activeProfile, openHub, if (phone) vm::openSearch else null,
-                            busy = s.refreshing || s.syncing
-                        )
+                        HeaderActions(activeProfile, openHub, null, busy = s.refreshing || s.syncing)
                     }
                     ChannelsScreen(
                         state = s,
@@ -802,25 +809,84 @@ fun YosemiteScreen(
         // first-run screen is the whole story then.
         if (phone && state.channels.isNotEmpty()) {
             val current = tabFor(state.screen)
-            NavigationBar(tonalElevation = 0.dp) {
-                Tab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = current == tab,
-                        onClick = {
-                            when (tab) {
-                                Tab.Home -> vm.goHome()
-                                Tab.Channels -> vm.openChannels()
-                                Tab.You -> vm.openYou()
+            val tokens = kidTokens
+            // Rolled by hand rather than a NavigationBar: the pill is the whole
+            // tab cell here — a rounded rectangle behind icon *and* label —
+            // and Material's indicator is a fixed capsule behind the icon
+            // alone, sized and shaped by the theme rather than the call site.
+            // Same three destinations, same three calls; only the drawing moved.
+            Column(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer)
+            ) {
+                // The one rule the bar needs: without it the tab strip and the
+                // page behind it are two flat blocks of near-identical grey and
+                // the bar stops reading as a separate surface.
+                Box(
+                    Modifier.fillMaxWidth().height(1.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(start = 8.dp, end = 8.dp, top = 9.dp, bottom = 14.dp)
+                ) {
+                    Tab.entries.forEach { tab ->
+                        val selected = current == tab
+                        val fg = if (selected) tokens.action
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.surfaceContainerHigh
+                                    else Color.Transparent
+                                )
+                                .selectable(
+                                    selected = selected,
+                                    role = androidx.compose.ui.semantics.Role.Tab
+                                ) {
+                                    when (tab) {
+                                        Tab.Home -> vm.goHome()
+                                        Tab.Channels -> vm.openChannels()
+                                        Tab.You -> vm.openYou()
+                                    }
+                                }
+                                // 7 + 22 + 3 + label ≈ 53 dp of target, well
+                                // clear of the 44 dp floor even before the
+                                // bar's own padding.
+                                .padding(vertical = 7.dp)
+                        ) {
+                            Box(Modifier.height(22.dp), contentAlignment = Alignment.Center) {
+                                // The You tab is the kid's own face, when they
+                                // have one — at the glyph's size, not above it:
+                                // a filled disc already reads heavier than a
+                                // stroked icon, and any larger it out-shouted
+                                // whichever tab was actually selected.
+                                if (tab == Tab.You && activeProfile != null) {
+                                    ProfileAvatar(activeProfile, size = 19)
+                                } else Icon(
+                                    tab.icon, contentDescription = null, tint = fg,
+                                    modifier = Modifier.size(19.dp)
+                                )
                             }
-                        },
-                        icon = {
-                            // The You tab is the kid's own face, when they have one.
-                            if (tab == Tab.You && activeProfile != null) {
-                                ProfileAvatar(activeProfile, size = 28)
-                            } else Icon(tab.icon, contentDescription = null, modifier = Modifier.size(26.dp))
-                        },
-                        label = { Text(tab.label, style = MaterialTheme.typography.labelMedium) }
-                    )
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                tab.label,
+                                color = fg,
+                                maxLines = 1,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = androidx.compose.ui.unit.TextUnit(
+                                        10.5f, androidx.compose.ui.unit.TextUnitType.Sp
+                                    ),
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }

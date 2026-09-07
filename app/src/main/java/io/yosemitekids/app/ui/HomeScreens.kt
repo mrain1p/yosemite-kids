@@ -643,12 +643,34 @@ internal fun HomeHeader(
      */
     onOpenHub: (() -> Unit)? = null,
     /** Phones: the search icon opens the search page instead of an inline field. */
-    onOpenSearch: (() -> Unit)? = null
+    onOpenSearch: (() -> Unit)? = null,
+    formFactor: FormFactor = LocalFormFactor.current
 ) {
     // Collapsed by default: the field costs a full row of home space, so it
     // appears only when the search icon is tapped. State lives here so both
     // home layouts share the behavior.
     var searchOpen by remember { mutableStateOf(false) }
+    // The phone's chrome is one bar shared with the Channels and You tabs, so
+    // home does not get to invent its own. The ten-foot header below is a
+    // different object entirely — no tab bar under it, a remote rather than a
+    // thumb, and the wordmark instead of a greeting — and stays where it is.
+    if (formFactor.isPhone) {
+        Column(Modifier.fillMaxWidth()) {
+            PhoneTopBar(
+                title = if (greet && activeProfile != null) "Hi, ${activeProfile.name}"
+                else "Yosemite Kids",
+                profile = activeProfile,
+                onOpenHub = onOpenHub ?: onSwitchProfile,
+                onOpenSearch = onOpenSearch,
+                // Hidden while a rule blocks watching outright — the banner
+                // below says why instead, and says it in words.
+                remainingMs = remainingMs?.takeIf { blockReason == null },
+                busy = busy
+            )
+            blockReason?.let { Box(Modifier.padding(horizontal = 16.dp)) { BlockedBanner(it) } }
+        }
+        return
+    }
     Column(Modifier.fillMaxWidth()) {
     Row(
         verticalAlignment = Alignment.CenterVertically,

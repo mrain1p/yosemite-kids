@@ -27,6 +27,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -142,31 +144,57 @@ internal fun SpecialTile(
 }
 
 /**
- * "42 min left" with a timer, in the home header. Amber inside the last five
- * minutes so the kid sees it coming before the player's pill says so.
+ * "20m" behind an amber dot: the time-left pill that rides the top bar.
+ *
+ * A dot rather than a timer glyph, and mono rather than the text face, because
+ * this is a number that changes under the eye — a proportional face makes the
+ * pill twitch every time the digits change width, and at 11 sp the clock face
+ * was three grey pixels doing no work.
+ *
+ * Both colours come from the scheme, which is the fix for a real bug and not
+ * tidying: the fill used to be `primaryContainer` with a hard-coded white
+ * label, which is 1.45:1 on the light theme's pale teal — invisible. The
+ * raised surface carries `onSurface` in all three looks by construction.
+ *
+ * Inside the last five minutes the fill drops back to the page's own ground so
+ * the label can be drawn in [KidTokens.timeWarning], which is the one colour
+ * guaranteed (by `KidThemeContrastTest`) to clear 4.5:1 against *that*
+ * background on every look and every kid's tint. Amber text on the raised step
+ * is not: it lands at 3.8:1 on paper, and 11 sp is not large text.
  */
 @Composable
 internal fun TimeChip(remainingMs: Long) {
+    val tokens = kidTokens
     val urgent = remainingMs <= 5 * 60_000L
+    val label = if (urgent) tokens.timeWarning else MaterialTheme.colorScheme.onSurface
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
+            .height(28.dp)
+            .clip(RoundedCornerShape(9.dp))
             .background(
-                if (urgent) Color(0xFFB26A00) else MaterialTheme.colorScheme.primaryContainer,
-                RoundedCornerShape(16.dp)
+                if (urgent) MaterialTheme.colorScheme.background
+                else MaterialTheme.colorScheme.surfaceContainerHigh
             )
-            .padding(horizontal = 10.dp, vertical = 5.dp)
+            .then(
+                if (urgent) Modifier.border(1.dp, tokens.timeWarning, RoundedCornerShape(9.dp))
+                else Modifier
+            )
+            .padding(horizontal = 9.dp)
+            // The pill says "20m"; a screen reader still gets the sentence.
+            .semantics { contentDescription = remainingLabel(remainingMs) }
     ) {
-        androidx.compose.material3.Icon(
-            YosemiteIcons.Timer, contentDescription = null, tint = Color.White,
-            modifier = Modifier.size(16.dp)
-        )
-        Spacer(Modifier.width(5.dp))
+        Box(Modifier.size(7.dp).background(tokens.timeWarning, CircleShape))
+        Spacer(Modifier.width(6.dp))
         Text(
-            remainingLabel(remainingMs),
+            remainingShort(remainingMs),
             maxLines = 1,
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-            color = Color.White
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = TextUnit(11f, TextUnitType.Sp),
+                fontWeight = FontWeight.Bold,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+            ),
+            color = label
         )
     }
 }

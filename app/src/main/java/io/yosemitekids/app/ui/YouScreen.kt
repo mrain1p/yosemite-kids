@@ -90,6 +90,25 @@ internal fun YouScreen(
         modifier = Modifier.fillMaxSize()
     ) {
         item(key = "you-header", span = { GridItemSpan(maxLineSpan) }) {
+            if (!isTv) {
+                // The same bar as Home and Channels — this page is a tab, not a
+                // destination, and a tab that redraws the furniture reads as a
+                // different app.
+                Column {
+                    PhoneTopBar(
+                        title = profile?.name ?: "You",
+                        profile = profile,
+                        onOpenHub = onOpenHub,
+                        onOpenSearch = onOpenSearch,
+                        remainingMs = state.remainingMs?.takeIf { state.blockReason == null },
+                        busy = state.refreshing || state.syncing
+                    )
+                    state.blockReason?.let {
+                        Box(Modifier.padding(horizontal = 16.dp)) { BlockedBanner(it) }
+                    }
+                }
+                return@item
+            }
             Column(Modifier.padding(horizontal = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     // The kid's name is the page title, and the avatar lives in

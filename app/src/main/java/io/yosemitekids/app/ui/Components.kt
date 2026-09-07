@@ -4,10 +4,13 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -79,6 +82,152 @@ internal fun YosemiteChip(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
             )
         )
+    }
+}
+
+/**
+ * The phone's one top bar, in whatever state the page it sits on puts it:
+ * the mark, the page name, time left, search, the kid's face.
+ *
+ * It is one composable and not three because it used to be three. Home drew a
+ * logo and a greeting, Channels drew a title and a count, You drew a name and
+ * a chip, and the three drifted — different heights, the avatar at three
+ * sizes, the time pill on two of them. A kid moving between tabs saw the
+ * furniture jump. Anything that belongs to a page goes in [subtitle]; the rest
+ * of the bar is the same object on every tab.
+ *
+ * Leaf, not container: it takes what it draws, so a preview or a test can
+ * render any state of it without a view model.
+ */
+@Composable
+internal fun PhoneTopBar(
+    /** The page's own name: "Hi, Amelia", "Channels", the kid's name on You. */
+    title: String,
+    profile: io.yosemitekids.app.data.Profile?,
+    /** The avatar's destination — the profile hub, and the only door to settings. */
+    onOpenHub: (() -> Unit)?,
+    onOpenSearch: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    /** A page's own line under the title, drawn as a mono micro-label. */
+    subtitle: String? = null,
+    /** Minutes left today. Null, or blocked outright, and the pill stays away. */
+    remainingMs: Long? = null,
+    /** Something is arriving; draws the slow arc round the avatar. */
+    busy: Boolean = false
+) {
+    val tokens = kidTokens
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp)
+    ) {
+        AppMarkTile()
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = androidx.compose.ui.unit.TextUnit(
+                        19f, androidx.compose.ui.unit.TextUnitType.Sp
+                    ),
+                    lineHeight = androidx.compose.ui.unit.TextUnit(
+                        24f, androidx.compose.ui.unit.TextUnitType.Sp
+                    ),
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            if (subtitle != null) Text(
+                subtitle.uppercase(),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                // The micro-label: mono, wide-tracked, small. It is a count,
+                // and counts are the one thing in this app that are read as
+                // digits rather than as words.
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = androidx.compose.ui.unit.TextUnit(
+                        9.5f, androidx.compose.ui.unit.TextUnitType.Sp
+                    ),
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = androidx.compose.ui.unit.TextUnit(
+                        0.14f, androidx.compose.ui.unit.TextUnitType.Em
+                    ),
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                )
+            )
+        }
+        if (remainingMs != null) TimeChip(remainingMs)
+        if (onOpenSearch != null) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .clickable { onOpenSearch() }
+            ) {
+                Icon(
+                    Icons.Filled.Search, contentDescription = "Search",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(21.dp)
+                )
+            }
+        }
+        if (onOpenHub != null) {
+            // 40 dp of face inside a 44 dp target: the drawn size is the
+            // design's, the hit area is the platform minimum, and the two are
+            // deliberately not the same number.
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .clickable { onOpenHub() }
+            ) {
+                if (busy) BusyRing()
+                if (profile != null) ProfileAvatar(profile, size = 40)
+                else Icon(
+                    Icons.Filled.Person,
+                    contentDescription = "Profile",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The launcher tile at header scale: the action colour, a play triangle, the
+ * app's one piece of branding on a kid's screen.
+ *
+ * The triangle is drawn rather than set as "▶" because the glyph's side
+ * bearings and line-height padding put it visibly off-centre in a tile this
+ * small. These fractions are `ic_launcher.xml`'s, so the triangle's centroid —
+ * not its bounding box — lands on the middle, which is what the eye reads as
+ * centred.
+ */
+@Composable
+private fun AppMarkTile(size: Dp = 34.dp) {
+    val tokens = kidTokens
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.size(size).background(tokens.action, RoundedCornerShape(11.dp))
+    ) {
+        androidx.compose.foundation.Canvas(Modifier.size(size)) {
+            val w = this.size.width
+            val h = this.size.height
+            val play = androidx.compose.ui.graphics.Path().apply {
+                moveTo(w * 0.38f, h * 0.28f)
+                lineTo(w * 0.76f, h * 0.50f)
+                lineTo(w * 0.38f, h * 0.72f)
+                close()
+            }
+            drawPath(play, tokens.onAction)
+        }
     }
 }
 
