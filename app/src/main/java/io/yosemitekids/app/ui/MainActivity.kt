@@ -397,8 +397,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         screener = screener,
                         activeProfileId = activeProfileId,
                         channelIndex = io.yosemitekids.app.data.ChannelIndex(applicationContext),
-                        searchHistory = if (deviceIsTv) null
-                            else SearchHistoryStore(applicationContext, profileSuffix),
+                        // Both shapes now. The television went without a history
+                        // for as long as it had no search; the rail gives it one.
+                        searchHistory = SearchHistoryStore(applicationContext, profileSuffix),
                         kidPrefs = io.yosemitekids.app.data.KidPrefs(applicationContext, profileSuffix)
                     )
                 }

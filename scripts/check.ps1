@@ -1074,6 +1074,57 @@ if (($tlCode -join "`n") -notmatch "interpolateRemainingMs\(") {
     Fail-Guard "TimeLeft.kt no longer calls interpolateRemainingMs. Whatever now produces the chrome's time-left must be a pure function with a test, or the value goes stale again."
 }
 
+# 35. A focus modifier only sees what comes AFTER it in the chain.
+#     Two of them, and both fail in total silence.
+#
+#     onFocusChanged reports on the focus targets that FOLLOW it, so a
+#     container watching its own subtree writes `.onFocusChanged { }
+#     .focusGroup()`. Written the other way round it observes its ancestor
+#     instead, the callback never fires for anything inside, and the feature
+#     built on it — the TV nav rail collapsing when the remote leaves it —
+#     simply never happens. Nothing throws, nothing logs, and it reads in
+#     review as a design decision rather than as a bug.
+#
+#     focusRestorer has the same shape: it needs a focus target after it to
+#     restore INTO, so it is `.focusRestorer().focusGroup()` (or straight onto
+#     a lazy container, which supplies its own). Alone at the end of a chain
+#     it is dead code that looks like a fix for the exact bug it is not
+#     fixing.
+#
+#     And it may not sit on the page beside the rail at all. It was put there
+#     so a dismissed dialog would hand the remote back to the kid's tile; on
+#     the emulator its exit hook swallowed the LEFT press that should have
+#     reached the rail, and the focus loss it was guarding against was then
+#     measured and does not happen (the content Box in YosemiteScreen.kt says
+#     what was pressed). Anyone putting it back there is fixing a bug that is
+#     not there and breaking the one thing the rail must do.
+#
+#     The rail's own pair has to exist, not just be in the right order: take
+#     the focusGroup off the rail's Column and onFocusChanged has nothing
+#     after it to observe, and the rail never collapses — same silence.
+#
+#     Only the reversed adjacency is flagged, so this cannot fire on an
+#     unrelated onFocusChanged somewhere else in the same file.
+#     Whitespace is stripped first, so a chain broken over four lines - which
+#     is every chain in this codebase - reads as one string.
+foreach ($f in @(Get-ChildItem -Recurse -Filter *.kt app/src/main)) {
+    $flat = (Get-Content $f.FullName -Raw) -replace '\s', ''
+    if ($flat -match "focusGroup\(\)\.onFocusChanged") {
+        Fail-Guard "$($f.Name) writes .focusGroup().onFocusChanged. onFocusChanged only observes focus targets that FOLLOW it, so that order watches the ancestor and never fires for the group's own children. Write .onFocusChanged { }.focusGroup()."
+    }
+    $all = @([regex]::Matches($flat, '\.focusRestorer\([^)]*\)'))
+    $ok = @([regex]::Matches($flat, '\.focusRestorer\([^)]*\)\.(focusGroup|focusTarget|focusProperties)\('))
+    if ($all.Count -ne $ok.Count) {
+        Fail-Guard "$($f.Name) applies .focusRestorer() with no focus target after it. It restores into the NEXT focus target in the chain; on its own it does nothing at all. Write .focusRestorer().focusGroup()."
+    }
+    if ($all.Count -gt 0 -and $f.Name -eq "YosemiteScreen.kt") {
+        Fail-Guard "YosemiteScreen.kt applies .focusRestorer(). On the page beside the TV nav rail its exit hook ate the LEFT press into the rail, and the focus loss it was meant to cure was measured on the emulator and does not happen. Leave the page a plain focusGroup; the content Box there says what was pressed."
+    }
+}
+$railFlat = (Get-Content "app/src/main/java/io/yosemitekids/app/ui/TvNavRail.kt" -Raw) -replace '\s', ''
+if ($railFlat -notmatch '\.onFocusChanged\{[^}]*\}\.focusGroup\(\)') {
+    Fail-Guard "TvNavRail.kt no longer has .onFocusChanged { }.focusGroup() on the rail's Column. That pair is how the host learns the remote has left the rail; without it the rail never collapses and nothing says so."
+
 # 36. No colour literal on a kid-facing screen.
 #     Every hue a kid sees comes from the scheme (the three looks and the
 #     per-kid tint) or from KidTokens (action, timeWarning, watched, offline,

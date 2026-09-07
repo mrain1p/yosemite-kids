@@ -449,6 +449,13 @@ internal fun HomeHeader(
     onOpenHub: (() -> Unit)? = null,
     /** Phones: the search icon opens the search page instead of an inline field. */
     onOpenSearch: (() -> Unit)? = null,
+    /**
+     * A nav rail beside this page already carries the mark, the kid's name,
+     * the time left and search, so the header drops all four and is just the
+     * page heading and the avatar. Television only — the phone's top bar is
+     * the only chrome it has and keeps everything.
+     */
+    railChrome: Boolean = false,
     formFactor: FormFactor = LocalFormFactor.current
 ) {
     // Collapsed by default: the field costs a full row of home space, so it
@@ -481,7 +488,9 @@ internal fun HomeHeader(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
             // Mini logo mark: dark teal square, white play triangle — the
-            // launcher tile at header scale.
+            // launcher tile at header scale. Gone when a rail is drawing the
+            // app's mark two inches to the left of it.
+            if (!railChrome) {
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
@@ -506,6 +515,7 @@ internal fun HomeHeader(
                 }
             }
             Spacer(Modifier.width(10.dp))
+            }
             Text(
                 if (greet && activeProfile != null) "Hi, ${activeProfile.name}" else "Yosemite Kids",
                 maxLines = 1,
@@ -518,12 +528,14 @@ internal fun HomeHeader(
             // banner below says why instead. The spacer goes with it: an
             // absent pill must not leave a gap where a number used to be, and
             // the check belongs inside the pill so this header is not
-            // recomposed once a second to ask.
-            TimeLeftPill(timeLeft, leadingGap = 10.dp)
+            // recomposed once a second to ask. The rail's card is the same
+            // number from the same State, so only one of them is ever drawn.
+            if (!railChrome) TimeLeftPill(timeLeft, leadingGap = 10.dp)
         }
         // Search is a task, not a place: one icon in every header. Phones
         // open the search page; the TV (no tabs, no page) unfolds the field.
-        if (showSearch || onOpenSearch != null) {
+        // The rail has its own Search stop, so the icon goes with it.
+        if (!railChrome && (showSearch || onOpenSearch != null)) {
             HeaderIconButton(Icons.Filled.Search, "Search", onClick = {
                 if (onOpenSearch != null) onOpenSearch() else searchOpen = !searchOpen
             })

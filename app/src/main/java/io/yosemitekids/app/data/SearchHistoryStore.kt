@@ -25,6 +25,16 @@ class SearchHistoryStore(context: Context, profileSuffix: String = "") {
         prefs.edit().putString("recent", JSONArray(next.take(MAX)).toString()).apply()
     }
 
+    /**
+     * One term, gone. Search history is the single thing a kid may delete on
+     * their own — everything else they collect is cleared by a parent — so the
+     * per-chip × has to be real, not a Clear-all in disguise.
+     */
+    fun remove(query: String) {
+        val next = recent().filterNot { it.equals(query.trim(), ignoreCase = true) }
+        prefs.edit().putString("recent", JSONArray(next).toString()).apply()
+    }
+
     fun clear() {
         prefs.edit().remove("recent").apply()
     }
