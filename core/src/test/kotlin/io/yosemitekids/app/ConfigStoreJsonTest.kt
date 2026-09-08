@@ -185,4 +185,65 @@ class ConfigStoreJsonTest {
         // Files carry links only — the multiplier itself is UI/sync-managed.
         assertEquals(100, reparsed.sources[0].timeMultiplierPercent)
     }
+
+    // --- homeZone: the four canonical tests ------------------------------
+    //
+    // A field a family never touches must cost them nothing: the same bytes on
+    // disk, the same fingerprint on the wire, and therefore no fleet-wide
+    // re-push at upgrade. Asserted here rather than promised in a comment.
+
+    @Test
+    fun `a home zone survives a JSON round-trip and clears back to null`() {
+        val plain = Whitelist(listOf(entry("UCa")), emptySet())
+        assertEquals(
+            "Pacific/Auckland",
+            ConfigJson.fromJson(ConfigJson.toJson(plain.copy(homeZone = "Pacific/Auckland"))).homeZone
+        )
+        val cleared = plain.copy(homeZone = "Pacific/Auckland").copy(homeZone = null)
+        assertEquals(null, ConfigJson.fromJson(ConfigJson.toJson(cleared)).homeZone)
+        // A blank is not a zone, and must not become one on the round trip.
+        assertEquals(null, ConfigJson.fromJson(ConfigJson.toJson(plain.copy(homeZone = ""))).homeZone)
+    }
+
+    @Test
+    fun `no home zone is omitted from JSON, byte for byte as before the field`() {
+        val plain = Whitelist(listOf(entry("UCa")), emptySet())
+        val json = ConfigJson.toJson(plain)
+        assertFalse(json.contains("homeZone"))
+        assertEquals(null, ConfigJson.fromJson(json).homeZone)
+        // Explicitly: a document written by this build and one written by the
+        // build before it are the same bytes for a family that never sets one.
+        // `updatedAt` is stamped at serialization time and is the one field
+        // that legitimately moves between two calls (see PLAN-sync's "two
+        // clocks"), so it is normalised out rather than the comparison being
+        // weakened to a substring.
+        fun bytes(w: Whitelist) =
+            ConfigJson.toJson(w).replace(Regex("\"updatedAt\": \\d+"), "\"updatedAt\": 0")
+        assertEquals(bytes(plain), bytes(plain.copy(homeZone = null)))
+    }
+
+    @Test
+    fun `configs with no home zone keep their pre-homeZone fingerprint`() {
+        val plain = Whitelist(listOf(entry("UCa")), emptySet())
+        assertEquals(
+            ConfigJson.fingerprint(plain),
+            ConfigJson.fingerprint(plain.copy(homeZone = null))
+        )
+    }
+
+    @Test
+    fun `setting a home zone moves the fingerprint so the reconcile delivers it`() {
+        val plain = Whitelist(listOf(entry("UCa")), emptySet())
+        assertNotEquals(
+            ConfigJson.fingerprint(plain),
+            ConfigJson.fingerprint(plain.copy(homeZone = "Pacific/Auckland"))
+        )
+        // And two zones are two hashes: the offline reconcile only re-pushes
+        // on a mismatch, so a changed zone that did not move the hash would
+        // never reach the television that has to bucket its minutes by it.
+        assertNotEquals(
+            ConfigJson.fingerprint(plain.copy(homeZone = "Pacific/Auckland")),
+            ConfigJson.fingerprint(plain.copy(homeZone = "Europe/London"))
+        )
+    }
 }

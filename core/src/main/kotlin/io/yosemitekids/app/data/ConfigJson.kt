@@ -142,6 +142,12 @@ object ConfigJson {
                 w.qualityPhone?.let { append(";QP:"); append(it) }
                 w.pageSize?.let { append(";PS:"); append(it) }
                 if (w.showVideoAge) append(";VA:1")
+                // Append-only-when-set, at the tail like every field since: a
+                // family that never sets a home zone keeps the hash it has,
+                // and one that does must move it, or the offline reconcile
+                // would never carry the zone to the television that has to
+                // bucket its minutes by it.
+                w.homeZone?.let { append(";HZ:"); append(it) }
                 // Append-only-when-set, same reasoning — and it must be in the
                 // hash so the offline reconcile re-pushes a rate change.
                 w.listenPercent?.let { append(";LN:"); append(it) }
@@ -274,6 +280,10 @@ object ConfigJson {
             w.qualityPhone?.let { root.put("qualityPhone", it) }
             w.pageSize?.let { root.put("pageSize", it) }
             if (w.showVideoAge) root.put("showVideoAge", true)
+            // Written only when a family has named one — absent means each
+            // device uses its own zone, including in configs saved by builds
+            // that predate the field.
+            w.homeZone?.let { root.put("homeZone", it) }
             // Written only when set — absent means listening off (see Whitelist).
             w.listenPercent?.let { root.put("listen", it) }
             // Only when a parent has added time: a family that never does keeps
@@ -639,6 +649,11 @@ object ConfigJson {
                 qualityPhone = root.optInt("qualityPhone", 0).takeIf { it in PLAYBACK_QUALITIES },
                 pageSize = root.optInt("pageSize", 0).takeIf { it in PAGE_SIZES },
                 showVideoAge = root.optBoolean("showVideoAge", false),
+                // Kept as written, not resolved here: a device on an older
+                // tzdb that cannot resolve the id must still carry the string
+                // through a merge for the peers that can. FamilyDay.zoneOf is
+                // where an unknown one falls back.
+                homeZone = root.optString("homeZone").ifEmpty { null },
                 // Per-entry lenient, like the sync blob below: a grant a build
                 // cannot read costs the kid those minutes, never the config.
                 grants = grantsFromJson(root.optJSONArray("grants")?.toString()),

@@ -1331,6 +1331,56 @@ if (-not $hubWeb40.Contains("Pins.withRow")) {
     Fail-Guard "HubWeb no longer runs an incoming home patch through Pins.withRow, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedPins."
 }
 
+# 43. One spelling of a family day.
+#     A day is a bucket key, and a value put in one bucket and read out of
+#     another is not an error anybody sees - it is a budget that resets at the
+#     wrong hour, or a grant that stops counting at teatime, for some
+#     households, some of the time. Four things now bucket by day (a grant's
+#     date, SessionGuard's tally, the digest's channel totals, UsageLedger's
+#     cells) and until FamilyDay they each spelled it themselves.
+#     (a) FamilyDay is the only file in :core that formats or parses one.
+#         TimeWindows keeps java.util.Calendar deliberately and is not in the
+#         pattern: a window is a stretch of CLOCK on a day of the WEEK, and it
+#         buckets nothing.
+$famDay = "core/src/main/kotlin/io/yosemitekids/app/data/FamilyDay.kt"
+if (-not (Test-Path $famDay)) {
+    Fail-Guard "$famDay is gone; guard 43 is blind. The family day is minted in one place or it is minted in four."
+}
+foreach ($cal in @("LocalDate", "SimpleDateFormat")) {
+    $stray = @(Get-ChildItem "core/src/main" -Recurse -File -Filter *.kt |
+        Select-String -Pattern $cal -SimpleMatch -CaseSensitive |
+        ForEach-Object { $_.Path } | Sort-Object -Unique |
+        Where-Object { (Split-Path $_ -Leaf) -ne "FamilyDay.kt" })
+    if ($stray.Count -gt 0) {
+        Fail-Guard "$cal is spelled out in [$($stray -join ' ')]. In :core it belongs in $famDay alone - a second spelling of a day splits buckets with no visible symptom."
+    }
+}
+#     (b) The two stores that bucket a kid's minutes take their day from
+#         FamilyDay, never from a format string of their own. The display-only
+#         formatters in DigestScreen, KidStats, StatsScreen and
+#         SettingsImportExport are deliberately left alone: if those disagree
+#         by a day the symptom is a chart, not a lockout.
+foreach ($dayFile in @("app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt",
+                       "app/src/main/java/io/yosemitekids/app/data/Stats.kt")) {
+    if ((Get-Content $dayFile -Raw).Contains('"yyyyMMdd"')) {
+        Fail-Guard "$dayFile spells a day out for itself. Take it from FamilyDay.compact(FamilyDay.of(...)) - this file decides whether a child may watch, and it must bucket the same way everything else does."
+    }
+}
+
+# 45. One reader of the daily tally.
+#     Copied from guard 16's shape, which holds the two bonus stores to one
+#     reader each for exactly this reason. There are seven enforcement sites
+#     in SessionGuard and half a dozen screens that show a number derived from
+#     them; the moment one of them reads the raw counter while the rest read
+#     spentTodayMs(), a home screen promises forty minutes in front of a
+#     player that stops at ten. Nothing throws, and the parent cannot explain
+#     it.
+$tally = @(Get-Content "app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt" |
+    Select-String -Pattern 'getLong("dailyWatchedMs"' -SimpleMatch).Count
+if ($tally -ne 1) {
+    Fail-Guard "SessionGuard.kt reads dailyWatchedMs in $tally places; there is exactly one (ownWatchedMs). Anything asking what a kid has spent goes through spentTodayMs(), so the enforcer and every screen work from one number."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

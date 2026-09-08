@@ -568,6 +568,11 @@ object SettingsSurface {
             "control that could would break causality for the whole household",
         "masterDeviceToken" to "elected between peers by MasterElection, never chosen " +
             "by a parent. Both faces show who holds it and neither offers to set it",
+        "homeZone" to "not a switch a parent goes looking for. It is offered, filled " +
+            "in from the editing phone's own zone, the first time a parent shares a " +
+            "budget across devices — which is the only thing that needs every device " +
+            "to agree what day it is. Until that switch exists this build only carries, " +
+            "stamps and merges it, the way pins shipped a release ahead of their editor",
         "ai.rulesVersion" to "bumped by SettingsForm.toConfig when the rules, the age, " +
             "the model or the endpoint change, so every device re-screens. A parent " +
             "setting it by hand would silently un-screen a catalogue"

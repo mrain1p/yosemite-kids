@@ -4,6 +4,7 @@ import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.ConfigMerge
 import io.yosemitekids.app.data.ConfigStamp
 import io.yosemitekids.app.data.Grant
+import io.yosemitekids.app.data.FamilyDay
 import io.yosemitekids.app.data.Grants
 import io.yosemitekids.app.data.Profile
 import io.yosemitekids.app.data.SyncMeta
@@ -65,7 +66,7 @@ class GrantsTest {
         assertTrue(Grants.expired("2026-09-04", "2026-09-05"))
         assertFalse(Grants.expired("2026-09-05", "2026-09-05"))
         assertFalse(Grants.expired("2026-09-06", "2026-09-05"))
-        assertEquals("2026-09-05", Grants.dateOf(1_788_609_600_000L, ZoneId.of("UTC")))
+        assertEquals("2026-09-05", FamilyDay.of(1_788_609_600_000L, ZoneId.of("UTC")))
     }
 
     @Test
@@ -74,17 +75,17 @@ class GrantsTest {
         // calendar of its own. Days, not milliseconds: the hub's own day is
         // its clock divided by 86_400_000, and one day either side of that is
         // the whole of the bound.
-        assertEquals(0L, Grants.dayNumber("1970-01-01"))
-        assertEquals(1L, Grants.dayNumber("1970-01-02") ?: 0L)
+        assertEquals(0L, FamilyDay.dayNumber("1970-01-01"))
+        assertEquals(1L, FamilyDay.dayNumber("1970-01-02") ?: 0L)
         assertEquals(
             "the epoch day and the day the same instant falls on in UTC must agree",
             1_788_609_600_000L / (24L * 60 * 60 * 1000),
-            Grants.dayNumber("2026-09-05")
+            FamilyDay.dayNumber("2026-09-05")
         )
         // Anything that is not a day at all answers null rather than a
         // number, so a bound built on it refuses rather than accepting zero.
         listOf("", "today", "2026-9-5", "2026-13-40", "2026-09-05T10:00")
-            .forEach { assertNull("\"$it\" is not a day", Grants.dayNumber(it)) }
+            .forEach { assertNull("\"$it\" is not a day", FamilyDay.dayNumber(it)) }
     }
 
     // --- the wire ---------------------------------------------------------

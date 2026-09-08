@@ -1161,6 +1161,50 @@ grep -qE "^const val HOME_PINS_MAX = Pins[.]MAX$" app/src/main/java/io/yosemitek
 grep -qF "Pins.withRow" hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt ||
   guard_fail "HubWeb no longer runs an incoming home patch through Pins.withRow, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedPins."
 
+# 43. One spelling of a family day.
+#     A day is a bucket key, and a value put in one bucket and read out of
+#     another is not an error anybody sees — it is a budget that resets at the
+#     wrong hour, or a grant that stops counting at teatime, for some
+#     households, some of the time. Four things now bucket by day (a grant's
+#     date, SessionGuard's tally, the digest's channel totals, UsageLedger's
+#     cells) and until FamilyDay they each spelled it themselves.
+#     (a) FamilyDay is the only file in :core that formats or parses one.
+#         TimeWindows keeps java.util.Calendar deliberately and is not in the
+#         pattern: a window is a stretch of CLOCK on a day of the WEEK, and it
+#         buckets nothing.
+famday=core/src/main/kotlin/io/yosemitekids/app/data/FamilyDay.kt
+[ -f "$famday" ] || guard_fail "$famday is gone; guard 43 is blind. The family day is minted in one place or it is minted in four."
+for cal in "LocalDate" "SimpleDateFormat"; do
+  homes=$(grep -rlF "$cal" core/src/main | sort | tr "\n" " " || true)
+  homes=${homes% }
+  [ -z "$homes" ] || [ "$homes" = "$famday" ] ||
+    guard_fail "$cal is spelled out in [$homes]. In :core it belongs in $famday alone — a second spelling of a day splits buckets with no visible symptom."
+done
+#     (b) The two stores that bucket a kid's minutes take their day from
+#         FamilyDay, never from a format string of their own. The display-only
+#         formatters in DigestScreen, KidStats, StatsScreen and
+#         SettingsImportExport are deliberately left alone: if those disagree
+#         by a day the symptom is a chart, not a lockout.
+for f in app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt \
+         app/src/main/java/io/yosemitekids/app/data/Stats.kt; do
+  if grep -qF "${q}yyyyMMdd${q}" "$f"; then
+    guard_fail "$f spells a day out for itself. Take it from FamilyDay.compact(FamilyDay.of(...)) — this file decides whether a child may watch, and it must bucket the same way everything else does."
+  fi
+done
+
+# 45. One reader of the daily tally.
+#     Copied from guard 16's shape, which holds the two bonus stores to one
+#     reader each for exactly this reason. There are seven enforcement sites
+#     in SessionGuard and half a dozen screens that show a number derived from
+#     them; the moment one of them reads the raw counter while the rest read
+#     spentTodayMs(), a home screen promises forty minutes in front of a
+#     player that stops at ten. Nothing throws, and the parent cannot explain
+#     it.
+tally=$(grep -cF "getLong(${q}dailyWatchedMs${q}" app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt || true)
+[ "$tally" = "1" ] ||
+  guard_fail "SessionGuard.kt reads dailyWatchedMs in $tally places; there is exactly one (ownWatchedMs). Anything asking what a kid has spent goes through spentTodayMs(), so the enforcer and every screen work from one number."
+
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 

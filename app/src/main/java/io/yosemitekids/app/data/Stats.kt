@@ -40,8 +40,12 @@ class StatsCache(context: Context) {
                     val o = top.getJSONObject(i)
                     o.getString("name") to o.getInt("min")
                 }
-                val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
-                    .format(java.util.Date())
+                // The device's own zone, deliberately, and not the family's
+                // homeZone: this row is a per-device history that only ever
+                // gets diffed against other rows written here, so what it
+                // needs is one spelling, not one agreement. FamilyDay is that
+                // spelling — see guard 43.
+                val today = FamilyDay.compact(FamilyDay.of(System.currentTimeMillis()))
                 val key = DigestStore.key(deviceToken, root.optString("profileName").ifEmpty { null })
                 digest.record(key, today, channels)
             }

@@ -933,7 +933,7 @@ internal fun GrantTimeSection(
                 val grant = io.yosemitekids.app.data.Grant(
                     id = io.yosemitekids.app.data.Profile.newId(),
                     kidId = kidId,
-                    date = io.yosemitekids.app.data.Grants.dateOf(now),
+                    date = io.yosemitekids.app.data.FamilyDay.of(now),
                     minutes = amount,
                     at = now
                 )

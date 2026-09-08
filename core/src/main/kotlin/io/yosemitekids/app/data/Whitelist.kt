@@ -295,6 +295,35 @@ data class Whitelist(
      */
     val showVideoAge: Boolean = false,
     /**
+     * The family's home time zone, as an IANA id ("Pacific/Auckland"). Null =
+     * every device uses its own, which is how every family works today.
+     *
+     * It exists because a day is a *bucket*, and a shared count only adds up
+     * while every device buckets alike. A television in the living room and a
+     * tablet in a hotel room are in the same family and not in the same day,
+     * and neither of them is wrong — so the family says which day it means,
+     * once, in the one document both of them already hold.
+     *
+     * The reader that needs it most is the one with no answer of its own: a
+     * container runs UTC and the family does not, so the hub takes the day it
+     * windows the watch ledger by from this field rather than from its own
+     * locale. Guard 27 permits it exactly that — `ZoneId.of` on a value that
+     * came out of the config, and nothing else. (The ledger itself is named
+     * nowhere in this file on purpose: it is a counter, it is not in this
+     * document, and guard 44 holds the two apart.)
+     *
+     * A string rather than an offset because an offset is wrong twice a year.
+     * Unknown or malformed ids fall back to the device's own zone
+     * ([FamilyDay.zoneOf]) rather than throwing: a typo on a phone must not
+     * take a television off the air.
+     *
+     * Nothing on the phone reads it yet. It rides the wire a release ahead of
+     * the shared-budget switch that will offer to set it, the way `pins` rode
+     * a release ahead of its editor — so the fleet already agrees on the bytes
+     * before anything depends on them.
+     */
+    val homeZone: String? = null,
+    /**
      * Extra minutes parents have handed out ("Add time"), one entry per tap.
      * In the config so a device that slept through the tap finds them at its
      * next sync; the direct LAN grant is only the fast path, and it carries
