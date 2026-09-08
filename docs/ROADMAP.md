@@ -242,6 +242,56 @@ Also out of scope by decision: the kid-to-parent request flow (§2E), the
 "simple mode" density, and the per-device watch budget (§2J) — which the
 always-visible time pill now makes more noticeable, not less.
 
+### 2L. From the first real week on 1.1.0 — reported by the family, 2026-09-07
+
+The owner ran 1.1.0 on their own phone with their daughter. Everything below
+came out of that, in their words where the wording matters. **The first two
+are regressions from the revamp and outrank the rest.**
+
+**Regressions — fix first.**
+
+- **Changing the sort on a channel page throws the view back to the top.**
+  Scroll down, tap New / Random / Popular, and the list jumps to the header.
+  The sort applies to the list below it; the scroll position should not move.
+- **"When looking at a station it looks like something is missing."** Not yet
+  reproduced. The channel block, the three action cards and the New-for-you
+  and Playlists rails are all emitted into the same grid, so this may be the
+  scroll bug above wearing a different hat — or the rails collapsing when
+  empty. Reproduce on a real phone before changing anything.
+
+**Discovery — the biggest complaint, and the deepest.**
+
+- **A newly added channel takes minutes to appear**, and even then needed a
+  refresh, a page change and a search to find. A child asked for a channel and
+  could not see it. Wants a *newly added* row and/or a "newly added" sort. The
+  real cause is the crawl and warm cadence, not the shelf — see §2B — so a row
+  alone would be a row that stays empty for the same several minutes.
+- **Search is static and unranked.** "My daughter loves Mario videos but every
+  time I search it just starts with the same static list and I have to scroll
+  down past 70 to find the ones she likes." `ChannelIndex.search` is a token
+  match with no relevance at all; `MainViewModel.search` then applies exactly
+  one rule, title-hits before channel-name-only hits. Wants real relevance,
+  weighted by recently watched, favourites and recency, plus sort/filter chips
+  on the search screen (most recent, relevance, …).
+
+**Channels and the channel page.**
+
+- **Sort the Channels page A–Z and reverse.** A–Z exists; reverse does not.
+- **Show the channel's description** on the channel page, with an option to
+  strip links out of it. (Worth checking whether the extractor even returns a
+  description — it may not, in which case this is a crawl change first.)
+- **Favourite (subscribe to) a *channel*, not just a video.** Possibly a
+  parent-set thing rather than a kid-set one. New per-kid state either way, so
+  it rides the sectioned merge like pins do.
+
+**Chrome.**
+
+- **The chip row clips its last item.** On You, "Up next" is cut off mid-word;
+  the owner reports the same on Search, wanting all four visible.
+- **Swipe the now-playing video down into the floating player**, the way
+  YouTube does. PiP already exists and the button is on the overlay; this is
+  the gesture, not the feature.
+
 ## 3. Known-wrong docs — cleared 2026-09-06
 
 All five went out with 1.0.7 and are recorded here rather than deleted,
