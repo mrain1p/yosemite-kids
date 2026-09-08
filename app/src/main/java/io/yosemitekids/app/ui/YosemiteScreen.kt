@@ -766,6 +766,15 @@ fun YosemiteScreen(
                             onVoiceUnavailable = { vm.showNoticeExternal("Voice search isn't on this device yet") }
                         )
                     }
+                    // The kid's order for the results, above the grid it
+                    // reorders and below the field that produced it. Only
+                    // once there is something to reorder: three chips over
+                    // "Nothing with that name in your channels" is furniture.
+                    if (s.screen is Screen.SearchResults && s.videos.size > 1) {
+                        Box(Modifier.padding(bottom = 6.dp)) {
+                            SearchOrderChips(s.searchOrder, vm::setSearchOrder)
+                        }
+                    }
                     // Search hits from the crawled index are screened live, in
                     // windows — an honest bar (we know the window's size), with
                     // results appended below as verdicts land.

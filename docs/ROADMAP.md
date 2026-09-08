@@ -308,13 +308,19 @@ are regressions from the revamp and outrank the rest.**
   newest page in seconds; older uploads appear as `IndexCrawlWorker` reaches
   them, which is still master-only and still minutes-to-hours. That is §2B and
   is unchanged.
-- **Search is static and unranked.** "My daughter loves Mario videos but every
-  time I search it just starts with the same static list and I have to scroll
-  down past 70 to find the ones she likes." `ChannelIndex.search` is a token
-  match with no relevance at all; `MainViewModel.search` then applies exactly
-  one rule, title-hits before channel-name-only hits. Wants real relevance,
-  weighted by recently watched, favourites and recency, plus sort/filter chips
-  on the search screen (most recent, relevance, …).
+- **Search is static and unranked** — **done, with one gap.** "My daughter
+  loves Mario videos but every time I search it just starts with the same
+  static list and I have to scroll down past 70 to find the ones she likes."
+  Relevance shipped in 1.2.0 (`SearchRank` in `:crawl`) and is the default;
+  the chips shipped with `SearchOrder`: best match, shortest, mix it up.
+  **The gap, and why:** "most recent" and anything popularity-shaped are *not*
+  offered, because `ChannelIndex.IndexedVideo` stores neither an upload date
+  nor a view count — `toVideo()` hands back nulls for both, so either chip
+  would draw and do nothing, which is worse than a missing chip. Closing it is
+  a crawl change: add `publishedAt` (and, if wanted, `viewCount`) to the
+  indexed row, write them in `IndexCrawler`, and re-crawl to backfill.
+  `SearchOrderTest` asserts both fields are still absent, so the day they
+  arrive is the day the test says to add the chips.
 
 **Channels and the channel page.**
 

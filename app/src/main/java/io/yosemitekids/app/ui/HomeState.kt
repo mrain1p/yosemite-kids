@@ -110,6 +110,8 @@ data class UiState(
     val homeFilter: String = VIDEO_FILTER_NEW,
     /** The kid's order for channel pages (VIDEO_FILTER_*), the parent's layout as default. */
     val channelFilter: String = VIDEO_FILTER_NEW,
+    /** The kid's order for search results ([SearchOrder]); relevance until they pick. */
+    val searchOrder: String = SearchOrder.BEST,
     /** The parent's page size: videos a grid shows before "Show more"; null = all. */
     val pageSize: Int? = null,
     /** The parent's "show when a video came out" switch. */

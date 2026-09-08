@@ -468,7 +468,7 @@ class MainViewModel(
         rawVideos = withContext(Dispatchers.IO) {
             searchMatches.filter { screener?.isVisible(it) != false }
         }
-        _state.value = _state.value.copy(loading = false, videos = annotated(includeFinished = true))
+        _state.value = _state.value.copy(loading = false, videos = searchItems())
         screenMoreSearch()
     }
 
@@ -476,6 +476,47 @@ class MainViewModel(
     // The crawled index is never pre-screened (that would bill the AI for a
     // whole back catalog nobody may ever search), so search screens on demand:
     // a window of the best matches now, the next window when the kid scrolls.
+
+    /**
+     * The kid's search chip. Relevance until they pick otherwise; persisted
+     * per kid like the other three chips, and only ever a *display* order —
+     * see [searchItems].
+     */
+    private var searchOrder: String = io.yosemitekids.app.data.SearchOrder.BEST
+    private var searchShuffleSeed = kotlin.random.Random.nextLong()
+
+    /**
+     * The results as the grid should show them.
+     *
+     * The order is applied here, at publish, and never to [searchMatches] —
+     * that list is relevance-ordered because it is also the *screening* queue,
+     * and the AI must keep spending on the best matches first however the kid
+     * has the grid arranged. With the default chip this is the identity, so
+     * the append-only behaviour verdicts rely on is unchanged.
+     */
+    private fun searchItems(): List<VideoItem> =
+        io.yosemitekids.app.data.SearchOrder.order(
+            annotated(includeFinished = true), searchOrder, searchShuffleSeed
+        ) { it.video.durationSeconds }
+
+    /** The search screen's Best match · Shortest · Mix chip. */
+    fun setSearchOrder(order: String) {
+        if (order == io.yosemitekids.app.data.SearchOrder.MIX) {
+            searchShuffleSeed = kotlin.random.Random.nextLong()
+        }
+        searchOrder = order
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { kidPrefs?.setSearchOrder(order) }
+            // No scrollTo, for the reason setChannelFilter gives: the chips
+            // sit above the list they reorder and must not move out from
+            // under the finger that just tapped one.
+            _state.value = _state.value.copy(
+                searchOrder = order,
+                videos = if (_state.value.screen is Screen.SearchResults) searchItems()
+                else _state.value.videos
+            )
+        }
+    }
 
     /** Relevance-ordered, deduped, unblocked matches for the current query. */
     private var searchMatches: List<Video> = emptyList()
@@ -544,7 +585,7 @@ class MainViewModel(
         }
         if (_state.value.screen !is Screen.SearchResults) return
         _state.value = _state.value.copy(
-            videos = annotated(includeFinished = true),
+            videos = searchItems(),
             held = heldNow,
             searchScreening = if (pending > 0) SearchScreening(
                 total = searchSent,
@@ -2058,7 +2099,9 @@ class MainViewModel(
             kidChannelSort = p.channelSort()
             kidHomeFilter = p.homeFilter()
             kidChannelFilter = p.channelFilter()
+            searchOrder = p.searchOrder() ?: io.yosemitekids.app.data.SearchOrder.BEST
         }
+        _state.value = _state.value.copy(searchOrder = searchOrder)
         viewModelScope.launch {
             // All five sets are file reads — off-main like everything else
             // here; the home rows render immediately, badges land a beat later.
