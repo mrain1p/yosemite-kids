@@ -370,6 +370,7 @@ object ConfigMerge {
         if (a.qualityPhone != b.qualityPhone) moved += "phone picture quality"
         if (a.pageSize != b.pageSize) moved += "how many videos a page shows"
         if (a.showVideoAge != b.showVideoAge) moved += "showing when a video came out"
+        if (a.homeZone != b.homeZone) moved += "the family's home time zone"
         if (a.deviceProfiles != b.deviceProfiles) moved += "which kid each device is for"
         return if (moved.isEmpty()) emptyList()
         else listOf(Change("settings", "changes " + humanList(moved)))
@@ -1046,7 +1047,8 @@ object ConfigMerge {
     /** The loose family-wide scalars that share one stamp. */
     private val SETTINGS_KEYS = listOf(
         "sponsorSkip", "autoplay", "suggest", "channelLayout", "channelOrder",
-        "listen", "qualityTv", "qualityPhone", "pageSize", "showVideoAge"
+        "listen", "qualityTv", "qualityPhone", "pageSize", "showVideoAge",
+        "homeZone"
     )
 
     /**

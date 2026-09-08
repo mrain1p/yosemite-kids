@@ -389,7 +389,7 @@ object ConfigSync {
         // idempotent by grant id so the fast path cannot double-count, and a
         // read path that quietly writes preferences is a worse shape.
         val granted = guard.applyGrants(
-            after.grantsFor(kid, Grants.dateOf(System.currentTimeMillis()))
+            after.grantsFor(kid, FamilyDay.of(System.currentTimeMillis()))
         )
 
         val fresh = after.limitsFor(kid)

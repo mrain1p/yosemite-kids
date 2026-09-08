@@ -153,6 +153,43 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     if (imported > 0) ConfigEvents.onConfigChanged?.invoke()
                     imported >= 0
                 },
+                // The watch ledger. Served on demand rather than on a timer:
+                // this device's own minutes live in SessionGuard's prefs and
+                // are authoritative there, so the honest moment to author a
+                // cell is the moment somebody asks. No scheduler, no wakelock,
+                // and a peer that never asks costs nothing. Both lambdas run
+                // on a LanServer worker thread, which is where the file I/O
+                // belongs.
+                usageProvider = {
+                    val store = io.yosemitekids.app.data.WatchLedgerStore(appContext)
+                    val config = ConfigStore(appContext).load()
+                    val day = io.yosemitekids.app.data.FamilyDay.of(
+                        System.currentTimeMillis(),
+                        io.yosemitekids.app.data.FamilyDay.zoneOf(config.homeZone)
+                    )
+                    // Every kid's own tally, not just the one on screen: a
+                    // sibling's minutes are as real when their profile is not
+                    // the active one, and a peer asking now is the only chance
+                    // to say so.
+                    val kids: List<String?> =
+                        if (config.profiles.isEmpty()) listOf(null) else config.profiles.map { it.id }
+                    kids.forEach { kid ->
+                        val minutes = SessionGuard(appContext, profileNs.suffixFor(kid))
+                            .watchedTodayMin()
+                        store.recordOwn(kid, day, minutes)
+                    }
+                    store.exportJson()
+                },
+                usageMerger = { json ->
+                    val config = ConfigStore(appContext).load()
+                    io.yosemitekids.app.data.WatchLedgerStore(appContext).mergeJson(
+                        json,
+                        io.yosemitekids.app.data.FamilyDay.of(
+                            System.currentTimeMillis(),
+                            io.yosemitekids.app.data.FamilyDay.zoneOf(config.homeZone)
+                        )
+                    )
+                },
                 indexStatusProvider = {
                     io.yosemitekids.app.data.ChannelIndex(appContext).statusJson()
                 },

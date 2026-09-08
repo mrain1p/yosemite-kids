@@ -2,6 +2,7 @@ package io.yosemitekids.hub
 
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.ConfigMerge
+import io.yosemitekids.app.data.FamilyDay
 import io.yosemitekids.app.data.Grants
 import io.yosemitekids.app.data.Profile
 import io.yosemitekids.app.data.SyncMeta
@@ -46,7 +47,7 @@ class HubGrantTest {
     private var clock = 1_780_000_000_000L
 
     /** The day that clock falls on in UTC — what the container itself would say. */
-    private val hubDay = Grants.dateOf(clock, ZoneOffset.UTC)
+    private val hubDay = FamilyDay.of(clock, ZoneOffset.UTC)
 
     private lateinit var store: HubStore
     private lateinit var tokens: HubTokens
@@ -119,7 +120,7 @@ class HubGrantTest {
         // never expires: it would hand out its minutes again every day until
         // somebody read the config and found it.
         val session = signIn()!!
-        val next = Grants.dateOf(clock + 400L * 24 * 60 * 60 * 1000, ZoneOffset.UTC)
+        val next = FamilyDay.of(clock + 400L * 24 * 60 * 60 * 1000, ZoneOffset.UTC)
         val (code, body) = grant(session, kid = "", minutes = 15, date = next)
         assertEquals(200, code)
         assertFalse("a distant date must not be granted", JSONObject(body).getBoolean("granted"))
@@ -135,8 +136,8 @@ class HubGrantTest {
         // in the evening, or except in the morning.
         val session = signIn()!!
         val day = 24L * 60 * 60 * 1000
-        assertGranted(grant(session, "", 15, Grants.dateOf(clock - day, ZoneOffset.UTC)))
-        assertGranted(grant(session, "", 15, Grants.dateOf(clock + day, ZoneOffset.UTC)))
+        assertGranted(grant(session, "", 15, FamilyDay.of(clock - day, ZoneOffset.UTC)))
+        assertGranted(grant(session, "", 15, FamilyDay.of(clock + day, ZoneOffset.UTC)))
         assertEquals(2, store.load().grants.size)
     }
 

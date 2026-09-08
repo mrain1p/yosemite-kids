@@ -437,6 +437,19 @@ class LanServer(
     /** AI verdict-sharing: serve ours, merge a peer's — see ScreeningStore. */
     private val verdictsProvider: () -> String = { "{}" },
     private val verdictsMerger: (String) -> Boolean = { false },
+    /**
+     * The watch ledger: minutes spent, per kid, per day, per device — see
+     * [WatchLedgerStore]. Mirrors the verdicts pair exactly, and for the same
+     * reason: what only this device knows, served; what a peer knows, joined.
+     *
+     * A counter, not a rule. Nothing that arrives here can change what a kid
+     * may watch — the most it can do is raise a number, which `max` only ever
+     * moves upward, so a hostile peer can cost a kid minutes and never grant
+     * them. The correction downward is a grant, which merges, appears in the
+     * change feed and reaches a device that was asleep.
+     */
+    private val usageProvider: () -> String = { "{}" },
+    private val usageMerger: (String) -> Boolean = { false },
     /** Search-index sync: per-source status, one source's payload, and a merger. */
     private val indexStatusProvider: () -> String = { "{}" },
     private val indexSourceProvider: (String) -> String? = { null },
@@ -806,6 +819,15 @@ class LanServer(
             method == "POST" && path == "/verdicts" -> {
                 if (verdictsMerger(readBody())) respond(200, "merged")
                 else respond(400, "bad verdicts")
+            }
+            method == "GET" && path == "/usage" -> respond(200, usageProvider())
+            method == "POST" && path == "/usage" -> {
+                // Bounded like every other body here (MAX_BODY_BYTES above),
+                // and bounded again by UsageLedger.MAX_CELLS inside the
+                // merger, which refuses rather than truncating so this can
+                // answer 400 instead of storing half a ledger.
+                if (usageMerger(readBody())) respond(200, "merged")
+                else respond(400, "bad usage")
             }
             method == "GET" && path == "/index-status" -> respond(200, indexStatusProvider())
             method == "GET" && path == "/index" -> {
@@ -1703,6 +1725,31 @@ object LanClient {
         withContext(Dispatchers.IO) {
             runCatching {
                 request(device, "POST", "/verdicts", json).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
+    /**
+     * A peer's watch ledger, or null when it is unreachable or on a build that
+     * predates the route.
+     *
+     * Null is not an error worth surfacing: a device that cannot say how many
+     * minutes a kid spent elsewhere enforces its own count, which is exactly
+     * what every family has today. Shared scope degrades to device-local and
+     * is never stricter than the behaviour it replaced.
+     */
+    suspend fun fetchUsage(device: PairedDevice): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            request(device, "GET", "/usage", null).use { resp ->
+                if (resp.isSuccessful) resp.body?.string() else null
+            }
+        }.getOrNull()
+    }
+
+    /** Our own cells, to a peer. Device-initiated, like everything else here. */
+    suspend fun pushUsage(device: PairedDevice, json: String): Boolean =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                request(device, "POST", "/usage", json).use { it.isSuccessful }
             }.getOrDefault(false)
         }
 

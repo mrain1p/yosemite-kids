@@ -90,7 +90,7 @@ object ConfigStamp {
      * [now] is the caller's wall clock, passed in rather than read here, so
      * the merge proper can stay provably clock-free.
      *
-     * [today] is the caller's local calendar day ([Grants.dateOf]), and the
+     * [today] is the caller's local calendar day ([FamilyDay.of]), and the
      * one place a grant expires: every grant dated before it is tombstoned in
      * this save. Null means "do not judge" — the hub passes null, because a
      * container's clock is UTC and the family's is not, and a day that ends
@@ -415,6 +415,7 @@ object ConfigStamp {
             qualityPhone = scalars.qualityPhone,
             pageSize = scalars.pageSize,
             showVideoAge = scalars.showVideoAge,
+            homeZone = scalars.homeZone,
             sync = prune(
                 SyncMeta(
                     v = SyncMeta.VERSION,
@@ -551,6 +552,7 @@ object ConfigStamp {
             a.channelOrder != b.channelOrder || a.listenPercent != b.listenPercent ||
             a.qualityTv != b.qualityTv || a.qualityPhone != b.qualityPhone ||
             a.pageSize != b.pageSize || a.showVideoAge != b.showVideoAge ||
+            a.homeZone != b.homeZone ||
             a.deviceProfiles != b.deviceProfiles
 
     private fun line(code: String, text: String, who: String, by: String, at: Long) =

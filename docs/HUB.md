@@ -91,9 +91,19 @@ docker compose -f docker-compose.yml up -d
 
 Updating is the same two commands. The only path that matters is the volume
 line: `/volume2/Docker/yosemite-kids/data:/data` holds `config.json`,
-`devices.json` and the search index. Keep it, and every enrolled device and
-the whole configuration survive a move between projects; lose it, and every
-device has to enrol again.
+`devices.json`, `secrets.json`, `usage.json` and the search index. Keep it, and
+every enrolled device and the whole configuration survive a move between
+projects; lose it, and every device has to enrol again.
+
+`usage.json` is the family's watch ledger — how many minutes each child has
+spent, per day, per device. It is deliberately **not** part of `config.json`:
+a counter is not a parent's decision, and one living in the synced document
+would put every pair of devices through a full merge and re-push once a minute
+while anyone was watching, and push the family's change history out of a
+thirty-line log in half an hour. Losing it costs nothing but today's shared
+total, which the devices re-report as they play. Nothing in the container reads
+it to *stop* anybody watching; the hub stores and serves the number, and the
+device with the child in front of it decides.
 
 `pull` is quiet about whether it actually moved you, so check afterwards:
 

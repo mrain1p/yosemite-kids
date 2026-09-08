@@ -7,7 +7,7 @@ import io.yosemitekids.app.data.ChannelIndex
 import io.yosemitekids.app.data.AiScreener
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.Grant
-import io.yosemitekids.app.data.Grants
+import io.yosemitekids.app.data.FamilyDay
 import io.yosemitekids.app.data.Page
 import io.yosemitekids.app.data.Pin
 import io.yosemitekids.app.data.Pins
@@ -602,7 +602,7 @@ object HubWeb {
         // precede the push that introduces the child.
         if (kidId.isNotEmpty() && !KID_ID.matches(kidId)) return Granted.BAD_KID
         if (minutes !in GRANT_MINUTES) return Granted.BAD_MINUTES
-        val day = Grants.dayNumber(date) ?: return Granted.BAD_DATE
+        val day = FamilyDay.dayNumber(date) ?: return Granted.BAD_DATE
         if (Math.abs(day - Math.floorDiv(now, DAY_MS)) > GRANT_MAX_DAYS_AWAY) return Granted.BAD_DATE
 
         store.edit(who, now) { current ->

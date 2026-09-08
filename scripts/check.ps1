@@ -31,7 +31,11 @@ function Fail-Guard($message) {
 # active pause into the shared document.
 # The master election is held to the same rule: a "day later" has to be a
 # number a test passes in, not a moment the machine running the test is at.
-foreach ($clockless in @("ConfigMerge", "MasterElection")) {
+# UsageLedger joins them because its join is a merge in exactly the same
+# sense - and see guard 44, which counts merge()'s parameters, because a
+# `today: String` argument would sail straight past the match below while
+# being precisely the clock this rule exists to keep out.
+foreach ($clockless in @("ConfigMerge", "MasterElection", "UsageLedger")) {
     $src = Get-Content "core\src\main\kotlin\io\yosemitekids\app\data\$clockless.kt" -Raw
     if ($src -match "currentTimeMillis|Instant\.now|System\.nanoTime") {
         Fail-Guard "$clockless.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."
@@ -877,25 +881,46 @@ foreach ($asked in @([regex]::Matches($uiSrc, 'ctl\("([a-z0-9-]+)"\)') |
     }
 }
 
-# 27. The hub reads no calendar.
-#     A container runs UTC and the family does not. Every local day and local
-#     midnight the hub stores therefore comes from the parent's browser, and
-#     the hub only bounds it: PAUSE_MAX_AHEAD_MS for a pause, and
-#     GRANT_MAX_DAYS_AWAY for the day a grant names. It is the same rule
-#     ConfigStamp.stamped(today = null) already encodes, and the reason
-#     HubStore.edit passes null - a day that ends hours early on the NAS
-#     tombstones a grant at teatime and takes a kid's minutes away.
-#     Worth a guard rather than a comment because of how it fails. A hub in
-#     UTC and a family in Auckland disagree for thirteen hours of every day,
-#     so the symptom is bonus minutes that stop working in the evening, for
-#     some households, some of the time. Nothing throws; the container is
+# 27. The hub reads the family's calendar, and never its own.
+#     A container runs UTC and the family does not. A hub in UTC and a family
+#     in Auckland disagree for thirteen hours of every day, so the symptom of
+#     getting this wrong is bonus minutes that stop working in the evening,
+#     for some households, some of the time. Nothing throws; the container is
 #     right about its own clock and wrong about the family's.
-foreach ($cal in @("LocalDate", "Calendar", "SimpleDateFormat", "ZoneId.systemDefault")) {
+#
+#     This guard used to say "the hub reads no calendar" and ban four names.
+#     The prose was already ahead of the code - a ZoneId.of(cfg.homeZone) call
+#     would have passed it while the comment claimed it could not - and the
+#     watch ledger has since made that path a real one: HubUsage windows the
+#     family's minutes by the family's own day, taken from Whitelist.homeZone.
+#     So the rule is now stated as what it actually is, in two clauses.
+#
+#     (a) The container's OWN calendar stays unreachable. Every local day and
+#         local midnight the hub *stores* still arrives from the parent's
+#         browser, bounded and never computed: HubWeb.PAUSE_MAX_AHEAD_MS for a
+#         pause, GRANT_MAX_DAYS_AWAY for the day a grant names. Same rule
+#         ConfigStamp.stamped(today = null) encodes, and the reason
+#         HubStore.edit passes null - a day that ends hours early on the NAS
+#         tombstones a grant at teatime and takes a kid's minutes away.
+foreach ($cal in @("LocalDate", "LocalDateTime", "Calendar", "SimpleDateFormat", "ZoneId.systemDefault", "TimeZone.getDefault")) {
     $dated = @(Get-ChildItem "hub/src" -Recurse -File | Select-String -Pattern $cal -SimpleMatch -CaseSensitive |
         ForEach-Object { $_.Path } | Sort-Object -Unique)
     if ($dated.Count -gt 0) {
-        Fail-Guard "$($dated -join ' ') names $cal. The container's clock is UTC and the family's is not - that is why HubStore.edit passes today = null. A day or a midnight arrives from the parent's browser and the hub only checks how far away it is (HubWeb.PAUSE_MAX_AHEAD_MS, HubWeb.GRANT_MAX_DAYS_AWAY)."
+        Fail-Guard "$($dated -join ' ') names $cal. The container's clock is UTC and the family's is not - that is why HubStore.edit passes today = null. A day or a midnight arrives from the parent's browser and the hub only checks how far away it is (HubWeb.PAUSE_MAX_AHEAD_MS, HubWeb.GRANT_MAX_DAYS_AWAY); a day the hub needs for itself comes from Whitelist.homeZone through FamilyDay.zoneOrNull, which answers null rather than guessing."
     }
+}
+#     (b) A zone reaches this box from the family's config or not at all.
+#         Nothing above would stop the next person writing ZoneId.of("UTC") or
+#         reading one out of an environment variable - both of which look
+#         local and correct and are the same bug in a different hat. A
+#         YOSEMITE_KIDS_TZ env var was considered and rejected for exactly
+#         that reason: one more thing to get wrong on the NAS, and silently
+#         wrong the week a family travels.
+$zoned = @(Get-ChildItem "hub/src/main" -Recurse -File | Select-String -Pattern 'ZoneId|ZoneOffset|atZone\(' -CaseSensitive |
+    Where-Object { $_.Line -notmatch 'homeZone' } |
+    ForEach-Object { "$($_.Path):$($_.LineNumber)" })
+if ($zoned.Count -gt 0) {
+    Fail-Guard "the hub names a time zone that did not come from the family's config: $($zoned -join '; '). A zone on this box is Whitelist.homeZone or it is nothing. Route it through FamilyDay.zoneOrNull(cfg.homeZone), which answers null when the family has named none - a container that guessed would trim a household in Auckland a day early, every day, with nothing to show for it."
 }
 
 # 28. One backup envelope, because two faces write it and two faces read it.
@@ -1329,6 +1354,92 @@ if ($pinsMaxLine.Count -eq 0) {
 $hubWeb40 = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt" -Raw
 if (-not $hubWeb40.Contains("Pins.withRow")) {
     Fail-Guard "HubWeb no longer runs an incoming home patch through Pins.withRow, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedPins."
+}
+
+# 43. One spelling of a family day.
+#     A day is a bucket key, and a value put in one bucket and read out of
+#     another is not an error anybody sees - it is a budget that resets at the
+#     wrong hour, or a grant that stops counting at teatime, for some
+#     households, some of the time. Four things now bucket by day (a grant's
+#     date, SessionGuard's tally, the digest's channel totals, UsageLedger's
+#     cells) and until FamilyDay they each spelled it themselves.
+#     (a) FamilyDay is the only file in :core that formats or parses one.
+#         TimeWindows keeps java.util.Calendar deliberately and is not in the
+#         pattern: a window is a stretch of CLOCK on a day of the WEEK, and it
+#         buckets nothing.
+$famDay = "core/src/main/kotlin/io/yosemitekids/app/data/FamilyDay.kt"
+if (-not (Test-Path $famDay)) {
+    Fail-Guard "$famDay is gone; guard 43 is blind. The family day is minted in one place or it is minted in four."
+}
+foreach ($cal in @("LocalDate", "SimpleDateFormat")) {
+    $stray = @(Get-ChildItem "core/src/main" -Recurse -File -Filter *.kt |
+        Select-String -Pattern $cal -SimpleMatch -CaseSensitive |
+        ForEach-Object { $_.Path } | Sort-Object -Unique |
+        Where-Object { (Split-Path $_ -Leaf) -ne "FamilyDay.kt" })
+    if ($stray.Count -gt 0) {
+        Fail-Guard "$cal is spelled out in [$($stray -join ' ')]. In :core it belongs in $famDay alone - a second spelling of a day splits buckets with no visible symptom."
+    }
+}
+#     (b) The two stores that bucket a kid's minutes take their day from
+#         FamilyDay, never from a format string of their own. The display-only
+#         formatters in DigestScreen, KidStats, StatsScreen and
+#         SettingsImportExport are deliberately left alone: if those disagree
+#         by a day the symptom is a chart, not a lockout.
+foreach ($dayFile in @("app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt",
+                       "app/src/main/java/io/yosemitekids/app/data/Stats.kt")) {
+    if ((Get-Content $dayFile -Raw).Contains('"yyyyMMdd"')) {
+        Fail-Guard "$dayFile spells a day out for itself. Take it from FamilyDay.compact(FamilyDay.of(...)) - this file decides whether a child may watch, and it must bucket the same way everything else does."
+    }
+}
+
+# 44. The watch ledger is a counter, and a counter is not curation.
+#     Prohibition 12 in .claude/skills/yosemite-kids-sync is the argument and
+#     this is the enforcement. A `use|<kid>|<day>` unit would look exactly
+#     like `grant|<id>`, slot into the unit table without anything looking
+#     odd, and cost the family a status-fetch-merge-push between every pair of
+#     peers plus a hub nudge to every enrolled device, once a minute, for as
+#     long as anyone is watching - while a usage line a minute wiped their
+#     30-line change log in half an hour.
+#     (a) The merge, the stamper, the serializer and the model do not know
+#         this type exists.
+foreach ($cfgFile in @("ConfigMerge", "ConfigStamp", "ConfigJson", "Whitelist", "SyncDecision")) {
+    if ((Get-Content "core/src/main/kotlin/io/yosemitekids/app/data/$cfgFile.kt" -Raw).Contains("UsageLedger")) {
+        Fail-Guard "$cfgFile.kt names UsageLedger. A counter has no winner, it has a join - put it back in its own document, its own file and its own lock, and read prohibition 12 in the sync skill before arguing otherwise."
+    }
+}
+#     (b) merge() takes exactly two ledgers and nothing else. A `today`
+#         parameter would sail straight past the clockless check at the top of
+#         this file while being precisely the clock that check exists to keep
+#         out - and the laws only hold for a FIXED today, which is never the
+#         case across two devices whose windows differ. The window is trim(),
+#         and it is local.
+$mergeSig = @(Get-Content "core/src/main/kotlin/io/yosemitekids/app/data/UsageLedger.kt" |
+    Select-String -Pattern '^    fun merge\(a: Ledger, b: Ledger\): Ledger( \{)?$' -CaseSensitive)
+if ($mergeSig.Count -ne 1) {
+    Fail-Guard "UsageLedger.merge is no longer 'fun merge(a: Ledger, b: Ledger): Ledger'. Two ledgers, no clock, no window: a third parameter is a tombstone TTL in disguise, and two devices pruning different sets push at each other for ever."
+}
+#     (c) The hub's config store knows nothing about watch traffic. Config
+#         commits, the fingerprint, sync.log and the five-slot version ring
+#         must be unmoved by a minute of viewing.
+$hubStoreSrc = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubStore.kt" -Raw
+foreach ($word in @("UsageLedger", "HubUsage", "usage.json")) {
+    if ($hubStoreSrc.Contains($word)) {
+        Fail-Guard "HubStore.kt names $word. The ledger has its own file and its own lock for a reason: watch traffic must not move a fingerprint, rotate a restore slot, or push a family's change history out of a 30-line log."
+    }
+}
+
+# 45. One reader of the daily tally.
+#     Copied from guard 16's shape, which holds the two bonus stores to one
+#     reader each for exactly this reason. There are seven enforcement sites
+#     in SessionGuard and half a dozen screens that show a number derived from
+#     them; the moment one of them reads the raw counter while the rest read
+#     spentTodayMs(), a home screen promises forty minutes in front of a
+#     player that stops at ten. Nothing throws, and the parent cannot explain
+#     it.
+$tally = @(Get-Content "app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt" |
+    Select-String -Pattern 'getLong("dailyWatchedMs"' -SimpleMatch).Count
+if ($tally -ne 1) {
+    Fail-Guard "SessionGuard.kt reads dailyWatchedMs in $tally places; there is exactly one (ownWatchedMs). Anything asking what a kid has spent goes through spentTodayMs(), so the enforcer and every screen work from one number."
 }
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }

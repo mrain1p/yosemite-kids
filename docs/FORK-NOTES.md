@@ -1627,3 +1627,78 @@ the home **row order** editor. `UiState.homeSections` is initialised to
 no row-order property, and `ConfigJson` knows exactly one key under `home`.
 The shelf order is a hardcoded catalogue wearing a data shape; it needs a
 whole config-field cycle (§4 of the sync skill) before any screen.
+
+### One day, one counter, kept out of the document (PLAN-hub-parity §3–4, steps 4–5, 7)
+
+The enforcement foundation for a shared watch-time budget. The *switch* — the
+per-profile choice between per-device and shared — is **not** here; nothing a
+family sees changes. What is here is the two things such a switch cannot be
+built on top of, and one bug that had shipped without them.
+
+- **`FamilyDay` in `:core`, and a day that only goes forward.** Four things put
+  a value in a day-shaped bucket (a grant's `date`, `SessionGuard`'s daily
+  tally, the digest's channel totals, and now the ledger) and each spelled the
+  day itself. `Grants` stops formatting dates entirely; `SessionGuard` and
+  `Stats` take theirs from `FamilyDay`, in the compact `yyyyMMdd` spelling
+  their prefs have always used, so **no install needs a migration**.
+- **The shipped bug it fixes.** `rolloverIfNewDay` rolled on *any* difference
+  (`if (previous != today)`), so a clock stepped backwards a day zeroed
+  `dailyWatchedMs` and handed a child a whole second budget — today, in the
+  device-local mode every family is on. `FamilyDay.rollover` keeps the later of
+  the two, so the day moves forward or not at all. Only a device's **own** day
+  ratchets: `max(localDay, seenDay)` propagated through a merge is how one
+  television with a wrong RTC walks a whole household's day forward with no way
+  back, which is the design `PLAN-hub-parity` D1 rejects.
+- **`Whitelist.homeZone`** — an IANA id on the loose `settings` unit, omitted
+  when null, in the fingerprint only when set. A family that never names one
+  keeps its bytes and its hash, asserted by the four canonical
+  `ConfigStoreJsonTest` tests rather than promised. Nothing on the phone reads
+  it yet; the hub does, which is what lets a container say what day it is in
+  the family's house instead of in UTC.
+- **`UsageLedger` in `:core`: a counter, and therefore not in `config.json`.**
+  Grow-only cells keyed `(kid, day, device)`, joined by per-cell `max`.
+  `merge(a, b)` takes two ledgers and **no clock** — a `today` parameter would
+  sail past the clock grep while being exactly the clock that grep exists to
+  keep out, and the laws only hold for a *fixed* today, which is never the case
+  across two devices whose windows differ. The window is `trim()`, it is local,
+  and it applies only to what a device stores for itself. A reader drops cells
+  dated more than a day ahead of its own, so a fast clock cannot pre-spend.
+- **Its own file and its own lock on both faces.** `WatchLedgerStore` over
+  `files/usage.json`, `HubUsage` over `/data/usage.json`. `HubStore` is
+  untouched, and `HubUsageTest` asserts that config commits, the fingerprint,
+  `sync.log` and the five-slot version ring are unmoved by twenty rounds of
+  watch traffic — rather than a comment claiming it.
+- **`GET|POST /usage` on both faces, both directions device-initiated**, so the
+  hub still holds no credential on anything and **guard 7 is untouched**. A
+  device authors its own cells at the moment it is asked (every kid's tally,
+  not just the one on screen), which needs no scheduler and no wakelock. The
+  hub keeps only the cells the caller authored, from the `X-Device-Id` it
+  presented; a device accepts a peer's, because a parent's phone relaying the
+  TV's minutes to the tablet is the only path a hubless family has, and that
+  caller can already rewrite the whole config. Either way `max` only goes up: a
+  bad actor can cost a kid minutes, never grant them, and the correction
+  downward is a **grant**.
+- **`SessionGuard` gains exactly one summand.** `spentTodayMs()` is own +
+  peers, and it is now the only answer in the file to "what has this kid
+  spent". The peers' half is zero for every family, because `budgetScope` does
+  not exist yet — the arithmetic is what it has always been.
+- **Guard 43** (one spelling of a day: `LocalDate`/`SimpleDateFormat` only in
+  `FamilyDay` inside `:core`, and no `"yyyyMMdd"` literal in the two stores
+  that enforce with one — the nine display-only formatters are deliberately
+  left alone), **guard 44** (the ledger is named nowhere in `ConfigMerge`,
+  `ConfigStamp`, `ConfigJson`, `Whitelist`, `SyncDecision` or `HubStore`, and
+  `merge()`'s signature is pinned), **guard 45** (`dailyWatchedMs` has exactly
+  one reader — copied from guard 16's shape, because seven enforcement sites
+  and half a dozen screens deriving from it is how a home screen ends up
+  promising forty minutes in front of a player that stops at ten). All three in
+  both scripts, negative-tested in both.
+- **Guard 27 amended rather than extended.** It said "the hub reads no
+  calendar" while its code would have passed a `ZoneId.of(cfg.homeZone)` call —
+  the prose was ahead of the check. It now argues what it enforces: (a) the
+  container's own calendar stays unreachable, and (b) a zone reaches the box
+  from the family's config or not at all.
+
+Still not built, and ROADMAP §J now says so: `Limits.budgetScope`, the
+confirm-with-the-number dialog, the "where the number came from" copy, the
+session-start fetch and per-minute report, and the version-skew line for a
+half-upgraded fleet.

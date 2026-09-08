@@ -134,20 +134,40 @@ it. A phone out of a drawer claims to be brand new.
     minutes away. A document whose merge is "newest stamp wins" is the wrong
     container for a value whose merge is `max`.
 
-    **Where it goes instead**, if it is ever built: its own small document,
-    grow-only cells keyed `(kid, day, device)`, joined per cell by `max`,
-    outside `ConfigStore.fingerprint` and outside `syncHash`, with a merge
-    that takes no clock at all (prohibition 2 applies to it too, and a
-    `today: String` parameter sails straight past the guard that greps for
-    `currentTimeMillis`). `docs/PLAN-hub-parity.md` §4 is the design and
-    `docs/ROADMAP.md` item J is why it is parked — read J first, because it
-    argues the whole thing shrinks to almost nothing if a shared budget is
-    allowed to require a hub. And the day rules, whichever design wins:
-    **write under your own day, read forward, never adopt a peer's.**
-    `max(localDay, seenDay)` turns the day boundary into a ratchet the merge
-    itself propagates, so one television with a wrong clock walks the entire
-    household's day forward and hands out a second budget that no parent
-    action reverses.
+    **Where it goes instead — and it now exists.** `UsageLedger` in `:core`:
+    its own small document, grow-only cells keyed `(kid, day, device)`, joined
+    per cell by `max`, outside `ConfigStore.fingerprint` and outside
+    `syncHash`, in `files/usage.json` on a device (`WatchLedgerStore`) and
+    `/data/usage.json` on the hub (`HubUsage`), each with its own lock, carried
+    by `GET|POST /usage` on both faces. `docs/PLAN-hub-parity.md` §4 is the
+    design; `docs/ROADMAP.md` item J is what is still parked (the
+    `budgetScope` switch and the UX that explains it — the ledger and the day
+    landed without them).
+
+    Three things about it that a future session will be tempted to undo:
+
+    - **`merge(a, b)` takes no clock, and no `today` either.** Prohibition 2
+      applies to it exactly as it does to `ConfigMerge`, and a `today: String`
+      parameter would sail straight past the clock grep at the top of
+      `scripts/check.*` while being precisely the clock that grep exists to
+      keep out. Worse, the laws hold only for a *fixed* today, which is never
+      the case across two devices whose windows differ — that is this
+      section's own "a tombstone TTL". The window is `trim()`, it is local,
+      and it is applied only to what a device stores for itself. Guard 44
+      counts the parameters.
+    - **The day rules: write under your own day, read forward, never adopt a
+      peer's.** `max(localDay, seenDay)` would turn the day boundary into a
+      ratchet the merge itself propagates, so one television with a wrong
+      clock walks the entire household's day forward and hands out a second
+      budget that no parent action reverses. `FamilyDay.rollover` ratchets
+      only a device's *own* day; `UsageLedger.forward` drops a peer's cells
+      dated more than a day ahead of the reader.
+    - **The counter must not creep back into the document by the side door.**
+      Guard 44 fails the build if `ConfigMerge`, `ConfigStamp`, `ConfigJson`,
+      `Whitelist`, `SyncDecision` or `HubStore` so much as name it. The one
+      thing about the ledger that *is* config is `Whitelist.homeZone`, a
+      family-wide scalar on the loose `settings` unit — because which day a
+      minute falls in is a parent's assertion, and the count is not.
 
 ## 3. The unit table
 
@@ -166,7 +186,7 @@ A *unit* is the smallest thing two parents can edit independently.
 | `grant` | one "Add time" tap: minutes for one kid or everyone, on one day; a day that has passed is tombstoned by the phone's next save, never by the merge | ABSENT |
 | `home.pin` | one card of the home screen's pinned hero, keyed by kid (or the family's own row) and source, with its `rank` as a value inside the unit. Sorted by `(rank, key)` on the wire and in the merge, never by stamp — the order *is* the content, and two parents moving the same card resolve by the later stamp, per card, silently. Tombstoned by the stamper alongside its source or its kid. Writes nothing and hashes as nothing while empty, which is what let the container ship a release ahead of the editor (`PinsConfigTest` is that gate). Every edit on either face goes through `Pins.withRow` — the only place a rank is minted, the cap applied or an invisible source refused (`PinsEditorTest`, guard 42); the hub re-mints an incoming browser patch through it rather than storing the ranks a page sent. Guard 38 holds every namespace here to a loop in `merge` | ABSENT |
 | `lim.rules`, `lim.windows`, `lim.pause`, `lim.brk` | family screen time | scalar |
-| `ai`, `settings` | one blob each | scalar |
+| `ai`, `settings` | one blob each. `settings` is the loose family-wide scalars — `sponsorSkip`, `autoplay`, `suggest`, `channelLayout`, `channelOrder`, `listen`, `qualityTv`, `qualityPhone`, `pageSize`, `showVideoAge`, `homeZone`, and `deviceProfiles` in the change log. Adding one means `ConfigMerge.SETTINGS_KEYS`, `ConfigStamp.settingsDiffer` **and** the scalar copied through in `stamped`, `settingsChanges`, and the four canonical tests | scalar |
 | `master` | which peer builds the search index. Its stamp is also the holder's liveness: the holder re-touches it every 6 h through the stamper's `refresh` set (the one stamp allowed to move without a change), a stamp older than 24 h means a vacant slot, and on a tie a hub token (`.hub…`) beats a phone (`MasterToken.preferred`). The rules are `MasterElection.decide`, clock passed in | scalar |
 
 **Polarity is not uniform, and that is deliberate.** For a block the safe
