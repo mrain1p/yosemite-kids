@@ -7,8 +7,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
@@ -321,6 +328,12 @@ class PlayerActivity : ComponentActivity() {
     private val portraitTab = mutableStateOf<PlayerTab?>(null)
     /** Where the video is drawn on screen, for the shrink-to-PiP animation. */
     private var videoBounds: android.graphics.Rect? = null
+    /**
+     * The mounted video view, for the swipe-down gesture to move while a
+     * finger is on it. Held as a plain reference and not as state: a drag
+     * writes View properties every frame and must never recompose the stage.
+     */
+    private var stageView: PlayerView? = null
     /** Live only while a ⛶ press has the orientation forced; see [forceOrientation]. */
     private var orientationListener: android.view.OrientationEventListener? = null
     private var pipReceiver: android.content.BroadcastReceiver? = null
@@ -402,6 +415,19 @@ class PlayerActivity : ComponentActivity() {
         if (isTv) return
         window.decorView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
     }
+
+    /**
+     * Android's answer to prefers-reduced-motion: Accessibility → Remove
+     * animations, and Developer options' animator scale, both land on this
+     * one number, and zero means somebody asked for no motion. Read at the
+     * moment it matters rather than cached — a parent turning it on for a
+     * child who is dizzy should not have to restart the video — which a
+     * single Settings.Global read on a finger-lift can afford.
+     */
+    private fun animationsEnabled(): Boolean =
+        android.provider.Settings.Global.getFloat(
+            contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f
+        ) != 0f
 
     private fun togglePlayPause() {
         val exo = player ?: return
@@ -900,10 +926,59 @@ class PlayerActivity : ComponentActivity() {
         val card by endCard
         val pip by inPip
         val tokens = kidTokens
+        // Swipe down to put the video away (see PlayerGestures.kt for the
+        // numbers). Held here rather than in the touch layer below because the
+        // picture is what moves, and the touch layer comes and goes with the
+        // card states while the picture does not. It rides in the movable
+        // content with everything else, so a rotation mid-drag keeps its place.
+        val canSwipeAway = remember { pipSupported() }
+        val dismissDrag = remember { Animatable(0f) }
+        val scope = rememberCoroutineScope()
+        val density = LocalDensity.current.density
+        val dismissDragState = rememberDraggableState { deltaPx ->
+            // Follows the finger 1:1 and never rides above the top: an upward
+            // drag on a video means nothing, and letting it bank up negative
+            // travel would leave the next downward one feeling dead.
+            scope.launch {
+                dismissDrag.snapTo((dismissDrag.value + deltaPx / density).coerceAtLeast(0f))
+            }
+        }
+        // Home mid-drag auto-enters the window (see pipParams) without ever
+        // reaching onDragStopped. The picture has to be whole again when the
+        // kid taps the window to come back, not parked where the finger left it.
+        LaunchedEffect(pip) { if (pip) dismissDrag.snapTo(0f) }
+        // The picture follows the finger by moving the PlayerView itself, not
+        // by a Compose graphicsLayer over it. A layer transform is a matrix on
+        // the window's render node and the video is a SurfaceView — its own
+        // composited layer, positioned from the *View* hierarchy — so the
+        // layer scaled every overlay and left the video exactly where it was.
+        // Measured on the emulator: the drag worked and nothing moved. View
+        // properties do reach the surface, so that is what this drives.
+        if (canSwipeAway) LaunchedEffect(Unit) {
+            snapshotFlow { dismissDrag.value }.collect { travelled ->
+                val view = stageView ?: return@collect
+                val shrink = PlayerDismiss.scale(travelled)
+                // Shrink about the middle, then walk back the exact half the
+                // shrink freed: the bottom-right corner stays put and the
+                // picture tucks itself into the corner the little window
+                // appears in rather than shrinking in place. That also means
+                // it never spills past the slot it lives in, so the page
+                // underneath is never drawn over.
+                val walk = PlayerDismiss.cornerTravelFraction(travelled)
+                view.scaleX = shrink
+                view.scaleY = shrink
+                view.translationX = walk * view.width
+                view.translationY = walk * view.height
+                view.alpha = PlayerDismiss.alpha(travelled)
+            }
+        }
         Box(
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.scrim)
+                // Above the transform on purpose: the source rect the system
+                // animates the little window out of is where the video *lives*,
+                // not where a finger has dragged it to for the last 200ms.
                 .onGloballyPositioned { c ->
                     val b = c.boundsInWindow()
                     videoBounds = android.graphics.Rect(
@@ -978,6 +1053,10 @@ class PlayerActivity : ComponentActivity() {
                             // black) the moment the player is re-prepared with
                             // the next video — the other half of the cut to black.
                             setKeepContentOnPlayerReset(true)
+                            // The swipe-away gesture moves this view directly;
+                            // see the snapshotFlow above for why it cannot be
+                            // a Compose transform.
+                            stageView = this
                         }
                     }
                 )
@@ -1008,11 +1087,54 @@ class PlayerActivity : ComponentActivity() {
                 // Touch layer under the controls: single tap shows/hides
                 // them, a double tap on either edge hops ±10 s (the
                 // YouTube gesture every kid already knows), a double tap
-                // in the middle toggles play. Buttons above it consume
+                // in the middle toggles play, and a drag downwards puts the
+                // video in the little window. Buttons above it consume
                 // their own taps, so this only ever sees the bare video.
+                //
+                // The drag and the taps are separate handlers on one box and
+                // stay out of each other's way through touch slop: a tap
+                // never travels far enough to start a drag, and the moment a
+                // drag does start it consumes the moves, which cancels the
+                // tap detector. A third gesture here would have to earn the
+                // same proof — the ±10 s hop is the one a child uses most,
+                // and it is the one that would go quietly.
                 Box(
                     Modifier
                         .fillMaxSize()
+                        .then(
+                            if (!canSwipeAway) Modifier else Modifier.draggable(
+                                orientation = Orientation.Vertical,
+                                state = dismissDragState,
+                                // The chrome goes as soon as the picture
+                                // starts to move — a shrinking video with a
+                                // full-size control bar riding it reads as a
+                                // glitch rather than a gesture.
+                                onDragStarted = { hideControls() },
+                                onDragStopped = { velocityPx ->
+                                    val travelled = dismissDrag.value
+                                    val flick = velocityPx / density
+                                    // enterPip() asks pipEligible(): a blocked
+                                    // card, the pre-play check or a paused
+                                    // video says no, and then this is a drag
+                                    // that springs back rather than a gesture
+                                    // that half-worked.
+                                    if (PlayerDismiss.shouldDismiss(travelled, flick) && enterPip()) {
+                                        dismissDrag.snapTo(0f)
+                                    } else {
+                                        pokeControls()
+                                        if (animationsEnabled()) {
+                                            dismissDrag.animateTo(
+                                                0f,
+                                                spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow
+                                                )
+                                            )
+                                        } else dismissDrag.snapTo(0f)
+                                    }
+                                }
+                            )
+                        )
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = {

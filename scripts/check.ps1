@@ -1587,6 +1587,51 @@ if ($tokStyles -ne $tokListed) {
     Fail-Guard "KidType declares $tokStyles type styles and KidType.all lists $tokListed. A step missing from the list is a step the browser does not have."
 }
 
+# 55. Every way into the little window asks pipEligible() first, and the
+#     gesture that opens it can be argued with on a laptop.
+#     There are two ways in now — the ⤢ button and the swipe down the finger
+#     makes on the picture — and there will be a third. That is the shape of
+#     this: enterPictureInPictureMode() is a system call that cannot be taken
+#     back, and fired over a blocked card, the pre-play check or a time-up
+#     screen it hands a child a floating window of something the rules had
+#     just said no to. Nothing throws and nothing on screen says so.
+#     enterPip() is the one door, and it asks first.
+$playerSrc = "app/src/main/java/io/yosemitekids/app/ui/PlayerActivity.kt"
+if (-not (Test-Path $playerSrc)) {
+    Fail-Guard "$playerSrc is gone; guard 55 is blind. The player's one door into picture-in-picture lives there."
+}
+$pipCalls = @(Get-Content $playerSrc |
+    Select-String -Pattern "enterPictureInPictureMode(" -SimpleMatch).Count
+if ($pipCalls -ne 1) {
+    Fail-Guard "$playerSrc calls enterPictureInPictureMode() on $pipCalls lines. It is called once, inside enterPip(), which asks pipEligible() first. Route the new gesture, button or key through enterPip() and read its false."
+}
+$pipDoor = [regex]::Match((Get-Content $playerSrc -Raw), '(?ms)^    private fun enterPip\(\).*?^    \}').Value
+if ($pipDoor -notmatch 'pipEligible\(\)') {
+    Fail-Guard "enterPip() in $playerSrc no longer asks pipEligible(). That check is the only thing standing between a blocked card and a floating window of the video it blocked."
+}
+#     And the half of the swipe that is arithmetic stays arithmetic. Touch
+#     handling needs a finger; the threshold, the flick velocity and how big
+#     the picture is on the way down do not, and those are the numbers that
+#     get nudged. One androidx import in there and the test needs a device.
+$gestureSrc = "app/src/main/java/io/yosemitekids/app/ui/PlayerGestures.kt"
+if (-not (Test-Path $gestureSrc)) {
+    Fail-Guard "$gestureSrc is gone; guard 55 is blind. The swipe-to-shrink policy lives there so a JVM test can state it."
+}
+$gestureText = Get-Content $gestureSrc -Raw
+if ($gestureText -notmatch 'object PlayerDismiss') {
+    Fail-Guard "$gestureSrc no longer declares 'object PlayerDismiss'. Inlining the threshold back into PlayerActivity puts it where nothing can assert on it."
+}
+$gestureAndroid = @(Get-Content $gestureSrc |
+    Select-String -Pattern '^import (androidx|android)\.').Count
+if ($gestureAndroid -ne 0) {
+    Fail-Guard "$gestureSrc imports Android on $gestureAndroid line(s). It is reached from a plain JVM unit test; a Compose or framework type in there turns the one testable half of the gesture into another thing only a device can check."
+}
+$dismissTest = "app/src/test/java/io/yosemitekids/app/PlayerDismissTest.kt"
+if (-not (Test-Path $dismissTest) -or
+    (Get-Content $dismissTest -Raw) -notmatch 'PlayerDismiss') {
+    Fail-Guard "PlayerDismissTest is gone or no longer exercises PlayerDismiss. The gesture's numbers are only pinned while something reads them."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 
