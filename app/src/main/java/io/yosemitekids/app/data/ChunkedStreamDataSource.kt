@@ -8,51 +8,6 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 
 /**
- * Pure string plumbing for [ChunkedStreamDataSource], kept off android.net.Uri
- * so the JVM unit tests can exercise the range math directly.
- */
-internal object StreamChunker {
-    /** How much one request asks for. Small enough that the server's
-     * per-connection throttle never gets a long window to bite; large enough
-     * that request overhead stays negligible at video bitrates. */
-    const val CHUNK_BYTES = 2L * 1024 * 1024
-
-    fun isGoogleVideo(host: String?): Boolean =
-        host != null && (host == "googlevideo.com" || host.endsWith(".googlevideo.com"))
-
-    /** Total stream size the extractor URL already carries (`clen`), or null. */
-    fun clenOf(url: String): Long? =
-        queryValue(url, "clen")?.toLongOrNull()?.takeIf { it > 0 }
-
-    /**
-     * Rewrites the stream URL to fetch exactly [start]..[endInclusive] via the
-     * `range` query parameter (the form the servers serve at full speed —
-     * a `Range` header on an un-parameterised URL is what gets throttled),
-     * with `rn` numbering requests the way the official clients do.
-     */
-    fun chunkUrl(url: String, start: Long, endInclusive: Long, rn: Long): String {
-        val q = url.indexOf('?')
-        if (q < 0) return "$url?range=$start-$endInclusive&rn=$rn"
-        val kept = url.substring(q + 1).split('&').filter {
-            val key = it.substringBefore('=')
-            key != "range" && key != "rn"
-        }
-        val params = (kept + listOf("range=$start-$endInclusive", "rn=$rn"))
-            .joinToString("&")
-        return url.substring(0, q + 1) + params
-    }
-
-    private fun queryValue(url: String, key: String): String? {
-        val q = url.indexOf('?')
-        if (q < 0) return null
-        return url.substring(q + 1).split('&')
-            .firstOrNull { it.substringBefore('=') == key }
-            ?.substringAfter('=', "")
-            ?.takeIf { it.isNotEmpty() }
-    }
-}
-
-/**
  * Defeats googlevideo's progressive-download throttling by splitting the
  * transfer into fixed-size `range=`-parameter requests, the way the official
  * clients fetch media. A single long-lived request gets rate-limited to about
@@ -68,6 +23,10 @@ internal object StreamChunker {
  * length — needed to know where the last chunk ends without risking a 416).
  * Everything else — downloads on disk, SAF files, subtitle tracks — passes
  * straight through to the upstream source untouched.
+ *
+ * The arithmetic itself is [StreamChunker], in `:crawl`, because the hub's
+ * media proxy has to do exactly this translation for a browser that can only
+ * emit `Range:` headers. One implementation, two callers (guard 56).
  */
 @UnstableApi
 class ChunkedStreamDataSource(

@@ -390,6 +390,41 @@ videos and some undated ones. Decide whether an undated video sorts last under
 (it is not — hiding a video because we lack a date about it is worse than
 showing it late).
 
+### 2N. The web player — step 1 landed, and what it found
+
+`GET /media` on the hub proxies a video's bytes to a browser (see
+`docs/LAN-API.md` for the wire and `docs/HUB.md` for the ceiling). It is step 1
+of four; the kid-facing page, a second listener, and the claim code a child's
+tablet signs in with are steps 2–4 and are not built. What step 1 existed to
+answer was **can a NAS carry video bytes at watchable speed**, and the measured
+answer is yes, with room to spare: 9–11.6 MB/s (73–93 Mbit/s) through the proxy
+on a development machine, against the 0.06–0.125 MB/s a 360p stream needs. The
+control plane stayed answering in under 3 ms with three streams in flight.
+
+**Two things it found that step 2 has to deal with first.**
+
+1. **The hub cannot resolve a stream at all with guard 7's allow-list as it
+   stands.** NewPipe's player request goes to `youtubei.googleapis.com`, which
+   is not one of `Http.HUB_HOSTS`, so `GET /media` answers
+   `502 {"error":"resolve-failed"}` naming the refused host. Everything else
+   the hub does reaches `www.youtube.com/youtubei/v1/`, which is allowed —
+   this route is the first thing on the box that ever called
+   `resolvePlayback`, which is why it never showed up before. The list was
+   deliberately left alone here: **widening the one boundary that says what a
+   NAS may dial is an owner's decision, not a side effect of a feature.** It is
+   one entry — `youtubei.googleapis.com` — in `Http.HUB_HOSTS` and in guard 7's
+   case list in both gate scripts. Until it is made, nothing plays.
+2. **Muxed URLs often carry no `clen`.** Measured against a real itag-18 URL:
+   `ratebypass` and `dur` were there, `clen` was not. `HubStream` therefore
+   falls back to a `HEAD`, which answered `Content-Length` and
+   `Accept-Ranges: bytes`. Worth knowing on the app side too — the
+   television's `ChunkedStreamDataSource` gives up and reads progressively in
+   exactly this case, and nobody has measured what that costs.
+
+**The ceiling is about 360p** and will stay there until someone builds MSE or
+HLS: HD on YouTube is separate video and audio tracks merged at playback, which
+ExoPlayer does and a plain `<video>` cannot.
+
 ## 3. Known-wrong docs — cleared 2026-09-06
 
 All five went out with 1.0.7 and are recorded here rather than deleted,

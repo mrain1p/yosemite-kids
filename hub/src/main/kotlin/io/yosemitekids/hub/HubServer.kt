@@ -11,7 +11,9 @@ import io.yosemitekids.app.data.ScreeningStore
 import io.yosemitekids.app.data.SyncMeta
 import org.json.JSONObject
 import java.net.InetSocketAddress
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 
 /**
  * The hub's HTTP face.
@@ -104,16 +106,25 @@ class HubServer(
      * the meter that counts a browser's minutes for it.
      *
      * Built here beside [ledger] because they need the same four things this
-     * server already holds. **Neither has a route yet, and that is
-     * deliberate:** the page they exist for — its origin, its auth, its media
-     * — is a later round, and a decision engine reachable before the thing
-     * that authenticates its callers would be a policy anyone on the LAN could
-     * query about a named child. They are wired rather than parked so that a
-     * drift in what the policy needs is a compile error here, and so
-     * `HubPolicyTest` exercises exactly the shape a route will get.
+     * server already holds. [policy] now has a caller — `GET /media` asks it
+     * before it resolves anything and again on every chunk — while [meter]
+     * still has no route of its own: the heartbeat a page sends belongs with
+     * the page, which is a later round. What [media] uses it for today is
+     * naming the viewer, so the budget is read against the same cell the
+     * beats will eventually be filed under.
      */
     private val policy = HubPolicy(store, ledger, screening, index, now)
     private val meter = HubWatchMeter(ledger, now)
+
+    /**
+     * Resolving a video to one playable URL, and carrying its bytes.
+     *
+     * Its own object rather than methods here because it holds a cache with a
+     * clock and a lock, and because HubServer is already the longest file in
+     * this module. See [HubStream] for why the hub carries the bytes rather
+     * than redirecting a browser at Google.
+     */
+    private val streams = HubStream(now = now)
 
     /** The verdict engine and the browser meter, for tests and a future route. */
     fun policy(): HubPolicy = policy
@@ -139,6 +150,29 @@ class HubServer(
     private val startedAt = now()
 
     private var server: HttpServer? = null
+
+    /**
+     * Media runs on threads of its own, and never on the four this server
+     * answers everything else with.
+     *
+     * A proxied stream holds its thread for as long as the browser keeps
+     * reading — minutes, not milliseconds. On the shared pool two children
+     * watching would leave two threads for the admin GUI, `/status`, `/config`
+     * and every device sync, and three would leave none: the hub would look
+     * dead to the whole house while nothing was actually wrong. So `/media`
+     * gets its own pool, and [slots] refuses past [MAX_CONCURRENT_STREAMS]
+     * with a 503 rather than queueing — a queued request is a video that will
+     * not start and gives nobody anything to read.
+     */
+    private var mediaPool: ExecutorService? = null
+    private val slots = HubMedia.Slots(MAX_CONCURRENT_STREAMS)
+
+    /**
+     * The stream counter, so a test can fill it and ask this server over a
+     * socket what a fourth child gets. Proving the 503 any other way would
+     * mean three real videos and a network.
+     */
+    internal fun mediaSlots(): HubMedia.Slots = slots
 
     /** Bodies are bounded: this faces the LAN, and a config is small. */
     private val maxBody = 1024 * 1024
@@ -208,6 +242,15 @@ class HubServer(
         // box never holds a credential on anything and guard 7 is untouched.
         // A relay and a scoreboard; it stops nobody watching anything.
         s.createContext("/usage") { ex -> guarded(ex) { usage(ex) } }
+        // Video bytes, for a browser. Registered with a dispatcher of its own
+        // rather than with `guarded` directly, because the work is handed to
+        // another pool and this thread has to go straight back to answering
+        // the rest of the house. See [mediaPool] and [media].
+        val media = Executors.newFixedThreadPool(MAX_CONCURRENT_STREAMS) { r ->
+            Thread(r, "yosemite-kids-media").apply { isDaemon = true }
+        }
+        mediaPool = media
+        s.createContext("/media") { ex -> dispatchMedia(ex, media) }
         // Registered individually rather than under one prefix: a prefix
         // context would swallow every path beneath it, and "/" already
         // answers everything else with the page.
@@ -231,6 +274,12 @@ class HubServer(
     fun stop() {
         server?.stop(0)
         server = null
+        // Interrupted rather than drained: a stream in flight is a child's
+        // video, and waiting for one to finish would hold a container's
+        // shutdown for the length of it. The browser sees a truncated
+        // response, which is what a stopped hub should look like.
+        mediaPool?.shutdownNow()
+        mediaPool = null
     }
 
     /** The bound port — for tests, which ask for 0 and let the OS choose. */
@@ -523,6 +572,170 @@ class HubServer(
         }
         respond(ex, 200, JSONObject().put("pending", arr).toString())
     }
+
+    // --- media ----------------------------------------------------------
+
+    /**
+     * Take a slot, or say no, and get off the shared pool either way.
+     *
+     * The count is taken **before** the hand-off and released in the worker's
+     * own `finally`, so a stream can never be admitted twice or leak a slot
+     * when the executor refuses the task. Over the cap this answers 503 with a
+     * `Retry-After` rather than queueing: a queued video does not start, shows
+     * nothing, and gives a parent nothing to read — where a 503 is a sentence
+     * the page can put on screen.
+     */
+    private fun dispatchMedia(ex: HttpExchange, pool: ExecutorService) {
+        if (!slots.take()) return guarded(ex) { busy(ex) }
+        try {
+            pool.execute {
+                try {
+                    guarded(ex) { media(ex) }
+                } finally {
+                    slots.release()
+                }
+            }
+        } catch (e: RejectedExecutionException) {
+            slots.release()
+            guarded(ex) { busy(ex) }
+        }
+    }
+
+    private fun busy(ex: HttpExchange) {
+        ex.responseHeaders.add("Retry-After", MEDIA_RETRY_AFTER_SECONDS.toString())
+        respond(
+            ex, 503,
+            JSONObject()
+                .put("error", "busy")
+                .put("streams", MAX_CONCURRENT_STREAMS)
+                .toString()
+        )
+    }
+
+    /**
+     * `GET /media?v=<video>&kid=<profile>` — video bytes for a browser.
+     *
+     * The order of the first three lines is the whole design and is not
+     * negotiable:
+     *
+     * 1. **The session, first.** This is the only route on this box that costs
+     *    real bandwidth on someone else's network, so an unauthenticated
+     *    caller must not be able to make the hub fetch anything at all.
+     * 2. **[HubPolicy.mayPlay], second — before a single byte is resolved.**
+     *    Not "resolve, then check": resolving is a round trip to YouTube on a
+     *    named video, and a refused child must not be able to cause one. The
+     *    reason code goes back verbatim, because a page that has to say
+     *    *bedtime* and a page that has to say *a parent blocked this* are
+     *    different sentences.
+     * 3. **The muxed stream, third**, and only then the bytes.
+     *
+     * The rules are asked again on every chunk inside [HubStream.pump]. That,
+     * and not speed, is the reason this route proxies instead of redirecting:
+     * a `302` hands a child a URL Google will keep serving for hours, and a
+     * parent who blocks a video mid-play would be talking to nobody.
+     *
+     * Everything about the answer is RFC-7233 plain — `206`, `Content-Range`,
+     * `Content-Length`, `Accept-Ranges: bytes` — because a browser with any of
+     * those wrong cannot seek and shows no duration, and it fails by looking
+     * broken rather than by erroring.
+     *
+     * A 206 carries at most [HubMedia.MAX_RESPONSE_BYTES]. That is not a
+     * throttle; see the constant for the measured JDK behaviour it exists to
+     * stay clear of.
+     */
+    private fun media(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        // The hub's own session, for now. The claim code a child's tablet
+        // trades for one of these is a later round; until it exists the only
+        // caller is a parent's signed-in browser, which is deliberate — a
+        // media route open to the LAN is a fetch anyone can make this box pay
+        // for.
+        val session = sessionOf(ex)
+        if (!sessions.valid(session)) {
+            return respond(ex, 401, JSONObject().put("error", "sign in").toString())
+        }
+        val query = ex.requestURI.rawQuery
+        val videoId = HubMedia.videoIdIn(query)
+            ?: return respond(ex, 400, JSONObject().put("error", "bad video").toString())
+        val kidId = HubMedia.kidIn(query)
+        // Never taken from the page. The cell a browser's minutes are filed
+        // under is derived from the session this hub minted, so a tablet
+        // cannot claim a fresh viewer every morning to reset a budget.
+        val viewer = meter.ledgerId(session!!)
+
+        val verdict = policy.mayPlay(kidId, videoId, viewer)
+        if (!verdict.allowed) return refused(ex, verdict)
+
+        val resolved = try {
+            streams.resolve(videoId)
+        } catch (e: HubStream.Unplayable) {
+            // Distinguishable on purpose. "This hub could not find a stream a
+            // browser can play" and "YouTube would not answer" send a parent
+            // to different places, and serving something unplayable instead
+            // would send them to neither.
+            return respond(
+                ex, 502,
+                JSONObject().put("error", e.reason).put("detail", e.message.orEmpty()).toString()
+            )
+        }
+
+        val answer = HubMedia.rangeFor(ex.requestHeaders.getFirst("Range"), resolved.total)
+        if (answer == null) {
+            ex.responseHeaders.add("Content-Range", HubMedia.unsatisfiable(resolved.total))
+            return respond(ex, 416, JSONObject().put("error", "bad range").toString())
+        }
+        ex.responseHeaders.add("Content-Type", HubMedia.contentTypeFor(resolved.url))
+        ex.responseHeaders.add("Accept-Ranges", "bytes")
+        // Never stored. The URL behind this is signed and expires, and a
+        // cached copy in a child's browser is a video that keeps playing after
+        // a parent blocks it — which is the one thing this whole route exists
+        // to prevent.
+        ex.responseHeaders.add("Cache-Control", "no-store")
+        if (answer.partial) {
+            ex.responseHeaders.add("Content-Range", HubMedia.contentRange(answer, resolved.total))
+        }
+        securityHeaders(ex)
+        ex.sendResponseHeaders(if (answer.partial) 206 else 200, answer.length)
+        // A 206 is capped at one chunk and therefore always finishes; the
+        // gate below decides the NEXT request rather than interrupting this
+        // one. The 200 arm — no `Range:` header at all — is the exception,
+        // and the honest note is that a gate closing there stops the bytes
+        // but leaves the caller waiting on its own timeout, because the JDK
+        // will not close an under-written fixed-length reply (see
+        // [HubMedia.MAX_RESPONSE_BYTES]). No browser reaches it: `<video>`
+        // always sends a Range. Anything hand-rolled that does not is still
+        // *stopped* — it just gets an untidy end rather than a clean one.
+        try {
+            ex.responseBody.use { out ->
+                // Named, not trailing: `fetch` sits after `gate`, so a
+                // trailing lambda here would silently become the fetcher.
+                streams.pump(
+                    out, resolved.url, answer.start, answer.endInclusive,
+                    gate = { policy.mayPlay(kidId, videoId, viewer).allowed }
+                )
+            }
+        } catch (e: java.io.IOException) {
+            // A browser that has buffered enough closes the connection mid
+            // transfer, and a seek does the same. Both are ordinary and land
+            // here as a broken pipe; the headers are long since sent, so
+            // there is nothing to answer with and nothing has gone wrong.
+            System.err.println("media $videoId ended early: ${e.message}")
+        }
+    }
+
+    /** A refusal a page can read — the code, and the sentence behind it. */
+    private fun refused(ex: HttpExchange, verdict: HubPolicy.Decision) = respond(
+        ex, 403,
+        JSONObject()
+            .put("error", verdict.reason)
+            .put("detail", verdict.detail)
+            .apply {
+                verdict.spentMinutes?.let { put("spentMinutes", it) }
+                verdict.budgetMinutes?.let { put("budgetMinutes", it) }
+            }
+            .toString()
+    )
 
     // --- the admin GUI --------------------------------------------------
 
@@ -975,6 +1188,25 @@ class HubServer(
          */
         internal const val REQUEST_TIMEOUT_SECONDS = 10
         internal const val REQUEST_TIMEOUT_PROPERTY = "sun.net.httpserver.maxReqTime"
+
+        /**
+         * Videos this box carries at once, and how long a refused caller is
+         * asked to wait.
+         *
+         * Three, because that is a household: two children watching and one
+         * seek in flight. The number is a bound on *this NAS's uplink and
+         * CPU*, not a licence — every stream is a full-rate fetch from
+         * googlevideo re-sent to a browser, and a fourth would not make a
+         * fourth child's video play, it would make all four stutter. Past it
+         * the route answers 503 rather than queueing: a queued video never
+         * starts and says nothing, where a 503 is something a page can put on
+         * screen.
+         *
+         * The media pool is sized to exactly this, so the refusal is decided
+         * by [liveStreams] on the shared pool and never by a full queue.
+         */
+        internal const val MAX_CONCURRENT_STREAMS = 3
+        internal const val MEDIA_RETRY_AFTER_SECONDS = 5
 
         /**
          * How many unauthenticated join attempts this hub will take in a

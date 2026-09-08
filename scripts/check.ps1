@@ -1728,6 +1728,63 @@ if (-not (Test-Path $dismissTest) -or
     Fail-Guard "PlayerDismissTest is gone or no longer exercises PlayerDismiss. The gesture's numbers are only pinned while something reads them."
 }
 
+# 56. One implementation of the range arithmetic, and the browser's header
+#     stops at the hub.
+#     googlevideo serves a range=<start>-<end> QUERY parameter at link speed
+#     and throttles an RFC-7233 Range: HEADER on the same URL to roughly
+#     playback speed. The television learned that the expensive way - the
+#     measurements are in ChunkedStreamDataSource - and the hub's media proxy
+#     now makes the same translation on behalf of a browser, which can only
+#     ever emit the header and cannot be taught otherwise. Two copies of that
+#     arithmetic would not throw. They would drift, and the symptom is a video
+#     that stalls on one face and not the other, with nothing anywhere to say
+#     which of the two is wrong.
+#     (a) StreamChunker is declared once, in :crawl, where both callers reach it.
+$chunkerSrc = "crawl/src/main/kotlin/io/yosemitekids/app/data/StreamChunker.kt"
+if (-not (Test-Path $chunkerSrc)) {
+    Fail-Guard "$chunkerSrc is gone; guard 56 is blind. The shared range arithmetic lives there so :app and :hub run one copy of it."
+}
+$chunkerMain = @("app/src/main", "core/src/main", "crawl/src/main", "hub/src/main")
+$chunkerDecls = @(Get-ChildItem -Recurse -Filter *.kt $chunkerMain |
+    Where-Object { (Get-Content $_.FullName -Raw) -match 'object StreamChunker' } |
+    ForEach-Object { $_.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/") } | Sort-Object)
+if ($chunkerDecls.Count -ne 1 -or $chunkerDecls[0] -ne $chunkerSrc) {
+    Fail-Guard "guard 56 wanted exactly one 'object StreamChunker', in $chunkerSrc, and found: $(if ($chunkerDecls.Count) { $chunkerDecls -join ', ' } else { 'none' }). The television and the hub translate a position into a URL the same way or they do not; move it back and let both import it."
+}
+#     (b) Nothing else builds a range= query by hand.
+$chunkerCopy = @(Get-ChildItem -Recurse -Filter *.kt $chunkerMain |
+    ForEach-Object {
+        $cf = $_
+        $rel = $cf.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/")
+        if ($rel -eq $chunkerSrc) { return }
+        Get-Content $cf.FullName |
+            Select-String -Pattern '["?&]range=' |
+            ForEach-Object { "${rel}:$($_.LineNumber): $($_.Line.Trim())" }
+    })
+if ($chunkerCopy.Count -gt 0) {
+    Fail-Guard "a range= query is built outside ${chunkerSrc}: $($chunkerCopy -join '; ') — call StreamChunker.chunkUrl(). The rn numbering and the inclusive end are part of the form googlevideo serves fast, and a second spelling of them is the drift this guard exists for."
+}
+#     (c) The hub never forwards a Range HEADER upstream. Header in, query
+#         out: sending both asks one question in two languages, and the
+#         language that answers is the slow one. (:app's DownloadService does
+#         set one, deliberately and against a different concern, which is why
+#         this clause is scoped to the hub.)
+$chunkerFwd = @(Get-ChildItem -Recurse -Filter *.kt "hub/src/main" |
+    ForEach-Object {
+        $cf = $_
+        Get-Content $cf.FullName |
+            Select-String -Pattern '(addHeader|header)\("Range"' |
+            ForEach-Object { "$($cf.Name):$($_.LineNumber): $($_.Line.Trim())" }
+    })
+if ($chunkerFwd.Count -gt 0) {
+    Fail-Guard "the hub sets a Range request header: $($chunkerFwd -join '; ') — that is the throttled form. Translate the browser's header into StreamChunker.chunkUrl() and send the query instead."
+}
+#     (d) The arithmetic keeps its tests, beside the code and not beside the
+#         module it used to live in.
+if (-not (Test-Path "crawl/src/test/kotlin/io/yosemitekids/app/StreamChunkerTest.kt")) {
+    Fail-Guard "crawl/src/test/.../StreamChunkerTest.kt is gone. The range maths moved to :crawl and its coverage moves with it - :app's test task no longer runs it."
+}
+
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 

@@ -510,6 +510,87 @@ Guard 7 in `scripts/check.*` fails the build on anything else.
 `mem_limit` in the compose file is 384m to leave the crawl room. Measure the
 first full crawl with `docker stats yosemite-kids-hub` and put the number here.
 
+## Video in a browser — and the quality ceiling
+
+`GET /media?v=<id>&kid=<id>` serves a video's bytes to a browser. It is the
+groundwork for a kid-facing web player (an iPad, a laptop, anything with no
+app), and only the groundwork: the page, the second listener and the claim
+code a child's tablet signs in with are later rounds. Today the only caller is
+a parent's signed-in browser.
+
+**The hub carries the bytes; it does not redirect.** That is the expensive
+choice and it is deliberate, for two separate reasons:
+
+- googlevideo throttles a plain progressive GET — and an RFC-7233 `Range:`
+  header on an un-parameterised URL — to roughly playback speed. The form
+  served at link speed is a `range=<start>-<end>` **query** parameter with
+  `rn=` numbering. A browser's `<video>` can only emit the header, so a
+  browser sent straight to Google gets the slow path and stalls. The hub reads
+  the header and asks upstream in the query form (`StreamChunker` in `:crawl`,
+  the same code the television's player uses — guard 56 keeps it one copy).
+- A redirect cannot be taken back. Once a child's browser holds a googlevideo
+  URL, Google serves it for hours and a parent blocking the video mid-play is
+  talking to nobody. Because the hub is in the path, `HubPolicy.mayPlay` is
+  asked again **on every 2 MB chunk**, so a block, a pause or a budget hitting
+  zero stops a video that is already running.
+
+**It does not work yet, and here is exactly why.** NewPipe's player request —
+the call that turns a video id into a stream URL — goes to
+`youtubei.googleapis.com`, and that host is **not** on this container's
+outbound allow-list (guard 7 in `scripts/check.*` holds that list to YouTube's
+own hosts). So `GET /media` answers `502 {"error":"resolve-failed"}` with the
+refused host named in `detail`. Everything else the hub does reaches
+`www.youtube.com/youtubei/v1/`, which is allowed, which is why the crawl has
+always worked and this has not. Fixing it is one entry in `Http.HUB_HOSTS` and
+one in guard 7's case list in **both** gate scripts — and it is deliberately
+left for a person to decide, because that list is the whole statement of what
+this box on your network may dial.
+
+**The ceiling: about 360p in a browser, HD in the app.** This serves the muxed
+progressive stream. HD on YouTube means separate video-only and audio-only
+tracks merged at playback, which ExoPlayer does and a plain `<video>` cannot
+without MSE or HLS. Nobody has built that here, so the honest number is 360p —
+and a video with no muxed stream at all is refused with a named reason
+(`no-muxed-stream`, `no-stream-length`, `age-restricted`, `resolve-failed`)
+rather than served as something that will not decode.
+
+**Three streams at once**, on threads of their own. A proxied stream holds its
+thread for as long as the browser reads, so on the four-thread pool the rest of
+this server answers on, two children watching would starve `/status`,
+`/config`, the admin GUI and every device sync. `/media` therefore has its own
+executor and a hard cap (`HubServer.MAX_CONCURRENT_STREAMS`); a fourth stream
+gets `503` with `Retry-After`, never a queue.
+
+**One reply carries 2 MB.** Not a throttle — a browser simply asks for the next
+span, which is how every segmented server works. It is there because
+`com.sun.net.httpserver` **does not close a fixed-length response that was
+under-written**: declare `Content-Length: 1000`, write 100 bytes, close the
+exchange, and the socket stays open until the client's own read timeout. On
+this route that would be exactly what a child sees when a parent blocks a video
+mid-play — a stopped video looking like a frozen one. Capping every reply means
+a reply is always finished, and the rules are re-asked between them.
+
+**What it costs this box.** Every byte a child watches crosses the NAS twice —
+in from Google, out to the tablet — so the uplink and the container's CPU are
+now in the playback path in a way they never were for a television. Measure
+before assuming: with the hub running,
+
+```
+curl -s -o /dev/null -w '%{speed_download} B/s  %{http_code}\n' \
+  -H 'Cookie: yk_session=<from a browser>' -H 'Range: bytes=0-2097151' \
+  http://<nas>:8765/media?v=<video id>
+```
+
+A 360p stream needs roughly 0.5–1 Mbit/s (60–125 kB/s) sustained.
+
+Measured on a development machine (not the NAS) against a 28.5 MB muxed
+stream, 2026-09-08: **10.1–11.3 MB/s per 2 MB span** and 10.2 MB/s for the
+whole file in one reply — 80 to 90 Mbit/s, roughly a hundred times what
+playback needs. With three streams in flight, `GET /health` still answered in
+under 3 ms and the admin page's `/api/state` in 26 ms. Repeat this on the NAS
+before trusting it there: that box has a slower processor and shares its uplink
+with everything else it does.
+
 ## Permissions — read this if the container restarts in a loop
 
 **Symptom.** `docker ps` shows `Restarting`, and the log repeats a
