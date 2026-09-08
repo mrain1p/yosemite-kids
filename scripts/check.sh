@@ -305,7 +305,7 @@ hosts=$(grep -A3 "val HUB_HOSTS" crawl/src/main/kotlin/io/yosemitekids/app/data/
 [ -n "$hosts" ] || guard_fail "Http.HUB_HOSTS is empty or unreadable; the hub's allow-list must name YouTube's hosts."
 for h in $hosts; do
   case "$h" in
-    youtube.com|youtu.be|googlevideo.com|ytimg.com|ggpht.com|googleusercontent.com) ;;
+    youtube.com|youtu.be|googlevideo.com|ytimg.com|ggpht.com|googleusercontent.com|youtubei.googleapis.com) ;;
     *) guard_fail "Http.HUB_HOSTS names $h, which is not one of YouTube's hosts. The hub reaches YouTube and nothing else." ;;
   esac
 done

@@ -330,7 +330,7 @@ $hostLines = if ($hostsStart -ge 0) { $httpSrc[$hostsStart..([Math]::Min($hostsS
 $hosts = @($hostLines | Select-String -Pattern '"([a-z0-9.-]+)"' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value })
 if ($hosts.Count -eq 0) { Fail-Guard "Http.HUB_HOSTS is empty or unreadable; the hub's allow-list must name YouTube's hosts." }
 foreach ($h in $hosts) {
-    if ($h -notin @("youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "googleusercontent.com")) {
+    if ($h -notin @("youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "googleusercontent.com", "youtubei.googleapis.com")) {
         Fail-Guard "Http.HUB_HOSTS names $h, which is not one of YouTube's hosts. The hub reaches YouTube and nothing else."
     }
 }
