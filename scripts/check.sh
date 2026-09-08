@@ -1316,6 +1316,59 @@ done
 [ -z "$shadowed" ] ||
   guard_fail "$shadowed exists in both core/.../ui and app/.../ui. Same package, same file name, same JVM class - one shadows the other on the classpath and nothing says so. Rename one for what is actually in it."
 
+# 48. The kid's colours and type scale are generated for the browser, never
+#     retyped for it.
+#     The palette is one table in :core. The Android app binds it through
+#     Compose; the stylesheet the hub serves is written from it by
+#     :hub:generateKidTokensCss on every build. Neither may state a colour of
+#     its own, and there is deliberately no copy of the stylesheet under
+#     version control - it exists only in build/, so it cannot go stale and a
+#     hand edit cannot survive the next build. This is the amber-warning
+#     failure one level up: the same colour existing twice, in two files, at
+#     two different alphas, with nothing to say which one was right.
+tok=core/src/main/kotlin/io/yosemitekids/app/ui/DesignTokens.kt
+[ -f "$tok" ] ||
+  guard_fail "$tok is gone; guard 48 is blind. The one palette lives there."
+#     (a) Nothing hand-written may be served as a stylesheet.
+css_checked=$(find hub/src -name "*.css" || true)
+[ -z "$css_checked" ] ||
+  guard_fail "a stylesheet is checked in under hub/src ($css_checked). The kid palette is generated from $tok into build/ - a copy here is a second palette that agrees until somebody changes a colour."
+#     (b) The generator is wired to the resources, and what it writes is served.
+hubbuild=hub/build.gradle.kts
+grep -q "generateKidTokensCss" "$hubbuild" ||
+  guard_fail "$hubbuild no longer registers generateKidTokensCss. Without it the hub serves no tokens at all and every colour on the kid's page is the browser default."
+grep -q "resources.srcDir(kidTokensCssDir)" "$hubbuild" ||
+  guard_fail "$hubbuild no longer puts the generated stylesheet on the hub's resources. It would be written and then never packaged."
+grep -qF "dependsOn(generateKidTokensCss)" "$hubbuild" ||
+  guard_fail "processResources no longer depends on generateKidTokensCss in $hubbuild, so a clean build packages whatever was there last time - or nothing."
+grep -qF '"/kid-tokens.css"' hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt ||
+  guard_fail "HubServer serves no /kid-tokens.css. \"/\" answers anything without a route of its own with the admin page's HTML and a 200, so the stylesheet would arrive as HTML and every colour would silently be the browser default."
+#     (c) The Android binding states no colour and no size of its own.
+kidtok=app/src/main/java/io/yosemitekids/app/ui/KidTokens.kt
+kid_lit=$(grep -nE "Color\(0x" "$kidtok" || true)
+[ -z "$kid_lit" ] ||
+  guard_fail "a colour literal in $kidtok. The hues live in :core's KidHues so the browser gets the same ones; a hex here is the second table. Found:
+$kid_lit"
+theme=app/src/main/java/io/yosemitekids/app/ui/Theme.kt
+for block in YosemiteDarkColors YosemiteLightColors YosemiteTypography; do
+  blk_lit=$(sed -n "/^val $block = /,/^)/p" "$theme" | grep -nE "Color\(0x|TextUnit\(" || true)
+  [ -z "$blk_lit" ] ||
+    guard_fail "$block in $theme states its own values. The kid-facing palette and type scale are :core's KID_DARK, KID_LIGHT and KidType, so the generated stylesheet and the app cannot disagree. Found:
+$blk_lit"
+done
+#     (d) Every field of the table actually reaches the browser. A role added
+#         to KidScheme and forgotten in roles() is not an error: it is a
+#         var(--yk-...) that falls back to nothing, a card drawn on
+#         transparent, and a page that looks almost right.
+tok_fields=$(sed -n '/^data class KidScheme(/,/^)/p' "$tok" | grep -cE "^    val [a-zA-Z]+: Int" || true)
+tok_roles=$(sed -n '/fun roles(): List<Pair<String, Int>> = listOfNotNull(/,/^    )/p' "$tok" | grep -cF '" to ' || true)
+[ "$tok_fields" = "$tok_roles" ] ||
+  guard_fail "KidScheme declares $tok_fields roles and roles() names $tok_roles. Every role has to be listed, or it simply is not in the stylesheet."
+tok_styles=$(grep -cE "^    val [a-zA-Z]+ = TypeStyle\(" "$tok" || true)
+tok_listed=$(sed -n '/val all: List<TypeStyle> = listOf(/,/^    )/p' "$tok" | tr ',' '\n' | grep -cE "^[[:space:]]*[a-z][a-zA-Z]+[[:space:]]*$" || true)
+[ "$tok_styles" = "$tok_listed" ] ||
+  guard_fail "KidType declares $tok_styles type styles and KidType.all lists $tok_listed. A step missing from the list is a step the browser does not have."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 

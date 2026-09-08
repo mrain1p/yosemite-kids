@@ -141,7 +141,12 @@ class HubServer(
         "/icon-192.png" to "image/png",
         "/icon-512.png" to "image/png",
         "/icon-maskable-512.png" to "image/png",
-        "/apple-touch-icon.png" to "image/png"
+        "/apple-touch-icon.png" to "image/png",
+        // The kid palette and type scale, written into this jar at build time
+        // by :hub:generateKidTokensCss from the same :core table the Android
+        // app themes itself from. Carries no family data, so it sits with the
+        // rest of the shell rather than behind the session.
+        "/kid-tokens.css" to "text/css; charset=utf-8"
     )
 
     fun start(): Int {

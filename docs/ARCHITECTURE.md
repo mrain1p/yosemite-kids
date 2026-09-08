@@ -91,7 +91,8 @@ app/src/main/java/io/yosemitekids/app/
     ├── HomeState.kt          Screen sealed interface + UiState
     ├── YosemiteScreen.kt     Screen container: transitions, titles, back, errors
     ├── TvNavRail.kt          The television's chrome: the rail, its two widths
-    ├── HomeSections.kt       The home as data: shelf ids, order, pin resolve
+    ├── HomeShelfCounts.kt    What each shelf has to show. All that stayed when
+    │                         the shelf model moved to :core — it reads UiState
     ├── HomeShelves.kt        One home, both shapes: the shelf walk, the hero
     ├── HomeScreens.kt        Shared home pieces: rails, header, Channels tab
     ├── VideoGrid.kt          Poster grid, hold menu, queue list, watched shelf
@@ -104,7 +105,11 @@ app/src/main/java/io/yosemitekids/app/
     ├── Settings*.kt          Parent settings (PIN/biometric gate, sections)
     ├── KidsSettings.kt       Kid profile editor
     ├── StatsScreen.kt / DigestScreen.kt   Parent dashboards
-    └── Theme.kt              Colors, formatClock, remainingLabel
+    ├── Theme.kt              The Compose binding of :core's DesignTokens (the two
+    │                         kid schemes, the type scale), the parent-facing
+    │                         palette, formatClock, remainingLabel
+    └── KidTokens.kt          action / timeWarning / watched / offline, derived
+                              per ground from :core's canonical hues
 ```
 
 The three modules the app shares with the container. `:core` and `:crawl` keep
@@ -133,12 +138,25 @@ core/src/main/kotlin/io/yosemitekids/app/data/     the pure rules: no disk, no c
 ├── MasterElection.kt / MasterToken.kt   Who builds the search index (clock passed in)
 └── BackupFile.kt       The backup envelope, so the phone and the hub write one shape
 
+core/src/main/kotlin/io/yosemitekids/app/ui/       what both faces draw, as data
+├── HomeSections.kt     The home as data: shelf ids, the catalogue, the saved
+│                       order, pinMeta and the fail-closed resolvePins, the
+│                       television's opening focus. Guard 47; no Compose in it
+├── DesignTokens.kt     The one palette and type scale, as ARGB ints and sp
+│                       numbers: KidHues, KID_DARK, KID_LIGHT, KidType, and the
+│                       colour maths that derives a signal colour for a ground
+└── KidTokensCss.kt     The same table as CSS custom properties. Run by
+                        :hub:generateKidTokensCss; never checked in (guard 48)
+
 crawl/src/main/kotlin/io/yosemitekids/app/data/    network, disk, clock — plain JVM
 ├── Http.kt             The one OkHttpClient, and restrictTo() — the hub arms it
 │                       at startup so the crawler can reach YouTube and nothing else
 ├── YouTubeRepository.kt / Extractor.kt / OkHttpDownloader.kt   NewPipeExtractor
 ├── ChannelIndex.kt / IndexCrawler.kt / IndexCrawlRun.kt / IndexPull.kt
 ├── AiScreener.kt / ScreeningStore.kt   The screener and the verdict store
+├── Screening.kt        "May this child see this video?" — the one predicate,
+│                       beside the verdicts it reads, so the app and the hub
+│                       answer with the same function (guard 46)
 └── QualityTargets.kt / PlaylistRef.kt / LocalUrls.kt / CrawlModule.kt
 
 hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container
@@ -322,12 +340,14 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Change the player controls | `PlayerActivity.kt` → `PlayerControlsOverlay` (phone + TV), `onKeyDown` (TV) |
 | Change what happens when a video ends | `PlayerActivity.showEndCard` / `EndCardOverlay` |
 | Change the portrait player (what sits under the video) | `PlayerActivity.PortraitPlayerScaffold`; the slot's chrome is `PlayerControlsOverlay(compact = true)` |
-| Change an icon, the type scale, a chip or the channel art | `ui/Icons.kt` (the drawn Material Symbols), `Theme.kt` (`YosemiteTypography`, `relativeAge`), `ui/Components.kt` (`YosemiteChip`, `ChannelArt`, `NewPill`, `HeaderIconButton`, `metaLine`) — emoji are content (avatars, cards), never chrome |
+| Change an icon, a chip or the channel art | `ui/Icons.kt` (the drawn Material Symbols), `ui/Components.kt` (`YosemiteChip`, `ChannelArt`, `NewPill`, `HeaderIconButton`, `metaLine`) — emoji are content (avatars, cards), never chrome |
+| Change a kid-facing colour or the type scale | `core/.../ui/DesignTokens.kt` — `KidHues` (the four signals), `KID_DARK` / `KID_LIGHT` (the two looks), `KidType` (the ladder). `Theme.kt` and `KidTokens.kt` only bind them to Compose, and `:hub:generateKidTokensCss` writes the same table out as `/kid-tokens.css` for the browser. Guard 48 fails if either face states a value of its own; `KidTokensParityTest` fails if the two derivations disagree. The parent-facing palette (`AdminDarkColors`, `Settings*`) is still Theme.kt's own |
 | Change playback quality (Auto or a ceiling) | `NetworkQuality.kt` `QualityTargets` (`userMaxHeight`, `effectiveMaxHeight`), `Whitelist.qualityTv/qualityPhone`, the Playback settings page, `PlayerActivity.setQuality` |
 | Change how many videos a grid shows before "Show more" | `Whitelist.pageSize` → `UiState.pageSize` → `VideoGrid(pageSize = …)` |
 | Change the kid's sort/filter chips or their defaults | `HomeState.orderChannels` / `filterVideos` (pure), `KidPrefs` (per-kid persistence), `MainViewModel.setChannelSort` / `setHomeFilter` / `setChannelFilter`; chips in `HomeScreens.kt` (`ChannelSortChips`, `VideoFilterChips`) and `HomeShelves.kt` (`FeedControlRow`) |
-| Add, reorder or restyle a home shelf | `HomeSections.kt` (the id, the catalogue), then its branch in `HomeShelves.kt` `drawShelves` — guard 33 fails if you do only one. Sizes are `homeMetrics`; the hero is `PinnedHeroCarousel` (phone) / `PinnedHeroRow` (TV) |
-| Change what the pinned hero shows | Read: `Whitelist.pinsFor` → `MainViewModel.pinnedUrls` / `pinnedRow` → `HomeSections.resolvePins` (fail-closed, `HomeSectionsTest`). Write: `Pins.withRow` in `:core` — the only place a rank is minted, the cap applied or an invisible source refused (`PinsEditorTest`, guard 42) — reached from `SettingsPins.kt` on the phone and `cardPins()` in the hub's `index.html`, both declared as `listing-pins` in `SettingsSurface` |
+| Add, reorder or restyle a home shelf | `core/.../ui/HomeSections.kt` (the id, the catalogue — one list, so a browser home gets the shelf too), then its branch in `HomeShelves.kt` `drawShelves` and its count in `HomeShelfCounts.kt` — guard 33 fails if you do only one, guard 47 if the model comes back into `:app`. Sizes are `homeMetrics`; the hero is `PinnedHeroCarousel` (phone) / `PinnedHeroRow` (TV) |
+| Change what the pinned hero shows | Read: `Whitelist.pinsFor` → `MainViewModel.pinnedUrls` / `pinnedRow` → `resolvePins` in `:core` (fail-closed, generic over `PinnableSource` so the hub can call it, `core/src/test/HomeSectionsTest`). Write: `Pins.withRow` in `:core` — the only place a rank is minted, the cap applied or an invisible source refused (`PinsEditorTest`, guard 42) — reached from `SettingsPins.kt` on the phone and `cardPins()` in the hub's `index.html`, both declared as `listing-pins` in `SettingsSurface` |
+| Change what a kid is allowed to see | `Screening.isVisible` / `needsScreening` in `:crawl` — the one predicate, so the app and the hub agree (`ScreeningVisibilityTest`, guard 46). `:app`'s `Screener` owns only the mutable state, the batching and the retries |
 | Change the You tab | `YouScreen.kt`, `MainViewModel.youShelves` / `openYou` |
 | Change the television's rail (a stop, its widths, the time card) | `TvNavRail.kt` (`RailStop`, `railStopFor`, the two widths — `TvNavRailTest` pins what still fits beside them), wired in `YosemiteScreen.kt` (`railShown`, the asymmetric gutter, the page's focus group). Guard 35 holds the focus-modifier order the collapse depends on |
 | Change what "More like what you watch" suggests | `HomeState.suggestionsFor` / `titleKeywords` (pure — `SuggestionsTest` covers it), fed by `MainViewModel.suggestionsRow`, switched by `Whitelist.suggestSimilar` |

@@ -43,10 +43,14 @@ data class KidTokens(
 // ground, and then moved by [legibleOn] for whatever ground it actually lands
 // on — which is what makes the light theme work without a second table to
 // keep in sync.
-private val ACTION = Color(0xFFE0533D)
-private val TIME_WARNING = Color(0xFFD8A13A)
-private val WATCHED = Color(0xFF47B877)
-private val OFFLINE = Color(0xFF4A8B8D)
+//
+// Stated once means once for the *project*, not once per face: the numbers
+// live in :core's KidHues, which is also what the browser's stylesheet is
+// generated from. A hex literal back here would be the second table.
+private val ACTION = Color(KidHues.ACTION)
+private val TIME_WARNING = Color(KidHues.TIME_WARNING)
+private val WATCHED = Color(KidHues.WATCHED)
+private val OFFLINE = Color(KidHues.OFFLINE)
 
 /**
  * Push [fg] away from [bg] until the pair clears [min]:1.
@@ -91,8 +95,8 @@ fun kidTokensFor(background: Color): KidTokens = KidTokens(
     offline = legibleOn(OFFLINE, background),
     // Not theme-dependent: a thumbnail is a photograph in both looks, and a
     // light scrim over a bright frame would fail exactly where it is needed.
-    artworkScrim = Color(0xCC000000),
-    onArtwork = Color.White
+    artworkScrim = Color(KidHues.ARTWORK_SCRIM),
+    onArtwork = Color(KidHues.ON_ARTWORK)
 )
 
 /**

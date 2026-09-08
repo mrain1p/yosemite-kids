@@ -75,6 +75,39 @@ sourceSets.main {
 }
 tasks.named("compileKotlin") { dependsOn(generateHubBuild) }
 
+// The kid-facing design tokens, as CSS, for whatever this hub serves to a
+// browser.
+//
+// WHY IT IS GENERATED AND NOT WRITTEN. The palette and the type scale live in
+// :core (DesignTokens.kt) and the Android app builds its Compose theme from
+// them. A stylesheet typed out by hand beside them would be a second copy of
+// the same table, and second copies of tables in this project have a history:
+// the amber warning colour once existed twice, in two files, at two alphas.
+// So the file that reaches the browser is written from the Kotlin, every
+// build, and there is deliberately no copy of it under version control —
+// guard 48 fails if one appears, and no hand edit can survive, because the
+// file only ever exists in build/.
+//
+// Run from :core's jar rather than this project's own classes on purpose: a
+// JavaExec on :hub's own output would need `classes`, which needs
+// `processResources`, which needs this task. The runtime classpath has :core
+// on it and none of this module, so there is no cycle.
+val kidTokensCssDir = layout.buildDirectory.dir("generated/kidTokens")
+val kidTokensCssFile = kidTokensCssDir.map { it.file("web/kid-tokens.css") }
+val generateKidTokensCss by tasks.registering(JavaExec::class) {
+    description = "Writes the kid palette and type scale out as CSS custom properties."
+    classpath = configurations.named("runtimeClasspath").get()
+    mainClass.set("io.yosemitekids.app.ui.KidTokensCssKt")
+    outputs.file(kidTokensCssFile)
+    argumentProviders.add(
+        CommandLineArgumentProvider { listOf(kidTokensCssFile.get().asFile.absolutePath) }
+    )
+}
+sourceSets.main {
+    resources.srcDir(kidTokensCssDir)
+}
+tasks.named("processResources") { dependsOn(generateKidTokensCss) }
+
 dependencies {
     // The merge, the stamper, the serializers — shared verbatim with the app so
     // there is one implementation of the rules rather than two that drift.

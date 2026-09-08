@@ -1515,6 +1515,78 @@ if ($shadowed.Count -gt 0) {
     Fail-Guard "$($shadowed -join ' ') exists in both core/.../ui and app/.../ui. Same package, same file name, same JVM class - one shadows the other on the classpath and nothing says so. Rename one for what is actually in it."
 }
 
+# 48. The kid's colours and type scale are generated for the browser, never
+#     retyped for it.
+#     The palette is one table in :core. The Android app binds it through
+#     Compose; the stylesheet the hub serves is written from it by
+#     :hub:generateKidTokensCss on every build. Neither may state a colour of
+#     its own, and there is deliberately no copy of the stylesheet under
+#     version control - it exists only in build/, so it cannot go stale and a
+#     hand edit cannot survive the next build. This is the amber-warning
+#     failure one level up: the same colour existing twice, in two files, at
+#     two different alphas, with nothing to say which one was right.
+$tok = "core/src/main/kotlin/io/yosemitekids/app/ui/DesignTokens.kt"
+if (-not (Test-Path $tok)) {
+    Fail-Guard "$tok is gone; guard 48 is blind. The one palette lives there."
+}
+#     (a) Nothing hand-written may be served as a stylesheet.
+$cssChecked = @(Get-ChildItem -Recurse -Path hub/src -Filter *.css -ErrorAction SilentlyContinue |
+    ForEach-Object { $_.FullName })
+if ($cssChecked.Count -gt 0) {
+    Fail-Guard "a stylesheet is checked in under hub/src ($($cssChecked -join ' ')). The kid palette is generated from $tok into build/ - a copy here is a second palette that agrees until somebody changes a colour."
+}
+#     (b) The generator is wired to the resources, and what it writes is served.
+$hubBuildText = Get-Content "hub/build.gradle.kts" -Raw
+if (-not $hubBuildText.Contains("generateKidTokensCss")) {
+    Fail-Guard "hub/build.gradle.kts no longer registers generateKidTokensCss. Without it the hub serves no tokens at all and every colour on the kid's page is the browser default."
+}
+if (-not $hubBuildText.Contains("resources.srcDir(kidTokensCssDir)")) {
+    Fail-Guard "hub/build.gradle.kts no longer puts the generated stylesheet on the hub's resources. It would be written and then never packaged."
+}
+if (-not $hubBuildText.Contains("dependsOn(generateKidTokensCss)")) {
+    Fail-Guard "processResources no longer depends on generateKidTokensCss in hub/build.gradle.kts, so a clean build packages whatever was there last time - or nothing."
+}
+$hubSrvText = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt" -Raw
+if (-not $hubSrvText.Contains('"/kid-tokens.css"')) {
+    Fail-Guard "HubServer serves no /kid-tokens.css. `"/`" answers anything without a route of its own with the admin page's HTML and a 200, so the stylesheet would arrive as HTML and every colour would silently be the browser default."
+}
+#     (c) The Android binding states no colour and no size of its own.
+$kidTokPath = "app/src/main/java/io/yosemitekids/app/ui/KidTokens.kt"
+$kidTokLit = @(Get-Content $kidTokPath |
+    Select-String -Pattern 'Color\(0x' |
+    ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" })
+if ($kidTokLit.Count -gt 0) {
+    Fail-Guard "a colour literal in $kidTokPath. The hues live in :core's KidHues so the browser gets the same ones; a hex here is the second table. Found: $($kidTokLit -join '; ')"
+}
+$themeText = Get-Content "app/src/main/java/io/yosemitekids/app/ui/Theme.kt" -Raw
+foreach ($block in @("YosemiteDarkColors", "YosemiteLightColors", "YosemiteTypography")) {
+    $blk = [regex]::Match($themeText, "(?m)^val $block = [\s\S]*?^\)").Value
+    if ($blk -eq "") { Fail-Guard "guard 48 cannot find $block in Theme.kt; it is blind." }
+    if ($blk -match 'Color\(0x' -or $blk -match 'TextUnit\(') {
+        Fail-Guard "$block in Theme.kt states its own values. The kid-facing palette and type scale are :core's KID_DARK, KID_LIGHT and KidType, so the generated stylesheet and the app cannot disagree."
+    }
+}
+#     (d) Every field of the table actually reaches the browser. A role added
+#         to KidScheme and forgotten in roles() is not an error: it is a
+#         var(--yk-...) that falls back to nothing, a card drawn on
+#         transparent, and a page that looks almost right.
+$tokText = Get-Content $tok -Raw
+$schemeBlock = [regex]::Match($tokText, '(?m)^data class KidScheme\([\s\S]*?^\)').Value
+$tokFields = ([regex]::Matches($schemeBlock, '(?m)^    val [a-zA-Z]+: Int')).Count
+$rolesBlock = [regex]::Match($tokText, '(?m)^    fun roles\(\): List<Pair<String, Int>> = listOfNotNull\([\s\S]*?^    \)').Value
+$tokRoles = ([regex]::Matches($rolesBlock, '" to ')).Count
+if ($tokFields -ne $tokRoles) {
+    Fail-Guard "KidScheme declares $tokFields roles and roles() names $tokRoles. Every role has to be listed, or it simply is not in the stylesheet."
+}
+$tokStyles = ([regex]::Matches($tokText, '(?m)^    val [a-zA-Z]+ = TypeStyle\(')).Count
+$allBlock = [regex]::Match($tokText, '(?m)^    val all: List<TypeStyle> = listOf\([\s\S]*?^    \)').Value
+$tokListed = @((($allBlock -replace '(?m)^.*listOf\(', '') -replace '(?m)^\s*\)\s*$', '') -split ',' |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -match '^[a-z][a-zA-Z]+$' }).Count
+if ($tokStyles -ne $tokListed) {
+    Fail-Guard "KidType declares $tokStyles type styles and KidType.all lists $tokListed. A step missing from the list is a step the browser does not have."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

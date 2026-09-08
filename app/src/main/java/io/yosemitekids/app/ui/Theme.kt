@@ -20,44 +20,44 @@ import androidx.compose.ui.unit.dp
  * Yosemite Kids brand: the logo's dark teal (#00695C), lightened to the tones a
  * dark theme needs — Material wants `primary` legible *on* the background, so
  * the logo colour itself only appears as a container/fill, never as text.
+ *
+ * The numbers are in `:core`'s [KID_DARK], not here, because the browser is
+ * about to draw the same screens and cannot read a Compose file. This is the
+ * Android binding of that table and nothing else — the reasoning for each
+ * value lives beside the value. Guard 48 fails if a hex literal comes back.
  */
 val YosemiteDarkColors = darkColorScheme(
-    primary = Color(0xFF4DB6AC),
-    onPrimary = Color(0xFF00352F),
-    primaryContainer = Color(0xFF00695C),
-    onPrimaryContainer = Color(0xFFB2DFDB),
-    secondary = Color(0xFFB0CCC7),
-    onSecondary = Color(0xFF1C3531),
-    secondaryContainer = Color(0xFF334B47),
-    onSecondaryContainer = Color(0xFFCCE8E3),
-    tertiary = Color(0xFFA5C8E4),
-    // The ground is Material's own dark baseline, kept to the byte: it is what
-    // families are looking at today and it is not the thing that needed fixing.
-    background = Color(0xFF141218),
-    onBackground = Color(0xFFE6E0E9),
-    surface = Color(0xFF141218),
-    onSurface = Color(0xFFE6E0E9),
+    primary = Color(KID_DARK.primary),
+    onPrimary = Color(KID_DARK.onPrimary),
+    primaryContainer = Color(KID_DARK.primaryContainer),
+    onPrimaryContainer = Color(KID_DARK.onPrimaryContainer),
+    secondary = Color(KID_DARK.secondary),
+    onSecondary = Color(KID_DARK.onSecondary),
+    secondaryContainer = Color(KID_DARK.secondaryContainer),
+    onSecondaryContainer = Color(KID_DARK.onSecondaryContainer),
+    tertiary = Color(KID_DARK.tertiary!!),
+    background = Color(KID_DARK.background),
+    onBackground = Color(KID_DARK.onBackground),
+    surface = Color(KID_DARK.surface),
+    onSurface = Color(KID_DARK.onSurface),
     // The steps above the ground, which previously were *not* ours — they fell
     // through to Material's baseline, so every card, chip and tab pill was a
     // stock purple-grey the theme had no say in. Naming them is what lets
     // [kidColorScheme] tint them; until it could, "My colour" washed the page
     // and left the cards on it grey.
-    surfaceContainerLowest = Color(0xFF0E0D11),
-    surfaceContainerLow = Color(0xFF1A1820),
-    surfaceContainer = Color(0xFF1E1C25),
-    surfaceContainerHigh = Color(0xFF26232D),
-    surfaceContainerHighest = Color(0xFF2E2A36),
-    surfaceVariant = Color(0xFF2E2A36),
-    onSurfaceVariant = Color(0xFFB4AEBD),
-    // Two greys one step apart, and which is which matters: `outline` is a
-    // card or field border, `outlineVariant` the divider between rows inside
-    // one — deliberately darker, so a card reads as a single block.
-    outline = Color(0xFF38333F),
-    outlineVariant = Color(0xFF272430),
+    surfaceContainerLowest = Color(KID_DARK.surfaceContainerLowest),
+    surfaceContainerLow = Color(KID_DARK.surfaceContainerLow),
+    surfaceContainer = Color(KID_DARK.surfaceContainer),
+    surfaceContainerHigh = Color(KID_DARK.surfaceContainerHigh),
+    surfaceContainerHighest = Color(KID_DARK.surfaceContainerHighest),
+    surfaceVariant = Color(KID_DARK.surfaceVariant),
+    onSurfaceVariant = Color(KID_DARK.onSurfaceVariant),
+    outline = Color(KID_DARK.outline),
+    outlineVariant = Color(KID_DARK.outlineVariant),
     // Not Material's "elevation tint" here: this app uses surfaceTint purely
     // as the carrier for the kid's own colour, and transparent means "no
     // wash". See [kidColorScheme] and [Modifier.kidBackdrop].
-    surfaceTint = Color.Transparent
+    surfaceTint = Color(KID_DARK.surfaceTint)
 )
 
 /**
@@ -67,8 +67,8 @@ val YosemiteDarkColors = darkColorScheme(
  * page has taken the kid's tint. Deliberately not `primary`, which "My colour"
  * moves; a mark that changes colour per kid is not a mark.
  */
-val YosemiteBrandTeal = Color(0xFF00695C)
-val OnYosemiteBrand = Color.White
+val YosemiteBrandTeal = Color(KidBrand.TEAL)
+val OnYosemiteBrand = Color(KidBrand.ON_TEAL)
 
 /** The three looks a kid can pick, in the order the hub shows them. */
 const val THEME_DARK = "dark"
@@ -82,34 +82,38 @@ fun themeLabel(theme: String): String = when (theme) {
     else -> "Dark"
 }
 
-/** The daylight version of the same brand: paper surfaces, the teal kept for accents. */
+/**
+ * The daylight version of the same brand: paper surfaces, the teal kept for
+ * accents. Values in `:core`'s [KID_LIGHT], for the same reason as the dark
+ * scheme above. It names no `tertiary`, which is why that field is nullable.
+ */
 val YosemiteLightColors = androidx.compose.material3.lightColorScheme(
-    primary = Color(0xFF00695C),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFB2DFDB),
-    onPrimaryContainer = Color(0xFF00201C),
-    secondary = Color(0xFF4A635F),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFCCE8E3),
-    onSecondaryContainer = Color(0xFF06201C),
-    background = Color(0xFFFAFAFA),
-    onBackground = Color(0xFF191C1B),
-    surface = Color(0xFFFAFAFA),
-    onSurface = Color(0xFF191C1B),
-    surfaceVariant = Color(0xFFDAE5E1),
-    onSurfaceVariant = Color(0xFF3F4947),
+    primary = Color(KID_LIGHT.primary),
+    onPrimary = Color(KID_LIGHT.onPrimary),
+    primaryContainer = Color(KID_LIGHT.primaryContainer),
+    onPrimaryContainer = Color(KID_LIGHT.onPrimaryContainer),
+    secondary = Color(KID_LIGHT.secondary),
+    onSecondary = Color(KID_LIGHT.onSecondary),
+    secondaryContainer = Color(KID_LIGHT.secondaryContainer),
+    onSecondaryContainer = Color(KID_LIGHT.onSecondaryContainer),
+    background = Color(KID_LIGHT.background),
+    onBackground = Color(KID_LIGHT.onBackground),
+    surface = Color(KID_LIGHT.surface),
+    onSurface = Color(KID_LIGHT.onSurface),
+    surfaceVariant = Color(KID_LIGHT.surfaceVariant),
+    onSurfaceVariant = Color(KID_LIGHT.onSurfaceVariant),
     // The same steps the dark scheme now names, going the other way: paper,
     // then progressively less of it. Left at Material's baseline these were
     // the light theme's version of the same bug — stock greys the theme did
     // not choose and "My colour" could not reach.
-    surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF3F5F4),
-    surfaceContainer = Color(0xFFEDF0EF),
-    surfaceContainerHigh = Color(0xFFE7EBEA),
-    surfaceContainerHighest = Color(0xFFE1E6E5),
-    outline = Color(0xFF6F7B78),
-    outlineVariant = Color(0xFFBEC9C6),
-    surfaceTint = Color.Transparent
+    surfaceContainerLowest = Color(KID_LIGHT.surfaceContainerLowest),
+    surfaceContainerLow = Color(KID_LIGHT.surfaceContainerLow),
+    surfaceContainer = Color(KID_LIGHT.surfaceContainer),
+    surfaceContainerHigh = Color(KID_LIGHT.surfaceContainerHigh),
+    surfaceContainerHighest = Color(KID_LIGHT.surfaceContainerHighest),
+    outline = Color(KID_LIGHT.outline),
+    outlineVariant = Color(KID_LIGHT.outlineVariant),
+    surfaceTint = Color(KID_LIGHT.surfaceTint)
 )
 
 /** WCAG contrast between two opaque colours, 1:1 (identical) to 21:1. */
@@ -263,60 +267,43 @@ fun Modifier.kidBackdrop(): Modifier {
 }
 
 /**
+ * One step of the shared scale, as Compose wants it.
+ *
+ * A null weight stays null rather than becoming 400: the three body styles
+ * take the font's own weight, and naming one would be a different TextStyle
+ * from the one the app has always shipped.
+ */
+private fun TypeStyle.textStyle() = androidx.compose.ui.text.TextStyle(
+    fontSize = androidx.compose.ui.unit.TextUnit(
+        sizeSp.toFloat(), androidx.compose.ui.unit.TextUnitType.Sp
+    ),
+    lineHeight = androidx.compose.ui.unit.TextUnit(
+        lineHeightSp.toFloat(), androidx.compose.ui.unit.TextUnitType.Sp
+    ),
+    fontWeight = weight?.let { androidx.compose.ui.text.font.FontWeight(it) }
+)
+
+/**
  * One quiet type scale for every kid-facing screen. Material's defaults are
  * tuned for dense productivity apps; YouTube's shape is a single bold line
  * (the video title) with everything else a step or two quieter. Page
  * titles are titleLarge, sections titleMedium, tile titles titleSmall,
  * captions bodySmall — and nothing else on a screen competes with them.
+ *
+ * The numbers are `:core`'s [KidType], because the browser needs the same
+ * ladder and cannot read a Compose file. This is the Android binding.
  */
 val YosemiteTypography = androidx.compose.material3.Typography(
-    headlineSmall = androidx.compose.ui.text.TextStyle(
-        fontSize = androidx.compose.ui.unit.TextUnit(24f, androidx.compose.ui.unit.TextUnitType.Sp),
-        lineHeight = androidx.compose.ui.unit.TextUnit(30f, androidx.compose.ui.unit.TextUnitType.Sp),
-        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-    ),
-    titleLarge = androidx.compose.ui.text.TextStyle(
-        fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp),
-        lineHeight = androidx.compose.ui.unit.TextUnit(28f, androidx.compose.ui.unit.TextUnitType.Sp),
-        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-    ),
-    titleMedium = androidx.compose.ui.text.TextStyle(
-        fontSize = androidx.compose.ui.unit.TextUnit(17f, androidx.compose.ui.unit.TextUnitType.Sp),
-        lineHeight = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp),
-        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-    ),
-    titleSmall = androidx.compose.ui.text.TextStyle(
-        fontSize = androidx.compose.ui.unit.TextUnit(15f, androidx.compose.ui.unit.TextUnitType.Sp),
-        lineHeight = androidx.compose.ui.unit.TextUnit(20f, androidx.compose.ui.unit.TextUnitType.Sp),
-        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
-    ),
-    bodyLarge = androidx.compose.ui.text.TextStyle(
-        fontSize = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp),
-        lineHeight = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp)
-    ),
-    bodyMedium = androidx.compose.ui.text.TextStyle(
-        fontSize = androidx.compose.ui.unit.TextUnit(15f, androidx.compose.ui.unit.TextUnitType.Sp),
-        lineHeight = androidx.compose.ui.unit.TextUnit(20f, androidx.compose.ui.unit.TextUnitType.Sp)
-    ),
-    bodySmall = androidx.compose.ui.text.TextStyle(
-        fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp),
-        lineHeight = androidx.compose.ui.unit.TextUnit(17f, androidx.compose.ui.unit.TextUnitType.Sp)
-    ),
-    labelLarge = androidx.compose.ui.text.TextStyle(
-        fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp),
-        lineHeight = androidx.compose.ui.unit.TextUnit(18f, androidx.compose.ui.unit.TextUnitType.Sp),
-        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
-    ),
-    labelMedium = androidx.compose.ui.text.TextStyle(
-        fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp),
-        lineHeight = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp),
-        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
-    ),
-    labelSmall = androidx.compose.ui.text.TextStyle(
-        fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp),
-        lineHeight = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp),
-        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
-    )
+    headlineSmall = KidType.headlineSmall.textStyle(),
+    titleLarge = KidType.titleLarge.textStyle(),
+    titleMedium = KidType.titleMedium.textStyle(),
+    titleSmall = KidType.titleSmall.textStyle(),
+    bodyLarge = KidType.bodyLarge.textStyle(),
+    bodyMedium = KidType.bodyMedium.textStyle(),
+    bodySmall = KidType.bodySmall.textStyle(),
+    labelLarge = KidType.labelLarge.textStyle(),
+    labelMedium = KidType.labelMedium.textStyle(),
+    labelSmall = KidType.labelSmall.textStyle()
 )
 
 /**
@@ -343,7 +330,7 @@ fun relativeAge(publishedAt: Long?, now: Long = System.currentTimeMillis()): Str
  * by the same convention YouTube taught them, so it stays red everywhere it
  * appears (thumbnail bars and the player scrubber).
  */
-val WatchedProgressRed = Color(0xFFFF0000)
+val WatchedProgressRed = Color(KidBrand.WATCHED_PROGRESS)
 
 /** The thumbnail-bottom watched bar, one spelling for every grid and row. */
 @Composable
@@ -416,7 +403,7 @@ fun formatBytes(bytes: Long): String = when {
  * borrowed-convention logic as [WatchedProgressRed]: SmartTube et al. taught
  * viewers that green-on-the-bar means "this part will be skipped".
  */
-val SponsorSegmentGreen = Color(0xFF00C853)
+val SponsorSegmentGreen = Color(KidBrand.SPONSOR_SEGMENT)
 
 /** The "newer build available" dot on the settings gear. */
 val UpdateDot = Color(0xFFFF5252)
