@@ -73,6 +73,25 @@ object UsageLedger {
     /** The kid key a family with no profiles writes under. Never a valid 8-hex id. */
     const val NO_KID = "-"
 
+    /**
+     * What a browser's cell id begins with.
+     *
+     * A device's cell is keyed by its pairing token, which is hex; a browser
+     * has no pairing token and never will — it is a page, not a peer. So its
+     * minutes go under a namespaced id that no device token can collide with,
+     * minted by whichever face is counting for it and never by the page.
+     *
+     * The prefix is not decoration. It makes browsers countable **as a
+     * group**, which is what closes the obvious hole in metering a client: a
+     * kid whose own budget is per-device could otherwise present a fresh
+     * identity each morning and start every day at zero. Held together, a
+     * rotated id buys nothing.
+     */
+    const val WEB_PREFIX = "web:"
+
+    /** True when [deviceId] is a browser's cell rather than a device's. */
+    fun isWeb(deviceId: String): Boolean = deviceId.startsWith(WEB_PREFIX)
+
     /** One device's minutes for one kid on one day. */
     data class Cell(val minutes: Int, val at: Long = 0L)
 
@@ -201,8 +220,26 @@ object UsageLedger {
      * implementation detail.
      */
     fun othersToday(ledger: Ledger, meId: String, kidId: String?, day: String): Int =
+        minutesToday(ledger, kidId, day) { it != meId }
+
+    /**
+     * Minutes for [kidId] on [day] from the devices [include] accepts.
+     *
+     * One sum with the choice of *whose* left to the caller, because there are
+     * now three of them and they must not be three loops: everyone but me
+     * ([othersToday]), one device alone, and every browser held together — the
+     * last being what stops a page rotating its identity into a fresh budget
+     * each morning. A second summation written beside this one is how two
+     * faces come to disagree about a number they are both enforcing on.
+     */
+    fun minutesToday(
+        ledger: Ledger,
+        kidId: String?,
+        day: String,
+        include: (String) -> Boolean
+    ): Int =
         ledger.cells[kidOf(kidId)]?.get(day)
-            ?.filterKeys { it != meId }
+            ?.filterKeys(include)
             ?.values?.sumOf { it.minutes }
             ?: 0
 

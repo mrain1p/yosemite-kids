@@ -129,6 +129,12 @@ class MainViewModel(
     private val channelIndex: ChannelIndex? = null,
     /** The kid's recent searches (phones); null on TV and in tests. */
     private val searchHistory: SearchHistoryStore? = null,
+    /**
+     * This device, for the watch-ledger trade at the end of a sweep. Null in
+     * tests, which have neither a `filesDir` nor a `SessionGuard` — and a
+     * family that shares no budget trades nothing with it either way.
+     */
+    private val appContext: android.content.Context? = null,
     private val yt: YouTubeRepository = YouTubeRepository()
 ) : ViewModel() {
 
@@ -220,7 +226,8 @@ class MainViewModel(
                 // Surfaced as the ring round the avatar. All of this used to
                 // happen with nothing on screen to say so.
                 onSweeping = { _state.value = _state.value.copy(syncing = it) },
-                index = channelIndex
+                index = channelIndex,
+                context = appContext
             )
         }
     }

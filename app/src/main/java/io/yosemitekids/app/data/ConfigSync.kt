@@ -59,7 +59,17 @@ object ConfigSync {
         onChanged: () -> Unit = {},
         onSweeping: (Boolean) -> Unit = {},
         /** This device's search index, for the pull from a hub. Null skips the pull. */
-        index: ChannelIndex? = null
+        index: ChannelIndex? = null,
+        /**
+         * This device, for the watch-ledger trade at the end of the sweep.
+         * Null skips it — the ledger needs `filesDir` and a `SessionGuard`,
+         * which no JVM test has, and a family on the default scope trades
+         * nothing either way.
+         *
+         * Last, and after [index], because two call sites pass everything
+         * before it positionally.
+         */
+        context: Context? = null
     ): Boolean {
         val devices = pairing.paired()
         // Init and ON_START both fire this at launch — one reconcile is plenty.
@@ -68,7 +78,7 @@ object ConfigSync {
         onSweeping(true)
         try {
             withContext(Dispatchers.IO) {
-                sweep(store, pairing, devices, syncNotices, onConfigApplied, mergeLooks, onChanged, index)
+                sweep(store, pairing, devices, syncNotices, onConfigApplied, mergeLooks, onChanged, index, context)
             }
         } finally {
             // Cleared in a finally for the reason the old flag was: one
@@ -87,7 +97,8 @@ object ConfigSync {
         onConfigApplied: ((Whitelist, Whitelist) -> Unit)?,
         mergeLooks: (String) -> Boolean,
         onChanged: () -> Unit,
-        index: ChannelIndex?
+        index: ChannelIndex?,
+        context: Context?
     ) {
         val isParent = pairing.role() != PairingStore.Role.KID
         val me = pairing.deviceToken()
@@ -332,6 +343,24 @@ object ConfigSync {
                 if (n > 0) android.util.Log.i("YosemiteKids", "index: pulled $n source(s) from ${hub.name}")
             }
         }
+
+        // --- the watch ledger -------------------------------------------
+        // Only for a family that shares a budget; UsageSync.exchange returns
+        // on the first line for everybody else, so a household on the default
+        // scope pays no traffic and writes no file for a feature it does not
+        // use. Last in the sweep on purpose: it is a backstop and not the
+        // mechanism (D7), and it must never delay the config reconcile, which
+        // is the thing a parent is actually waiting on.
+        //
+        // Deliberately after the peers have answered, and against `answered`
+        // rather than `devices`: pushing minutes at an address that has just
+        // been proved dead is a timeout per peer, per sweep, for nothing.
+        if (context != null) {
+            val shared = UsageSync.exchange(context, store.load(), answered.keys.toList())
+            if (shared > 0) {
+                android.util.Log.i("YosemiteKids", "usage: traded the watch ledger with $shared peer(s)")
+            }
+        }
     }
 
     // --- what every arrival path has to do ---------------------------------
@@ -391,6 +420,14 @@ object ConfigSync {
         val granted = guard.applyGrants(
             after.grantsFor(kid, FamilyDay.of(System.currentTimeMillis()))
         )
+
+        // A parent may have just turned a shared budget on, and the minutes
+        // this device needs for it are already on disk — the ledger is its own
+        // document and does not travel with the config. Refreshing the mirror
+        // here means the switch binds on arrival rather than at the next
+        // sweep, which is the difference between "it worked" and "it took a
+        // quarter of an hour". Nothing happens for any other scope.
+        UsageSync.mirror(context, after)
 
         val fresh = after.limitsFor(kid)
         KidNotices.configChange(

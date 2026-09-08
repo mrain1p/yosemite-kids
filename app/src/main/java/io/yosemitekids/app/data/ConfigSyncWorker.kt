@@ -57,7 +57,8 @@ class ConfigSyncWorker(
             },
             mergeLooks = { json -> ConfigSync.adoptLooks(store, pairing, json) },
             // This device's index, so the sweep can pull the hub's into it.
-            index = ChannelIndex(applicationContext)
+            index = ChannelIndex(applicationContext),
+            context = applicationContext
             // No onChanged: there is no UI to redraw. A config that landed here
             // is on disk, and whatever opens next reads it.
         )

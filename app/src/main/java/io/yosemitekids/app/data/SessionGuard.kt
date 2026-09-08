@@ -138,6 +138,23 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
          * a mirror refreshed off-main when a ledger arrives.
          */
         internal fun spentMs(ownMs: Long, peerMs: Long): Long = ownMs + peerMs
+
+        /**
+         * The peers' half: their mirrored minutes under a shared budget, and
+         * nothing at all under any other scope.
+         *
+         * Pure and here rather than inline at the read site, so the one
+         * property the whole feature rests on can be *proved* without a
+         * device: under the default scope the arithmetic is byte-for-byte what
+         * this app has always done, whatever happens to be sitting in the
+         * mirror. See `SessionGuardBudgetTest`.
+         *
+         * [Limits.sharesBudget] rather than a test against a value: a scope
+         * neither this build nor the mirror understands must fall back to the
+         * behaviour the family already had, decided in one place (guard 49).
+         */
+        internal fun peerMs(l: Limits, mirroredMs: Long): Long =
+            if (l.sharesBudget) mirroredMs else 0L
     }
 
     // ---- limits config (persisted at whitelist refresh) ----
@@ -159,6 +176,11 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             .putString("l_windows", ConfigJson.windowsToJson(l.windows))
             .putLong("l_paused", l.pausedUntilMillis ?: -1L)
             .putLong("l_breakPass", l.breakPassUntilMillis ?: -1L)
+            // Stored as written, unresolved. Every enforcement path below
+            // reads its rules from this mirror rather than from the config, so
+            // a scope that stopped at the config would be a switch a parent
+            // turned on that changed nothing on the box doing the stopping.
+            .putString("l_scope", l.budgetScope)
             .apply()
     }
 
@@ -171,7 +193,8 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             breakMinutes = get("l_break"),
             windows = ConfigJson.windowsFromJson(prefs.getString("l_windows", null)),
             pausedUntilMillis = prefs.getLong("l_paused", -1L).takeIf { it > 0 },
-            breakPassUntilMillis = prefs.getLong("l_breakPass", -1L).takeIf { it > 0 }
+            breakPassUntilMillis = prefs.getLong("l_breakPass", -1L).takeIf { it > 0 },
+            budgetScope = prefs.getString("l_scope", null)
         )
     }
 
@@ -218,8 +241,12 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
      * on a round trip, and the peers' figure is a prefs mirror rather than a
      * file read and a JSON parse, because [tick] runs on the main thread every
      * few seconds.
+     *
+     * [l] is passed rather than read here because every caller already holds
+     * it, and because it is the rules — not the mirror — that decide whether
+     * the peers' half counts at all.
      */
-    private fun spentTodayMs(): Long = spentMs(ownWatchedMs(), peerSpentMs())
+    private fun spentTodayMs(l: Limits): Long = spentMs(ownWatchedMs(), peerSpentMs(l))
 
     /**
      * This device's own tally, raw. The single reader of the store, which is
@@ -230,17 +257,41 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
     private fun ownWatchedMs(): Long = prefs.getLong("dailyWatchedMs", 0)
 
     /**
-     * What other devices have reported for this kid today, in ms.
+     * This device's own minutes today, and nothing learned from anyone.
      *
-     * Zero for every family today, and deliberately so: the policy that
-     * decides whether a kid's devices share one budget (`Limits.budgetScope`,
-     * and the confirm-with-the-number dialog that turns it on) is not built
-     * yet, so nothing calls [notePeerMinutes] and this summand is
-     * arithmetically the behaviour the app has always had. The ledger that
-     * will feed it — [UsageLedger] — and the routes that carry it are here;
-     * the switch is not. See `docs/PLAN-hub-parity.md` section 3.
+     * The figure the ledger cell this device authors is written from, and the
+     * only caller that wants it: a cell that carried the *shared* total would
+     * be read back by the peer that contributed half of it, added to that
+     * peer's own live counter, and re-authored larger on the next round — a
+     * budget that consumes itself in an afternoon, with every number on both
+     * screens agreeing. Guard 49(c) keeps [watchedTodayMin] away from that
+     * call site.
      */
-    private fun peerSpentMs(): Long = prefs.getLong("peerMs", 0)
+    fun ownWatchedTodayMin(): Int {
+        rolloverIfNewDay()
+        return (ownWatchedMs() / 60_000L).toInt()
+    }
+
+    /**
+     * What other devices have reported for this kid today, in ms — under a
+     * shared budget, and zero otherwise.
+     *
+     * The gate is [Limits.sharesBudget], not the mirror: the mirror is
+     * grow-only within a day, so a family that turned sharing off would
+     * otherwise keep paying for the minutes it counted before they did.
+     * Under the default scope this is arithmetically the behaviour the app
+     * has always had, which `SessionGuardBudgetTest` asserts rather than
+     * assumes.
+     */
+    private fun peerSpentMs(l: Limits): Long = peerMs(l, peerMirrorMs())
+
+    /**
+     * The mirror as stored: what peers last reported, whether or not it
+     * counts. Kept apart from [peerSpentMs] because the two answer different
+     * questions — "what did they say" and "does it apply here" — and only the
+     * second may look at the rules. [notePeerMinutes] raises this one.
+     */
+    private fun peerMirrorMs(): Long = prefs.getLong("peerMs", 0)
 
     /**
      * Take a peers' total for today, from a merged [UsageLedger].
@@ -248,11 +299,17 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
      * `max`, never a plain write: cells are grow-only, and a mirror that could
      * fall would hand a kid minutes back every time a peer went quiet. Cleared
      * by the day rollover, so a stale figure can never outlive its day.
+     *
+     * Called by `UsageSync.mirror` and only under a shared budget. The rules
+     * are checked *again* on the read side, deliberately: this store outlives
+     * a parent turning sharing back off, and a mirror that had been allowed to
+     * keep counting would go on charging a kid for their sibling's television
+     * until midnight.
      */
     fun notePeerMinutes(minutes: Int) {
         rolloverIfNewDay()
         val ms = minutes.coerceAtLeast(0) * 60_000L
-        if (ms > peerSpentMs()) prefs.edit().putLong("peerMs", ms).apply()
+        if (ms > peerMirrorMs()) prefs.edit().putLong("peerMs", ms).apply()
     }
 
     // The two bonus stores are each read in exactly one place — guard 16 in
@@ -339,7 +396,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
                     "(break=${prefs.getInt("l_break", -1)} " +
                     "lockUntil=${prefs.getLong("lockUntil", 0)} " +
                     "sitting=${prefs.getLong("sittingWatchedMs", 0) / 60_000}m " +
-                    "daily=${spentTodayMs() / 60_000}m)"
+                    "daily=${spentTodayMs(limits()) / 60_000}m)"
             )
         }
 
@@ -374,7 +431,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         startFreshSittingAfterGap(l, now)
 
         if (multiplierPercent > 0) dailyBudgetMs(l)?.let { budget ->
-            if (spentTodayMs() >= budget) {
+            if (spentTodayMs(l) >= budget) {
                 return "That's all the watching for today! 🌟"
             }
         }
@@ -416,7 +473,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         prefs.edit().putLong("dailyWatchedMs", own).putLong("sittingWatchedMs", sitting).apply()
 
         if (multiplierPercent > 0) dailyBudgetMs(l)?.let { budget ->
-            if (spentMs(own, peerSpentMs()) >= budget) return "That's all the watching for today! 🌟"
+            if (spentMs(own, peerSpentMs(l)) >= budget) return "That's all the watching for today! 🌟"
         }
         // No break rule → nothing to arm; the sitting cap only exists to force
         // a rest of the configured length. The daily budget above still caps
@@ -470,7 +527,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         if (multiplierPercent > 0) {
             dailyBudgetMs(l)?.let { budget ->
                 candidates += Remaining(
-                    (budget - spentTodayMs())
+                    (budget - spentTodayMs(l))
                         .coerceAtLeast(0) * 100 / multiplierPercent,
                     LimitKind.BUDGET
                 )
@@ -527,7 +584,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             return "Time for a break! You can watch again at ${timeOf(lockUntil)} ⏰"
         }
         if (multiplierPercent > 0) dailyBudgetMs(l)?.let { budget ->
-            if (spentTodayMs() >= budget) {
+            if (spentTodayMs(l) >= budget) {
                 return "That's all the watching for today! 🌟"
             }
         }
@@ -647,14 +704,14 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
      */
     fun watchedTodayMin(): Int {
         rolloverIfNewDay()
-        return (spentTodayMs() / 60_000L).toInt()
+        return (spentTodayMs(limits()) / 60_000L).toInt()
     }
 
     fun remainingTodayMin(l: Limits, grants: List<Grant> = emptyList()): Int? {
         applyGrants(grants)
         if (isPaused(l)) return 0
         val budget = budgetMs(l, isWeekend(), bonusMs()) ?: return null
-        return ((budget - spentTodayMs()).coerceAtLeast(0) / 60_000L).toInt()
+        return ((budget - spentTodayMs(l)).coerceAtLeast(0) / 60_000L).toInt()
     }
 
     /** yyyyMMdd → minutes watched, for the trend chart (excludes today). */
@@ -687,7 +744,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         // (checkStart clears it on the next play attempt) — don't report it.
         val lockUntil = if (l.breakMinutes == null) 0 else prefs.getLong("lockUntil", 0)
         val budget = dailyBudgetMs(l)
-        val watched = spentTodayMs()
+        val watched = spentTodayMs(l)
         val blocking = activeWindow(l)
         val state = when {
             isPaused(l) -> "Paused by parent"

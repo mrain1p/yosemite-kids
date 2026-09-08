@@ -100,6 +100,26 @@ class HubServer(
     )
 
     /**
+     * The one place this box decides whether a child may play something, and
+     * the meter that counts a browser's minutes for it.
+     *
+     * Built here beside [ledger] because they need the same four things this
+     * server already holds. **Neither has a route yet, and that is
+     * deliberate:** the page they exist for — its origin, its auth, its media
+     * — is a later round, and a decision engine reachable before the thing
+     * that authenticates its callers would be a policy anyone on the LAN could
+     * query about a named child. They are wired rather than parked so that a
+     * drift in what the policy needs is a compile error here, and so
+     * `HubPolicyTest` exercises exactly the shape a route will get.
+     */
+    private val policy = HubPolicy(store, ledger, screening, index, now)
+    private val meter = HubWatchMeter(ledger, now)
+
+    /** The verdict engine and the browser meter, for tests and a future route. */
+    fun policy(): HubPolicy = policy
+    fun watchMeter(): HubWatchMeter = meter
+
+    /**
      * How fast an unauthenticated caller may ask to join. See [enrol].
      *
      * Separate from [sessions]' counter deliberately: sharing it would let
