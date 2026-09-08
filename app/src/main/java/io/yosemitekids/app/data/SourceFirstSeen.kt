@@ -21,9 +21,17 @@ import android.content.Context
  * is new to me". It never travels, so it can never disagree between devices —
  * it is a different fact on each, on purpose.
  *
- * The first run seeds a baseline: every id already present is stamped 0, so an
- * upgrade does not announce the family's whole whitelist as new. Synchronous
- * prefs — call off-main.
+ * The first run seeds a baseline: every key already present is stamped 0, so
+ * an upgrade does not announce the family's whole whitelist as new.
+ * Synchronous prefs — call off-main.
+ *
+ * **Keyed by URL, never by id.** Resolution canonicalizes `/user/`, `/c/` and
+ * `@handle` entries to their `UC…` form, so a store written from
+ * `WhitelistEntry.id` and read back from `Source.id` misses every entry a
+ * parent pasted as a handle. It fails silently — the sort comes back in list
+ * order, looking like it was never wired up — which is exactly how it was
+ * first shipped and caught on the emulator rather than by a test.
+ * `KidSortFilterTest` now states it.
  */
 class SourceFirstSeen(context: Context) {
 
@@ -31,9 +39,10 @@ class SourceFirstSeen(context: Context) {
         .getSharedPreferences("source_first_seen", Context.MODE_PRIVATE)
 
     /**
-     * Fold [present] into the record and return the ids that are genuinely new.
+     * Fold the whitelist's URLs into the record and return the ones that are
+     * genuinely new.
      *
-     * Ids that have gone are forgotten, so a source a parent removed and added
+     * URLs that have gone are forgotten, so a source a parent removed and added
      * back counts as new again — which is what a parent doing that means.
      */
     fun sync(present: List<String>, now: Long = System.currentTimeMillis()): Set<String> {
@@ -44,16 +53,16 @@ class SourceFirstSeen(context: Context) {
         val (next, fresh) = fold(known, present, seeded, now)
         if (next != known || !seeded) {
             // clear() then the puts, in one editor: SharedPreferences applies
-            // the clear first, so this is a replace and departed ids go with it.
+            // the clear first, so this is a replace and departed URLs go with it.
             val edit = prefs.edit().clear().putBoolean(SEEDED, true)
-            next.forEach { (id, at) -> edit.putLong(PREFIX + id, at) }
+            next.forEach { (url, at) -> edit.putLong(PREFIX + url, at) }
             edit.apply()
         }
         return fresh
     }
 
-    /** Epoch ms this device first saw [id]; 0 for anything present at seeding. */
-    fun addedAt(id: String): Long = prefs.getLong(PREFIX + id, 0L)
+    /** Epoch ms this device first saw [url]; 0 for anything present at seeding. */
+    fun addedAt(url: String): Long = prefs.getLong(PREFIX + url, 0L)
 
     companion object {
         private const val PREFIX = "at_"
@@ -62,7 +71,7 @@ class SourceFirstSeen(context: Context) {
         /**
          * Pure so the seeding rule is a test rather than a hope: the first
          * fold ([seeded] false) claims everything at 0 and reports nothing
-         * new, and every later one stamps only ids it has not met.
+         * new, and every later one stamps only URLs it has not met.
          */
         internal fun fold(
             known: Map<String, Long>,

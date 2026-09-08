@@ -283,6 +283,17 @@ internal fun orderByWatched(items: List<VideoItem>, watchedAt: (String) -> Long)
  * sort is stable, so ties keep the whitelist order — which is also insertion
  * order, so channels this device has always known (all [addedAt] 0) fall back
  * to the order the parent's list is in rather than to nothing.
+ *
+ * [addedAt] is keyed by **URL** where the other two are keyed by id, and that
+ * asymmetry is the whole trap. `opens` and `latestUpload` are written under
+ * the *resolved* id, so an id join is right for them. What a source was
+ * called when it entered the whitelist is not: resolution canonicalizes
+ * `/user/`, `/c/` and `@handle` entries to `UC…` form, so a store filled from
+ * `WhitelistEntry.id` and read back by `Source.id` misses every entry a
+ * parent pasted as a handle — which is most of them. It does not throw and it
+ * does not log; the sort simply comes back in list order and looks like it
+ * was never wired up. `MainViewModel.refresh` says the same thing about its
+ * own joins, and this was still got wrong once.
  */
 internal fun orderChannels(
     channels: List<Source>,
@@ -296,7 +307,7 @@ internal fun orderChannels(
     CHANNEL_ORDER_ALPHA_DESC -> channels.sortedByDescending { it.name.lowercase() }
     CHANNEL_ORDER_RANDOM -> channels.shuffled(kotlin.random.Random(seed))
     CHANNEL_ORDER_LATEST -> channels.sortedByDescending { latestUpload(it.id) ?: Long.MIN_VALUE }
-    CHANNEL_ORDER_ADDED -> channels.sortedByDescending { addedAt(it.id) }
+    CHANNEL_ORDER_ADDED -> channels.sortedByDescending { addedAt(it.url) }
     else -> channels.sortedByDescending { opens(it.id) }
 }
 

@@ -351,7 +351,9 @@ class MainViewModel(
             opens = { usage.opens(it) },
             latestUpload = { id -> videoCache.load(id).take(10).mapNotNull { it.publishedAt }.maxOrNull() },
             seed = shuffleSeed,
-            addedAt = { id -> firstSeen?.addedAt(id) ?: 0L }
+            // By URL. See orderChannels: an id join here silently loses every
+            // @handle entry the moment resolution canonicalizes it.
+            addedAt = { url -> firstSeen?.addedAt(url) ?: 0L }
         )
 
     private fun effectiveChannelSort(): String = kidChannelSort ?: channelOrder
@@ -1071,10 +1073,10 @@ class MainViewModel(
                 // the device a child is standing in front of, so it fetches
                 // here, first, in the interactive lane.
                 val newcomers = withContext(Dispatchers.IO) {
-                    firstSeen?.sync(list.sources.map { it.id }).orEmpty()
+                    firstSeen?.sync(list.sources.map { it.url }).orEmpty()
                 }
                 if (newcomers.isNotEmpty()) {
-                    launch { warmNew(list.sources.filter { it.id in newcomers }) }
+                    launch { warmNew(list.sources.filter { it.url in newcomers }) }
                 }
 
                 // Slow detail resolution — background lane when tiles are cosmetic.

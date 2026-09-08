@@ -68,7 +68,15 @@ class KidSortFilterTest {
     fun justAddedLeadsWithTheNewestArrivalAndKeepsListOrderForTheRest() {
         // Only UCc has ever been stamped; the other two predate the store and
         // sort 0, which must leave them in the whitelist's own order.
-        val added = mapOf("UCc" to 5_000L)
+        //
+        // Keyed by URL, and that is the point of the test rather than an
+        // incidental detail. Resolution canonicalizes /user/, /c/ and @handle
+        // entries to their UC… form, so a store written from the whitelist's
+        // id and read back from the resolved Source's id misses every channel
+        // a parent pasted as a handle — silently, with the sort coming back in
+        // list order looking like it was never wired up. Seeding this map by
+        // id is exactly that bug, and it is how it first shipped.
+        val added = mapOf(src("UCc", "Curious George").url to 5_000L)
         assertEquals(
             listOf("UCc", "UCb", "UCa"),
             orderChannels(channels, CHANNEL_ORDER_ADDED, { 0 }, { null }, 1L) { added[it] ?: 0L }
