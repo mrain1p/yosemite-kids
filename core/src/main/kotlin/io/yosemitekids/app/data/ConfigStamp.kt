@@ -459,7 +459,12 @@ object ConfigStamp {
             a.weekdaySessions == b.weekdaySessions &&
             a.weekendSessions == b.weekendSessions &&
             a.breakMinutes == b.breakMinutes &&
-            a.minVideoMinutes == b.minVideoMinutes
+            a.minVideoMinutes == b.minVideoMinutes &&
+            // Compared as written, not through Limits.sharesBudget: two scopes
+            // this build reads the same way are still two different parent
+            // choices, and a save that stopped moving the stamp would never
+            // carry the newer one to the peer that does know the difference.
+            a.budgetScope == b.budgetScope
 
     /**
      * Three-way pick for a section: the editor's value when they changed it,

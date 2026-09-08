@@ -573,6 +573,14 @@ object SettingsSurface {
             "budget across devices — which is the only thing that needs every device " +
             "to agree what day it is. Until that switch exists this build only carries, " +
             "stamps and merges it, the way pins shipped a release ahead of their editor",
+        "limits.budgetScope" to "enforced everywhere it is set — the device folds peers' " +
+            "minutes into today's budget, and the hub refuses a kid who is out of them — " +
+            "but not yet a switch a parent can reach. Turning it on has to confirm with " +
+            "the number (\"Leo has used 47 minutes today, 32 on the Living Room TV; " +
+            "sharing leaves him 43\") and offer homeZone in the same breath, or the first " +
+            "thing a family learns about it is a television stopping early. Carried, " +
+            "stamped and merged a release ahead of that dialog, the way pins shipped " +
+            "ahead of their editor. docs/ROADMAP.md item J",
         "ai.rulesVersion" to "bumped by SettingsForm.toConfig when the rules, the age, " +
             "the model or the endpoint change, so every device re-screens. A parent " +
             "setting it by hand would silently un-screen a catalogue"

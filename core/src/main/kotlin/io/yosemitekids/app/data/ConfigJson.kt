@@ -338,14 +338,22 @@ object ConfigJson {
             // Same shape as the break pass: only present when set, so families
             // without the rule keep their hash across the build that added it.
             val minVideo = l.minVideoMinutes?.let { ";MV:$it" } ?: ""
-            if (legacy != null || l.windows.isEmpty()) return base + breakPass + minVideo
+            // Same shape again, at the tail: a family that never shares a
+            // budget keeps the hash it had, and one that does must move it —
+            // the offline reconcile only re-pushes on a mismatch, so a scope
+            // that did not move the hash would never reach the television
+            // whose arithmetic it changes. Blank is not a scope and hashes as
+            // nothing, so it cannot differ from null here and agree with it in
+            // `fromJson`.
+            val scope = l.budgetScope?.takeIf { it.isNotBlank() }?.let { ";BS:$it" } ?: ""
+            if (legacy != null || l.windows.isEmpty()) return base + breakPass + minVideo + scope
             return base + l.windows.joinToString(";", prefix = ";W:") { w ->
                 // Parent-typed text is scrubbed of this format's separators so
                 // two different window lists can't canonicalize identically.
                 "${w.id},${w.label.replace(Regex("[,;]"), " ")},${w.startMin},${w.endMin}," +
                     "${w.days.sorted().joinToString(".")},${w.passUntilMillis ?: 0}," +
                     if (w.allowListening) "1" else "0"
-            } + breakPass + minVideo
+            } + breakPass + minVideo + scope
         }
 
         private fun limitsToJson(l: Limits) = JSONObject().apply {
@@ -372,6 +380,10 @@ object ConfigJson {
             }
             l.pausedUntilMillis?.let { put("pausedUntil", it) }
             l.breakPassUntilMillis?.let { put("breakPassUntil", it) }
+            // Omitted at null, and at a blank — which is not a scope, and must
+            // not become one by surviving a round trip that `fromJson` would
+            // then read back as null.
+            l.budgetScope?.takeIf { it.isNotBlank() }?.let { put("budgetScope", it) }
         }
 
         /** Windows as a JSON array string — also the SharedPreferences form. */
@@ -545,7 +557,15 @@ object ConfigJson {
                 minVideoMinutes = opt("minVideoMinutes"),
                 windows = windows,
                 pausedUntilMillis = if (lo.has("pausedUntil")) lo.getLong("pausedUntil") else null,
-                breakPassUntilMillis = if (lo.has("breakPassUntil")) lo.getLong("breakPassUntil") else null
+                breakPassUntilMillis = if (lo.has("breakPassUntil")) lo.getLong("breakPassUntil") else null,
+                // Kept as written, like `homeZone` and deliberately unlike
+                // `channelLayout` above: a value this build does not recognise
+                // is a mode a newer one set, and coercing it to a known one
+                // here would rewrite a parent's choice on the first device to
+                // parse it and then push that back over the family. Unknown
+                // means per-device, and `Limits.sharesBudget` is where that is
+                // decided — not here, where the string is only being carried.
+                budgetScope = lo.optString("budgetScope").ifEmpty { null }
             )
         }
 

@@ -529,6 +529,41 @@ class ConfigMergeTest {
     }
 
     @Test
+    fun theBudgetScopeResolvesOnTheRulesStampLikeEveryOtherRule() {
+        // It is a scalar on the same unit as the sitting length, so the later
+        // rules stamp takes the whole card — the scope with it, and without a
+        // second unit to disagree about.
+        val mine = doc(
+            limits = Limits(sessionMinutes = 45),
+            at = mapOf(ConfigStamp.LIM_RULES to T + 1)
+        )
+        val theirs = doc(
+            limits = Limits(sessionMinutes = 45, budgetScope = "shared"),
+            at = mapOf(ConfigStamp.LIM_RULES to T + 2)
+        )
+        assertEquals("shared", settle(mine, theirs).limits.budgetScope)
+        // And back off again from the newer side, so the switch is not a
+        // one-way door the merge can never close.
+        val off = doc(limits = Limits(sessionMinutes = 45), at = mapOf(ConfigStamp.LIM_RULES to T + 3))
+        assertNull(settle(theirs, off).limits.budgetScope)
+    }
+
+    @Test
+    fun aScopeThisBuildDoesNotKnowSurvivesTheMerge() {
+        // The reason the field is a string rather than a boolean: a newer
+        // build's third mode has to cross this one intact. Coercing it here
+        // would push a parent's choice back out of the family.
+        val mine = doc(limits = Limits(sessionMinutes = 45), at = mapOf(ConfigStamp.LIM_RULES to T + 1))
+        val theirs = doc(
+            limits = Limits(sessionMinutes = 45, budgetScope = "school-nights"),
+            at = mapOf(ConfigStamp.LIM_RULES to T + 2)
+        )
+        val out = settle(mine, theirs)
+        assertEquals("school-nights", out.limits.budgetScope)
+        assertFalse("an unknown scope must read as per-device here", out.limits.sharesBudget)
+    }
+
+    @Test
     fun adoptingSomethingWeNeverTouchedIsNotACollision() {
         val mine = doc(sources = listOf(entry("UCaaa")), at = mapOf(ConfigStamp.src("UCaaa") to T))
         val theirs = doc(

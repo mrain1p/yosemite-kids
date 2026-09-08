@@ -1,5 +1,6 @@
 package io.yosemitekids.app
 
+import io.yosemitekids.app.data.BUDGET_SCOPE_SHARED
 import io.yosemitekids.app.data.ConfigStamp
 import io.yosemitekids.app.data.Limits
 import io.yosemitekids.app.data.Profile
@@ -123,6 +124,40 @@ class ConfigStampTest {
             setOf(ConfigStamp.kidRules("k1"), ConfigStamp.kidPause("k1")),
             sync.at.keys
         )
+    }
+
+    @Test
+    fun sharingAKidsBudgetIsARulesEditAndNothingElse() {
+        // The switch is a limits scalar, so it must stamp the unit the rest of
+        // the rules ride and mint no unit of its own — a `budget|<kid>` would
+        // slot into the table looking perfectly ordinary and give the family a
+        // second thing to reconcile for the same edit.
+        val kid = Profile(id = "k1", name = "Leo", limits = Limits(sessionMinutes = 45))
+        val base = config(profiles = listOf(kid))
+        val next = config(
+            profiles = listOf(kid.copy(limits = kid.limits.copy(budgetScope = BUDGET_SCOPE_SHARED)))
+        )
+
+        val sync = stamp(base, base, next).config.sync
+        assertEquals(setOf(ConfigStamp.kidRules("k1")), sync.at.keys)
+
+        // And the family-wide default lands on lim.rules for the same reason.
+        val famBase = config(limits = Limits(sessionMinutes = 45))
+        val famNext = famBase.copy(limits = famBase.limits.copy(budgetScope = BUDGET_SCOPE_SHARED))
+        assertEquals(
+            setOf(ConfigStamp.LIM_RULES),
+            stamp(famBase, famBase, famNext).config.sync.at.keys
+        )
+    }
+
+    @Test
+    fun aScopeThisBuildDoesNotKnowStillMovesTheStamp() {
+        // Two values that both mean "count per device" here are still two
+        // different parent choices. Comparing through Limits.sharesBudget
+        // would mint nothing, and the newer one would never leave this phone.
+        val base = config(limits = Limits(budgetScope = "school-nights"))
+        val next = config(limits = Limits(budgetScope = "holidays"))
+        assertEquals(setOf(ConfigStamp.LIM_RULES), stamp(base, base, next).config.sync.at.keys)
     }
 
     // --- deletes -------------------------------------------------------
