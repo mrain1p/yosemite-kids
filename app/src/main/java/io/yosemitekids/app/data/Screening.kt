@@ -10,20 +10,48 @@ import kotlinx.coroutines.sync.withPermit
 /**
  * Feed-side gate. Holds the active config, answers "may the kid see this video?"
  * synchronously from the verdict cache, and screens the unscreened in background
- * batches. Fail-closed by design: no verdict (yet) means not visible.
+ * batches.
+ *
+ * The *answer* is not here. [Screening.isVisible] in `:crawl` owns it, so the
+ * hub — which already holds the same verdicts, and is about to serve the same
+ * catalogue to a browser — decides with the same function rather than a copy
+ * that agrees until it doesn't. What is left here is the Android-facing half:
+ * the mutable state the UI writes, the coroutine scope, the batching and the
+ * retries. Guard 46 keeps the predicate from growing back.
  */
 /** [store] is public for the gates that share its verdicts (DownloadChecker). */
 class Screener(val store: ScreeningStore) {
 
-    @Volatile var config: AiConfig = AiConfig()
+    /**
+     * The inputs the predicate reads, as one value it can be handed.
+     *
+     * The four properties below are the API the UI has always written, kept
+     * to the letter; they now read and rebuild this record. Every writer is on
+     * the main thread (MainActivity's warm and MainViewModel's profile/config
+     * reloads), so the read-modify-write is no more racy than the four
+     * independent volatiles it replaces — and the reader sees a consistent set
+     * rather than three new values and one old one.
+     */
+    @Volatile var rules: ScreeningRules = ScreeningRules()
+        private set
+
+    var config: AiConfig
+        get() = rules.config
+        set(v) { rules = rules.copy(config = v) }
     /** Parent allow-overrides already resolved for the active kid (global + per-kid). */
-    @Volatile var allowedOverrides: Set<String> = emptySet()
+    var allowedOverrides: Set<String>
+        get() = rules.allowedOverrides
+        set(v) { rules = rules.copy(allowedOverrides = v) }
     /** Channel name → the parents' channel-specific instructions (see WhitelistEntry.aiNote). */
-    @Volatile var channelNotes: Map<String, String> = emptyMap()
+    var channelNotes: Map<String, String>
+        get() = rules.channelNotes
+        set(v) { rules = rules.copy(channelNotes = v) }
     /** The family's kids — screening judges all of them in one call. */
     @Volatile var profiles: List<Profile> = emptyList()
     /** Whose verdicts gate visibility right now; null = pre-profile behavior. */
-    @Volatile var activeProfileId: String? = null
+    var activeProfileId: String?
+        get() = rules.activeProfileId
+        set(v) { rules = rules.copy(activeProfileId = v) }
 
     private val inFlight = mutableSetOf<String>()
 
@@ -39,43 +67,11 @@ class Screener(val store: ScreeningStore) {
         private val RETRY_DELAYS_MS = longArrayOf(30_000, 120_000)
     }
 
-    /**
-     * Whether the kid may see this video right now. With screening off, always.
-     * With it on: parent override wins, then a current-rules ALLOW verdict; anything
-     * else (blocked, needs-review, not yet screened) stays hidden.
-     */
-    fun isVisible(video: Video): Boolean {
-        if (!config.enabled) return true
-        val id = video.videoId ?: return false
-        if (id in allowedOverrides) return true
-        val e = store.get(id) ?: return false
-        if (e.rulesVersion != config.rulesVersion) return false
-        if (e.verdictFor(activeProfileId) != AiScreener.Verdict.ALLOW) return false
-        // An ALLOW earned under a different channel note is unproven against
-        // the current one — fail closed until the re-screen lands. Entries
-        // whose strictest verdict is BLOCK are exempt (they never re-screen,
-        // so a per-kid ALLOW inside one must not go permanently dark).
-        return e.verdict == AiScreener.Verdict.BLOCK ||
-            e.noteHash == AiScreener.noteHash(channelNotes[video.channelName])
-    }
+    /** Whether the kid may see this video right now. See [Screening.isVisible]. */
+    fun isVisible(video: Video): Boolean = Screening.isVisible(store, rules, video)
 
-    /**
-     * Whether [isVisible]'s "hidden" would merely mean "no verdict yet" — i.e. a
-     * screening call could still clear it, as opposed to an existing deny. Lets
-     * search count "awaiting screening" separately from "held for review".
-     */
-    fun needsScreening(video: Video): Boolean {
-        val cfg = config
-        if (!cfg.enabled) return false
-        val id = video.videoId ?: return false
-        if (id in allowedOverrides) return false
-        val e = store.get(id) ?: return true
-        if (e.rulesVersion != cfg.rulesVersion) return true
-        // Blocked stays blocked across note edits — the parent's ask was
-        // "filter more junk", not "re-litigate what's already out".
-        if (e.verdict == AiScreener.Verdict.BLOCK) return false
-        return e.noteHash != AiScreener.noteHash(channelNotes[video.channelName])
-    }
+    /** Whether a screening call could still clear it. See [Screening.needsScreening]. */
+    fun needsScreening(video: Video): Boolean = Screening.needsScreening(store, rules, video)
 
     /**
      * Screens whatever in [videos] has no current verdict, in batches, calling

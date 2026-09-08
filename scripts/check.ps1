@@ -1442,6 +1442,40 @@ if ($tally -ne 1) {
     Fail-Guard "SessionGuard.kt reads dailyWatchedMs in $tally places; there is exactly one (ownWatchedMs). Anything asking what a kid has spent goes through spentTodayMs(), so the enforcer and every screen work from one number."
 }
 
+
+# 46. One answer to "may this child see this video".
+#     The predicate used to sit in :app, on the class that also owns the
+#     coroutine scope and the retry backoff, and the hub had no way to reach
+#     it - so the moment the hub serves a kid's catalogue to a browser there
+#     would be two of them. A second copy of this does not throw and does not
+#     log. It lets a video the television hides appear on a tablet, and what
+#     a parent reports is "the filter doesn't work", with nothing anywhere
+#     saying which of the two answered.
+#
+#     So the decision lives in :crawl beside the verdict store it reads, and
+#     :app keeps only the delegation. Both halves are checked: the predicate
+#     has to still be there, and :app may not grow one of its own.
+$scrPred = "crawl/src/main/kotlin/io/yosemitekids/app/data/Screening.kt"
+if (-not (Test-Path $scrPred)) {
+    Fail-Guard "$scrPred is gone; guard 46 is blind. The visibility predicate lives there so the app and the hub run the same one."
+}
+$scrPredSrc = Get-Content $scrPred -Raw
+foreach ($pred in @("isVisible", "needsScreening")) {
+    if (-not $scrPredSrc.Contains("fun $pred(")) {
+        Fail-Guard "$scrPred no longer declares fun $pred. That is the one place deciding what a child may see; :app's Screener and the hub both call it."
+    }
+}
+$scrApp = @(Get-ChildItem -Recurse -Include *.kt -Path app/src/main | ForEach-Object {
+    $sf = $_
+    Get-Content $sf.FullName |
+        Select-String -Pattern 'fun (isVisible|needsScreening)\(' |
+        Where-Object { $_.Line -notmatch '= Screening\.' } |
+        ForEach-Object { "$($sf.Name):$($_.LineNumber): $($_.Line.Trim())" }
+})
+if ($scrApp.Count -gt 0) {
+    Fail-Guard "a visibility predicate in :app that is not a one-line delegation to Screening in :crawl. Two copies of this rule do not throw - they let a video the television hides appear on a tablet. Found: $($scrApp -join '; ')"
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

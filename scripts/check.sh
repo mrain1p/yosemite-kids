@@ -1259,6 +1259,31 @@ tally=$(grep -cF "getLong(${q}dailyWatchedMs${q}" app/src/main/java/io/yosemitek
   guard_fail "SessionGuard.kt reads dailyWatchedMs in $tally places; there is exactly one (ownWatchedMs). Anything asking what a kid has spent goes through spentTodayMs(), so the enforcer and every screen work from one number."
 
 
+
+# 46. One answer to "may this child see this video".
+#     The predicate used to sit in :app, on the class that also owns the
+#     coroutine scope and the retry backoff, and the hub had no way to reach
+#     it - so the moment the hub serves a kid's catalogue to a browser there
+#     would be two of them. A second copy of this does not throw and does not
+#     log. It lets a video the television hides appear on a tablet, and what
+#     a parent reports is "the filter doesn't work", with nothing anywhere
+#     saying which of the two answered.
+#
+#     So the decision lives in :crawl beside the verdict store it reads, and
+#     :app keeps only the delegation. Both halves are checked: the predicate
+#     has to still be there, and :app may not grow one of its own.
+scr_pred=crawl/src/main/kotlin/io/yosemitekids/app/data/Screening.kt
+[ -f "$scr_pred" ] ||
+  guard_fail "$scr_pred is gone; guard 46 is blind. The visibility predicate lives there so the app and the hub run the same one."
+for pred in isVisible needsScreening; do
+  grep -q "fun $pred(" "$scr_pred" ||
+    guard_fail "$scr_pred no longer declares fun $pred. That is the one place deciding what a child may see; :app's Screener and the hub both call it."
+done
+scr_app=$(grep -rn "fun isVisible(\|fun needsScreening(" --include=*.kt app/src/main | grep -v "= Screening[.]" || true)
+[ -z "$scr_app" ] ||
+  guard_fail "a visibility predicate in :app that is not a one-line delegation to Screening in :crawl. Two copies of this rule do not throw - they let a video the television hides appear on a tablet. Found:
+$scr_app"
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 
