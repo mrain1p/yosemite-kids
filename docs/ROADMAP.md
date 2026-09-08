@@ -324,6 +324,49 @@ are regressions from the revamp and outrank the rest.**
   YouTube does. PiP already exists and the button is on the overlay; this is
   the gesture, not the feature.
 
+### 2M. The search index throws the upload date away
+
+Asked for directly (2026-09-07) after "most recent" turned out to be
+unofferable on the search screen. It is a smaller job than it sounds, because
+**nothing needs fetching — the date is already in hand and is being dropped.**
+
+`Video.publishedAt` (epoch ms) exists and `YouTubeRepository` already converts
+the extractor's `uploadDate` into it. `IndexCrawler.toIndexed` then builds a
+`ChannelIndex.IndexedVideo` without it, and `ChannelIndex.saveSource`
+persists exactly five keys — `id`, `t`, `c`, `th`, `d`. So the crawl computes
+a date every time and discards it on the way to disk.
+
+**What it takes**
+
+- `IndexedVideo` gains `publishedAt: Long?`; `toIndexed` carries it; `saveSource`
+  writes a sixth key and `parseSource` reads it back as null when absent.
+- `toVideo()` populates `Video.publishedAt`, which is what makes a date
+  reachable from a search result at all.
+- Old index files stay valid and simply have no date — the same "null keeps
+  the feed's own newest-first order" rule `Video.publishedAt` already
+  documents. **No index version bump, no forced re-crawl**; a source picks up
+  dates the next time it is crawled. Cover that with a parse test on a
+  five-key file.
+
+**What it unlocks, in order of value**
+
+1. **"Most recent" on search.** Today `SearchRank` cannot offer it and the
+   chips deliberately do not fake it with a proxy.
+2. **A real recency term in the ranking** — a genuinely new video from a
+   channel she loves should beat a five-year-old one, which today it cannot,
+   because relevance has no notion of when.
+3. **"Newly added" as a video ordering** rather than only a channel one, which
+   is half of §2L's discovery complaint.
+4. The meta line on search results stops being channel-only for families who
+   have `showVideoAge` on.
+
+**Not free, and worth saying:** dates only appear for sources crawled after
+this ships, so the first week looks partial — every source has *some* dated
+videos and some undated ones. Decide whether an undated video sorts last under
+"most recent" (recommended: it is honest) or is hidden from that ordering
+(it is not — hiding a video because we lack a date about it is worse than
+showing it late).
+
 ## 3. Known-wrong docs — cleared 2026-09-06
 
 All five went out with 1.0.7 and are recorded here rather than deleted,
@@ -428,3 +471,4 @@ fires: confirm the work is done, then delete the item and its row.
 | §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |
 | §2K top chips | `fun TvTopChips(` | code |
 | §2K provisional TV dp | `fun tvUnits(` | code |
+| §2M index has no date | `val durationSeconds: Long,` | code |
