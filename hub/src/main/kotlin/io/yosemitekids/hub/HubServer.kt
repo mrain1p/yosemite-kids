@@ -83,6 +83,23 @@ class HubServer(
     private val sessions = HubSessions(now)
 
     /**
+     * The family's watch ledger. Built here, like [sessions], because it needs
+     * [now] and [store] — and kept firmly apart from [store] itself: a counter
+     * is not curation, and nothing about a minute of viewing may move the
+     * config's fingerprint, its version ring or its change log. See [HubUsage].
+     *
+     * The zone is read fresh on every call rather than captured, so a parent
+     * naming one takes effect without restarting the container; `runCatching`
+     * because a config that will not parse must cost the family a windowed
+     * ledger, never a 500 on a route that is only counting.
+     */
+    private val ledger = HubUsage(
+        store.dataDir,
+        homeZone = { runCatching { store.load().homeZone }.getOrNull() },
+        now = now
+    )
+
+    /**
      * How fast an unauthenticated caller may ask to join. See [enrol].
      *
      * Separate from [sessions]' counter deliberately: sharing it would let
@@ -161,6 +178,11 @@ class HubServer(
         // a review queue on the admin page: the entry carries its own title,
         // channel, thumbnail and reason, so nothing else has to be held here.
         s.createContext("/verdicts") { ex -> guarded(ex) { verdicts(ex) } }
+        // Watch minutes, both ways, and device-initiated in both directions:
+        // a device pushes what only it knows and pulls what it needs, so this
+        // box never holds a credential on anything and guard 7 is untouched.
+        // A relay and a scoreboard; it stops nobody watching anything.
+        s.createContext("/usage") { ex -> guarded(ex) { usage(ex) } }
         // Registered individually rather than under one prefix: a prefix
         // context would swallow every path beneath it, and "/" already
         // answers everything else with the page.
@@ -334,6 +356,34 @@ class HubServer(
                 val fresh = screening.importJson(body, rules)
                 if (fresh < 0) respond(ex, 400, JSONObject().put("error", "bad verdicts").toString())
                 else respond(ex, 200, JSONObject().put("merged", fresh).toString())
+            }
+            else -> respond(ex, 405, "no")
+        }
+    }
+
+    /**
+     * The family's watch ledger: serve the join, or take a device's own cells
+     * into it.
+     *
+     * `POST` keeps only the cells the caller authored, identified by the
+     * `X-Device-Id` it presented alongside the token [authorised] just
+     * checked — the same id `Whitelist.deviceProfiles` is keyed by, and the
+     * only identity this box can tie to a caller. A body with no author is
+     * refused rather than half-trusted.
+     *
+     * There is no hub-side enforcement anywhere near this. The number is
+     * carried so the device about to *start* can add it to its own live
+     * counter; the decision stays where the child and the screen are.
+     */
+    private fun usage(ex: HttpExchange) {
+        if (!authorised(ex)) return
+        when (ex.requestMethod) {
+            "GET" -> respond(ex, 200, ledger.exportJson())
+            "POST" -> {
+                val body = readBody(ex) ?: return respond(ex, 413, "too large")
+                val stored = ledger.merge(body, ex.requestHeaders.getFirst("X-Device-Id")?.take(64))
+                if (stored < 0) respond(ex, 400, JSONObject().put("error", "bad usage").toString())
+                else respond(ex, 200, JSONObject().put("cells", stored).toString())
             }
             else -> respond(ex, 405, "no")
         }

@@ -142,34 +142,41 @@ there and `SettingsFormSaveTest` drives the path three times on an unchanged
 form. Still owed: a run through the emulator loop with two phones' worth of
 edits under one open form, which this round could not do.
 
-**J. One watch-time budget per child, across every device — parked.** Design
-record: `docs/PLAN-hub-parity.md`. Today a child with a television and a
-tablet gets the daily budget on each: the rules and the grants are per child
-already, but the running tally (`dailyWatchedMs` in `SessionGuard`) is per
-device, and nothing documents that. The owner asked for a per-profile choice
-between per-device and shared.
+**J. One watch-time budget per child, across every device — the foundation
+has landed; the switch has not.** Design record: `docs/PLAN-hub-parity.md`.
+Today a child with a television and a tablet still gets the daily budget on
+each: the rules and the grants are per child already, and the running tally
+(`dailyWatchedMs` in `SessionGuard`) is still per device. The owner asked for
+a per-profile choice between per-device and shared.
 
-The design in `PLAN-hub-parity.md` solves it without a hub, and pays for that
-in complexity: a separate grow-only ledger, per-cell `max` joins, and a
-careful day boundary — because two devices merging counters can otherwise
-ratchet the family's day forward and hand out a second budget that no parent
-action reverses.
+**What is built.** The plan's ledger, taken as written: `UsageLedger` in
+`:core` (grow-only cells keyed `(kid, day, device)`, joined by per-cell `max`,
+no clock in the join — `trim` is separate and local), `FamilyDay` and its
+forward-only rollover, `Whitelist.homeZone`, `GET|POST /usage` on both faces,
+`WatchLedgerStore` on a device and `HubUsage` on the hub, and the one summand
+in `SessionGuard.spentTodayMs()`. Guards 43, 44 and 45 hold the day to one
+spelling, the ledger out of the config, and the tally to one reader; guard 27
+now says what it enforces — the container's own calendar is still unreachable,
+and a zone may only come from the family's config.
 
-**Reconsider that scope before building it.** The owner's question was how
-YouTube manages this without any of it, and the answer is that Google has one
-always-on server every device authenticates to, so there is only ever one
-copy of the number and nothing to merge. We have that too, when a hub exists.
-So the smaller feature is: **a shared budget REQUIRES a hub.** The hub is the
-single copy, devices ask it at session start and report as they spend, and
-its clock settles the day. No merge arithmetic, no competing counters, and no
-route by which a television with a wrong clock grants a second day. Families
-with no hub keep per-device budgets, and the setting says so rather than
-being silently absent.
+**What is left, and it is the whole user-facing half.** `Limits.budgetScope`,
+the confirm-with-the-number dialog, the "where the number came from" copy on
+every surface that shows a shared figure, the session-start fetch and the
+per-minute report, and `FIRST_SHARED_BUDGET_VERSION_CODE` for a half-upgraded
+fleet. Until `budgetScope` exists nothing writes the peers' mirror, so the
+summand is arithmetically today's behaviour and no family's budget changes.
 
-That version is a fraction of the work and loses only the case of a family
-who wants a shared budget and refuses to run a hub. Decide between the two
-before starting; do not start from the plan's ledger by default. *Medium
-either way, and much smaller if the hub is required.*
+**The scope question below was NOT settled before building, and is worth
+re-reading.** The owner's question was how YouTube manages this without any of
+it, and the answer is that Google has one always-on server every device
+authenticates to, so there is only ever one copy of the number and nothing to
+merge. We have that too, when a hub exists — so the smaller feature would have
+been: **a shared budget REQUIRES a hub**, the hub as the single copy, its day
+settling the boundary, no merge arithmetic at all. The round that built the
+foundation took the plan's hubless ledger instead. That is now sunk cost and
+works with or without a hub, but the *policy* on top of it could still be
+scoped either way, and "requires a hub" remains the cheaper answer for the
+remaining work. *Small-to-medium, and smaller still if the hub is required.*
 
 **K. Staying under YouTube's bot detection — review, and finish the
 protections.** Raised 2026-09-06 while weighing a hub-served player for

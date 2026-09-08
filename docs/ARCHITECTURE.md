@@ -56,6 +56,9 @@ app/src/main/java/io/yosemitekids/app/
 │   ├── SavedListStore.kt     Favorites + Watch later (TSV, tombstones)
 │   ├── QueueStore.kt         "Up next" lineup (device-local)
 │   ├── UsageStore.kt / ChannelUsage.kt   Per-channel opens/minutes (sorting, stats)
+│   ├── WatchLedgerStore.kt   The watch ledger on disk: this device's own cells and
+│   │                         what it has learned from peers. Own file, own lock —
+│   │                         never config.json (guard 44). Served at GET|POST /usage.
 │   ├── Stats.kt              The /stats payload for the parent's dashboard
 │   ├── Digest.kt             Weekly digest baselines
 │   ├── YouTubeRepository.kt  NewPipeExtractor wrapper: sources, feeds, stream
@@ -120,6 +123,12 @@ core/src/main/kotlin/io/yosemitekids/app/data/     the pure rules: no disk, no c
 ├── SyncDecision.kt     What the sweep does about one peer
 ├── SettingsSurface.kt  The settings manifest: groups, controls, words, and
 │                       which face each belongs to. Guards 1-3, 11 and 26 read it
+├── FamilyDay.kt        One spelling of "what day is it", for everything that
+│                       buckets by day — and the ratchet that stops a device's
+│                       own day moving backwards (guard 43)
+├── UsageLedger.kt      The watch ledger's laws: grow-only cells keyed
+│                       (kid, day, device), joined by per-cell max, no clock.
+│                       Deliberately NOT part of the config (guard 44)
 ├── Grants.kt / KidChoices.kt / Profile.kt / TimeWindows.kt / Tsv.kt
 ├── MasterElection.kt / MasterToken.kt   Who builds the search index (clock passed in)
 └── BackupFile.kt       The backup envelope, so the phone and the hub write one shape
@@ -138,6 +147,11 @@ hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container
 ├── HubServer.kt        Every route — see docs/LAN-API.md, and guard 30
 ├── HubStore.kt         config.json on the volume. Stamped writes, key stripped
 ├── HubSecrets.kt       secrets.json: the AI key, served to a parent, never merged
+├── HubUsage.kt         usage.json: the watch ledger. Its own file and its own
+│                       lock — HubStore, the fingerprint, sync.log and the
+│                       version ring are untouched by watch traffic (guard 44).
+│                       The one calendar this box reads is the family's own
+│                       (Whitelist.homeZone), never the container's (guard 27)
 ├── HubTokens.kt        devices.json: enrolments, their kind, address, last seen
 ├── HubPassword.kt      PBKDF2 verify/derive, shared shape with the phone's PIN
 ├── HubSessions.kt      Browser sessions and the escalating sign-in lockout
@@ -243,6 +257,21 @@ PlayerActivity.onCreate
 lapsed locks, logs); `blockReason()` is its read-only twin for screens that
 only look.
 
+Everything above works from **one number**: `SessionGuard.spentTodayMs()` —
+this device's own tally plus whatever peers have reported for the same kid on
+the same day. The raw counter has exactly one reader (`ownWatchedMs`) and guard
+45 holds it there, because seven enforcement sites and half a dozen screens all
+deriving from it is precisely how a home screen ends up promising forty minutes
+in front of a player that stops at ten. The peers' half is zero for every family
+today: the ledger and its routes exist, the switch that makes a budget shared
+(`Limits.budgetScope`) does not yet.
+
+The **day** those counters bucket into is `FamilyDay`'s, and only ever moves
+forward: `FamilyDay.rollover` keeps the later of the stored day and the clock's,
+so a device whose clock steps backwards no longer zeroes the tally and hands out
+a second budget. Guard 43 keeps one spelling of a day in `:core` and in the two
+stores that enforce with it.
+
 ## Parent-side flow
 
 ```
@@ -269,6 +298,7 @@ Sync loops in `MainViewModel` (parent role, every 5 minutes while home is up):
 | --- | --- | --- |
 | `files/config.json` | The family config (see `ConfigStore.toJson`) | no (kids inside) |
 | `files/screening.json` | AI verdict cache | no (per-kid verdicts inside) |
+| `files/usage.json` (+ `usage-day.txt`) | The watch ledger: `(kid, day, device) → minutes`, this device's own cells and what it has learned from peers. Its own file and its own lock — a counter is **not** curation and never enters `config.json` (guard 44) | no (kids inside) |
 | `files/watchlist{sfx}.tsv`, `watchlater{sfx}.tsv` (+`_removed`) | Saved lists with tombstones | yes |
 | `files/queue{sfx}.tsv` | Up next | yes, device-local |
 | `files/video_cache/<source>.tsv`, `search-index/` | Feed pages, search index | no |
@@ -306,6 +336,9 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Let the parent pick a channel's playlists | `SettingsChannels.kt` (`PinnedPlaylistsDialog`, from the source's own page) → `WhitelistEntry.playlistIds` |
 | Change when the phone shrinks to PiP, or what the window does | `PlayerActivity.pipEligible` / `enterPip` / `onPictureInPictureModeChanged` |
 | Add a screen-time rule | `Whitelist.Limits` + `ConfigStore` (de)serializers + `SessionGuard` + settings section |
+| Change what a kid's minutes are measured against | `SessionGuard.spentTodayMs()` — the only place the own tally and the peers' figure are added, and guard 45 keeps it the only reader of `dailyWatchedMs` |
+| Change how a day is decided anywhere a counter buckets by one | `FamilyDay` in `:core` (guard 43 makes it the only such place); the hub gets its zone from `Whitelist.homeZone` through `FamilyDay.zoneOrNull` and reads no calendar of its own (guard 27) |
+| Carry watch minutes between devices | `UsageLedger` in `:core` (the join: grow-only cells, per-cell `max`, no clock), `WatchLedgerStore` on a device, `HubUsage` on the hub, `GET\|POST /usage` on both faces |
 | Add a LAN route | `LanServer.handle` (bound every read!) + `LanClient` + `docs/LAN-API.md` (guard 14 checks the row is there) |
 | Add a route to the **hub** | `HubServer.start` + a `private fun <name>(ex)` beside the others + `docs/LAN-API.md`'s hub table (guard 30). If it is a route a device also answers, `authorised(ex)` first (guard 29) and take it off `DEVICE_ONLY` (guard 22). Answer through `respond()`; a route that writes its own headers must call `securityHeaders(ex)` itself, and guard 41 counts |
 | Bump the **hub's version** | `val hubVersion` in `hub/build.gradle.kts`, kept equal to the app's `versionName` by guard 39. It rides `GET /health`, `GET /status` and the admin page, and it is the only way to tell whether a container is old enough to drop config keys it does not model on the next save |
