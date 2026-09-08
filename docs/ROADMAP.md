@@ -269,10 +269,20 @@ are regressions from the revamp and outrank the rest.**
   Scroll down, tap New / Random / Popular, and the list jumps to the header.
   The sort applies to the list below it; the scroll position should not move.
 - **"When looking at a station it looks like something is missing."** Not yet
-  reproduced. The channel block, the three action cards and the New-for-you
-  and Playlists rails are all emitted into the same grid, so this may be the
-  scroll bug above wearing a different hat — or the rails collapsing when
-  empty. Reproduce on a real phone before changing anything.
+  reproduced, but narrowed to two candidates by reading `YosemiteScreen.kt`'s
+  channel-page block. Both rails are conditional and both fail silently:
+  New-for-you draws only `if (fresh.size >= 3)`, where `fresh` counts videos
+  with no watch progress, and the Playlists rail draws only
+  `if (s.channelPlaylists.isNotEmpty())` — which is also false for the first
+  moments after opening a channel, because playlists are fetched after the
+  page paints. So a channel with two unwatched videos, or one whose playlists
+  have not landed yet, legitimately renders as block-then-Videos and looks
+  half-built. The reported screenshot is consistent with being scrolled past
+  the block rather than the block being absent.
+  Decide whether an empty rail should collapse (today) or show the dashed
+  instruction tile the design specifies for empty rails — the latter is
+  probably right, because a rail that is *sometimes* there reads as breakage.
+  Reproduce on a real phone before changing anything.
 
 **Discovery — the biggest complaint, and the deepest.**
 

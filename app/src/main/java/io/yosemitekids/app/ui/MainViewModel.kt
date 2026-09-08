@@ -392,7 +392,15 @@ class MainViewModel(
         kidChannelFilter = filter
         viewModelScope.launch {
             withContext(Dispatchers.IO) { kidPrefs?.setChannelFilter(filter) }
-            _state.value = _state.value.copy(channelFilter = filter, scrollTo = 0)
+            // Deliberately no scrollTo. The sort applies to the list *below*
+            // the chips, so the chips must not move out from under the finger
+            // that just tapped them. This used to snap to item 0, which was
+            // survivable when the header was a line of text and became a jump
+            // of most of a screen once the channel page grew its block, its
+            // three action cards and two rails — you tapped Random and lost
+            // the row you were reading. Opening a channel still starts at the
+            // top (openChannel), which is a different question.
+            _state.value = _state.value.copy(channelFilter = filter)
             (_state.value.screen as? Screen.ChannelVideos)?.let { publishChannel(it.source) }
         }
     }
@@ -418,15 +426,34 @@ class MainViewModel(
             visibleSources(sources).map { it.id }.toSet()
         }
         val hits = withContext(Dispatchers.IO) { index.search(q, visibleIds) }
-        val terms = q.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
-        // Dedup: the same video indexed under two sources is one result. The
-        // index has no relevance ranking, so impose one: title hits above
-        // channel-name-only hits (stable sort keeps newest-first within each
-        // band) — the first screening window should be the results a kid
-        // actually searched for, not whatever source iterated first.
-        searchMatches = hits.map { it.toVideo() }.distinctBy { it.url }
-            .filter { it.videoId !in blockedVideoIds && !tooShort(it) }
-            .sortedBy { v -> if (terms.all { it in v.title.lowercase() }) 0 else 1 }
+        val terms = io.yosemitekids.app.data.SearchRank.terms(q)
+        // What this kid's own history says, gathered once for the whole result
+        // set rather than per candidate. Affinity is keyed by channel NAME
+        // because that is what a result carries; `opens` is stored per source
+        // id, so the two are joined here, in the one place that holds both.
+        val signals = withContext(Dispatchers.IO) {
+            io.yosemitekids.app.data.SearchRank.Signals(
+                channelAffinity = sources.associate { it.name to usage.opens(it.id) },
+                favourites = watchlistStore.urls(),
+                watched = history.all().keys
+            )
+        }
+        // Dedup: the same video indexed under two sources is one result.
+        //
+        // The index match is a bare "every term appears somewhere in the title
+        // or the channel name", which is the right filter and a useless order —
+        // it returned the family's whole back catalogue in whatever order the
+        // sources iterated. A child looking for something she loves had to
+        // scroll past seventy strangers to reach it. So the order is scored,
+        // and the score is about this kid: what she hearted, what she has
+        // watched, and which channels she actually lives in. See SearchRank,
+        // which is in :crawl so the hub ranks identically rather than growing
+        // a second opinion.
+        searchMatches = io.yosemitekids.app.data.SearchRank.rank(
+            hits.map { it.toVideo() }.distinctBy { it.url }
+                .filter { it.videoId !in blockedVideoIds && !tooShort(it) },
+            terms, q, signals
+        ) { io.yosemitekids.app.data.SearchRank.Key(it.title, it.channelName, it.url) }
         searchWindow = 0
         searchSent = 0
         // Everything already cleared (or screening off) paints immediately —
