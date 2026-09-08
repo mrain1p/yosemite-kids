@@ -169,12 +169,20 @@ internal fun videoFilterLabel(filter: String): Pair<String, androidx.compose.ui.
         else -> "New" to YosemiteIcons.Sparkle
     }
 
-/** Label and icon for a channel order. */
+/**
+ * Label and icon for a channel order.
+ *
+ * A to Z and Z to A share one glyph on purpose: they are one sort read from
+ * two ends, and a second alphabet icon invented for the reverse would say
+ * they were two different things. The words carry the direction.
+ */
 internal fun channelSortLabel(sort: String): Pair<String, androidx.compose.ui.graphics.vector.ImageVector> =
     when (sort) {
         CHANNEL_ORDER_ALPHA -> "A to Z" to YosemiteIcons.SortAlpha
+        CHANNEL_ORDER_ALPHA_DESC -> "Z to A" to YosemiteIcons.SortAlpha
         CHANNEL_ORDER_RANDOM -> "Random" to YosemiteIcons.Shuffle
         CHANNEL_ORDER_LATEST -> "Latest video" to YosemiteIcons.NewRelease
+        CHANNEL_ORDER_ADDED -> "Just added" to YosemiteIcons.Sparkle
         else -> "Most watched" to Icons.Filled.Star
     }
 
@@ -202,8 +210,8 @@ internal fun VideoFilterChips(selected: String, onSelect: (String) -> Unit) {
 }
 
 /**
- * Most watched · A to Z · Random · Latest video — the kid's order for the
- * channels.
+ * Most watched · A to Z · Z to A · Random · Latest video · Just added — the
+ * kid's order for the channels.
  *
  * [extras] carries whatever else belongs on that line. The Channels tab puts
  * the kid's own shelves there (Up next, Watch later, Downloads) once they have

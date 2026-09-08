@@ -293,11 +293,21 @@ are regressions from the revamp and outrank the rest.**
 
 **Discovery — the biggest complaint, and the deepest.**
 
-- **A newly added channel takes minutes to appear**, and even then needed a
-  refresh, a page change and a search to find. A child asked for a channel and
-  could not see it. Wants a *newly added* row and/or a "newly added" sort. The
-  real cause is the crawl and warm cadence, not the shelf — see §2B — so a row
-  alone would be a row that stays empty for the same several minutes.
+- ~~**A newly added channel takes minutes to appear**~~ — **mostly done.** The
+  diagnosis in this entry was right and the fix was not the shelf. A new entry
+  is *appended* to the whitelist, so it was resolved last by the refresh's
+  slow pass and warmed last by `warmCaches`, behind every channel the family
+  already had, one at a time in the background lane — which is the several
+  minutes. Now: `MainViewModel.warmNew` fetches a newcomer's page one in the
+  **interactive** lane the moment it is seen (`SourceFirstSeen.sync` reports
+  it), saves it to the video cache, screens it and harvests it into the search
+  index; and `warmCaches` walks `ContentWarm.stalest` order rather than list
+  order, so even the fallback path takes the newcomer first. A "Just added"
+  chip on the Channels page orders by when this device first saw the source.
+  **What is still slow:** the *back catalogue*. Search finds the newcomer's
+  newest page in seconds; older uploads appear as `IndexCrawlWorker` reaches
+  them, which is still master-only and still minutes-to-hours. That is §2B and
+  is unchanged.
 - **Search is static and unranked.** "My daughter loves Mario videos but every
   time I search it just starts with the same static list and I have to scroll
   down past 70 to find the ones she likes." `ChannelIndex.search` is a token
@@ -308,7 +318,9 @@ are regressions from the revamp and outrank the rest.**
 
 **Channels and the channel page.**
 
-- **Sort the Channels page A–Z and reverse.** A–Z exists; reverse does not.
+- ~~**Sort the Channels page A–Z and reverse.**~~ Done: `CHANNEL_ORDER_ALPHA_DESC`,
+  one more value in the existing vocabulary rather than a direction toggle
+  beside it, so the parent's default and the hub's manifest get it for free.
 - ~~**Show the channel's description**~~ Done. The extractor does return one
   (`ChannelInfo.getDescription`, and `PlaylistInfo.getDescription().content`).
   It is stripped at the boundary by `SafeText.forKids` in `:core` — links,

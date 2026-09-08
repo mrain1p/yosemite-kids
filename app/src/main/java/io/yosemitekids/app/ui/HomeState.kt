@@ -273,22 +273,28 @@ internal fun orderByWatched(items: List<VideoItem>, watchedAt: (String) -> Long)
 
 /**
  * The channel row / Channels tab in the order the kid (or, by default, the
- * parent) asked for. Most watched = most opened here; A to Z; a shuffle that
- * holds still for the whole visit ([seed] — a row that reorders under the
- * kid's thumb is a bug, not a surprise); latest video = the channel whose
- * newest upload is newest, channels with no dated upload last. Every sort is
- * stable, so ties keep the whitelist order.
+ * parent) asked for. Most watched = most opened here; A to Z and the same
+ * alphabet backwards; a shuffle that holds still for the whole visit ([seed]
+ * — a row that reorders under the kid's thumb is a bug, not a surprise);
+ * latest video = the channel whose newest upload is newest, channels with no
+ * dated upload last; just added = newest arrival first, by [addedAt]. Every
+ * sort is stable, so ties keep the whitelist order — which is also insertion
+ * order, so channels this device has always known (all [addedAt] 0) fall back
+ * to the order the parent's list is in rather than to nothing.
  */
 internal fun orderChannels(
     channels: List<Source>,
     sort: String,
     opens: (String) -> Int,
     latestUpload: (String) -> Long?,
-    seed: Long
+    seed: Long,
+    addedAt: (String) -> Long = { 0L }
 ): List<Source> = when (sort) {
     CHANNEL_ORDER_ALPHA -> channels.sortedBy { it.name.lowercase() }
+    CHANNEL_ORDER_ALPHA_DESC -> channels.sortedByDescending { it.name.lowercase() }
     CHANNEL_ORDER_RANDOM -> channels.shuffled(kotlin.random.Random(seed))
     CHANNEL_ORDER_LATEST -> channels.sortedByDescending { latestUpload(it.id) ?: Long.MIN_VALUE }
+    CHANNEL_ORDER_ADDED -> channels.sortedByDescending { addedAt(it.id) }
     else -> channels.sortedByDescending { opens(it.id) }
 }
 

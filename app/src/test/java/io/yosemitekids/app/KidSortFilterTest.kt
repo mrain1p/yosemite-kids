@@ -1,6 +1,8 @@
 package io.yosemitekids.app
 
+import io.yosemitekids.app.data.CHANNEL_ORDER_ADDED
 import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA
+import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA_DESC
 import io.yosemitekids.app.data.CHANNEL_ORDER_LATEST
 import io.yosemitekids.app.data.CHANNEL_ORDER_RANDOM
 import io.yosemitekids.app.data.CHANNEL_ORDER_WATCHED
@@ -45,6 +47,37 @@ class KidSortFilterTest {
         assertEquals(
             listOf("Arthur", "Bluey", "Curious George"),
             orderChannels(channels, CHANNEL_ORDER_ALPHA, { 0 }, { null }, 1L).map { it.name }
+        )
+    }
+
+    @Test
+    fun reverseAlphabeticalIsTheAlphabetBackwards() {
+        assertEquals(
+            listOf("Curious George", "Bluey", "Arthur"),
+            orderChannels(channels, CHANNEL_ORDER_ALPHA_DESC, { 0 }, { null }, 1L).map { it.name }
+        )
+        // Not merely "the A-to-Z list reversed by accident of stability": the
+        // two must be exact mirrors of each other for a distinct name set.
+        assertEquals(
+            orderChannels(channels, CHANNEL_ORDER_ALPHA, { 0 }, { null }, 1L).reversed(),
+            orderChannels(channels, CHANNEL_ORDER_ALPHA_DESC, { 0 }, { null }, 1L)
+        )
+    }
+
+    @Test
+    fun justAddedLeadsWithTheNewestArrivalAndKeepsListOrderForTheRest() {
+        // Only UCc has ever been stamped; the other two predate the store and
+        // sort 0, which must leave them in the whitelist's own order.
+        val added = mapOf("UCc" to 5_000L)
+        assertEquals(
+            listOf("UCc", "UCb", "UCa"),
+            orderChannels(channels, CHANNEL_ORDER_ADDED, { 0 }, { null }, 1L) { added[it] ?: 0L }
+                .map { it.id }
+        )
+        // With nothing stamped at all the order is exactly the list's.
+        assertEquals(
+            channels.map { it.id },
+            orderChannels(channels, CHANNEL_ORDER_ADDED, { 0 }, { null }, 1L).map { it.id }
         )
     }
 

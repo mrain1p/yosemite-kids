@@ -305,9 +305,14 @@ object SettingsSurface {
                 SettingsControl(
                     "listing-channel-order", "Channel row order",
                     kind = ControlKind.CHIPS, writes = "channelOrder",
+                    // Every value in CHANNEL_ORDERS, in its order. The kid's
+                    // chip row offers one more ("Just added"), which is
+                    // device-local by nature and so cannot be a family
+                    // default — see CHANNEL_ORDER_ADDED.
                     options = listOf(
                         ControlOption(CHANNEL_ORDER_WATCHED, "Most watched"),
                         ControlOption(CHANNEL_ORDER_ALPHA, "A to Z"),
+                        ControlOption(CHANNEL_ORDER_ALPHA_DESC, "Z to A"),
                         ControlOption(CHANNEL_ORDER_RANDOM, "Random"),
                         ControlOption(CHANNEL_ORDER_LATEST, "Latest video")
                     )
