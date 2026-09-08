@@ -226,6 +226,13 @@ object HubWeb {
                 JSONObject()
                     .put("hash", store.fingerprint())
                     .put("updatedAt", store.updatedAt())
+                    // Which build a parent is looking at, on the page they
+                    // would look at. `docker pull` is silent about whether it
+                    // moved, and an image left behind does not merely lack a
+                    // control — it drops the config key behind it on the next
+                    // save here (hub/build.gradle.kts says why). This is the
+                    // number to read back when a setting will not stick.
+                    .put("version", HubBuild.VERSION)
                     .put("dataDir", dataDir)
                     // Whether this box holds the AI key, and the most the page
                     // may ever be shown of it. Never the value: a field that

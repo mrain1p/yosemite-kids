@@ -13,7 +13,23 @@
 //
 // Guard 19 in scripts/check.* fails the build if this list grows anything
 // that is not a static asset.
-var CACHE = "yk-hub-shell-v1";
+//
+// PREFIX is what this worker owns. Cache Storage is per ORIGIN, not per
+// worker, so "every key that is not mine" is not a thing a worker may delete:
+// the moment a second app is served from this origin — the kid-facing web
+// player is the plan — the two activate handlers would wipe each other's
+// shells on every update, for ever, and the symptom would be two apps that
+// are mysteriously never available offline. Guard 40 in scripts/check.* holds
+// the eviction below to this prefix.
+var PREFIX = "yk-hub-shell-";
+var CACHE = PREFIX + "v1";
+// "/" is the admin page today, and only because HubServer registers "/" last
+// and answers it with index.html. When a second app joins this origin that
+// stops being true: either "/" becomes something else, or it stays the admin
+// page and the player is served under a path of its own. Either way the
+// player gets its own worker, its own scope and its own PREFIX, and this
+// entry becomes the wrong shell to cache under it — so revisit this line
+// then rather than assuming "/" still means this page.
 var SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -33,11 +49,13 @@ self.addEventListener("install", function (e) {
 });
 
 self.addEventListener("activate", function (e) {
+  // Only this worker's own older caches. Anything else on this origin
+  // belongs to somebody else — see PREFIX.
   e.waitUntil(
     caches.keys().then(function (keys) {
-      return Promise.all(keys.map(function (k) {
-        return k === CACHE ? null : caches.delete(k);
-      }));
+      return Promise.all(keys.filter(function (k) {
+        return k !== CACHE && k.indexOf(PREFIX) === 0;
+      }).map(function (k) { return caches.delete(k); }));
     }).then(function () { return self.clients.claim(); })
   );
 });

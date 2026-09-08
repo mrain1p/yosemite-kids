@@ -327,7 +327,7 @@ class HubVerdictsTest {
     }
 
     private fun enrol(name: String): String =
-        tokens.approve(tokens.startEnrolment(name, clock), clock, HubTokens.Kind.PARENT).getOrThrow()
+        tokens.approve(tokens.startEnrolment(name, clock)!!, clock, HubTokens.Kind.PARENT).getOrThrow()
 
     /** One entry in `ScreeningStore`'s own wire shape — what a device exports. */
     private fun verdictJson(videoId: String, rulesVersion: Int): String =

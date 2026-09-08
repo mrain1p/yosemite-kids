@@ -638,10 +638,45 @@ class HubServerTest {
             )
             assertEquals("guess $attempt", 401, refused.first)
         }
-        // Now even the RIGHT secret is refused, which it would not have been
-        // before: this route had no counter of its own at all.
-        val (after, _) = callAdmin("/approve", JSONObject().put("code", code).toString())
+        // Now every further guess is refused with a wait rather than a "no",
+        // which it would not have been before: this route had no counter of
+        // its own at all.
+        val (after, _) = post(
+            "/approve",
+            JSONObject().put("code", code).toString(),
+            mapOf("X-Admin-Token" to "one guess too many")
+        )
         assertEquals(429, after)
+    }
+
+    @Test
+    fun theRecoveryTokenIsTheWayBackInWhileTheLockoutHolds() {
+        // The gate used to answer 429 before it looked at the secret at all,
+        // which made the exemption HubTokens.verifyAdminSecret documents
+        // (`allowPassword`) unreachable: the one credential meant to survive
+        // a lockout was never compared. Anyone who merely wanted a family
+        // shut out of their own hub had only to keep failing, for ever, and
+        // the way back was the container log.
+        setPassword(ADMIN, "a good password")
+        repeat(HubSessions.MAX_ATTEMPTS) {
+            assertEquals("guess $it", 401, post("/login", JSONObject().put("secret", "guess-$it").toString()).first)
+        }
+
+        // The throttle is not weakened. Under lockout the password is not
+        // derived at all, so it is refused whether it is wrong OR right.
+        assertEquals(429, post("/login", JSONObject().put("secret", "one guess too many").toString()).first)
+        assertEquals(
+            "a correct password must still wait out the lockout",
+            429, post("/login", JSONObject().put("secret", "a good password").toString()).first
+        )
+
+        // And the recovery token gets in, which is what it is for. 96 bits of
+        // hex gain nothing from a rate limit, and it is one constant-time
+        // byte compare with no derivation behind it.
+        assertEquals(200, post("/login", JSONObject().put("secret", ADMIN).toString()).first)
+
+        // Signing in clears the record, so the parent has their password back.
+        assertEquals(200, post("/login", JSONObject().put("secret", "a good password").toString()).first)
     }
 
     @Test
@@ -738,5 +773,199 @@ class HubServerTest {
         // travel in a body or a header and never in a query.
         assertEquals(401, post("/login?secret=$ADMIN", "{}").first)
         assertEquals(401, post("/password?current=$ADMIN", JSONObject().put("next", "a good password").toString()).first)
+    }
+
+    // --- the LAN-facing edges ---------------------------------------------
+
+    @Test
+    fun enrolStopsAnsweringSomethingOnTheLanThatWillNotStop() {
+        // /enrol needs no credential, because a device that has never been
+        // here holds none — and it writes to devices.json on every call. It
+        // was unthrottled, so anything on the network could keep appending
+        // rows for as long as it liked.
+        repeat(HubServer.MAX_ENROLMENTS_PER_WINDOW) {
+            assertEquals("join $it", 200, call("/enrol", "POST", body = "{}").first)
+        }
+        val (code, body) = call("/enrol", "POST", body = "{}")
+        assertEquals(429, code)
+        assertTrue("a refusal has to say how long to wait", JSONObject(body).getInt("retryAfter") > 0)
+    }
+
+    @Test
+    fun theJoinWindowSitsBetweenTheLockoutAndTheCap() {
+        // Neither of these is visible from either end, and both were got
+        // wrong on the way in: the window started at ten and closed on
+        // exactly the attempt the sign-in lockout closes on, which :app's
+        // HubIntegrationTest caught as a parent being told "that is not a
+        // Yosemite Kids hub" for what was really "wait".
+        assertTrue(
+            "the join window must outlast the admin lockout: HubEnrolment.mint " +
+                "spends one /enrol slot per wrong secret, and it reads any non-200 " +
+                "from /enrol as 'not a hub' — so closing first turns a wait into a " +
+                "wrong address",
+            HubServer.MAX_ENROLMENTS_PER_WINDOW > HubSessions.MAX_ATTEMPTS
+        )
+        assertTrue(
+            "the pending cap must stay above the join window, or the cap bites " +
+                "first and the window is decoration",
+            HubTokens.MAX_PENDING > HubServer.MAX_ENROLMENTS_PER_WINDOW
+        )
+    }
+
+    @Test
+    fun enrolRefusesABrowserOnAnotherSite() {
+        // A device enrols over plain HTTP with no browser in the loop, and
+        // the phone's OkHttp calls carry no Origin at all — so an Origin that
+        // is not ours is a page somewhere trying to fill this hub's queue.
+        assertEquals(
+            403,
+            raw(
+                "POST /enrol HTTP/1.1",
+                listOf("Host: 127.0.0.1:$port", "Origin: http://evil.example"),
+                JSONObject().put("name", "TV").toString()
+            )
+        )
+        // The control: the same request from this origin is fine, so the
+        // refusal above is about the Origin and not about the raw socket.
+        assertEquals(
+            200,
+            raw(
+                "POST /enrol HTTP/1.1",
+                listOf("Host: 127.0.0.1:$port", "Origin: http://127.0.0.1:$port"),
+                JSONObject().put("name", "TV").toString()
+            )
+        )
+    }
+
+    @Test
+    fun approveAndPendingRefuseABrowserOnAnotherSite() {
+        // The same refusal /login, /password and /recovery already make: a
+        // page on another site must not spend an admin secret a browser is
+        // holding. The real callers are unaffected — the GUI approves through
+        // /api/devices, and the phone sends no Origin.
+        val cross = listOf(
+            "Host: 127.0.0.1:$port",
+            "Origin: http://evil.example",
+            "X-Admin-Token: $ADMIN"
+        )
+        assertEquals(
+            403,
+            raw("POST /approve HTTP/1.1", cross, JSONObject().put("code", "WHATEVER").toString())
+        )
+        assertEquals(403, raw("GET /pending HTTP/1.1", cross))
+    }
+
+    /**
+     * A request over a raw socket.
+     *
+     * `HttpURLConnection` silently drops `Origin` — it is on the JDK's
+     * restricted-header list — so a cross-site test written through that
+     * connection passes while proving nothing, which is worse than not
+     * having it. `HubWebTest` learned this the same way.
+     */
+    private fun raw(requestLine: String, headers: List<String>, body: String? = null): Int =
+        java.net.Socket("127.0.0.1", port).use { socket ->
+            val all = headers.toMutableList()
+            if (body != null) {
+                all += "Content-Type: application/json"
+                all += "Content-Length: ${body.toByteArray().size}"
+            }
+            all += "Connection: close"
+            val request = (listOf(requestLine) + all + listOf("", body.orEmpty()))
+                .joinToString("\r\n")
+            socket.getOutputStream().apply { write(request.toByteArray()); flush() }
+            socket.getInputStream().bufferedReader().readLine().orEmpty()
+                .split(" ").getOrNull(1)?.toIntOrNull() ?: -1
+        }
+
+    @Test
+    fun theRealEnrolmentFlowStillWorksExactlyAsThePhoneDrivesIt() {
+        // HubEnrolment.mint: POST /enrol with no headers at all, then POST
+        // /approve with X-Admin-Token. Neither carries an Origin, and both
+        // must keep working after the hardening above.
+        val token = enrolled("Dad's phone")
+        assertTrue(tokens.isEnrolled(token))
+        assertEquals(200, call("/status", token = token).first)
+    }
+
+    @Test
+    fun aStalledCallerIsDroppedRatherThanHoldingAWorker() {
+        // The device's LanServer gives every accepted socket a ten-second
+        // read timeout; this server had none, so half a request line held one
+        // of four worker threads for as long as the caller cared to wait.
+        java.net.Socket("127.0.0.1", port).use { s ->
+            s.soTimeout = (HubServer.REQUEST_TIMEOUT_SECONDS + 15) * 1000
+            s.getOutputStream().apply {
+                // A request that never ends: no blank line, then silence.
+                write("GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n".toByteArray())
+                flush()
+            }
+            val started = System.currentTimeMillis()
+            val outcome = runCatching { s.getInputStream().read() }
+            val waited = System.currentTimeMillis() - started
+            // Either end of stream or a reset: both mean the server let go.
+            // A SocketTimeoutException means it did not, and is not a
+            // java.net.SocketException, so it fails here rather than passing.
+            val dropped = outcome.getOrNull() == -1 ||
+                outcome.exceptionOrNull() is java.net.SocketException
+            assertTrue("the hub held a half-finished request for ${waited}ms", dropped)
+        }
+    }
+
+    @Test
+    fun theRequestTimeoutIsActuallyConfigured() {
+        // The behaviour is proved above; this names the mechanism, because it
+        // is a system property read once per JVM and deleting the line that
+        // sets it would break nothing visible until a caller stalled.
+        assertEquals(
+            HubServer.REQUEST_TIMEOUT_SECONDS.toString(),
+            System.getProperty(HubServer.REQUEST_TIMEOUT_PROPERTY)
+        )
+    }
+
+    // --- what this hub says about itself ----------------------------------
+
+    @Test
+    fun healthNamesTheBuildThatIsAnswering() {
+        val (code, body) = call("/health")
+        assertEquals(200, code)
+        val json = JSONObject(body)
+        assertTrue("a probe still has to read as 'up'", json.getBoolean("ok"))
+        // The point of the field: an image left behind does not merely lack a
+        // control, it drops the config key behind it on the next save here.
+        // Nothing could check which side of the two-release gate a hub was on.
+        assertEquals(HubBuild.VERSION, json.getString("version"))
+        assertTrue("a blank version is a version nothing can gate on", HubBuild.VERSION.isNotBlank())
+    }
+
+    @Test
+    fun statusTellsAPairedDeviceWhichHubItIsTalkingTo() {
+        val json = JSONObject(call("/status", token = enrolled()).second)
+        assertEquals(HubBuild.VERSION, json.getString("hubVersion"))
+    }
+
+    @Test
+    fun everyResponseCarriesTheBaselineSecurityHeaders() {
+        // They used to be on the admin page alone. A JSON error a browser was
+        // steered into fetching is the reply a sniffed content type or a
+        // frame has something to work with; the page is the one that plainly
+        // has not. Four different response paths, on purpose: the JSON
+        // funnel at 200 and at 401, an asset, and the page itself.
+        listOf("/health", "/status", "/icon-192.png", "/", "/stats").forEach { path ->
+            val got = headersOf(path)
+            assertEquals("$path: X-Content-Type-Options", "nosniff", got["X-Content-Type-Options"])
+            assertEquals("$path: X-Frame-Options", "DENY", got["X-Frame-Options"])
+            assertEquals("$path: Referrer-Policy", "no-referrer", got["Referrer-Policy"])
+        }
+    }
+
+    /** The three baseline headers on a GET, whatever the status code is. */
+    private fun headersOf(path: String): Map<String, String?> {
+        val c = URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection
+        c.responseCode
+        val got = listOf("X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy")
+            .associateWith { c.getHeaderField(it) }
+        c.disconnect()
+        return got
     }
 }

@@ -2299,6 +2299,10 @@
     var h = card("This hub", null);
     var dl = el("dl", "kv");
     var rows = [
+      // First, because it is the first thing to check when something on this
+      // page does not behave the way the phone does: an image left behind
+      // does not model the newest settings and drops them on save.
+      ["Version", state.hub.version || "unknown"],
       ["Settings", "#" + state.hub.hash],
       ["Last changed", state.hub.updatedAt
         ? new Date(state.hub.updatedAt).toLocaleString() + " · " + changeAge(state.hub.updatedAt)

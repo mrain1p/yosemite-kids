@@ -404,7 +404,7 @@ class HubStoreTest {
 
     /** An enrolled token of a given kind, the way the approver records it. */
     private fun enrol(name: String, kind: HubTokens.Kind): String {
-        val code = tokens.startEnrolment(name, clock)
+        val code = tokens.startEnrolment(name, clock)!!
         return tokens.approve(code, clock, kind).getOrThrow()
     }
 

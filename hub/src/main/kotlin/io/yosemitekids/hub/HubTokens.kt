@@ -97,6 +97,29 @@ class HubTokens(dataDir: File) {
         const val MAX_TRIES = 5
 
         /**
+         * Codes this hub will hold at once, waiting for a human.
+         *
+         * `POST /enrol` is unauthenticated by necessity, and until this cap
+         * existed it was also unbounded: anything on the LAN could append a
+         * row to `devices.json` and keep appending for the whole ten minutes
+         * a code lives, rewriting the file on every call. The expiry sweep
+         * below bounded the file over time and not at any single moment,
+         * which is the moment that matters when the volume is a NAS share.
+         *
+         * Twenty is far above any real household — a family enrols a phone,
+         * a tablet and a television or three, and the phone's "connect my
+         * TVs" fans out one call per set — and far below anything that makes
+         * this file interesting to write.
+         *
+         * At the cap enrolment is refused rather than the oldest code being
+         * evicted. Eviction would silently invalidate a code somebody is
+         * reading off a television at that moment, which is the confusing
+         * failure; a refusal is honest, and the worst it costs is the wait
+         * for [CODE_TTL_MS] to clear the queue.
+         */
+        const val MAX_PENDING = 20
+
+        /**
          * A device's pull counts for this long. The same day the master
          * stamp takes to go vacant (MasterElection.VACANT_AFTER_MS): a hub
          * that nobody has pulled from for a day is a hub whose crawl nobody
@@ -269,8 +292,16 @@ class HubTokens(dataDir: File) {
      */
     fun kindOf(token: String?): Kind? = devices().firstOrNull { it.token == token }?.kind
 
-    /** Mint a code for a device that wants in. [now] is passed so tests need no clock. */
-    fun startEnrolment(name: String, now: Long): String = synchronized(lock) {
+    /**
+     * Mint a code for a device that wants in, or null when [MAX_PENDING] are
+     * already outstanding. [now] is passed so tests need no clock.
+     *
+     * Nullable rather than throwing, and the count is taken here rather than
+     * by the caller, so the check and the append happen under the one lock: a
+     * cap tested from outside is a cap four worker threads can walk past
+     * together.
+     */
+    fun startEnrolment(name: String, now: Long): String? = synchronized(lock) {
         // Inside the lock, like every other mutator here. read() and write()
         // each take it, but the read-modify-write between them was not
         // atomic, so an enrolment landing beside a password write could drop
@@ -289,6 +320,12 @@ class HubTokens(dataDir: File) {
             val p = pending.optJSONObject(i) ?: continue
             if (now - p.optLong("createdAt") < CODE_TTL_MS) kept.put(p)
         }
+        // After the sweep, not before it: a queue full of expired codes is an
+        // empty queue, and refusing on the strength of them would leave a hub
+        // unable to enrol anything for ten minutes after a flood had stopped.
+        // Nothing is written in this case, so a caller holding the door open
+        // costs one read and no disk write at all.
+        if (kept.length() >= MAX_PENDING) return null
         kept.put(
             JSONObject().put("code", code).put("name", name)
                 .put("createdAt", now).put("tries", 0)

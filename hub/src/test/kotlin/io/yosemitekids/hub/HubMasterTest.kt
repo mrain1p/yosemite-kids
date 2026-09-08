@@ -39,7 +39,7 @@ class HubMasterTest {
 
     /** A device joins and pulls the index: what arms the hub. */
     private fun armed() {
-        val token = tokens.approve(tokens.startEnrolment("TV", clock), clock).getOrThrow()
+        val token = tokens.approve(tokens.startEnrolment("TV", clock)!!, clock).getOrThrow()
         tokens.notePull(token, clock)
     }
 

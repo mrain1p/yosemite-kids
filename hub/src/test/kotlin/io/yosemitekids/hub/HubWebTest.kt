@@ -113,11 +113,18 @@ class HubWebTest {
         }
         assertEquals(429, post("/login", JSONObject().put("token", "wrong").toString()).first)
 
-        // And the real token is refused too while locked out, or the throttle
-        // would be trivially bypassed by guessing until you get it right.
-        assertEquals(429, post("/login", JSONObject().put("token", admin).toString()).first)
-
+        // The lockout is a wait, not a wall: once the window has passed a
+        // guess is a plain refusal again.
+        //
+        // This used to assert that the real token was refused during the
+        // lockout as well. It no longer is, deliberately — the admin token is
+        // the RECOVERY credential, 96 bits of hex that a rate limit does not
+        // protect, and refusing it meant anyone who merely wanted a family
+        // shut out of their own hub had only to keep failing. A password,
+        // right or wrong, still waits:
+        // HubServerTest.theRecoveryTokenIsTheWayBackInWhileTheLockoutHolds.
         clock += HubSessions.LOCKOUT_WINDOW_MS + 1
+        assertEquals(401, post("/login", JSONObject().put("token", "still wrong").toString()).first)
         assertEquals(200, post("/login", JSONObject().put("token", admin).toString()).first)
     }
 
@@ -217,7 +224,7 @@ class HubWebTest {
         // rendering one puts it in a screenshot, a scroll-back and a support
         // email. It gets a short reference and revokes by that.
         val session = signIn()!!
-        val code = tokens.startEnrolment("A phone", clock)
+        val code = tokens.startEnrolment("A phone", clock)!!
         val token = tokens.approve(code, clock).getOrThrow()
 
         val body = call("/api/state", cookie = session).second
@@ -228,7 +235,7 @@ class HubWebTest {
     @Test
     fun aDeviceCanBeApprovedAndThenRevokedFromTheBrowser() {
         val session = signIn()!!
-        val code = tokens.startEnrolment("A phone", clock)
+        val code = tokens.startEnrolment("A phone", clock)!!
 
         assertEquals(200, post("/api/devices", JSONObject().put("approve", code).toString(), session).first)
         assertEquals(1, tokens.devices().size)
@@ -617,7 +624,7 @@ class HubWebTest {
         assertTrue(ix.isNull("lastRun"))
 
         // A device pulls, the tick claims, a crawl pass stamps a run.
-        val token = tokens.approve(tokens.startEnrolment("TV", clock), clock).getOrThrow()
+        val token = tokens.approve(tokens.startEnrolment("TV", clock)!!, clock).getOrThrow()
         tokens.notePull(token, clock)
         master.tick()
         crawl.runOnce()

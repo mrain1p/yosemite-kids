@@ -1069,6 +1069,69 @@ done <<EOF
 $stamp_units
 EOF
 
+# 39. The hub advertises the project's version, not one of its own.
+#     The hub is a relay and never an authority, but HubStore.edit round-trips
+#     the document through ConfigJson.toJson on every admin save — so an image
+#     left behind does not merely lack a new control, it DROPS the config key
+#     behind it the first time a parent saves anything on the NAS. Config
+#     fields ride a two-release gate so that window is survivable, and the
+#     version on GET /health is what lets a stale hub be detected rather than
+#     discovered.
+#
+#     Held equal to the app's versionName because the gate is counted in the
+#     project's releases, and because bumping it is a change under hub/, which
+#     is what .github/workflows/hub-image.yml watches: a release therefore
+#     rebuilds the image instead of leaving it advertising the version before
+#     it. Two numbers that may drift would be a version field that lies, which
+#     is worse than none.
+hub_gradle=hub/build.gradle.kts
+hub_version=$(sed -nE 's/^val hubVersion = "([^"]+)".*/\1/p' "$hub_gradle" || true)
+app_version=$(sed -nE 's/^ *versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -1 || true)
+[ -n "$hub_version" ] ||
+  guard_fail "cannot read 'val hubVersion = \"…\"' out of $hub_gradle; guard 39 is blind. That literal is what GET /health advertises."
+[ -n "$app_version" ] ||
+  guard_fail "cannot read versionName out of app/build.gradle.kts; guard 39 is blind."
+[ "$hub_version" = "$app_version" ] ||
+  guard_fail "the hub says it is $hub_version and this release is $app_version. Set hubVersion in $hub_gradle to $app_version — a hub that reports the wrong version is worse than one that reports none, because the two-release config gate is checked against it."
+
+# 40. The hub's service worker evicts only the caches it owns.
+#     Cache Storage is per ORIGIN, not per worker. The activate handler used
+#     to delete every key that was not its own, which is fine while this is
+#     the only app here and a mutual wipe on every activation the moment it is
+#     not — and a second app on this origin is the plan (the kid-facing web
+#     player). The symptom would be two apps that are mysteriously never
+#     available offline, in a file nobody looks at.
+sw=hub/src/main/resources/web/sw.js
+sw_prefix=$(sed -nE 's/^var PREFIX = "([^"]+)".*/\1/p' "$sw" || true)
+[ -n "$sw_prefix" ] ||
+  guard_fail "cannot read 'var PREFIX = \"…\"' out of $sw; guard 40 is blind. The worker names what it owns there."
+grep -q "var CACHE = PREFIX +" "$sw" ||
+  guard_fail "$sw builds CACHE without PREFIX, so what it owns and what it deletes are no longer the same thing."
+sw_activate=$(awk '/addEventListener\("activate"/ { f = 1 } f { print; if (/^\}\);$/) exit }' "$sw" || true)
+[ -n "$sw_activate" ] ||
+  guard_fail "guard 40 cannot find the activate handler in $sw; it is blind."
+printf "%s" "$sw_activate" | grep -q "caches.delete(" ||
+  guard_fail "the activate handler in $sw evicts nothing; guard 40 is blind."
+printf "%s" "$sw_activate" | grep -q "indexOf(PREFIX) === 0" ||
+  guard_fail "the hub's service worker deletes caches it does not own. Cache Storage is per origin — filter on PREFIX before caches.delete, or the next app served from this hub and this one wipe each other's shells for ever."
+
+# 41. Every response the hub makes carries the baseline security headers.
+#     They were on the admin page alone, which is backwards: the page is the
+#     one reply that is plainly ours, while a JSON error a browser was steered
+#     into fetching is the one a sniffed content type or a frame has something
+#     to work with. There is one funnel (respond) plus the page and the
+#     assets, and each calls securityHeaders(ex) — so a fourth response path
+#     added without it shows up here as a count that no longer matches.
+#     HubServerTest.everyResponseCarriesTheBaselineSecurityHeaders proves the
+#     three that exist actually send them; this is what notices a new one.
+hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
+sends=$(grep -cF "ex.sendResponseHeaders(" "$hubsrv" || true)
+headed=$(grep -cF "securityHeaders(ex)" "$hubsrv" || true)
+[ "$sends" -ge 1 ] ||
+  guard_fail "guard 41 found no ex.sendResponseHeaders( in $hubsrv; it is blind."
+[ "$sends" = "$headed" ] ||
+  guard_fail "$hubsrv writes $sends responses and only $headed of them call securityHeaders(ex). Every reply this server makes carries X-Content-Type-Options, X-Frame-Options and Referrer-Policy — route the new one through respond(), or call securityHeaders(ex) before sending its headers."
+
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

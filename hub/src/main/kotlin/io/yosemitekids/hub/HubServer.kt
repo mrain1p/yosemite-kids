@@ -83,6 +83,15 @@ class HubServer(
     private val sessions = HubSessions(now)
 
     /**
+     * How fast an unauthenticated caller may ask to join. See [enrol].
+     *
+     * Separate from [sessions]' counter deliberately: sharing it would let
+     * anyone on the LAN lock a parent out of their own hub by hammering a
+     * route that needs no credential.
+     */
+    private val enrolments = HubRate(MAX_ENROLMENTS_PER_WINDOW, ENROLMENT_WINDOW_MS)
+
+    /**
      * When this process came up, for the health block on "This hub".
      *
      * Taken here rather than passed in for the same reason [sessions] is
@@ -119,6 +128,7 @@ class HubServer(
     )
 
     fun start(): Int {
+        applyRequestTimeout()
         val s = HttpServer.create(InetSocketAddress(port), 0)
         // A small fixed pool, like the app's LAN server. Unbounded threads on a
         // NAS is how a device that reconnects in a loop takes the box down.
@@ -129,7 +139,7 @@ class HubServer(
         s.createContext("/enrol") { ex -> guarded(ex) { enrol(ex) } }
         s.createContext("/approve") { ex -> guarded(ex) { approve(ex) } }
         s.createContext("/pending") { ex -> guarded(ex) { pending(ex) } }
-        s.createContext("/health") { ex -> respond(ex, 200, "ok") }
+        s.createContext("/health") { ex -> guarded(ex) { health(ex) } }
         // Unauthenticated, and one key. A parent staring at a password box
         // for a password nobody ever set is the failure this prevents; it
         // tells a LAN peer only that this hub is unclaimed, which they still
@@ -216,6 +226,13 @@ class HubServer(
                 // credential. `kind` is what the settings screens badge by.
                 .put("token", tokens.selfToken())
                 .put("kind", "hub")
+                // Which build a paired device is talking to. `/health` says
+                // the same thing to anything that can reach the port; this
+                // says it inside the sweep a device already makes, so a phone
+                // can one day refuse to push a field an old image would drop
+                // rather than watching it disappear. Additive: a peer that
+                // does not read it is unaffected.
+                .put("hubVersion", HubBuild.VERSION)
                 .put("holdsKey", shared)
                 .apply { if (shared) put("hashWithKey", store.fingerprintWithKey()) }
                 .toString()
@@ -322,12 +339,52 @@ class HubServer(
         }
     }
 
+    /**
+     * A device asking to join: the one route gated by neither a token nor a
+     * session, because a device that has never been here holds nothing to
+     * present.
+     *
+     * It grants nothing on its own — [approve] is where a human holding the
+     * admin secret turns a code into a token — but it does *write*, and until
+     * this throttle and [HubTokens.MAX_PENDING] existed that was the whole
+     * problem: anything on the LAN could append rows to `devices.json` for as
+     * long as it liked, rewriting the file on every call, and the only bound
+     * was the ten-minute expiry sweep.
+     *
+     * Both numbers sit far above any real household on purpose, and the join
+     * window has a second constraint on top of that: the phone renders **any**
+     * non-200 from this route as "that is not a Yosemite Kids hub"
+     * (`HubEnrolment.mint`), so a limit a parent could plausibly reach would
+     * send them to check an address that was right all along — the same
+     * failure the 429 case on `/approve` was added to fix. See
+     * [MAX_ENROLMENTS_PER_WINDOW] for the two limits it has to sit between.
+     */
     private fun enrol(ex: HttpExchange) {
         if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        // A page on another site cannot be the thing joining: a device enrols
+        // itself over HTTP with no browser in the loop, and the phone's
+        // OkHttp calls carry no Origin at all. Same reasoning as
+        // /pair-request in the app, which refuses any request carrying one.
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        if (!enrolments.allow(now())) {
+            val wait = enrolments.retryAfterSeconds(now())
+            ex.responseHeaders.add("Retry-After", wait.toString())
+            return respond(ex, 429, JSONObject().put("retryAfter", wait).toString())
+        }
         val body = readBody(ex) ?: return respond(ex, 413, "too large")
         val name = runCatching { JSONObject(body).optString("name") }.getOrNull()
             ?.takeIf { it.isNotBlank() } ?: "A device"
+        // Null means the queue is full. 429 rather than 500: it is a "come
+        // back in a moment", not a fault, and it is the code the phone
+        // already knows how to wait on where it reads one.
         val code = tokens.startEnrolment(name.take(40), now())
+            ?: return respond(
+                ex, 429,
+                JSONObject()
+                    .put("error", "too many waiting")
+                    .put("retryAfter", HubTokens.CODE_TTL_MS / 1000)
+                    .toString()
+            )
         respond(ex, 200, JSONObject().put("code", code).toString())
     }
 
@@ -340,6 +397,13 @@ class HubServer(
      */
     private fun approve(ex: HttpExchange) {
         if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        // Same refusal /login, /password and /recovery already make, and for
+        // the same reason: a page on another site must not be able to spend
+        // an admin secret a browser happens to be holding. Safe for the real
+        // callers — the admin GUI approves through `/api/devices`, and the
+        // phone's OkHttp requests carry no Origin header at all, which
+        // sameOrigin() reads as "not a browser" and allows.
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
         val kind = adminGate(ex) ?: return
         // Once a password exists the recovery token signs in and changes the
         // password, but it does not enrol devices. So a leaked log line can
@@ -376,6 +440,7 @@ class HubServer(
 
     /** What is waiting to be approved — the list a console would render. */
     private fun pending(ex: HttpExchange) {
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
         adminGate(ex) ?: return
         val arr = org.json.JSONArray()
         tokens.pending(now()).forEach {
@@ -401,10 +466,9 @@ class HubServer(
             ?: return respond(ex, 500, "the GUI is missing from this build")
         ex.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
         // The cost of these is nothing and the alternative is arguing about
-        // it later. A LAN page is still a page in a browser.
-        ex.responseHeaders.add("X-Content-Type-Options", "nosniff")
-        ex.responseHeaders.add("X-Frame-Options", "DENY")
-        ex.responseHeaders.add("Referrer-Policy", "no-referrer")
+        // it later. A LAN page is still a page in a browser — and now so is
+        // every other reply this server makes. See [securityHeaders].
+        securityHeaders(ex)
         ex.sendResponseHeaders(200, html.size.toLong())
         ex.responseBody.use { it.write(html) }
     }
@@ -415,7 +479,7 @@ class HubServer(
         val bytes = javaClass.getResourceAsStream("/web${path}")?.readBytes()
             ?: return respond(ex, 404, "missing from this build")
         ex.responseHeaders.add("Content-Type", type)
-        ex.responseHeaders.add("X-Content-Type-Options", "nosniff")
+        securityHeaders(ex)
         // The worker is never cached: a browser holding yesterday's copy
         // would keep serving yesterday's shell after the container is
         // rebuilt, and the usual cure for that is uninstalling the app.
@@ -685,15 +749,17 @@ class HubServer(
     // --- plumbing -------------------------------------------------------
 
     /**
-     * The admin gate: throttle, then verify. **Every** presentation of the
-     * admin secret goes through here, which is the point.
+     * The admin gate. **Every** presentation of the admin secret goes through
+     * here, which is the point.
      *
      * Before this, /approve and /pending checked the header themselves with
      * no rate limit at all. Against 96 bits of hex that was harmless. Behind
      * a password it is an unmetered guessing oracle four threads wide, and
      * once a key derivation sits behind it, a processor exhaustion attack as
-     * well. The throttle runs BEFORE any derivation, which is what bounds the
-     * cost of guessing to a handful of derivations per window.
+     * well. The throttle still runs before any derivation — that is what
+     * bounds the cost of guessing to a handful of derivations per window —
+     * but it suppresses the password rather than the whole gate, so the
+     * recovery token stays usable. See the body.
      *
      * Returns what the secret turned out to be, or null after answering the
      * caller. The body of a request is read before this on the routes that
@@ -701,13 +767,31 @@ class HubServer(
      * the expensive half is the derivation, which is behind the gate.
      */
     private fun adminGate(ex: HttpExchange, given: String?): HubTokens.Secret? {
-        if (!sessions.mayAttempt()) {
+        val locked = !sessions.mayAttempt()
+        // The lockout suppresses the PASSWORD, not the gate.
+        //
+        // This used to answer 429 before the secret was looked at, which made
+        // the recovery token's documented exemption
+        // ([HubTokens.verifyAdminSecret]'s `allowPassword`) unreachable: the
+        // one credential that is supposed to stay usable while the password
+        // path is locked was never compared, so anyone who wanted a family
+        // locked out of their own hub only had to fail ten times a window,
+        // for ever, and the only way back was the container log.
+        //
+        // Passing `allowPassword = !locked` is the whole fix and it weakens
+        // nothing. A wrong password under lockout is still 429, and so is a
+        // right one — the recovery token is 96 bits of hex, which a rate
+        // limit does not protect, and it is compared with one constant-time
+        // byte compare that derives no key. The cost of a refused attempt is
+        // therefore back to what the throttle was written to bound: no KDF,
+        // and one small file read that every allowed attempt already does.
+        val kind = tokens.verifyAdminSecret(given, envAdminToken, allowPassword = !locked)
+        if (locked && kind != HubTokens.Secret.RECOVERY) {
             val wait = sessions.retryAfterSeconds()
             ex.responseHeaders.add("Retry-After", wait.toString())
             respond(ex, 429, JSONObject().put("retryAfter", wait).toString())
             return null
         }
-        val kind = tokens.verifyAdminSecret(given, envAdminToken)
         if (kind == HubTokens.Secret.NO) {
             sessions.recordFailure()
             // Names the regime rather than the mistake, so a phone can say
@@ -723,6 +807,33 @@ class HubServer(
     /** The header form, for routes that carry no body of their own. */
     private fun adminGate(ex: HttpExchange): HubTokens.Secret? =
         adminGate(ex, ex.requestHeaders.getFirst("X-Admin-Token"))
+
+    /**
+     * Liveness, and which build is answering.
+     *
+     * Unauthenticated, like the probe it has always been, and it still says
+     * nothing about the family — a hub that is up and holds no config answers
+     * exactly this, which is what a restart policy wants to know.
+     *
+     * The version is here because this is the one route anything can reach
+     * before it holds a credential: the phone's `HubEnrolment.probe` already
+     * calls it to decide whether an address is a hub at all. See
+     * `hub/build.gradle.kts` for why a hub advertising its version matters at
+     * all — the short of it is that an old image silently drops config keys
+     * it does not model, and the number is what turns that from a discovery
+     * into a check.
+     *
+     * `ok` stays in the body for the container healthcheck's sake and because
+     * the reply used to be that bare word; it is now a JSON object, which is
+     * what the `Content-Type` this server has always sent already claimed.
+     */
+    private fun health(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        respond(
+            ex, 200,
+            JSONObject().put("ok", true).put("version", HubBuild.VERSION).toString()
+        )
+    }
 
     /** Is this hub claimed yet? One key, and a test pins that. */
     private fun setup(ex: HttpExchange) {
@@ -780,6 +891,42 @@ class HubServer(
 
         /** How a hub edit is attributed in the change feed a parent reads. */
         const val WHO = "The hub"
+
+        /**
+         * The device's own socket read timeout, in the unit the JDK's server
+         * takes. Ten seconds, because that is what `LanServer` gives an
+         * accepted socket and there is no reason for the two boxes to have
+         * different patience. See [applyRequestTimeout].
+         */
+        internal const val REQUEST_TIMEOUT_SECONDS = 10
+        internal const val REQUEST_TIMEOUT_PROPERTY = "sun.net.httpserver.maxReqTime"
+
+        /**
+         * How many unauthenticated join attempts this hub will take in a
+         * window, and how long that window is. See [enrol].
+         *
+         * Fifteen is not a round number chosen for feel; it sits between two
+         * limits it must not cross, and both directions have a real failure:
+         *
+         * - **Above [HubSessions.MAX_ATTEMPTS].** `HubEnrolment.mint` calls
+         *   `/enrol` and *then* `/approve`, so a parent mistyping the admin
+         *   secret spends one join slot per attempt. Ten here would close
+         *   this window on exactly the attempt the sign-in lockout closes on
+         *   — and the phone reads any non-200 from `/enrol` as "that is not a
+         *   Yosemite Kids hub", so they would be sent to check an address
+         *   that was right all along instead of being told to wait. That is
+         *   the failure the 429 case on `/approve` was added to fix, arriving
+         *   by a different door. `:app`'s HubIntegrationTest caught it.
+         * - **Below [HubTokens.MAX_PENDING].** The cap is the long-run bound
+         *   on `devices.json`; this is the bound on the rate of getting
+         *   there. If the cap bit first this number would never be reached
+         *   and the throttle would be decoration.
+         *
+         * `HubServerTest.theJoinWindowSitsBetweenTheLockoutAndTheCap` states
+         * both, because neither is visible from either end.
+         */
+        internal const val MAX_ENROLMENTS_PER_WINDOW = 15
+        internal const val ENROLMENT_WINDOW_MS = 60 * 1000L
 
         /**
          * Routes a device answers and this hub deliberately does not.
@@ -865,7 +1012,57 @@ class HubServer(
     private fun respond(ex: HttpExchange, code: Int, body: String) {
         val bytes = body.toByteArray(Charsets.UTF_8)
         ex.responseHeaders.add("Content-Type", "application/json; charset=utf-8")
+        securityHeaders(ex)
         ex.sendResponseHeaders(code, bytes.size.toLong())
         ex.responseBody.use { it.write(bytes) }
+    }
+
+    /**
+     * The three headers every response carries, whatever it is.
+     *
+     * They used to be on the admin page alone, which is backwards: the page
+     * is the one response that is plainly HTML and plainly ours, while a JSON
+     * error a browser was steered into fetching is the one a sniffing content
+     * type or a framing attack has something to work with. There are exactly
+     * three response paths in this file — this one, the page and the assets —
+     * and guard 41 in scripts/check.* fails the build if a fourth appears
+     * without calling here.
+     *
+     * A hub also has no business being framed at all: the whole GUI is a
+     * family's configuration behind a session cookie, on plain HTTP, on a
+     * LAN. DENY rather than SAMEORIGIN because nothing on this origin frames
+     * anything.
+     */
+    private fun securityHeaders(ex: HttpExchange) {
+        ex.responseHeaders.add("X-Content-Type-Options", "nosniff")
+        ex.responseHeaders.add("X-Frame-Options", "DENY")
+        ex.responseHeaders.add("Referrer-Policy", "no-referrer")
+    }
+
+    /**
+     * Drop a caller that opens a connection and then does not finish asking.
+     *
+     * The device's `LanServer` gives every accepted socket `soTimeout =
+     * 10_000`; this server had no equivalent, so a client that sent half a
+     * request line held one of four worker threads until it felt like
+     * leaving. Four of those is the hub, silently, with no log line — and the
+     * route to it needs no token, because the request never gets far enough
+     * to present one.
+     *
+     * The JDK's server exposes no socket to set a timeout on, so the discipline
+     * goes on through the property its own `ServerConfig` reads. That is read
+     * once per JVM, at the first `HttpServer.create`, which is why this runs
+     * before it rather than in a constructor.
+     *
+     * Only the REQUEST side. `maxRspTime` is deliberately left alone: a device
+     * pulling a whole crawled source out of `/index` over a tired wifi link is
+     * legitimately slow, and a response timer would cut exactly the transfer
+     * that most needs to finish. An explicit `-D` on the JVM wins, so a NAS
+     * running something unusual can still tune it.
+     */
+    private fun applyRequestTimeout() {
+        if (System.getProperty(REQUEST_TIMEOUT_PROPERTY) == null) {
+            System.setProperty(REQUEST_TIMEOUT_PROPERTY, REQUEST_TIMEOUT_SECONDS.toString())
+        }
     }
 }

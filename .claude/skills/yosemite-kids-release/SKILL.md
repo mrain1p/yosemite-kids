@@ -18,6 +18,11 @@ upstream's builds.
    step costs seconds.
 1. Bump both `versionCode` (strictly higher) and `versionName` in
    `app/build.gradle.kts`. Forgetting `versionCode` silently ships nothing.
+   Then set `val hubVersion` in `hub/build.gradle.kts` to the same
+   `versionName` — guard 39 fails the gate until you do. That is not
+   bookkeeping: the hub advertises it on `GET /health`, config fields ride a
+   two-release gate that is counted against it, and bumping it is what makes
+   the release rebuild the hub image (the workflow watches `hub/**`).
 2. Signing: `YOSEMITE_KIDS_KEYSTORE`, `YOSEMITE_KIDS_KEYSTORE_PASSWORD`,
    `YOSEMITE_KIDS_KEY_ALIAS`, `YOSEMITE_KIDS_KEY_PASSWORD` in `local.properties` or the
    environment. On this machine the fork's key is

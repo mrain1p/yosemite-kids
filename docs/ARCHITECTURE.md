@@ -141,6 +141,7 @@ hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container
 ├── HubTokens.kt        devices.json: enrolments, their kind, address, last seen
 ├── HubPassword.kt      PBKDF2 verify/derive, shared shape with the phone's PIN
 ├── HubSessions.kt      Browser sessions and the escalating sign-in lockout
+├── HubRate.kt          The window in front of /enrol, which checks no credential
 ├── HubWeb.kt           The GUI's data layer: /api/state, the patch allow-list
 ├── HubVersions.kt      The five-snapshot restore ring
 ├── HubNudge.kt         POST /sync-now — the only outbound call in this module
@@ -306,7 +307,8 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Change when the phone shrinks to PiP, or what the window does | `PlayerActivity.pipEligible` / `enterPip` / `onPictureInPictureModeChanged` |
 | Add a screen-time rule | `Whitelist.Limits` + `ConfigStore` (de)serializers + `SessionGuard` + settings section |
 | Add a LAN route | `LanServer.handle` (bound every read!) + `LanClient` + `docs/LAN-API.md` (guard 14 checks the row is there) |
-| Add a route to the **hub** | `HubServer.start` + a `private fun <name>(ex)` beside the others + `docs/LAN-API.md`'s hub table (guard 30). If it is a route a device also answers, `authorised(ex)` first (guard 29) and take it off `DEVICE_ONLY` (guard 22) |
+| Add a route to the **hub** | `HubServer.start` + a `private fun <name>(ex)` beside the others + `docs/LAN-API.md`'s hub table (guard 30). If it is a route a device also answers, `authorised(ex)` first (guard 29) and take it off `DEVICE_ONLY` (guard 22). Answer through `respond()`; a route that writes its own headers must call `securityHeaders(ex)` itself, and guard 41 counts |
+| Bump the **hub's version** | `val hubVersion` in `hub/build.gradle.kts`, kept equal to the app's `versionName` by guard 39. It rides `GET /health`, `GET /status` and the admin page, and it is the only way to tell whether a container is old enough to drop config keys it does not model on the next save |
 | Change what the hub's page shows | `HubWeb.state` (what `GET /api/state` carries) then `hub/src/main/resources/web/index.html` — one file, no build step, nothing fetched from a CDN, because a NAS may have no outbound access. Pages are the `ROUTES` map (guard 11); a control drawn from the manifest needs no markup at all |
 | Change how the hub is signed in to | `HubPassword` (the KDF), `HubTokens.hasPassword`/`setPassword`/`verifyAdminSecret`, `HubSessions` (the escalating lockout), and the one `HubServer.adminGate()` every presentation of the secret goes through (guard 25) |
 | Change where the hub keeps the AI key | `HubSecrets` (`/data/secrets.json`) and the two functions that overlay it, `HubStore.forPeers`/`fingerprintWithKey`. It is deliberately *not* in the config document: `HubStore.commit` strips it on every write, which is what keeps it out of `versions/`, `/api/state` and a downloaded backup |

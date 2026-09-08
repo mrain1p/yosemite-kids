@@ -33,7 +33,7 @@ class HubTokensTest {
     @Test
     fun anApprovedCodeYieldsAWorkingToken() {
         val t = tokens()
-        val code = t.startEnrolment("Living Room TV", T)
+        val code = t.startEnrolment("Living Room TV", T)!!
         val token = t.approve(code, T).getOrThrow()
 
         assertTrue(t.isEnrolled(token))
@@ -45,7 +45,7 @@ class HubTokensTest {
         // Otherwise a code read off a TV screen — by anyone who walked past —
         // stays valid for as long as it is remembered.
         val t = tokens()
-        val code = t.startEnrolment("TV", T)
+        val code = t.startEnrolment("TV", T)!!
         t.approve(code, T).getOrThrow()
 
         assertTrue("a spent code must not enrol a second device", t.approve(code, T).isFailure)
@@ -55,7 +55,7 @@ class HubTokensTest {
     @Test
     fun aCodeExpires() {
         val t = tokens()
-        val code = t.startEnrolment("TV", T)
+        val code = t.startEnrolment("TV", T)!!
         val late = T + HubTokens.CODE_TTL_MS + 1
 
         assertTrue(t.approve(code, late).isFailure)
@@ -65,7 +65,7 @@ class HubTokensTest {
     @Test
     fun anExpiredCodeIsNotEvenListedAsPending() {
         val t = tokens()
-        t.startEnrolment("TV", T)
+        t.startEnrolment("TV", T)!!
         assertEquals(1, t.pending(T).size)
         assertTrue(t.pending(T + HubTokens.CODE_TTL_MS + 1).isEmpty())
     }
@@ -75,7 +75,7 @@ class HubTokensTest {
         // The limit is what makes an eight-character code enough. Without it,
         // an attacker on the network simply enumerates.
         val t = tokens()
-        val code = t.startEnrolment("TV", T)
+        val code = t.startEnrolment("TV", T)!!
 
         repeat(HubTokens.MAX_TRIES) { t.approve("WRONGWRO", T) }
 
@@ -88,8 +88,8 @@ class HubTokensTest {
         // Per-code counting would hand an attacker MAX_TRIES guesses for every
         // enrolment left open, and opening enrolments is unauthenticated.
         val t = tokens()
-        val a = t.startEnrolment("TV", T)
-        val b = t.startEnrolment("Tablet", T)
+        val a = t.startEnrolment("TV", T)!!
+        val b = t.startEnrolment("Tablet", T)!!
 
         repeat(HubTokens.MAX_TRIES) { t.approve("NOPENOPE", T) }
 
@@ -100,7 +100,7 @@ class HubTokensTest {
     @Test
     fun theRefusalSaysWhichKindItWas() {
         val t = tokens()
-        t.startEnrolment("TV", T)
+        t.startEnrolment("TV", T)!!
         val e = t.approve("BADCODE1", T).exceptionOrNull() as EnrolmentRefused
         assertEquals(HubTokens.Refusal.UNKNOWN_CODE, e.reason)
     }
@@ -110,8 +110,11 @@ class HubTokensTest {
         // Someone reads this off a TV across a room and types it on a phone.
         // O/0 and I/1/L are the whole reason a code gets typed twice.
         val t = tokens()
-        repeat(40) {
-            val code = t.startEnrolment("TV", T)
+        // A TTL apart each, so every draw finds an empty queue: these two
+        // tests are about the generator, and forty at one instant would hit
+        // MAX_PENDING and be testing the cap instead.
+        repeat(40) { i ->
+            val code = t.startEnrolment("TV", T + i * HubTokens.CODE_TTL_MS)!!
             assertFalse("code '$code' contains a look-alike character", code.any { it in "O0I1L" })
         }
     }
@@ -119,14 +122,14 @@ class HubTokensTest {
     @Test
     fun codesAreNotPredictable() {
         val t = tokens()
-        val seen = (1..50).map { t.startEnrolment("TV", T) }.toSet()
+        val seen = (1..50).map { t.startEnrolment("TV", T + it * HubTokens.CODE_TTL_MS)!! }.toSet()
         assertEquals("every code must be distinct", 50, seen.size)
     }
 
     @Test
     fun revokingRemovesAccess() {
         val t = tokens()
-        val token = t.approve(t.startEnrolment("TV", T), T).getOrThrow()
+        val token = t.approve(t.startEnrolment("TV", T)!!, T).getOrThrow()
         t.revoke(token)
         assertFalse(t.isEnrolled(token))
     }
@@ -134,7 +137,7 @@ class HubTokensTest {
     @Test
     fun anEmptyOrUnknownTokenIsNeverEnrolled() {
         val t = tokens()
-        t.approve(t.startEnrolment("TV", T), T).getOrThrow()
+        t.approve(t.startEnrolment("TV", T)!!, T).getOrThrow()
 
         assertFalse(t.isEnrolled(null))
         assertFalse(t.isEnrolled(""))
@@ -147,25 +150,57 @@ class HubTokensTest {
         // Same folder, new instance — a container restart must not unpair the
         // house.
         val dir = tmp.newFolder()
-        val token = HubTokens(dir).let { it.approve(it.startEnrolment("TV", T), T).getOrThrow() }
+        val token = HubTokens(dir).let { it.approve(it.startEnrolment("TV", T)!!, T).getOrThrow() }
         assertTrue(HubTokens(dir).isEnrolled(token))
+    }
+
+    @Test
+    fun theQueueOfWaitingCodesIsBounded() {
+        // /enrol is unauthenticated by necessity, so "abandoned attempts are
+        // swept ten minutes later" bounds this file over time and not at any
+        // one moment — and the moment is what matters when the volume is a
+        // NAS share and every call rewrites the file.
+        val t = tokens()
+        repeat(HubTokens.MAX_PENDING) { assertNotNull("join $it", t.startEnrolment("TV", T)) }
+        assertNull(
+            "past the cap the hub refuses rather than growing devices.json",
+            t.startEnrolment("TV", T)
+        )
+
+        // A queue, not a wall: the cap is counted after the expiry sweep, so
+        // a hub that was flooded takes enrolments again once the codes lapse
+        // rather than staying shut because of rows nobody can use.
+        val later = T + HubTokens.CODE_TTL_MS + 1
+        assertNotNull(t.startEnrolment("TV", later))
+        assertEquals(1, t.pending(later).size)
+    }
+
+    @Test
+    fun aRefusedEnrolmentAddsNothingToTheFile() {
+        val t = tokens()
+        repeat(HubTokens.MAX_PENDING) { t.startEnrolment("TV", T) }
+        repeat(20) { t.startEnrolment("TV", T) }
+        assertEquals(
+            "a refusal must not append, or the cap bounds nothing",
+            HubTokens.MAX_PENDING, t.pending(T).size
+        )
     }
 
     @Test
     fun abandonedEnrolmentsDoNotAccumulate() {
         val t = tokens()
-        repeat(5) { t.startEnrolment("TV", T) }
+        repeat(5) { t.startEnrolment("TV", T)!! }
         // A later attempt prunes what has expired rather than letting the file
         // grow forever from codes nobody ever typed.
-        t.startEnrolment("TV", T + HubTokens.CODE_TTL_MS + 1)
+        t.startEnrolment("TV", T + HubTokens.CODE_TTL_MS + 1)!!
         assertEquals(1, t.pending(T + HubTokens.CODE_TTL_MS + 1).size)
     }
 
     @Test
     fun twoTokensAreNeverTheSame() {
         val t = tokens()
-        val a = t.approve(t.startEnrolment("A", T), T).getOrThrow()
-        val b = t.approve(t.startEnrolment("B", T), T).getOrThrow()
+        val a = t.approve(t.startEnrolment("A", T)!!, T).getOrThrow()
+        val b = t.approve(t.startEnrolment("B", T)!!, T).getOrThrow()
         assertNotEquals(a, b)
     }
 
@@ -185,7 +220,7 @@ class HubTokensTest {
     @Test
     fun aPullIsRememberedPerEnrolledDeviceAndWrittenSparingly() {
         val t = tokens()
-        val token = t.approve(t.startEnrolment("TV", T), T).getOrThrow()
+        val token = t.approve(t.startEnrolment("TV", T)!!, T).getOrThrow()
         assertFalse(t.armed(T))
         t.notePull("not-enrolled", T)
         assertFalse("an unknown token arms nothing", t.armed(T))
@@ -243,8 +278,8 @@ class HubTokensTest {
         // The property a future "simplification" would break by deriving
         // device tokens from the admin secret. An assertion, not a comment.
         val t = tokens()
-        val tv = t.approve(t.startEnrolment("Living Room TV", T), T).getOrThrow()
-        val phone = t.approve(t.startEnrolment("Dad's phone", T), T).getOrThrow()
+        val tv = t.approve(t.startEnrolment("Living Room TV", T)!!, T).getOrThrow()
+        val phone = t.approve(t.startEnrolment("Dad's phone", T)!!, T).getOrThrow()
         t.setPassword(t.adminToken(null), "the first password", T, null).getOrThrow()
         t.setPassword("the first password", "the second password", T, null).getOrThrow()
 

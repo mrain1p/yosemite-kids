@@ -1500,3 +1500,64 @@ The step that exists because the last one always gets skipped.
   it does the arithmetic: a counter's stamp moves `syncHash`, `syncAction`
   takes the merge arm on any `syncHash` difference, and thirty log lines is
   half an hour of a family's change history at one usage line a minute.
+
+### The hub's LAN-facing edges, and a version that says which build has them (1.1.0)
+
+Groundwork for a kid-facing web player the hub will serve, but each of these
+stands on its own.
+
+- **The lockout locked the parent out too.** `adminGate` answered 429 *before*
+  it looked at the secret, so the recovery token's exemption — spelled out in
+  `HubTokens.verifyAdminSecret`'s `allowPassword` parameter and in
+  `docs/LAN-API.md` — had never once been reachable. Someone who only wanted a
+  family shut out of their own hub had merely to fail ten times a window, for
+  ever, and the way back in was the container log. The lockout now suppresses
+  the **password**, not the gate: a password is refused under lockout whether
+  it is right or wrong, so the throttle is exactly as strong, and a refused
+  attempt still derives no key — with `allowPassword = false` the only work is
+  one constant-time compare against 96 bits of hex.
+- **`POST /enrol` had no bottom and no top.** It is unauthenticated by
+  necessity and it writes `devices.json` on every call, so anything on the LAN
+  could append pending rows for as long as it liked. The ten-minute expiry
+  sweep bounded the file over time and not at any one moment, and the moment is
+  what matters when the volume is a NAS share. Now: fifteen calls a minute, twenty
+  codes outstanding (`HubTokens.MAX_PENDING`), and a foreign `Origin` refused.
+  At the cap it refuses rather than evicting the oldest — eviction silently
+  invalidates a code somebody is reading off a television. Both limits sit far
+  above any real household on purpose, because `HubEnrolment.mint` reads any
+  non-200 from that route as "not a Yosemite Kids hub"; teaching the phone to
+  read the 429 is app-side work still to do.
+- **Ten seconds' patience, the same as a device's.** `LanServer` gives every
+  accepted socket `soTimeout = 10_000`; the hub gave none, so half a request
+  line held one of four worker threads for as long as the caller liked — and
+  the caller never got far enough to need a token. The JDK's server exposes no
+  socket, so it goes on through `sun.net.httpserver.maxReqTime` before the
+  first `HttpServer.create`. The response side is deliberately still unbounded:
+  a device pulling a crawled source out of `/index` over tired wifi is
+  legitimately slow. `HubServerTest` drives a stalled socket for the real ten
+  seconds rather than asserting the property is set.
+- **A service worker that owns only its own caches (guard 40).** `activate`
+  deleted every Cache Storage key that was not its own — correct exactly while
+  this is the only app on the origin, and a mutual wipe on every activation the
+  moment it is not, which is the plan. It now evicts only keys carrying its own
+  `PREFIX`, and `SHELL`'s `"/"` entry, which is the admin page today only
+  because `HubServer` registers `"/"` last, carries a note about what to
+  revisit when a second app arrives.
+- **The hub says which build it is (guard 39).** It is a relay and never an
+  authority, but `HubStore.edit` round-trips the document through
+  `ConfigJson.toJson` on every admin save — so an image left behind does not
+  merely lack a new control, it **drops the config key behind it** the first
+  time a parent saves anything on the NAS. Config fields ride a two-release
+  gate for exactly that window, and nothing could check which side of it a hub
+  was on. `GET /health`, `GET /status` (`hubVersion`) and the admin page's
+  "This hub" card now carry a version generated from `hub/build.gradle.kts`,
+  the way `:crawl` generates `ExtractorVersion`. Guard 39 holds it equal to the
+  app's `versionName`, which also means a release is a change under `hub/` and
+  therefore rebuilds the image instead of leaving it advertising the version
+  before it.
+- **The security headers were on the page alone, which is backwards (guard
+  41).** The admin page is the one reply that is plainly ours; a JSON error a
+  browser was steered into fetching is the one a sniffed content type or a
+  frame has something to work with. All three now ride every reply, and
+  `/approve` and `/pending` join `/login`, `/password` and `/recovery` in
+  refusing a foreign `Origin` — no real caller sends one at all.

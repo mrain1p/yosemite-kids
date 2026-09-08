@@ -171,16 +171,37 @@ class HubIntegrationTest {
         assertTrue("the hub must eventually refuse outright", throttled != null)
         assertTrue("a wait a parent can act on", throttled!!.retryAfterSeconds > 0)
 
-        // And the correct secret is refused the same way, which is the whole
-        // point of saying "wait" rather than "wrong".
-        val e = runBlocking {
-            HubEnrolment.tokenFor("127.0.0.1:$port", 8765, admin, "Living Room")
+        // A wrong secret keeps reading as a wait, which is the whole point of
+        // saying "wait" rather than "wrong": a parent whose address was right
+        // all along must not be sent to check it.
+        val stillWrong = runBlocking {
+            HubEnrolment.tokenFor("127.0.0.1:$port", 8765, "still-not-it", "Living Room")
         }.exceptionOrNull()
         assertTrue(
-            "the right secret must also read as a wait",
-            (e as HubEnrolment.HubError).failure is HubEnrolment.Failure.Throttled
+            "a wrong secret under lockout is a wait, not a refusal",
+            (stillWrong as HubEnrolment.HubError).failure is HubEnrolment.Failure.Throttled
         )
         assertTrue("a refused fan-out enrols nothing", tokens.devices().isEmpty())
+
+        // But the RECOVERY token is exempt, which docs/HUB.md has promised all
+        // along ("It is exempt from the lockout below") and the gate did not
+        // honour: the 429 fired before the secret was looked at, so the one
+        // credential meant to survive a lockout was never compared. Anyone
+        // could then lock a family out of their own hub for as long as they
+        // cared to fail, and the only way back was the container log.
+        //
+        // It weakens nothing. Under lockout the PASSWORD is not compared at
+        // all (`allowPassword = !locked`), so there is no password oracle and
+        // no KDF to spend; the recovery token is minted by the hub when the
+        // compose file does not pin one, and a rate limit is not what protects
+        // a secret of that size.
+        val recovered = runBlocking {
+            HubEnrolment.tokenFor("127.0.0.1:$port", 8765, admin, "Living Room")
+        }
+        assertTrue(
+            "the recovery token must still work while the password is locked",
+            recovered.isSuccess
+        )
     }
 
     @Test

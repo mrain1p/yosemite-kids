@@ -1218,6 +1218,80 @@ foreach ($u in $units38) {
 }
 
 
+# 39. The hub advertises the project's version, not one of its own.
+#     The hub is a relay and never an authority, but HubStore.edit round-trips
+#     the document through ConfigJson.toJson on every admin save - so an image
+#     left behind does not merely lack a new control, it DROPS the config key
+#     behind it the first time a parent saves anything on the NAS. Config
+#     fields ride a two-release gate so that window is survivable, and the
+#     version on GET /health is what lets a stale hub be detected rather than
+#     discovered.
+#
+#     Held equal to the app's versionName because the gate is counted in the
+#     project's releases, and because bumping it is a change under hub/, which
+#     is what .github/workflows/hub-image.yml watches: a release therefore
+#     rebuilds the image instead of leaving it advertising the version before
+#     it. Two numbers that may drift would be a version field that lies, which
+#     is worse than none.
+$hubGradle39 = Get-Content "hub/build.gradle.kts" -Raw
+$hubVersion39 = ([regex]::Match($hubGradle39, '(?m)^val hubVersion = "([^"]+)"')).Groups[1].Value
+$appVersion39 = ([regex]::Match((Get-Content "app/build.gradle.kts" -Raw), 'versionName = "([^"]+)"')).Groups[1].Value
+if (-not $hubVersion39) {
+    Fail-Guard "cannot read 'val hubVersion = ""...""' out of hub/build.gradle.kts; guard 39 is blind. That literal is what GET /health advertises."
+}
+if (-not $appVersion39) {
+    Fail-Guard "cannot read versionName out of app/build.gradle.kts; guard 39 is blind."
+}
+if ($hubVersion39 -ne $appVersion39) {
+    Fail-Guard "the hub says it is $hubVersion39 and this release is $appVersion39. Set hubVersion in hub/build.gradle.kts to $appVersion39 - a hub that reports the wrong version is worse than one that reports none, because the two-release config gate is checked against it."
+}
+
+# 40. The hub's service worker evicts only the caches it owns.
+#     Cache Storage is per ORIGIN, not per worker. The activate handler used
+#     to delete every key that was not its own, which is fine while this is
+#     the only app here and a mutual wipe on every activation the moment it is
+#     not - and a second app on this origin is the plan (the kid-facing web
+#     player). The symptom would be two apps that are mysteriously never
+#     available offline, in a file nobody looks at.
+$swRaw40 = Get-Content "hub/src/main/resources/web/sw.js" -Raw
+$swPrefix40 = ([regex]::Match($swRaw40, '(?m)^var PREFIX = "([^"]+)"')).Groups[1].Value
+if (-not $swPrefix40) {
+    Fail-Guard "cannot read 'var PREFIX = ""...""' out of hub/src/main/resources/web/sw.js; guard 40 is blind. The worker names what it owns there."
+}
+if ($swRaw40 -notmatch 'var CACHE = PREFIX \+') {
+    Fail-Guard "hub/src/main/resources/web/sw.js builds CACHE without PREFIX, so what it owns and what it deletes are no longer the same thing."
+}
+$swActivate40 = ([regex]::Match($swRaw40, '(?s)addEventListener\("activate".*?\r?\n\}\);')).Value
+if (-not $swActivate40) {
+    Fail-Guard "guard 40 cannot find the activate handler in hub/src/main/resources/web/sw.js; it is blind."
+}
+if ($swActivate40 -notmatch 'caches\.delete\(') {
+    Fail-Guard "the activate handler in hub/src/main/resources/web/sw.js evicts nothing; guard 40 is blind."
+}
+if ($swActivate40 -notmatch 'indexOf\(PREFIX\) === 0') {
+    Fail-Guard "the hub's service worker deletes caches it does not own. Cache Storage is per origin - filter on PREFIX before caches.delete, or the next app served from this hub and this one wipe each other's shells for ever."
+}
+
+# 41. Every response the hub makes carries the baseline security headers.
+#     They were on the admin page alone, which is backwards: the page is the
+#     one reply that is plainly ours, while a JSON error a browser was steered
+#     into fetching is the one a sniffed content type or a frame has something
+#     to work with. There is one funnel (respond) plus the page and the
+#     assets, and each calls securityHeaders(ex) - so a fourth response path
+#     added without it shows up here as a count that no longer matches.
+#     HubServerTest.everyResponseCarriesTheBaselineSecurityHeaders proves the
+#     three that exist actually send them; this is what notices a new one.
+$hubSrv41 = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt" -Raw
+$sends41 = ([regex]::Matches($hubSrv41, [regex]::Escape('ex.sendResponseHeaders('))).Count
+$headed41 = ([regex]::Matches($hubSrv41, [regex]::Escape('securityHeaders(ex)'))).Count
+if ($sends41 -lt 1) {
+    Fail-Guard "guard 41 found no ex.sendResponseHeaders( in hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt; it is blind."
+}
+if ($sends41 -ne $headed41) {
+    Fail-Guard "HubServer.kt writes $sends41 responses and only $headed41 of them call securityHeaders(ex). Every reply this server makes carries X-Content-Type-Options, X-Frame-Options and Referrer-Policy - route the new one through respond(), or call securityHeaders(ex) before sending its headers."
+}
+
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

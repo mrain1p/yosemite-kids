@@ -95,6 +95,21 @@ line: `/volume2/Docker/yosemite-kids/data:/data` holds `config.json`,
 the whole configuration survive a move between projects; lose it, and every
 device has to enrol again.
 
+`pull` is quiet about whether it actually moved you, so check afterwards:
+
+```
+curl http://<nas>:8765/health
+{"ok":true,"version":"1.1.0"}
+```
+
+The same number is on the admin page's **This hub** card, and it is worth
+reading whenever a setting made on a phone does not stick here. The hub is
+never the authority on the configuration, but it does rewrite the document
+whenever a parent saves something on this page — so an image older than a
+setting will quietly drop that setting's field on the next save. New fields
+are held back a release for exactly this reason; the version is how you tell
+whether this box is behind.
+
 Before the first run as a project, remove the container the old compose
 folder started, or the new one fails on the name and the port:
 
