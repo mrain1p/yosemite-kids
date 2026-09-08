@@ -440,16 +440,29 @@ The icons are generated, not drawn: `node scripts/make-hub-icons.js
 hub/src/main/resources/web` rewrites them, deterministically, so re-running
 it without an edit produces no diff.
 
-## The port
+## The ports — two of them, and why
 
-The hub publishes 8765. Both the `ports` line and `YOSEMITE_KIDS_PORT` in
-`docker-compose.yml` read the same variable, so they cannot drift — publishing
-one port while the process listens on another gives a container that is
-running, healthy and unreachable, and the health check does not catch it
-because it runs inside the container.
+The hub publishes **8765 for parents and devices, and 8766 for children's
+browsers**. Both sides of each line in `docker-compose.yml` read the same
+variable (`YOSEMITE_KIDS_PORT`, `YOSEMITE_KIDS_KID_PORT`), so no pair can
+drift — publishing one port while the process listens on another gives a
+container that is running, healthy and unreachable, and the health check does
+not catch it because it runs inside the container.
 
-To move it, put `YOSEMITE_KIDS_PORT=9000` in a `.env` beside the compose file. Then
-use that port when connecting a phone, because the app assumes 8765.
+To move either, put `YOSEMITE_KIDS_PORT=9000` or
+`YOSEMITE_KIDS_KID_PORT=9001` in a `.env` beside the compose file. Then use
+that port when connecting a phone, because the app assumes 8765.
+
+**The second port is a security boundary, not tidiness.** A child's page and
+the parents' console must not share an origin. If the kid's page lived at
+`/kid/` on 8765, a script on it could `POST /api/config` and the browser would
+attach the parent's session cookie: the host matches, the site matches, and
+`HttpOnly` does not stop a page *sending* a cookie it cannot read. On a shared
+family iPad with a parent signed in, that is a page a child opened rewriting
+the family's blocks, limits and AI settings. Two ports make them two origins,
+and the browser refuses it for you. If you put a reverse proxy in front of this
+hub, keep them two origins — two names or two ports — and do **not** merge
+them under one hostname with different paths.
 
 It no longer uses host networking. The hub is a plain server that devices dial
 by IP; it never broadcasts or discovers, so host mode bought nothing and cost
@@ -510,13 +523,47 @@ Guard 7 in `scripts/check.*` fails the build on anything else.
 `mem_limit` in the compose file is 384m to leave the crawl room. Measure the
 first full crawl with `docker stats yosemite-kids-hub` and put the number here.
 
+## Letting a browser watch
+
+An iPad, a laptop, an old Android tablet — anything with a browser and no app
+— can watch, on the hub's **second port**. Nothing is installed and no account
+exists; a parent hands over a code and that browser is a watcher from then on.
+
+On the console: **Devices → Watch in a browser**. Tap a child's name and the
+hub mints a six-character code — same alphabet as a device's enrolment code,
+no O/0 and no I/1 — good for ten minutes and for one browser. The card also
+prints the address to open on the tablet, which is this hub's own address on
+the kid port (`http://<nas>:8766`).
+
+On the tablet: open that address, type the code. That browser now carries a
+cookie for six months and plays as **that child**, under that child's blocks,
+bedtime and daily budget. It cannot become another child: the credential
+carries the profile the parent chose, and there is no parameter on any request
+that names one.
+
+**What that browser can and cannot do.** It can ask what its name is and it can
+play video. It cannot reach the console, the family's configuration, the
+backup, the AI key, or any device route — those are on the other origin, and a
+request from the kid's page to them is refused before it is read and could not
+be read back if it were not. It also cannot lock you out: a child mistyping a
+code ten times slows the kid page down for a minute and does nothing at all to
+your sign-in, which is a separate counter on purpose.
+
+**Losing a tablet.** Devices → Watch in a browser → Remove, beside that
+browser. It stops on that browser's next request. Deleting the child's profile
+is not the same thing and does not do it for you.
+
+Today the page a child lands on is a **placeholder**: a code box, their name,
+and one video. The real one — shelves, search, everything a child actually
+picks from — is the next round of work. The plumbing under it is finished and
+is what the rest of this section is about.
+
 ## Video in a browser — and the quality ceiling
 
-`GET /media?v=<id>&kid=<id>` serves a video's bytes to a browser. It is the
-groundwork for a kid-facing web player (an iPad, a laptop, anything with no
-app), and only the groundwork: the page, the second listener and the claim
-code a child's tablet signs in with are later rounds. Today the only caller is
-a parent's signed-in browser.
+`GET /media?v=<id>` on the kid port serves a video's bytes to a browser. Whose
+rules apply comes from the browser's claim cookie, never from the URL — a
+child who could name the kid could name their older sibling and watch on their
+bedtime and their budget.
 
 **The hub carries the bytes; it does not redirect.** That is the expensive
 choice and it is deliberate, for two separate reasons:
@@ -534,17 +581,17 @@ choice and it is deliberate, for two separate reasons:
   asked again **on every 2 MB chunk**, so a block, a pause or a budget hitting
   zero stops a video that is already running.
 
-**It does not work yet, and here is exactly why.** NewPipe's player request —
-the call that turns a video id into a stream URL — goes to
-`youtubei.googleapis.com`, and that host is **not** on this container's
-outbound allow-list (guard 7 in `scripts/check.*` holds that list to YouTube's
-own hosts). So `GET /media` answers `502 {"error":"resolve-failed"}` with the
-refused host named in `detail`. Everything else the hub does reaches
-`www.youtube.com/youtubei/v1/`, which is allowed, which is why the crawl has
-always worked and this has not. Fixing it is one entry in `Http.HUB_HOSTS` and
-one in guard 7's case list in **both** gate scripts — and it is deliberately
-left for a person to decide, because that list is the whole statement of what
-this box on your network may dial.
+**One host had to be added for this to work at all.** NewPipe's player request
+— the call that turns a video id into a stream URL — goes to
+`youtubei.googleapis.com`, which was not on this container's outbound
+allow-list, so `GET /media` answered `502 {"error":"resolve-failed"}` naming
+the refused host. Everything else the hub does reaches
+`www.youtube.com/youtubei/v1/`, which is why the crawl always worked and this
+did not. It is now one entry in `Http.HUB_HOSTS` and in guard 7's list in both
+gate scripts — named in full rather than as `googleapis.com`, which would have
+admitted every Google API there is. That list is still the whole statement of
+what this box on your network may dial, and widening it stays a decision
+somebody makes on purpose.
 
 **The ceiling: about 360p in a browser, HD in the app.** This serves the muxed
 progressive stream. HD on YouTube means separate video-only and audio-only
@@ -555,11 +602,11 @@ and a video with no muxed stream at all is refused with a named reason
 rather than served as something that will not decode.
 
 **Three streams at once**, on threads of their own. A proxied stream holds its
-thread for as long as the browser reads, so on the four-thread pool the rest of
-this server answers on, two children watching would starve `/status`,
-`/config`, the admin GUI and every device sync. `/media` therefore has its own
-executor and a hard cap (`HubServer.MAX_CONCURRENT_STREAMS`); a fourth stream
-gets `503` with `Retry-After`, never a queue.
+thread for as long as the browser reads, so on the small pool the rest of a
+listener answers on, two children watching would starve everything else it
+does. `/media` therefore has its own executor and a hard cap
+(`HubKidServer.MAX_CONCURRENT_STREAMS`); a fourth stream gets `503` with
+`Retry-After`, never a queue.
 
 **One reply carries 2 MB.** Not a throttle — a browser simply asks for the next
 span, which is how every segmented server works. It is there because
@@ -577,8 +624,8 @@ before assuming: with the hub running,
 
 ```
 curl -s -o /dev/null -w '%{speed_download} B/s  %{http_code}\n' \
-  -H 'Cookie: yk_session=<from a browser>' -H 'Range: bytes=0-2097151' \
-  http://<nas>:8765/media?v=<video id>
+  -H 'Cookie: yk_kid=<from a claimed browser>' -H 'Range: bytes=0-2097151' \
+  http://<nas>:8766/media?v=<video id>
 ```
 
 A 360p stream needs roughly 0.5–1 Mbit/s (60–125 kB/s) sustained.

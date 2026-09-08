@@ -11,9 +11,7 @@ import io.yosemitekids.app.data.ScreeningStore
 import io.yosemitekids.app.data.SyncMeta
 import org.json.JSONObject
 import java.net.InetSocketAddress
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.concurrent.RejectedExecutionException
 
 /**
  * The hub's HTTP face.
@@ -67,6 +65,16 @@ class HubServer(
     private val master: HubMaster? = null,
     private val crawl: HubCrawl? = null,
     /**
+     * The kid origin's port — a **second listener**, not a path under this one.
+     *
+     * Zero lets the OS choose, which is what every test wants and what makes
+     * two servers in one JVM harmless. `Main` passes `YOSEMITE_KIDS_KID_PORT`.
+     * See [HubKidServer] for why a port and not a path: on one origin a
+     * child's page can spend a parent's session cookie against `/api/config`,
+     * and every gate this project has agrees that it may.
+     */
+    private val kidPort: Int = 0,
+    /**
      * Passed in so tests need no clock and the merge stays clock-free.
      *
      * Last on purpose. Every existing call site passes it as a trailing
@@ -106,29 +114,53 @@ class HubServer(
      * the meter that counts a browser's minutes for it.
      *
      * Built here beside [ledger] because they need the same four things this
-     * server already holds. [policy] now has a caller — `GET /media` asks it
-     * before it resolves anything and again on every chunk — while [meter]
-     * still has no route of its own: the heartbeat a page sends belongs with
-     * the page, which is a later round. What [media] uses it for today is
-     * naming the viewer, so the budget is read against the same cell the
-     * beats will eventually be filed under.
+     * server already holds — and handed to [kid], which is where the caller
+     * lives: `GET /media` on the kid origin asks [policy] before it resolves
+     * anything and again on every chunk. One object, shared, rather than a
+     * second HubPolicy over there: two answers to "may this child watch this"
+     * is the failure guard 46 exists for, and it would not throw — it would
+     * let a browser play what a television hides.
      */
     private val policy = HubPolicy(store, ledger, screening, index, now)
     private val meter = HubWatchMeter(ledger, now)
 
     /**
-     * Resolving a video to one playable URL, and carrying its bytes.
+     * Which browsers may watch, and the codes a parent mints to let one in.
      *
-     * Its own object rather than methods here because it holds a cache with a
-     * clock and a lock, and because HubServer is already the longest file in
-     * this module. See [HubStream] for why the hub carries the bytes rather
-     * than redirecting a browser at Google.
+     * Beside `config.json` on the same volume, because a claimed browser is
+     * family setup: a hub that forgot them on restart would send every child
+     * back for a fresh code after a `docker pull`.
      */
-    private val streams = HubStream(now = now)
+    private val browsers = HubBrowsers(store.dataDir)
+
+    /**
+     * The kid's own origin.
+     *
+     * Built here because it needs four things this server already holds —
+     * the config, the verdict engine, the meter and the claim store — and
+     * started and stopped with it, so a container has one listener's
+     * lifecycle to think about and gets two. It shares **objects**, not
+     * routes: the two servers answer disjoint path sets (guard 57), and
+     * nothing about the admin session reaches it (guard 59).
+     */
+    private val kid = HubKidServer(kidPort, browsers, store, policy, meter, now)
 
     /** The verdict engine and the browser meter, for tests and a future route. */
     fun policy(): HubPolicy = policy
     fun watchMeter(): HubWatchMeter = meter
+
+    /** The kid origin's bound port, for the boot line and for tests. */
+    fun kidPort(): Int = kid.boundPort()
+
+    /** The kid origin's stream counter, so a test can fill it over a socket. */
+    internal fun mediaSlots(): HubMedia.Slots = kid.mediaSlots()
+
+    /**
+     * The claim store, so a test can mint a code without a config to hold a
+     * kid in. Internal: the route a parent uses is `POST /api/browsers`, which
+     * refuses a kid this hub has never heard of.
+     */
+    internal fun browsers(): HubBrowsers = browsers
 
     /**
      * How fast an unauthenticated caller may ask to join. See [enrol].
@@ -150,29 +182,6 @@ class HubServer(
     private val startedAt = now()
 
     private var server: HttpServer? = null
-
-    /**
-     * Media runs on threads of its own, and never on the four this server
-     * answers everything else with.
-     *
-     * A proxied stream holds its thread for as long as the browser keeps
-     * reading — minutes, not milliseconds. On the shared pool two children
-     * watching would leave two threads for the admin GUI, `/status`, `/config`
-     * and every device sync, and three would leave none: the hub would look
-     * dead to the whole house while nothing was actually wrong. So `/media`
-     * gets its own pool, and [slots] refuses past [MAX_CONCURRENT_STREAMS]
-     * with a 503 rather than queueing — a queued request is a video that will
-     * not start and gives nobody anything to read.
-     */
-    private var mediaPool: ExecutorService? = null
-    private val slots = HubMedia.Slots(MAX_CONCURRENT_STREAMS)
-
-    /**
-     * The stream counter, so a test can fill it and ask this server over a
-     * socket what a fourth child gets. Proving the 503 any other way would
-     * mean three real videos and a network.
-     */
-    internal fun mediaSlots(): HubMedia.Slots = slots
 
     /** Bodies are bounded: this faces the LAN, and a config is small. */
     private val maxBody = 1024 * 1024
@@ -242,15 +251,12 @@ class HubServer(
         // box never holds a credential on anything and guard 7 is untouched.
         // A relay and a scoreboard; it stops nobody watching anything.
         s.createContext("/usage") { ex -> guarded(ex) { usage(ex) } }
-        // Video bytes, for a browser. Registered with a dispatcher of its own
-        // rather than with `guarded` directly, because the work is handed to
-        // another pool and this thread has to go straight back to answering
-        // the rest of the house. See [mediaPool] and [media].
-        val media = Executors.newFixedThreadPool(MAX_CONCURRENT_STREAMS) { r ->
-            Thread(r, "yosemite-kids-media").apply { isDaemon = true }
-        }
-        mediaPool = media
-        s.createContext("/media") { ex -> dispatchMedia(ex, media) }
+        // Video bytes are NOT here. `/media` lives on the kid origin
+        // ([HubKidServer]), because the thing that plays video is a child's
+        // browser and a child's browser must not be on this origin at all —
+        // see that class for what a page here can do with a parent's session
+        // cookie. Guard 57 fails the build if it comes back.
+        //
         // Registered individually rather than under one prefix: a prefix
         // context would swallow every path beneath it, and "/" already
         // answers everything else with the page.
@@ -268,18 +274,17 @@ class HubServer(
 
         s.start()
         server = s
+        // The kid's origin comes up with this one and goes down with it. It
+        // is a separate listener on a separate port; it is not separate
+        // plumbing for a parent to start, stop or forget.
+        kid.start()
         return s.address.port
     }
 
     fun stop() {
         server?.stop(0)
         server = null
-        // Interrupted rather than drained: a stream in flight is a child's
-        // video, and waiting for one to finish would hold a container's
-        // shutdown for the length of it. The browser sees a truncated
-        // response, which is what a stopped hub should look like.
-        mediaPool?.shutdownNow()
-        mediaPool = null
+        kid.stop()
     }
 
     /** The bound port — for tests, which ask for 0 and let the OS choose. */
@@ -573,170 +578,6 @@ class HubServer(
         respond(ex, 200, JSONObject().put("pending", arr).toString())
     }
 
-    // --- media ----------------------------------------------------------
-
-    /**
-     * Take a slot, or say no, and get off the shared pool either way.
-     *
-     * The count is taken **before** the hand-off and released in the worker's
-     * own `finally`, so a stream can never be admitted twice or leak a slot
-     * when the executor refuses the task. Over the cap this answers 503 with a
-     * `Retry-After` rather than queueing: a queued video does not start, shows
-     * nothing, and gives a parent nothing to read — where a 503 is a sentence
-     * the page can put on screen.
-     */
-    private fun dispatchMedia(ex: HttpExchange, pool: ExecutorService) {
-        if (!slots.take()) return guarded(ex) { busy(ex) }
-        try {
-            pool.execute {
-                try {
-                    guarded(ex) { media(ex) }
-                } finally {
-                    slots.release()
-                }
-            }
-        } catch (e: RejectedExecutionException) {
-            slots.release()
-            guarded(ex) { busy(ex) }
-        }
-    }
-
-    private fun busy(ex: HttpExchange) {
-        ex.responseHeaders.add("Retry-After", MEDIA_RETRY_AFTER_SECONDS.toString())
-        respond(
-            ex, 503,
-            JSONObject()
-                .put("error", "busy")
-                .put("streams", MAX_CONCURRENT_STREAMS)
-                .toString()
-        )
-    }
-
-    /**
-     * `GET /media?v=<video>&kid=<profile>` — video bytes for a browser.
-     *
-     * The order of the first three lines is the whole design and is not
-     * negotiable:
-     *
-     * 1. **The session, first.** This is the only route on this box that costs
-     *    real bandwidth on someone else's network, so an unauthenticated
-     *    caller must not be able to make the hub fetch anything at all.
-     * 2. **[HubPolicy.mayPlay], second — before a single byte is resolved.**
-     *    Not "resolve, then check": resolving is a round trip to YouTube on a
-     *    named video, and a refused child must not be able to cause one. The
-     *    reason code goes back verbatim, because a page that has to say
-     *    *bedtime* and a page that has to say *a parent blocked this* are
-     *    different sentences.
-     * 3. **The muxed stream, third**, and only then the bytes.
-     *
-     * The rules are asked again on every chunk inside [HubStream.pump]. That,
-     * and not speed, is the reason this route proxies instead of redirecting:
-     * a `302` hands a child a URL Google will keep serving for hours, and a
-     * parent who blocks a video mid-play would be talking to nobody.
-     *
-     * Everything about the answer is RFC-7233 plain — `206`, `Content-Range`,
-     * `Content-Length`, `Accept-Ranges: bytes` — because a browser with any of
-     * those wrong cannot seek and shows no duration, and it fails by looking
-     * broken rather than by erroring.
-     *
-     * A 206 carries at most [HubMedia.MAX_RESPONSE_BYTES]. That is not a
-     * throttle; see the constant for the measured JDK behaviour it exists to
-     * stay clear of.
-     */
-    private fun media(ex: HttpExchange) {
-        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
-        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
-        // The hub's own session, for now. The claim code a child's tablet
-        // trades for one of these is a later round; until it exists the only
-        // caller is a parent's signed-in browser, which is deliberate — a
-        // media route open to the LAN is a fetch anyone can make this box pay
-        // for.
-        val session = sessionOf(ex)
-        if (!sessions.valid(session)) {
-            return respond(ex, 401, JSONObject().put("error", "sign in").toString())
-        }
-        val query = ex.requestURI.rawQuery
-        val videoId = HubMedia.videoIdIn(query)
-            ?: return respond(ex, 400, JSONObject().put("error", "bad video").toString())
-        val kidId = HubMedia.kidIn(query)
-        // Never taken from the page. The cell a browser's minutes are filed
-        // under is derived from the session this hub minted, so a tablet
-        // cannot claim a fresh viewer every morning to reset a budget.
-        val viewer = meter.ledgerId(session!!)
-
-        val verdict = policy.mayPlay(kidId, videoId, viewer)
-        if (!verdict.allowed) return refused(ex, verdict)
-
-        val resolved = try {
-            streams.resolve(videoId)
-        } catch (e: HubStream.Unplayable) {
-            // Distinguishable on purpose. "This hub could not find a stream a
-            // browser can play" and "YouTube would not answer" send a parent
-            // to different places, and serving something unplayable instead
-            // would send them to neither.
-            return respond(
-                ex, 502,
-                JSONObject().put("error", e.reason).put("detail", e.message.orEmpty()).toString()
-            )
-        }
-
-        val answer = HubMedia.rangeFor(ex.requestHeaders.getFirst("Range"), resolved.total)
-        if (answer == null) {
-            ex.responseHeaders.add("Content-Range", HubMedia.unsatisfiable(resolved.total))
-            return respond(ex, 416, JSONObject().put("error", "bad range").toString())
-        }
-        ex.responseHeaders.add("Content-Type", HubMedia.contentTypeFor(resolved.url))
-        ex.responseHeaders.add("Accept-Ranges", "bytes")
-        // Never stored. The URL behind this is signed and expires, and a
-        // cached copy in a child's browser is a video that keeps playing after
-        // a parent blocks it — which is the one thing this whole route exists
-        // to prevent.
-        ex.responseHeaders.add("Cache-Control", "no-store")
-        if (answer.partial) {
-            ex.responseHeaders.add("Content-Range", HubMedia.contentRange(answer, resolved.total))
-        }
-        securityHeaders(ex)
-        ex.sendResponseHeaders(if (answer.partial) 206 else 200, answer.length)
-        // A 206 is capped at one chunk and therefore always finishes; the
-        // gate below decides the NEXT request rather than interrupting this
-        // one. The 200 arm — no `Range:` header at all — is the exception,
-        // and the honest note is that a gate closing there stops the bytes
-        // but leaves the caller waiting on its own timeout, because the JDK
-        // will not close an under-written fixed-length reply (see
-        // [HubMedia.MAX_RESPONSE_BYTES]). No browser reaches it: `<video>`
-        // always sends a Range. Anything hand-rolled that does not is still
-        // *stopped* — it just gets an untidy end rather than a clean one.
-        try {
-            ex.responseBody.use { out ->
-                // Named, not trailing: `fetch` sits after `gate`, so a
-                // trailing lambda here would silently become the fetcher.
-                streams.pump(
-                    out, resolved.url, answer.start, answer.endInclusive,
-                    gate = { policy.mayPlay(kidId, videoId, viewer).allowed }
-                )
-            }
-        } catch (e: java.io.IOException) {
-            // A browser that has buffered enough closes the connection mid
-            // transfer, and a seek does the same. Both are ordinary and land
-            // here as a broken pipe; the headers are long since sent, so
-            // there is nothing to answer with and nothing has gone wrong.
-            System.err.println("media $videoId ended early: ${e.message}")
-        }
-    }
-
-    /** A refusal a page can read — the code, and the sentence behind it. */
-    private fun refused(ex: HttpExchange, verdict: HubPolicy.Decision) = respond(
-        ex, 403,
-        JSONObject()
-            .put("error", verdict.reason)
-            .put("detail", verdict.detail)
-            .apply {
-                verdict.spentMinutes?.let { put("spentMinutes", it) }
-                verdict.budgetMinutes?.let { put("budgetMinutes", it) }
-            }
-            .toString()
-    )
-
     // --- the admin GUI --------------------------------------------------
 
     /**
@@ -833,7 +674,10 @@ class HubServer(
         when (ex.requestURI.path) {
             "/api/state" -> respond(
                 ex, 200,
-                HubWeb.state(store, tokens, dataDir, now(), index, screening, master, crawl, startedAt)
+                HubWeb.state(
+                    store, tokens, dataDir, now(), index, screening, master, crawl, startedAt,
+                    browsers = browsers, kidPort = kid.boundPort()
+                )
             )
 
             /**
@@ -907,7 +751,11 @@ class HubServer(
             // route per control. A route per control is a route per control
             // to forget when the phone grows one.
             "/api/config" -> mutate(ex) { body ->
-                if (HubWeb.applyPatch(store, WHO, now(), body)) JSONObject().put("saved", true)
+                // [browsers] goes in so a deleted child takes their claimed
+                // browsers with them: a credential naming a profile that no
+                // longer exists would otherwise keep playing under the family
+                // default, which is the loosest rule set in the house.
+                if (HubWeb.applyPatch(store, WHO, now(), body, browsers)) JSONObject().put("saved", true)
                 else null
             }
 
@@ -998,6 +846,46 @@ class HubServer(
                 }
             }
 
+            /**
+             * Browsers that watch on the kid origin: mint a code for one, or
+             * cut one off.
+             *
+             * The mint is here rather than over there because **only a parent
+             * may say a browser is allowed and which child it is for**. That
+             * is the same split `/enrol` and `/approve` already make: the kid
+             * origin can redeem a code and can mint nothing at all, so a
+             * tablet on the LAN cannot introduce itself to the family.
+             *
+             * The kid id is bound at this moment and never re-read from a
+             * request afterwards — see `HubKidServer.media`, where the child
+             * whose rules apply comes from the credential and the `kid=`
+             * parameter no longer exists.
+             *
+             * The code comes back once, in this reply, for a parent to read
+             * onto the tablet. It is not stored anywhere the page can fetch
+             * again: a code sitting on `/api/state` for ten minutes is a code
+             * every browser signed in as the parent keeps re-fetching.
+             */
+            "/api/browsers" -> mutate(ex) { body ->
+                when {
+                    body.has("claim") -> {
+                        val outcome = HubWeb.mintClaim(store, browsers, body.getString("claim"), now())
+                        // Always 200 with a reason, like /api/grant: "there is
+                        // no such child" and "five codes are already out" send
+                        // a parent to different places, and a bare 400 says
+                        // neither.
+                        JSONObject()
+                            .put("minted", outcome.why == HubWeb.Minted.OK)
+                            .put("code", outcome.code.orEmpty())
+                            .put("why", outcome.why.name)
+                            .put("ttlSeconds", HubBrowsers.CODE_TTL_MS / 1000)
+                    }
+                    body.has("revoke") -> JSONObject()
+                        .put("revoked", browsers.revoke(body.getString("revoke")))
+                    else -> null
+                }
+            }
+
             else -> respond(ex, 404, JSONObject().put("error", "no such route").toString())
         }
     }
@@ -1019,20 +907,6 @@ class HubServer(
             ?.map { it.trim() }
             ?.firstOrNull { it.startsWith("$SESSION_COOKIE=") }
             ?.substringAfter("=")
-
-    /**
-     * Refuse anything a browser on another site initiated.
-     *
-     * SameSite=Strict already stops the cookie riding along, but a page that
-     * checks only the cookie is trusting the browser to have enforced that.
-     * The same reasoning as /pair-request in the app, which refuses any
-     * request carrying an Origin at all.
-     */
-    private fun sameOrigin(ex: HttpExchange): Boolean {
-        val origin = ex.requestHeaders.getFirst("Origin") ?: return true
-        val host = ex.requestHeaders.getFirst("Host") ?: return false
-        return origin.substringAfter("://") == host
-    }
 
     // --- plumbing -------------------------------------------------------
 
@@ -1190,25 +1064,6 @@ class HubServer(
         internal const val REQUEST_TIMEOUT_PROPERTY = "sun.net.httpserver.maxReqTime"
 
         /**
-         * Videos this box carries at once, and how long a refused caller is
-         * asked to wait.
-         *
-         * Three, because that is a household: two children watching and one
-         * seek in flight. The number is a bound on *this NAS's uplink and
-         * CPU*, not a licence — every stream is a full-rate fetch from
-         * googlevideo re-sent to a browser, and a fourth would not make a
-         * fourth child's video play, it would make all four stutter. Past it
-         * the route answers 503 rather than queueing: a queued video never
-         * starts and says nothing, where a 503 is something a page can put on
-         * screen.
-         *
-         * The media pool is sized to exactly this, so the refusal is decided
-         * by [liveStreams] on the shared pool and never by a full queue.
-         */
-        internal const val MAX_CONCURRENT_STREAMS = 3
-        internal const val MEDIA_RETRY_AFTER_SECONDS = 5
-
-        /**
          * How many unauthenticated join attempts this hub will take in a
          * window, and how long that window is. See [enrol].
          *
@@ -1265,6 +1120,59 @@ class HubServer(
             "/pair-status", "/play", "/player", "/stats",
             "/sync-now", "/watchstate"
         )
+
+        /**
+         * Refuse anything a browser on another site initiated.
+         *
+         * SameSite=Strict already stops the cookie riding along, but a page
+         * that checks only the cookie is trusting the browser to have enforced
+         * that. The same reasoning as /pair-request in the app, which refuses
+         * any request carrying an Origin at all.
+         *
+         * On the companion, and **shared with [HubKidServer]**, because the
+         * two listeners exist precisely so that this predicate answers false
+         * across them: a fetch from the kid page to `/api/config` carries the
+         * kid origin's `Origin:` and is refused here. Two copies of a security
+         * check are two things to harden, and the second one is the one
+         * somebody forgets — so there is one.
+         */
+        internal fun sameOrigin(ex: HttpExchange): Boolean {
+            val origin = ex.requestHeaders.getFirst("Origin") ?: return true
+            val host = ex.requestHeaders.getFirst("Host") ?: return false
+            return origin.substringAfter("://") == host
+        }
+
+        /**
+         * Drop a caller that opens a connection and then does not finish
+         * asking.
+         *
+         * The device's `LanServer` gives every accepted socket `soTimeout =
+         * 10_000`; this server had no equivalent, so a client that sent half a
+         * request line held one of four worker threads until it felt like
+         * leaving. Four of those is the hub, silently, with no log line — and
+         * the route to it needs no token, because the request never gets far
+         * enough to present one.
+         *
+         * The JDK's server exposes no socket to set a timeout on, so the
+         * discipline goes on through the property its own `ServerConfig`
+         * reads. That is read once per JVM, at the first `HttpServer.create`,
+         * which is why this runs before it rather than in a constructor — and
+         * why it is on the companion: [HubKidServer] creates a server of its
+         * own and needs the same patience without depending on which listener
+         * happened to start first.
+         *
+         * Only the REQUEST side. `maxRspTime` is deliberately left alone: a
+         * device pulling a whole crawled source out of `/index` over a tired
+         * wifi link is legitimately slow, and a response timer would cut
+         * exactly the transfer that most needs to finish — and on the kid
+         * origin it would cut a video. An explicit `-D` on the JVM wins, so a
+         * NAS running something unusual can still tune it.
+         */
+        internal fun applyRequestTimeout() {
+            if (System.getProperty(REQUEST_TIMEOUT_PROPERTY) == null) {
+                System.setProperty(REQUEST_TIMEOUT_PROPERTY, REQUEST_TIMEOUT_SECONDS.toString())
+            }
+        }
     }
 
     /**
@@ -1344,32 +1252,5 @@ class HubServer(
         ex.responseHeaders.add("X-Content-Type-Options", "nosniff")
         ex.responseHeaders.add("X-Frame-Options", "DENY")
         ex.responseHeaders.add("Referrer-Policy", "no-referrer")
-    }
-
-    /**
-     * Drop a caller that opens a connection and then does not finish asking.
-     *
-     * The device's `LanServer` gives every accepted socket `soTimeout =
-     * 10_000`; this server had no equivalent, so a client that sent half a
-     * request line held one of four worker threads until it felt like
-     * leaving. Four of those is the hub, silently, with no log line — and the
-     * route to it needs no token, because the request never gets far enough
-     * to present one.
-     *
-     * The JDK's server exposes no socket to set a timeout on, so the discipline
-     * goes on through the property its own `ServerConfig` reads. That is read
-     * once per JVM, at the first `HttpServer.create`, which is why this runs
-     * before it rather than in a constructor.
-     *
-     * Only the REQUEST side. `maxRspTime` is deliberately left alone: a device
-     * pulling a whole crawled source out of `/index` over a tired wifi link is
-     * legitimately slow, and a response timer would cut exactly the transfer
-     * that most needs to finish. An explicit `-D` on the JVM wins, so a NAS
-     * running something unusual can still tune it.
-     */
-    private fun applyRequestTimeout() {
-        if (System.getProperty(REQUEST_TIMEOUT_PROPERTY) == null) {
-            System.setProperty(REQUEST_TIMEOUT_PROPERTY, REQUEST_TIMEOUT_SECONDS.toString())
-        }
     }
 }

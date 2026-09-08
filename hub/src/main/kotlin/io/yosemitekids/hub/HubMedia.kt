@@ -164,14 +164,19 @@ object HubMedia {
 
     private val MIME = Regex("video/[A-Za-z0-9][A-Za-z0-9.+-]{0,62}")
 
-    /** `v=` — a YouTube id and nothing else, because it names a fetch. */
+    /**
+     * `v=` — a YouTube id and nothing else, because it names a fetch.
+     *
+     * The only thing a media URL is allowed to say. There **was** a `kid=`
+     * parameter here, read into `HubPolicy.mayPlay` as the child whose rules
+     * applied, and it is gone: whose rules apply is a property of the
+     * credential the browser presents, bound when a parent minted the claim
+     * code (`HubBrowsers`). A child who could name the kid could name their
+     * older sibling, and watch on their bedtime, their budget and their block
+     * list. Guard 60 fails the build if a parser for it comes back.
+     */
     fun videoIdIn(query: String?): String? =
         VIDEO.find(query.orEmpty())?.groupValues?.get(1)
 
-    /** `kid=` — the profile whose rules apply. Absent means the family default. */
-    fun kidIn(query: String?): String? =
-        KID.find(query.orEmpty())?.groupValues?.get(1)
-
     private val VIDEO = Regex("(?:^|&)v=([A-Za-z0-9_-]{11})(?:&|$)")
-    private val KID = Regex("(?:^|&)kid=([A-Za-z0-9_-]{1,64})(?:&|$)")
 }

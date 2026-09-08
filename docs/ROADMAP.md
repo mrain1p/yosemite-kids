@@ -390,30 +390,35 @@ videos and some undated ones. Decide whether an undated video sorts last under
 (it is not — hiding a video because we lack a date about it is worse than
 showing it late).
 
-### 2N. The web player — step 1 landed, and what it found
+### 2N. The web player — steps 1–3 landed; step 4 is the page
 
-`GET /media` on the hub proxies a video's bytes to a browser (see
-`docs/LAN-API.md` for the wire and `docs/HUB.md` for the ceiling). It is step 1
-of four; the kid-facing page, a second listener, and the claim code a child's
-tablet signs in with are steps 2–4 and are not built. What step 1 existed to
-answer was **can a NAS carry video bytes at watchable speed**, and the measured
-answer is yes, with room to spare: 9–11.6 MB/s (73–93 Mbit/s) through the proxy
-on a development machine, against the 0.06–0.125 MB/s a 360p stream needs. The
-control plane stayed answering in under 3 ms with three streams in flight.
+Three of the four steps are in. `GET /media` proxies a video's bytes
+(step 1); the kid has an **origin of its own** on a second port, and a claim
+code a parent mints trades for the cookie that gets in (steps 2–3). See
+`docs/LAN-API.md` "The kid's routes" for the wire and the argument, and
+`docs/HUB.md` "Letting a browser watch" for what a parent does.
 
-**Two things it found that step 2 has to deal with first.**
+**What is left is step 4: the page itself.** What ships today is a placeholder
+— a code box, the child's name, one video — deliberately with no browse UI, no
+shelves and no styling beyond the generated stylesheet, because it exists to
+prove the door rather than to decide what a child sees. The real page needs a
+home screen, search, a shelf model that agrees with the television's
+(`HomeModel`, guard 47), and the heartbeat that makes `HubWatchMeter` count a
+browser's minutes — `beat()` still has no route, on purpose, and giving it one
+belongs with the page that would send it.
 
-1. **The hub cannot resolve a stream at all with guard 7's allow-list as it
-   stands.** NewPipe's player request goes to `youtubei.googleapis.com`, which
-   is not one of `Http.HUB_HOSTS`, so `GET /media` answers
-   `502 {"error":"resolve-failed"}` naming the refused host. Everything else
-   the hub does reaches `www.youtube.com/youtubei/v1/`, which is allowed —
-   this route is the first thing on the box that ever called
-   `resolvePlayback`, which is why it never showed up before. The list was
-   deliberately left alone here: **widening the one boundary that says what a
-   NAS may dial is an owner's decision, not a side effect of a feature.** It is
-   one entry — `youtubei.googleapis.com` — in `Http.HUB_HOSTS` and in guard 7's
-   case list in both gate scripts. Until it is made, nothing plays.
+**What step 1 measured**, kept because it is the reason to build the rest:
+9–11.6 MB/s (73–93 Mbit/s) through the proxy on a development machine, against
+the 0.06–0.125 MB/s a 360p stream needs, with the control plane answering in
+under 3 ms with three streams in flight.
+
+**Two things it found, both now dealt with.**
+
+1. **The allow-list had to grow by one host.** NewPipe's player request goes to
+   `youtubei.googleapis.com`, which was not one of `Http.HUB_HOSTS`, so
+   `GET /media` answered `502 {"error":"resolve-failed"}`. It is now named in
+   full — not `googleapis.com`, which would admit every Google API there is —
+   in `Http.HUB_HOSTS` and in guard 7's list in both gate scripts.
 2. **Muxed URLs often carry no `clen`.** Measured against a real itag-18 URL:
    `ratebypass` and `dur` were there, `clen` was not. `HubStream` therefore
    falls back to a `HEAD`, which answered `Content-Length` and
@@ -424,6 +429,16 @@ control plane stayed answering in under 3 ms with three streams in flight.
 **The ceiling is about 360p** and will stay there until someone builds MSE or
 HLS: HD on YouTube is separate video and audio tracks merged at playback, which
 ExoPlayer does and a plain `<video>` cannot.
+
+**Known gaps, stated rather than left to be discovered.**
+
+- A browser that stops beating is not stopped — there is no heartbeat route
+  yet, so a child's minutes are counted only while `/media` is being asked for
+  more bytes. `HubWatchMeter`'s KDoc already says what that costs and why it
+  errs toward counting less.
+- The kid origin is plain HTTP on the LAN, like everything else here. A cookie
+  that lives six months is worth more than a session one, and the day this box
+  faces anything but a home network that is the first thing to change.
 
 ## 3. Known-wrong docs — cleared 2026-09-06
 

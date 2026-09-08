@@ -61,8 +61,13 @@ RUN sed -i 's/\r$//' /usr/local/bin/yosemite-kids-entrypoint \
 
 ENV YOSEMITE_KIDS_DATA=/data
 ENV YOSEMITE_KIDS_PORT=8765
+# The kid's own origin. A second listener on a second port, deliberately not a
+# path under the first — see HubKidServer for what a page on the admin origin
+# can do with a parent's session cookie. Both have to be published, or the
+# container is healthy and every child's page fails to load.
+ENV YOSEMITE_KIDS_KID_PORT=8766
 VOLUME ["/data"]
-EXPOSE 8765
+EXPOSE 8765 8766
 
 # Bash's own /dev/tcp rather than curl or wget: neither is guaranteed present
 # in a JRE base image, and a healthcheck that always fails is worse than none —

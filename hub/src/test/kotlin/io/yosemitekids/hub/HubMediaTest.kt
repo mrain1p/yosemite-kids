@@ -178,8 +178,6 @@ class HubMediaTest {
         assertNull(HubMedia.videoIdIn("v=short"))
         assertNull(HubMedia.videoIdIn("v=../../etc/passwd"))
         assertNull(HubMedia.videoIdIn(null))
-        assertEquals("abc12", HubMedia.kidIn("v=dQw4w9WgXcQ&kid=abc12"))
-        assertNull(HubMedia.kidIn("v=dQw4w9WgXcQ"))
     }
 
     // --- how many at once -----------------------------------------------

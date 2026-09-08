@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yosemite Kids</title>
+<!--
+  THE PLACEHOLDER PAGE. Step 4 replaces all of it.
+
+  It exists so the second origin and the claim code can be proved end to end
+  in a real browser rather than only in a test: type a code, get a cookie, see
+  a name, play a video through /media. There is deliberately no browse UI, no
+  shelves and no styling beyond the generated stylesheet — every one of those
+  is a decision about what a child sees, and this round is about the door, not
+  the room.
+
+  Two properties it does have, and they are not placeholder properties:
+
+  - It renders NOTHING it was not given. The name comes from /whoami, behind
+    the cookie; a browser that has not claimed sees a code box and learns not
+    one thing about the family.
+  - It mints NOTHING. The code is the hub's, the cookie is the hub's, and the
+    child it plays as comes from the credential, never from this page or from
+    the URL — see HubKidServer.media and guard 60.
+-->
+<link rel="stylesheet" href="/kid-tokens.css">
+<style>
+  /* Layout only, and no colour of its own — not even as a var() fallback.
+     Every hue and every type size here is a --yk-* custom property written at
+     build time from :core's one table (guard 48), and a hex in this file
+     would be the second palette this project has already had once. If the
+     stylesheet fails to load the page renders unstyled, which is the honest
+     failure: a fallback palette agrees with the real one until somebody
+     changes a colour, and then only one of them moves. */
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--yk-background);
+    color: var(--yk-on-background);
+    font-family: system-ui, sans-serif;
+    font-size: var(--yk-font-body-large-size);
+    line-height: var(--yk-font-body-large-line);
+  }
+  main { max-width: 44rem; margin: 0 auto; }
+  h1 {
+    font-size: var(--yk-font-headline-small-size);
+    line-height: var(--yk-font-headline-small-line);
+    margin: 0 0 16px;
+  }
+  input, button {
+    font: inherit;
+    padding: 8px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--yk-outline);
+    background: var(--yk-surface-container);
+    color: inherit;
+  }
+  input { text-transform: uppercase; letter-spacing: .2em; width: 8em; }
+  button { background: var(--yk-primary); color: var(--yk-on-primary); border: 0; }
+  video { width: 100%; border-radius: 16px; background: var(--yk-surface-container-lowest); }
+  .why { color: var(--yk-on-surface-variant); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <section id="claim">
+    <h1>Type your code</h1>
+    <p class="why">Ask a grown-up for the code on the hub.</p>
+    <p>
+      <input id="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8">
+      <button id="go">Watch</button>
+    </p>
+    <p class="why" id="claimWhy"></p>
+  </section>
+
+  <section id="watch" hidden>
+    <h1 id="hello"></h1>
+    <video id="player" controls playsinline></video>
+    <p class="why" id="playWhy"></p>
+  </section>
+</main>
+<script>
+(function () {
+  "use strict";
+
+  var claim = document.getElementById("claim");
+  var watch = document.getElementById("watch");
+  var claimWhy = document.getElementById("claimWhy");
+  var playWhy = document.getElementById("playWhy");
+
+  // Every kid route fails closed to this screen: a 401 from anywhere is "type
+  // your code", never a blank page and never a stack trace.
+  function askWhoAmI() {
+    return fetch("/whoami", { credentials: "same-origin" }).then(function (r) {
+      if (r.status === 401) { show(null); return; }
+      if (!r.ok) throw new Error("whoami " + r.status);
+      return r.json().then(show);
+    });
+  }
+
+  function show(who) {
+    if (!who) {
+      claim.hidden = false;
+      watch.hidden = true;
+      return;
+    }
+    claim.hidden = true;
+    watch.hidden = false;
+    document.getElementById("hello").textContent = who.name ? "Hello " + who.name : "Hello";
+    // The page's one video. A `?v=` in the address bar overrides it while this
+    // is a placeholder, because a family's own catalogue is the only thing
+    // HubPolicy will let through and the hard-coded id is unlikely to be in
+    // it. It changes nothing about what may be played: the hub re-derives the
+    // whole verdict from the config and the credential.
+    var wanted = new URLSearchParams(location.search).get("v") || who.video;
+    var player = document.getElementById("player");
+    player.src = "/media?v=" + encodeURIComponent(wanted);
+    player.onerror = function () {
+      // A refusal is a normal answer here — bedtime, a block, no budget left.
+      // Ask for the reason with a plain fetch, because <video> only ever says
+      // "it did not play".
+      fetch(player.src, { credentials: "same-origin", headers: { Range: "bytes=0-1" } })
+        .then(function (r) { return r.ok ? null : r.json().catch(function () { return null; }); })
+        .then(function (body) {
+          playWhy.textContent = body && body.detail ? body.detail : "That will not play right now.";
+        });
+    };
+  }
+
+  document.getElementById("go").onclick = function () {
+    var code = document.getElementById("code").value.trim();
+    if (!code) return;
+    claimWhy.textContent = "";
+    fetch("/claim", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code })
+    }).then(function (r) {
+      if (r.ok) return askWhoAmI();
+      if (r.status === 429) {
+        return r.json().then(function (b) {
+          claimWhy.textContent = "Too many tries. Wait " + (b.retryAfter || 60) + " seconds.";
+        });
+      }
+      claimWhy.textContent = "That code did not work. Ask for a new one.";
+    }).catch(function () {
+      claimWhy.textContent = "The hub did not answer.";
+    });
+  };
+
+  askWhoAmI().catch(function () {
+    claimWhy.textContent = "The hub did not answer.";
+  });
+})();
+</script>
+</body>
+</html>
