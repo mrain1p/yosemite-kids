@@ -23,7 +23,18 @@ upstream's builds.
    bookkeeping: the hub advertises it on `GET /health`, config fields ride a
    two-release gate that is counted against it, and bumping it is what makes
    the release rebuild the hub image (the workflow watches `hub/**`).
-2. Signing: `YOSEMITE_KIDS_KEYSTORE`, `YOSEMITE_KIDS_KEYSTORE_PASSWORD`,
+2. **Gate now — after the bump, not before it.** `scripts/check.ps1` must print
+   the literal `all green`. This step used to be last on this list and said
+   "run this first", which is how 1.2.0 shipped with the hub advertising
+   1.1.0: the gate was run, *then* the version was bumped, and guard 39 —
+   which exists precisely to hold `hubVersion` equal to the app's
+   `versionName` — never saw the change that broke it. A version bump is a
+   code change like any other. Gate it.
+
+   Read the output for `all green`; do not trust the exit code. A PowerShell
+   parse error in `check.ps1` exits 0 while running nothing.
+
+3. Signing: `YOSEMITE_KIDS_KEYSTORE`, `YOSEMITE_KIDS_KEYSTORE_PASSWORD`,
    `YOSEMITE_KIDS_KEY_ALIAS`, `YOSEMITE_KIDS_KEY_PASSWORD` in `local.properties` or the
    environment. On this machine the fork's key is
    `~/.pickwick/pickwick-fork-release.keystore` (alias `pickwickfork`,
@@ -31,13 +42,12 @@ upstream's builds.
    points at it. The build fails without them on purpose. Losing the key means
    every family must uninstall (wiping curation) — back it up off-machine.
    Never print the password into a transcript.
-3. `gradlew assembleRelease` -> `app/build/outputs/apk/release/yosemite-kids.apk`.
+4. `gradlew assembleRelease` -> `app/build/outputs/apk/release/yosemite-kids.apk`.
    Always the release build: debug is ~10 s cold start on a TV.
-4. `gh release create vX.Y.Z app/build/outputs/apk/release/yosemite-kids.apk --title vX.Y.Z --notes "..."`
-5. Update `version.json` (`versionCode`, `versionName`, `apkUrl`) and push to `main`.
-6. Run `scripts/check.ps1` first; never release with a red check.
+5. `gh release create vX.Y.Z app/build/outputs/apk/release/yosemite-kids.apk --title vX.Y.Z --notes "..."`
+6. Update `version.json` (`versionCode`, `versionName`, `apkUrl`) and push to `main`.
 
-Ask the user before steps 4-5: they publish.
+Ask the user before steps 5-6: they publish.
 
 ## The gh default-repo trap
 
