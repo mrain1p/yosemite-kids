@@ -161,34 +161,29 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 // on a LanServer worker thread, which is where the file I/O
                 // belongs.
                 usageProvider = {
-                    val store = io.yosemitekids.app.data.WatchLedgerStore(appContext)
                     val config = ConfigStore(appContext).load()
-                    val day = io.yosemitekids.app.data.FamilyDay.of(
-                        System.currentTimeMillis(),
-                        io.yosemitekids.app.data.FamilyDay.zoneOf(config.homeZone)
-                    )
                     // Every kid's own tally, not just the one on screen: a
                     // sibling's minutes are as real when their profile is not
                     // the active one, and a peer asking now is the only chance
-                    // to say so.
-                    val kids: List<String?> =
-                        if (config.profiles.isEmpty()) listOf(null) else config.profiles.map { it.id }
-                    kids.forEach { kid ->
-                        val minutes = SessionGuard(appContext, profileNs.suffixFor(kid))
-                            .watchedTodayMin()
-                        store.recordOwn(kid, day, minutes)
-                    }
-                    store.exportJson()
+                    // to say so. UsageSync.recordOwn authors each cell from
+                    // that kid's OWN minutes — never the shared total, which
+                    // the peer would read back and add to its own counter.
+                    io.yosemitekids.app.data.UsageSync.recordOwn(appContext, config)
+                    io.yosemitekids.app.data.WatchLedgerStore(appContext).exportJson()
                 },
                 usageMerger = { json ->
                     val config = ConfigStore(appContext).load()
-                    io.yosemitekids.app.data.WatchLedgerStore(appContext).mergeJson(
+                    val merged = io.yosemitekids.app.data.WatchLedgerStore(appContext).mergeJson(
                         json,
-                        io.yosemitekids.app.data.FamilyDay.of(
-                            System.currentTimeMillis(),
-                            io.yosemitekids.app.data.FamilyDay.zoneOf(config.homeZone)
-                        )
+                        io.yosemitekids.app.data.UsageSync.today(config)
                     )
+                    // A peer's minutes have just landed, which for a shared
+                    // budget is the freshest this device will ever be about
+                    // them. Folding them in here rather than at the next read
+                    // keeps enforcement off the network entirely: the player
+                    // asks SessionGuard, and SessionGuard asks a prefs mirror.
+                    if (merged) io.yosemitekids.app.data.UsageSync.mirror(appContext, config)
+                    merged
                 },
                 indexStatusProvider = {
                     io.yosemitekids.app.data.ChannelIndex(appContext).statusJson()
@@ -214,7 +209,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                     configStore, pairingStore, json
                                 )
                             },
-                            index = io.yosemitekids.app.data.ChannelIndex(appContext)
+                            index = io.yosemitekids.app.data.ChannelIndex(appContext),
+                            context = appContext
                         )
                     }
                 },
@@ -440,7 +436,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         kidPrefs = io.yosemitekids.app.data.KidPrefs(applicationContext, profileSuffix),
                         // Unsuffixed: "when did this DEVICE first see it" is
                         // one fact for the box, not one per child.
-                        firstSeen = io.yosemitekids.app.data.SourceFirstSeen(applicationContext)
+                        firstSeen = io.yosemitekids.app.data.SourceFirstSeen(applicationContext),
+                        // For the watch-ledger trade at the end of a sweep.
+                        // Only a family sharing a budget trades anything.
+                        appContext = appContext
                     )
                 }
                 // TV: a paired phone just pushed new config — apply it live.

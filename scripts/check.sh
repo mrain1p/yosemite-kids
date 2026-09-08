@@ -1369,6 +1369,49 @@ tok_listed=$(sed -n '/val all: List<TypeStyle> = listOf(/,/^    )/p' "$tok" | tr
 [ "$tok_styles" = "$tok_listed" ] ||
   guard_fail "KidType declares $tok_styles type styles and KidType.all lists $tok_listed. A step missing from the list is a step the browser does not have."
 
+# 49. One answer to "does this kid share a budget", and the ledger never
+#     authors the shared number.
+#     Limits.budgetScope is a STRING so a mode a later build invents falls back
+#     to today's behaviour on the televisions that predate it. That only holds
+#     while every reader asks Limits.sharesBudget: a second `== "shared"`
+#     written somewhere else is how a build that meets a scope it does not know
+#     starts answering two different ways in the same house — strict on the
+#     television and lenient on the tablet, with nothing to say which was
+#     right. Assignment is fine; the settings switch has to write the constant.
+wl=core/src/main/kotlin/io/yosemitekids/app/data/Whitelist.kt
+grep -q "val sharesBudget: Boolean" "$wl" ||
+  guard_fail "$wl no longer declares Limits.sharesBudget; guard 49 is blind. Unknown scopes fall back to per-device in ONE place or in as many places as there are readers."
+src_main="app/src/main core/src/main crawl/src/main hub/src/main"
+scope_cmp=$(grep -rnE "[!=]=[[:space:]]*BUDGET_SCOPE_SHARED|BUDGET_SCOPE_SHARED[[:space:]]*[!=]=" $src_main | grep -v "^$wl:" || true)
+[ -z "$scope_cmp" ] ||
+  guard_fail "a budget scope is compared against BUDGET_SCOPE_SHARED outside $wl. Ask Limits.sharesBudget — it is where a scope this build does not recognise is decided to mean per-device, and a second test of it is a second answer. Found:
+$scope_cmp"
+scope_lit=$(grep -rnE "budgetScope[[:space:]]*[!=]=[[:space:]]*$q" $src_main || true)
+[ -z "$scope_lit" ] ||
+  guard_fail "a budget scope is compared against a string literal:
+$scope_lit
+That is the same rule spelled a second time, and it will not be the one that gets updated. Use Limits.sharesBudget."
+#     (b) The scope has to reach the enforcer. SessionGuard rebuilds its rules
+#         from its own prefs mirror, so a field written to the config and not
+#         to that mirror is a switch a parent turns on that changes nothing on
+#         the box doing the stopping - and nothing anywhere says so.
+sg=app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt
+[ "$(grep -cF "l_scope" "$sg")" -ge 2 ] ||
+  guard_fail "$sg does not both write and read ${q}l_scope${q}. The rules the player enforces come from the prefs mirror, not from the config, so a scope that stops at saveLimits is a setting with no effect."
+#     (c) A device's own ledger cell is authored from its OWN minutes.
+#         watchedTodayMin() is own + peers; recordOwn writes what other devices
+#         then read back and add to their own live counters. Feeding one to the
+#         other is a budget that consumes itself in an afternoon, with every
+#         number on every screen agreeing with every other. It has no symptom
+#         short of a child being stopped at ten minutes.
+for f in $(grep -rl "recordOwn(" app/src/main || true); do
+  bad=$(grep -n "\.watchedTodayMin(" "$f" || true)
+  [ -z "$bad" ] ||
+    guard_fail "$f authors a watch-ledger cell and also reads the SHARED total:
+$bad
+A cell carries this device's own minutes — SessionGuard.ownWatchedTodayMin(). The shared figure is what peers add their own minutes to."
+done
+
 # 52. A channel's own words reach a child with every way out already gone.
 #     A YouTube channel description is a paragraph followed by a list of
 #     places to go: a shop, a Discord, a second channel, an e-mail address.

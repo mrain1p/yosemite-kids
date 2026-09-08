@@ -1,7 +1,11 @@
 package io.yosemitekids.app
 
+import io.yosemitekids.app.data.BUDGET_SCOPE_SHARED
 import io.yosemitekids.app.data.ConfigJson
+import io.yosemitekids.app.data.Limits
+import io.yosemitekids.app.data.Profile
 import io.yosemitekids.app.data.SourceKind
+import io.yosemitekids.app.data.TimeWindow
 import io.yosemitekids.app.data.Whitelist
 import io.yosemitekids.app.data.WhitelistEntry
 import io.yosemitekids.app.data.WhitelistExporter
@@ -244,6 +248,128 @@ class ConfigStoreJsonTest {
         assertNotEquals(
             ConfigJson.fingerprint(plain.copy(homeZone = "Pacific/Auckland")),
             ConfigJson.fingerprint(plain.copy(homeZone = "Europe/London"))
+        )
+    }
+
+    // --- budgetScope: the four canonical tests ---------------------------
+    //
+    // Same contract as homeZone above, and asserted rather than promised for
+    // the same reason: this one rides a *limits* scalar, so it has to be
+    // invisible on both the family's rules and every kid's, or a household
+    // that never shares a budget is re-pushed to the whole fleet at upgrade.
+
+    private fun withKid(w: Whitelist, l: Limits) =
+        w.copy(profiles = listOf(Profile(id = "k1", name = "Leo", limits = l)))
+
+    @Test
+    fun `a budget scope survives a JSON round-trip, on the family and on a kid`() {
+        val plain = Whitelist(listOf(entry("UCa")), emptySet())
+        val shared = Limits(sessionMinutes = 30, budgetScope = BUDGET_SCOPE_SHARED)
+        assertEquals(
+            BUDGET_SCOPE_SHARED,
+            ConfigJson.fromJson(ConfigJson.toJson(plain.copy(limits = shared))).limits.budgetScope
+        )
+        assertEquals(
+            BUDGET_SCOPE_SHARED,
+            ConfigJson.fromJson(ConfigJson.toJson(withKid(plain, shared)))
+                .profiles[0].limits.budgetScope
+        )
+        // Clearing it back to per-device round-trips as null, and a blank is
+        // not a scope: it must not come back as one.
+        assertEquals(
+            null,
+            ConfigJson.fromJson(ConfigJson.toJson(plain.copy(limits = shared.copy(budgetScope = null))))
+                .limits.budgetScope
+        )
+        assertEquals(
+            null,
+            ConfigJson.fromJson(ConfigJson.toJson(plain.copy(limits = shared.copy(budgetScope = ""))))
+                .limits.budgetScope
+        )
+    }
+
+    @Test
+    fun `a scope this build does not know is carried, never coerced`() {
+        // The whole reason the field is a string. A newer build sets a third
+        // mode; this one must hand it back byte-for-byte on the next push, and
+        // must behave as it always did in the meantime. Rewriting it to a
+        // value this build recognises would push a parent's choice back out of
+        // the family from the first device to parse it.
+        val plain = Whitelist(listOf(entry("UCa")), emptySet())
+        val future = plain.copy(limits = Limits(budgetScope = "school-nights"))
+        val parsed = ConfigJson.fromJson(ConfigJson.toJson(future))
+        assertEquals("school-nights", parsed.limits.budgetScope)
+        assertFalse(parsed.limits.sharesBudget)
+        assertTrue(Limits(budgetScope = BUDGET_SCOPE_SHARED).sharesBudget)
+        assertFalse(Limits().sharesBudget)
+    }
+
+    @Test
+    fun `no budget scope is omitted from JSON, byte for byte as before the field`() {
+        val plain = Whitelist(listOf(entry("UCa")), emptySet())
+            .copy(limits = Limits(sessionMinutes = 30, weekdaySessions = 2))
+        val json = ConfigJson.toJson(plain)
+        assertFalse(json.contains("budgetScope"))
+        assertEquals(null, ConfigJson.fromJson(json).limits.budgetScope)
+        fun bytes(w: Whitelist) =
+            ConfigJson.toJson(w).replace(Regex("\"updatedAt\": \\d+"), "\"updatedAt\": 0")
+        assertEquals(bytes(plain), bytes(plain.copy(limits = plain.limits.copy(budgetScope = null))))
+        // And on a kid, which is the copy a family actually sets rules on.
+        val kid = withKid(plain, Limits(sessionMinutes = 20))
+        assertFalse(ConfigJson.toJson(kid).contains("budgetScope"))
+        assertEquals(bytes(kid), bytes(withKid(plain, Limits(sessionMinutes = 20, budgetScope = null))))
+    }
+
+    @Test
+    fun `configs with no budget scope keep their pre-budgetScope fingerprint`() {
+        val plain = Whitelist(listOf(entry("UCa")), emptySet())
+            .copy(limits = Limits(sessionMinutes = 30, weekdaySessions = 2, minVideoMinutes = 4))
+        assertEquals(
+            ConfigJson.fingerprint(plain),
+            ConfigJson.fingerprint(plain.copy(limits = plain.limits.copy(budgetScope = null)))
+        )
+        // A blank hashes as nothing too, or the fingerprint would disagree
+        // with the JSON, which reads a blank back as null.
+        assertEquals(
+            ConfigJson.fingerprint(plain),
+            ConfigJson.fingerprint(plain.copy(limits = plain.limits.copy(budgetScope = "")))
+        )
+        val kid = withKid(plain, Limits(sessionMinutes = 20))
+        assertEquals(
+            ConfigJson.fingerprint(kid),
+            ConfigJson.fingerprint(withKid(plain, Limits(sessionMinutes = 20, budgetScope = null)))
+        )
+    }
+
+    @Test
+    fun `setting a budget scope moves the fingerprint so the reconcile delivers it`() {
+        val plain = Whitelist(listOf(entry("UCa")), emptySet())
+            .copy(limits = Limits(sessionMinutes = 30, weekdaySessions = 2))
+        assertNotEquals(
+            ConfigJson.fingerprint(plain),
+            ConfigJson.fingerprint(plain.copy(limits = plain.limits.copy(budgetScope = BUDGET_SCOPE_SHARED)))
+        )
+        // Two scopes are two hashes, unknown ones included: the offline
+        // reconcile only re-pushes on a mismatch, so a change this build
+        // cannot interpret still has to reach the peer that can.
+        assertNotEquals(
+            ConfigJson.fingerprint(plain.copy(limits = plain.limits.copy(budgetScope = BUDGET_SCOPE_SHARED))),
+            ConfigJson.fingerprint(plain.copy(limits = plain.limits.copy(budgetScope = "school-nights")))
+        )
+        // And a kid's own scope moves that kid's part of the hash — windows or
+        // no windows, because limitsCanon takes two routes and both carry it.
+        val kid = withKid(plain, Limits(sessionMinutes = 20))
+        assertNotEquals(
+            ConfigJson.fingerprint(kid),
+            ConfigJson.fingerprint(withKid(plain, Limits(sessionMinutes = 20, budgetScope = BUDGET_SCOPE_SHARED)))
+        )
+        val windowed = Limits(
+            sessionMinutes = 20,
+            windows = listOf(TimeWindow(id = "w", label = "Bedtime", startMin = 1200, endMin = 420))
+        )
+        assertNotEquals(
+            ConfigJson.fingerprint(withKid(plain, windowed)),
+            ConfigJson.fingerprint(withKid(plain, windowed.copy(budgetScope = BUDGET_SCOPE_SHARED)))
         )
     }
 }

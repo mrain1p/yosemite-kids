@@ -153,6 +153,13 @@ data class TimeWindow(
     val allowListening: Boolean = false
 )
 
+/**
+ * [Limits.budgetScope] when a kid's daily minutes count once across every
+ * screen they watch on. Any other value — including one a future build
+ * invents — means today's behaviour: each device counts its own.
+ */
+const val BUDGET_SCOPE_SHARED = "shared"
+
 /** Screen-time rules, set in the parent settings UI. All optional. */
 data class Limits(
     val sessionMinutes: Int? = null,
@@ -186,8 +193,44 @@ data class Limits(
      * rules above so pausing never disturbs the configured schedule. Overrides
      * grants while active; the parent's Resume clears it.
      */
-    val pausedUntilMillis: Long? = null
-)
+    val pausedUntilMillis: Long? = null,
+    /**
+     * Whose tally the daily budget is measured against. null — and any value
+     * this build does not know — means this device's own minutes, which is how
+     * every family works today. [BUDGET_SCOPE_SHARED] means one budget across
+     * every device the kid watches on.
+     *
+     * A string rather than a boolean so a future third mode (school nights,
+     * say) falls back to today's behaviour on builds that predate it, rather
+     * than needing a second field to express "neither of the two I know". That
+     * only holds while every reader asks [sharesBudget] instead of testing for
+     * a value it recognises; guard 49 is what keeps it that way.
+     *
+     * Per kid through `Profile.limits`, family-wide through `Whitelist.limits`,
+     * resolved by [Whitelist.limitsFor] like every other rule. It is a limits
+     * *scalar*, so it rides `kid.rules|<id>` and `lim.rules` and introduces no
+     * merge unit. Null serialises to nothing and hashes as nothing, so a
+     * family that never touches it keeps its bytes and its fingerprint across
+     * the build that added it.
+     *
+     * What it does **not** do: nothing here is per-device, and nothing here is
+     * a counter. The minutes themselves live in their own document with their
+     * own join, deliberately unnamed in this file (guard 44) — this is only
+     * the parent's assertion about how to read them.
+     */
+    val budgetScope: String? = null
+) {
+    /**
+     * The one question anything enforcing may ask of [budgetScope].
+     *
+     * Unknown values fall back to per-device here, in one place, rather than
+     * at each of the sites that reads them — a second `== "shared"` written
+     * somewhere else is how a build that meets a scope it does not know starts
+     * answering two different ways in the same house. Guard 49 holds every
+     * other file to this predicate.
+     */
+    val sharesBudget: Boolean get() = budgetScope == BUDGET_SCOPE_SHARED
+}
 
 /**
  * Parent-configured AI screening of new videos. Lives in the synced config so

@@ -94,17 +94,23 @@ class HubUsage(
         val owned = UsageLedger.ownedBy(incoming, id)
         return synchronized(lock) {
             val merged = bound(UsageLedger.merge(load(), owned))
-            file.parentFile?.mkdirs()
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(UsageLedger.toJson(merged))
-            if (!tmp.renameTo(file)) {
-                file.delete()
-                if (!tmp.renameTo(file)) {
-                    file.writeText(UsageLedger.toJson(merged))
-                    tmp.delete()
-                }
-            }
+            write(merged)
             UsageLedger.count(merged)
+        }
+    }
+
+    /** Caller holds [lock]. */
+    private fun write(ledger: UsageLedger.Ledger) {
+        file.parentFile?.mkdirs()
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        tmp.writeText(UsageLedger.toJson(ledger))
+        if (!tmp.renameTo(file)) {
+            // Some filesystems refuse to rename over an existing file.
+            file.delete()
+            if (!tmp.renameTo(file)) {
+                file.writeText(UsageLedger.toJson(ledger))
+                tmp.delete()
+            }
         }
     }
 
@@ -113,6 +119,47 @@ class HubUsage(
         // "" is never a device id, so nothing is excluded: the hub is not a
         // watcher and holds no cell of its own to double-count.
         UsageLedger.othersToday(load(), "", kidId, day)
+    }
+
+    /**
+     * Minutes [deviceId] reports for [kidId] on [day] — the default,
+     * per-device budget read, for one viewer held against the limit alone.
+     *
+     * **Except for a browser, where "alone" means every browser.** A device's
+     * cell is keyed by a pairing token it cannot mint for itself; a page's is
+     * keyed by whatever session it presents, and a kid whose budget is
+     * per-device could otherwise arrive with a fresh identity each morning and
+     * start at zero every time. Held as a group, rotating one buys nothing —
+     * and it costs an honest family nothing either, because a household with
+     * one browser has one cell.
+     */
+    fun minutesFor(kidId: String?, day: String, deviceId: String): Int = synchronized(lock) {
+        val ledger = load()
+        if (UsageLedger.isWeb(deviceId)) {
+            UsageLedger.minutesToday(ledger, kidId, day) { UsageLedger.isWeb(it) }
+        } else {
+            UsageLedger.minutesToday(ledger, kidId, day) { it == deviceId }
+        }
+    }
+
+    /**
+     * Raise a browser's own cell to [minutes], under the family's day.
+     *
+     * False when this hub cannot name a day, which is the same refusal
+     * `HubPolicy` makes for the same reason: without `Whitelist.homeZone` the
+     * box does not know what day it is here, and a minute filed under the
+     * wrong one is a minute that comes back as a second budget (guard 27).
+     *
+     * The caller is [HubWatchMeter], which measures the time itself. Nothing
+     * here takes a number from a page.
+     */
+    fun recordWeb(kidId: String?, deviceId: String, minutes: Int): Boolean {
+        if (!UsageLedger.isWeb(deviceId)) return false
+        val day = today() ?: return false
+        synchronized(lock) {
+            write(bound(UsageLedger.withOwn(load(), kidId, day, deviceId, minutes, now())))
+        }
+        return true
     }
 
     private fun load(): UsageLedger.Ledger =

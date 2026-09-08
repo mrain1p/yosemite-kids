@@ -335,6 +335,16 @@ object ConfigMerge {
         if (o.minVideoMinutes != n.minVideoMinutes) {
             out += Change(code, "changes the shortest video $whose list will show")
         }
+        // Read through sharesBudget rather than against the constant, so a
+        // scope neither side knows is described as what it will actually do
+        // here — count on each device — instead of by its name (guard 49).
+        if (o.budgetScope != n.budgetScope) {
+            out += Change(
+                code,
+                if (n.sharesBudget) "counts $whose daily minutes across every device"
+                else "counts $whose daily minutes on each device separately"
+            )
+        }
         if (o.windows != n.windows) {
             out += Change(
                 if (who == null) "lim.windows" else "kid.windows",
@@ -1308,7 +1318,12 @@ object ConfigMerge {
     }
 
     private val LIMITS_RULES_KEYS = listOf(
-        "session", "weekdaySessions", "weekendSessions", "breakMinutes", "minVideoMinutes"
+        "session", "weekdaySessions", "weekendSessions", "breakMinutes", "minVideoMinutes",
+        // A scalar like the rest, so it rides `kid.rules|<id>` and `lim.rules`
+        // and needs no unit of its own. Owned rather than passed through: two
+        // parents who set it differently must resolve by the rules stamp like
+        // every other rule, not by whichever document happened to carry them.
+        "budgetScope"
     )
 
     /** Every key `limitsUnion` decides for itself; anything else is passed through. */

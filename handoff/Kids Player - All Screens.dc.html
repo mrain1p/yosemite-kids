@@ -1,0 +1,2059 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Kids Player — all screens</title><script src="support.js"></script></head>
+<body><x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>
+body{margin:0;background:#0b0b0c;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:#e0533d;text-decoration:none}a:hover{color:#f2f0ec}
+.dv-turn{padding:38px 44px 32px;border-bottom:1px solid #26262a;scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 18px}
+.dv-tid{font:700 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#e0533d;color:#0b0b0c;border-radius:4px;text-decoration:none}
+.dv-tname{font:700 13px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec}
+.dv-opts{display:flex;flex-wrap:nowrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{display:inline-block;vertical-align:middle;margin-right:5px;font:700 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1d;color:#f2f0ec;border-radius:5px;text-decoration:none}
+.dv-olabel{display:block;width:380px;font:400 11.5px/1.5 ui-sans-serif,system-ui,sans-serif;color:#9a9aa2}
+.dv-card{background:#0b0b0c;border:1px solid #2b2b31;border-radius:8px;overflow:hidden}
+.ph{overflow:hidden;position:relative;background:#1a1a1d}
+.ph:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.055) 0 8px,transparent 8px 16px)}
+.sa{scrollbar-width:none}
+.sa::-webkit-scrollbar{width:0;height:0}
+.tap{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tap:active{opacity:.72}
+</style></helmet>
+
+<section class="dv-turn" id="proto">
+<div class="dv-thd"><a class="dv-tid" href="#proto">P</a><span class="dv-tname">Interactive prototypes — click through them</span></div>
+<div style="font:400 12.5px/1.55 ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;max-width:760px;margin:-6px 0 18px;text-wrap:pretty">Each frame keeps its own state, so the same journey can run in all three. Tap tabs, channels, thumbnails, filters, the search field, hearts and the avatar; back arrows unwind. Videos you play pick up the watched tag everywhere.</div>
+<div class="dv-opts">
+  <div class="dv-opt">
+    <div class="dv-olabel"><span class="dv-oid">phone</span><strong style="color:#f2f0ec">Standard</strong> — rails plus the full-width feed</div>
+    <dc-import name="Kids Player Prototype" variant="standard" chrome="false" hint-size="380px,830px"></dc-import>
+  </div>
+  <div class="dv-opt">
+    <div class="dv-olabel"><span class="dv-oid">phone</span><strong style="color:#f2f0ec">Simple</strong> — what the youngest kids see: bigger tiles, titles only</div>
+    <dc-import name="Kids Player Prototype" variant="simple" chrome="false" hint-size="380px,830px"></dc-import>
+  </div>
+  <div class="dv-opt">
+    <div class="dv-olabel"><span class="dv-oid">tv</span><strong style="color:#f2f0ec">TV / tablet</strong> — 1280×720, left nav rail, three-across grids</div>
+    <dc-import name="Kids Player Prototype" variant="tv" chrome="false" hint-size="1280px,750px"></dc-import>
+  </div>
+</div>
+</section>
+
+<section class="dv-turn" id="phone" style="padding-bottom:8px;border-bottom:none">
+<div class="dv-thd"><a class="dv-tid" href="#phone">PHONE</a><span class="dv-tname">Phone screens — standard and simple, side by side</span></div>
+</section>
+
+<section class="dv-turn" id="tb">
+<div class="dv-thd"><a class="dv-tid" href="#tb">B</a><span class="dv-tname">B series — the locked-in direction</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="b1">
+<div class="dv-olabel"><a class="dv-oid" href="#b1">b1</a>Home — parent-set hero (swipe 2–3 channels), Channels, Keep watching, More like what you watch, then the For you feed with one merged action + filter row.</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:50</span><span>WI-FI · 32%</span></div>
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 14px">
+    <div style="width:34px;height:34px;border-radius:10px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:11px solid #0b0b0c;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></div>
+    <div style="flex:1;min-width:0;font-size:19px;font-weight:700;color:#f2f0ec">Hi, {{ kidName }}</div>
+    <div style="flex:none;display:flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:9px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:7px;height:7px;border-radius:4px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">20m</span>
+    </div>
+    <div style="width:44px;height:44px;border-radius:22px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none">
+      <div style="width:15px;height:15px;border:2px solid #f2f0ec;border-radius:50%;position:relative"><div style="position:absolute;right:-6px;bottom:-4px;width:8px;height:2px;background:#f2f0ec;border-radius:1px;transform:rotate(45deg)"></div></div>
+    </div>
+    <div style="width:40px;height:40px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;flex:none"></div>
+  </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:0 0 16px">
+
+    <div class="sa" style="display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:0 16px 8px">
+      <sc-for list="{{ hero }}" as="h" hint-placeholder-count="3">
+        <div style="flex:none;width:348px;border-radius:18px;overflow:hidden;scroll-snap-align:center;border:1px solid #2b2b31">
+          <div class="ph" style="height:176px;background:{{ h.tint }}">
+            <div style="position:absolute;left:12px;top:12px;padding:4px 8px;border-radius:6px;background:rgba(11,11,12,.6);font:700 9px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#f2f0ec;z-index:2">Pinned</div>
+            <div style="position:absolute;left:0;right:0;bottom:0;padding:14px 15px;background:linear-gradient(transparent,rgba(11,11,12,.9));z-index:2;display:flex;align-items:flex-end;gap:12px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:19px;font-weight:700;color:#f2f0ec;text-wrap:pretty">{{ h.name }}</div>
+                <div style="font:700 9.5px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:rgba(242,240,236,.65);margin-top:5px">{{ h.meta }}</div>
+              </div>
+              <div style="width:52px;height:52px;border-radius:26px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:16px solid #0b0b0c;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:7px;padding:0 16px 14px">
+      <sc-for list="{{ hero }}" as="h" hint-placeholder-count="3">
+        <div style="width:7px;height:7px;border-radius:4px;background:{{ h.dot }}"></div>
+      </sc-for>
+    </div>
+
+    <div style="height:1px;background:#26262a;margin:0 16px 10px"></div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 16px 8px">
+      <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Channels</div>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:12px;overflow-x:auto;padding:0 16px 12px">
+      <sc-for list="{{ channels }}" as="c" hint-placeholder-count="5">
+        <div style="flex:none;width:74px;display:flex;flex-direction:column;align-items:center;gap:7px">
+          <div class="ph" style="width:68px;height:68px;border-radius:20px;background:{{ c.tint }}"></div>
+          <div style="font-size:11.5px;line-height:1.25;color:#9a9aa2;text-align:center">{{ c.name }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="height:1px;background:#26262a;margin:0 16px 10px"></div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 16px 8px">
+      <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Keep watching</div>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:13px;overflow-x:auto;padding:0 16px 12px">
+      <sc-for list="{{ keepWatching }}" as="k" hint-placeholder-count="2">
+        <div style="flex:none;width:176px">
+          <div class="ph" style="height:99px;border-radius:14px;background:{{ k.tint }}">
+            <div style="position:absolute;right:8px;bottom:12px;background:rgba(0,0,0,.82);border-radius:5px;padding:3px 6px;font:700 11px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ k.left }}</div>
+            <div style="position:absolute;left:0;right:0;bottom:0;height:5px;background:rgba(0,0,0,.5);z-index:2"><div style="height:5px;background:#e0533d;width:{{ k.pct }}"></div></div>
+          </div>
+          <div style="font-size:13.5px;font-weight:600;line-height:1.35;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ k.title }}</div>
+          <div style="font-size:12px;color:#9a9aa2;margin-top:3px">{{ k.channel }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="height:1px;background:#26262a;margin:0 16px 10px"></div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 16px 8px">
+      <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">More like what you watch</div>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:13px;overflow-x:auto;padding:0 16px 12px">
+      <sc-for list="{{ upNext }}" as="u" hint-placeholder-count="3">
+        <div style="flex:none;width:176px;opacity:{{ u.fade }}">
+          <div class="ph" style="height:99px;border-radius:14px;background:{{ u.tint }}">
+            <div style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.78);border-radius:5px;padding:3px 6px;font:700 11px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ u.dur }}</div>
+          </div>
+          <div style="font-size:13.5px;font-weight:600;line-height:1.35;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ u.title }}</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:3px">
+            <span style="font-size:12px;color:#9a9aa2">SciShow Kids</span>
+            <span style="font:700 9px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#47b877">{{ u.state }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="height:1px;background:#26262a;margin:0 16px 10px"></div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 16px 10px">
+      <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Videos</div>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;align-items:center;gap:9px;overflow-x:auto;padding:0 16px 16px">
+      <div style="flex:none;min-height:40px;padding:0 16px;border-radius:20px;background:#e0533d;display:flex;align-items:center;gap:8px;font:700 13.5px ui-sans-serif,system-ui,sans-serif;color:#0b0b0c"><span style="font-size:14px">&#127873;</span>Surprise me</div>
+      <div style="flex:none;width:1px;height:24px;background:#2b2b31;margin:0 2px"></div>
+        <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:600 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="color:#9a9aa2;font-size:13px">&#10022;</span>New</div>
+        <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:600 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="color:#9a9aa2;font-size:13px">&#9829;</span>Favorites</div>
+        <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:600 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="color:#9a9aa2;font-size:13px">&#9650;</span>Most watched</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:18px;padding:0 16px">
+      <sc-for list="{{ forYou }}" as="v" hint-placeholder-count="4">
+        <div style="opacity:{{ v.fade }}">
+          <div class="ph" style="height:196px;border-radius:14px;background:{{ v.tint }}">
+            <div style="position:absolute;right:9px;bottom:9px;background:rgba(0,0,0,.82);border-radius:5px;padding:3px 7px;font:700 11.5px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ v.dur }}</div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:flex-start;margin-top:11px">
+            <div class="ph" style="width:40px;height:40px;border-radius:12px;background:{{ v.tint }};flex:none"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15.5px;font-weight:600;line-height:1.35;color:#f2f0ec;text-wrap:pretty">{{ v.title }}</div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                <span style="font-size:12.5px;color:#9a9aa2">{{ v.channel }} · today</span>
+                <span style="font:700 9px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#47b877">{{ v.state }}</span>
+              </div>
+            </div>
+            <div style="color:#9a9aa2;font-size:17px;line-height:1;flex:none">&#8942;</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="display:flex;border-top:1px solid #26262a;background:#111113;padding:9px 8px 14px">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0;border-radius:12px;background:#1a1a1d"><div style="width:19px;height:19px;border:2px solid #e0533d;border-radius:3px"></div><div style="font:700 10.5px ui-sans-serif,system-ui,sans-serif;color:#e0533d">Home</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:50%"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Channels</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border-radius:50%;background:#2b2b31"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">You</div></div>
+  </div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section class="dv-turn" id="tb2">
+<div class="dv-thd"><a class="dv-tid" href="#tb2">B2</a><span class="dv-tname">Channel list — the pair a parent setting switches between</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="b2a">
+<div class="dv-olabel"><a class="dv-oid" href="#b2a">b2a</a>Detailed rows — tap left to open the channel, tap the thumbnail to play its newest video. Surprise me card on top.</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:50</span><span>WI-FI · 32%</span></div>
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 14px">
+    <div style="width:34px;height:34px;border-radius:10px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:11px solid #0b0b0c;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></div>
+    <div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:700;color:#f2f0ec">Channels</div><div style="font:700 9px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78;margin-top:3px">50 · 6 with new videos</div></div>
+    <div style="flex:none;display:flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:9px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:7px;height:7px;border-radius:4px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">20m</span>
+    </div>
+    <div style="width:44px;height:44px;border-radius:22px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none">
+      <div style="width:15px;height:15px;border:2px solid #f2f0ec;border-radius:50%;position:relative"><div style="position:absolute;right:-6px;bottom:-4px;width:8px;height:2px;background:#f2f0ec;border-radius:1px;transform:rotate(45deg)"></div></div>
+    </div>
+    <div style="width:40px;height:40px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;flex:none"></div>
+  </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:4px 16px 16px">
+    <div style="display:flex;align-items:baseline;gap:9px;padding:0 16px 10px">
+    <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Pinned</div>
+    <span style="font:700 13px/1.2 ui-monospace,Menlo,monospace;color:#6f6f78">3</span>
+    </div>
+    <div class="sa" style="display:flex;gap:11px;overflow-x:auto;padding:0 16px 14px">
+    <sc-for list="{{ hero }}" as="p" hint-placeholder-count="3">
+      <div style="flex:none;width:108px">
+        <div class="ph" style="height:72px;border-radius:14px;background:{{ p.tint }}">
+          <div style="position:absolute;left:7px;top:7px;padding:2px 6px;border-radius:5px;background:rgba(11,11,12,.7);font:700 8px ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:#f2f0ec;z-index:2">{{ p.kind }}</div>
+        </div>
+        <div style="font-size:12.5px;font-weight:600;line-height:1.3;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ p.name }}</div>
+      </div>
+    </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;margin:0 16px 14px;padding:14px;border-radius:20px;background:#111113;border:1px solid #2b2b31">
+    <div style="width:52px;height:52px;border-radius:16px;background:#e0533d;display:flex;align-items:center;justify-content:center;font-size:26px;color:#0b0b0c;flex:none">&#127873;</div>
+    <div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:700;color:#f2f0ec">Surprise me</div><div style="font-size:12.5px;color:#9a9aa2;margin-top:2px">play something from any channel</div></div>
+    </div>
+    <div class="sa" style="position:sticky;top:0;z-index:4;background:#0b0b0c;display:flex;align-items:center;gap:9px;overflow-x:auto;padding:6px 16px 14px;margin:0 -16px">
+    <div style="flex:none;min-height:40px;padding:0 16px;border-radius:20px;background:#1a1a1d;border:1px solid #e0533d;display:flex;align-items:center;gap:8px;font:700 13.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="font-size:13px">&#9776;</span>A–Z</div>
+    <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:600 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="color:#9a9aa2;font-size:13px">&#10022;</span>New</div>
+    <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:600 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="color:#9a9aa2;font-size:13px">&#9829;</span>Favorites</div>
+    <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:600 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="color:#9a9aa2;font-size:13px">&#9650;</span>Most watched</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <sc-for list="{{ channelRows }}" as="c" hint-placeholder-count="6">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #26262a">
+          <div class="ph" style="width:68px;height:68px;border-radius:20px;background:{{ c.tint }};flex:none"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:15.5px;font-weight:700;color:#f2f0ec">{{ c.name }}</span><span style="font:700 9px ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:#e0533d">{{ c.badge }}</span></div>
+            <div style="font-size:12.5px;line-height:1.35;color:#9a9aa2;margin-top:4px;text-wrap:pretty">{{ c.last }}</div>
+            <div style="font-size:11.5px;color:#6f6f78;margin-top:3px">{{ c.when }}</div>
+          </div>
+          <div class="ph" style="width:44px;height:44px;border-radius:22px;background:{{ c.ltint }};flex:none">
+            <div style="position:absolute;inset:0;background:rgba(11,11,12,.42);display:flex;align-items:center;justify-content:center;z-index:2"><div style="width:0;height:0;border-left:11px solid #f2f0ec;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:2px"></div></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    </div>
+    <div style="display:flex;border-top:1px solid #26262a;background:#111113;padding:9px 8px 14px">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:3px"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Home</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0;border-radius:12px;background:#1a1a1d"><div style="width:19px;height:19px;border:2px solid #e0533d;border-radius:50%"></div><div style="font:700 10.5px ui-sans-serif,system-ui,sans-serif;color:#e0533d">Channels</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border-radius:50%;background:#2b2b31"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">You</div></div>
+    </div>
+</div>
+</div>
+
+<div class="dv-opt" id="b2c">
+<div class="dv-olabel"><a class="dv-oid" href="#b2c">b2c</a>Simple view — same Surprise me card as <a class="dv-oid" href="#b2a">b2a</a>, then two huge tiles per row, name only, coral dot for new. A parent setting switches between this and b2a.</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:50</span><span>WI-FI · 32%</span></div>
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 14px">
+    <div style="width:34px;height:34px;border-radius:10px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:11px solid #0b0b0c;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></div>
+    <div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:700;color:#f2f0ec">Channels</div><div style="font:700 9px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78;margin-top:3px">50 · 6 with new videos</div></div>
+    <div style="flex:none;display:flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:9px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:7px;height:7px;border-radius:4px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">20m</span>
+    </div>
+    <div style="width:44px;height:44px;border-radius:22px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none">
+      <div style="width:15px;height:15px;border:2px solid #f2f0ec;border-radius:50%;position:relative"><div style="position:absolute;right:-6px;bottom:-4px;width:8px;height:2px;background:#f2f0ec;border-radius:1px;transform:rotate(45deg)"></div></div>
+    </div>
+    <div style="width:40px;height:40px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;flex:none"></div>
+    </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:2px 16px 16px">
+    <div style="display:flex;align-items:baseline;gap:9px;padding:0 0 10px">
+    <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Pinned</div>
+    <span style="font:700 13px/1.2 ui-monospace,Menlo,monospace;color:#6f6f78">3</span>
+    </div>
+    <div class="sa" style="display:flex;gap:11px;overflow-x:auto;padding:0 0 14px">
+    <sc-for list="{{ hero }}" as="p" hint-placeholder-count="3">
+      <div style="flex:none;width:108px">
+        <div class="ph" style="height:72px;border-radius:14px;background:{{ p.tint }}">
+          <div style="position:absolute;left:7px;top:7px;padding:2px 6px;border-radius:5px;background:rgba(11,11,12,.7);font:700 8px ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:#f2f0ec;z-index:2">{{ p.kind }}</div>
+        </div>
+        <div style="font-size:12.5px;font-weight:600;line-height:1.3;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ p.name }}</div>
+      </div>
+    </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;margin:0 0 14px;padding:14px;border-radius:20px;background:#111113;border:1px solid #2b2b31">
+    <div style="width:52px;height:52px;border-radius:16px;background:#e0533d;display:flex;align-items:center;justify-content:center;font-size:26px;color:#0b0b0c;flex:none">&#127873;</div>
+    <div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:700;color:#f2f0ec">Surprise me</div><div style="font-size:12.5px;color:#9a9aa2;margin-top:2px">play something from any channel</div></div>
+    </div>
+    <div class="sa" style="position:sticky;top:0;z-index:4;background:#0b0b0c;display:flex;align-items:center;gap:9px;overflow-x:auto;padding:6px 16px 14px;margin:0 -16px">
+    <div style="flex:none;min-height:40px;padding:0 16px;border-radius:20px;background:#1a1a1d;border:1px solid #e0533d;display:flex;align-items:center;gap:8px;font:700 13.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="font-size:13px">&#9776;</span>A–Z</div>
+    <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:600 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="color:#9a9aa2;font-size:13px">&#10022;</span>New</div>
+    <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:600 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="color:#9a9aa2;font-size:13px">&#9829;</span>Favorites</div>
+    <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:600 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="color:#9a9aa2;font-size:13px">&#9650;</span>Most watched</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <sc-for list="{{ channelRows }}" as="c" hint-placeholder-count="6">
+        <div>
+          <div class="ph" style="height:158px;border-radius:22px;background:{{ c.tint }}">
+            <div style="position:absolute;right:10px;top:10px;width:16px;height:16px;border-radius:8px;background:#e0533d;border:2px solid #0b0b0c;z-index:2;opacity:{{ c.dotOpacity }}"></div>
+          </div>
+          <div style="font-size:15px;font-weight:700;line-height:1.3;color:#f2f0ec;margin-top:9px;text-wrap:pretty">{{ c.name }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="display:flex;border-top:1px solid #26262a;background:#111113;padding:9px 8px 14px">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:3px"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Home</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0;border-radius:12px;background:#1a1a1d"><div style="width:19px;height:19px;border:2px solid #e0533d;border-radius:50%"></div><div style="font:700 10.5px ui-sans-serif,system-ui,sans-serif;color:#e0533d">Channels</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border-radius:50%;background:#2b2b31"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">You</div></div>
+  </div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section class="dv-turn" id="tb3b">
+<div class="dv-thd"><a class="dv-tid" href="#tb3b">B3</a><span class="dv-tname">Channel page</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="b3c">
+<div class="dv-olabel"><a class="dv-oid" href="#b3c">b3c</a>Channel page — a Watched button beside the Videos header swaps the list to history.</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:50</span><span>WI-FI · 32%</span></div>
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 14px">
+    <div style="width:34px;height:34px;border-radius:10px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:11px solid #0b0b0c;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></div>
+    <div style="flex:1;min-width:0;font-size:19px;font-weight:700;color:#f2f0ec">Channels</div>
+    <div style="flex:none;display:flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:9px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:7px;height:7px;border-radius:4px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">20m</span>
+    </div>
+    <div style="width:44px;height:44px;border-radius:22px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none">
+      <div style="width:15px;height:15px;border:2px solid #f2f0ec;border-radius:50%;position:relative"><div style="position:absolute;right:-6px;bottom:-4px;width:8px;height:2px;background:#f2f0ec;border-radius:1px;transform:rotate(45deg)"></div></div>
+    </div>
+    <div style="width:40px;height:40px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;flex:none"></div>
+  </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:0 16px 16px">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+      <div class="ph" style="width:76px;height:76px;border-radius:22px;background:#7b4fa8;flex:none"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:21px;font-weight:700;line-height:1.25;color:#f2f0ec;text-wrap:pretty">SciShow Kids</div>
+        <div style="font:700 9.5px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78;margin-top:5px">30+ videos · 29 playlists</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:26px">
+      <div style="flex:1;min-width:0;height:88px;border-radius:16px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+        <div style="width:34px;height:34px;border-radius:11px;background:#1a1a1d;display:flex;align-items:center;justify-content:center"><div style="width:0;height:0;border-left:13px solid #e0533d;border-top:8px solid transparent;border-bottom:8px solid transparent;margin-left:3px"></div></div>
+        <div style="font:700 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Newest</div>
+      </div>
+      <div style="flex:1;min-width:0;height:88px;border-radius:16px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+        <div style="width:34px;height:34px;border-radius:11px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;color:#e0533d">&#9829;</div>
+        <div style="font:700 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Favorite</div>
+      </div>
+      <div style="flex:1;min-width:0;height:88px;border-radius:16px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+        <div style="width:34px;height:34px;border-radius:11px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1">&#127873;</div>
+        <div style="font:700 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Surprise</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px">
+      <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+        <span style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">New videos</span>
+        <span style="font:700 13px/1.2 ui-monospace,Menlo,monospace;color:#6f6f78">3</span>
+      </div>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d;white-space:nowrap;flex:none">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:12px;overflow-x:auto;margin-bottom:28px;padding-bottom:2px">
+      <sc-for list="{{ channelNew }}" as="v" hint-placeholder-count="3">
+        <div style="flex:none;width:206px">
+          <div class="ph" style="height:116px;border-radius:14px;background:{{ v.tint }}">
+            <div style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.82);border-radius:5px;padding:3px 6px;font:700 11px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ v.dur }}</div>
+          </div>
+          <div style="font-size:14.5px;font-weight:600;line-height:1.35;color:#f2f0ec;margin-top:9px;text-wrap:pretty">{{ v.title }}</div>
+          <div style="font-size:12px;color:#9a9aa2;margin-top:3px">{{ v.when }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">
+      <span style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Playlists</span>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d;white-space:nowrap;flex:none">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:11px;overflow-x:auto;padding-bottom:2px">
+      <sc-for list="{{ playlists }}" as="p" hint-placeholder-count="4">
+        <div style="flex:none;width:108px">
+          <div class="ph" style="height:72px;border-radius:14px;background:{{ p.tint }}">
+            <div style="position:absolute;right:0;top:0;bottom:0;width:22px;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font:700 10px ui-monospace,Menlo,monospace;color:#fff;z-index:2">&#9776;</div>
+          </div>
+          <div style="font-size:12.5px;font-weight:600;line-height:1.3;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ p.name }}</div>
+          <div style="font:700 9px ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:#6f6f78;margin-top:4px">{{ p.n }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="height:1px;background:#26262a;margin:26px 0 16px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+        <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Videos</div>
+        <span style="font:700 13px/1.2 ui-monospace,Menlo,monospace;color:#6f6f78">30+</span>
+      </div>
+      <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:700 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Watched<span style="color:#6f6f78">2</span></div>
+    </div>
+    <div class="sa" style="display:flex;gap:8px;overflow-x:auto;margin-bottom:16px">
+      <div style="flex:none;min-height:40px;padding:0 15px;border-radius:11px;background:#1a1a1d;border:1px solid #e0533d;display:flex;align-items:center;font:700 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Newest</div>
+      <div style="flex:none;min-height:40px;padding:0 15px;border-radius:11px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">A–Z</div>
+      <div style="flex:none;min-height:40px;padding:0 15px;border-radius:11px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Unwatched</div>
+      <div style="flex:none;min-height:40px;padding:0 15px;border-radius:11px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Random</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <sc-for list="{{ upNext }}" as="u" hint-placeholder-count="4">
+        <div style="opacity:{{ u.fade }}">
+          <div class="ph" style="height:196px;border-radius:14px;background:{{ u.tint }}">
+            <div style="position:absolute;right:9px;bottom:9px;background:rgba(0,0,0,.82);border-radius:5px;padding:3px 7px;font:700 11.5px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ u.dur }}</div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:flex-start;margin-top:11px">
+            <div class="ph" style="width:40px;height:40px;border-radius:12px;background:#7b4fa8;flex:none"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15.5px;font-weight:600;line-height:1.35;color:#f2f0ec;text-wrap:pretty">{{ u.title }}</div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                <span style="font-size:12.5px;color:#9a9aa2">SciShow Kids · {{ u.when }}</span>
+                <span style="font:700 9px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#47b877">{{ u.state }}</span>
+              </div>
+            </div>
+            <div style="color:#9a9aa2;font-size:17px;line-height:1;flex:none">&#8942;</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="display:flex;border-top:1px solid #26262a;background:#111113;padding:9px 8px 14px">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:3px"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Home</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0;border-radius:12px;background:#1a1a1d"><div style="width:19px;height:19px;border:2px solid #e0533d;border-radius:50%"></div><div style="font:700 10.5px ui-sans-serif,system-ui,sans-serif;color:#e0533d">Channels</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border-radius:50%;background:#2b2b31"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">You</div></div>
+  </div>
+</div>
+</div>
+
+
+
+<div class="dv-opt" id="b3d">
+<div class="dv-olabel"><a class="dv-oid" href="#b3d">b3d</a>Simple view of <a class="dv-oid" href="#b3c">b3c</a> — Newest / Random icon buttons, playlists as two-up tiles, no rails. Pairs with <a class="dv-oid" href="#b2c">b2c</a>.</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:50</span><span>WI-FI · 32%</span></div>
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 14px">
+    <div style="width:34px;height:34px;border-radius:10px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:11px solid #0b0b0c;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></div>
+    <div style="flex:1;min-width:0;font-size:19px;font-weight:700;color:#f2f0ec">Channels</div>
+    <div style="flex:none;display:flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:9px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:7px;height:7px;border-radius:4px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">20m</span>
+    </div>
+    <div style="width:44px;height:44px;border-radius:22px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none">
+      <div style="width:15px;height:15px;border:2px solid #f2f0ec;border-radius:50%;position:relative"><div style="position:absolute;right:-6px;bottom:-4px;width:8px;height:2px;background:#f2f0ec;border-radius:1px;transform:rotate(45deg)"></div></div>
+    </div>
+    <div style="width:40px;height:40px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;flex:none"></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;padding:0 16px 16px">
+    <div class="ph" style="width:76px;height:76px;border-radius:22px;background:#7b4fa8;flex:none"></div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:21px;font-weight:700;line-height:1.25;color:#f2f0ec;text-wrap:pretty">SciShow Kids</div>
+      <div style="font:700 9.5px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78;margin-top:5px">30+ videos · 29 playlists</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;margin:0 16px 14px">
+    <div style="flex:1;min-width:0;height:88px;border-radius:16px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+      <div style="width:38px;height:38px;border-radius:12px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:14px solid #e0533d;border-top:9px solid transparent;border-bottom:9px solid transparent;margin-left:3px"></div></div>
+      <div style="font:700 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Newest</div>
+    </div>
+    <div style="flex:1;min-width:0;height:88px;border-radius:16px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+      <div style="width:38px;height:38px;border-radius:12px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;flex:none;font-size:18px;line-height:1;color:#e0533d">&#9829;</div>
+      <div style="font:700 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Favorite</div>
+    </div>
+    <div style="flex:1;min-width:0;height:88px;border-radius:16px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+      <div style="width:38px;height:38px;border-radius:12px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;flex:none;font-size:19px;line-height:1">&#127873;</div>
+      <div style="font:700 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Surprise</div>
+    </div>
+  </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:2px 16px 16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Playlists</div>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d;white-space:nowrap">See all</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px">
+      <sc-for list="{{ playlists }}" as="p" hint-placeholder-count="4">
+        <div>
+          <div class="ph" style="height:98px;border-radius:18px;background:{{ p.tint }}">
+            <div style="position:absolute;right:0;top:0;bottom:0;width:30px;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font:700 13px ui-monospace,Menlo,monospace;color:#fff;z-index:2">&#9776;</div>
+          </div>
+          <div style="font-size:14px;font-weight:700;line-height:1.3;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ p.name }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="height:1px;background:#26262a;margin:0 0 14px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+        <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Videos</div>
+        <span style="font:700 13px/1.2 ui-monospace,Menlo,monospace;color:#6f6f78">30+</span>
+      </div>
+      <div style="flex:none;min-height:40px;padding:0 14px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:700 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Watched<span style="color:#6f6f78">2</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <sc-for list="{{ upNext }}" as="u" hint-placeholder-count="4">
+        <div style="opacity:{{ u.fade }}">
+          <div class="ph" style="height:196px;border-radius:14px;background:{{ u.tint }}">
+            <div style="position:absolute;right:9px;bottom:9px;background:rgba(0,0,0,.82);border-radius:5px;padding:3px 7px;font:700 11.5px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ u.dur }}</div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:flex-start;margin-top:11px">
+            <div class="ph" style="width:40px;height:40px;border-radius:12px;background:#7b4fa8;flex:none"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15.5px;font-weight:600;line-height:1.35;color:#f2f0ec;text-wrap:pretty">{{ u.title }}</div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                <span style="font-size:12.5px;color:#9a9aa2">SciShow Kids</span>
+                <span style="font:700 9px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#47b877">{{ u.state }}</span>
+              </div>
+            </div>
+            <div style="color:#9a9aa2;font-size:17px;line-height:1;flex:none">&#8942;</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="display:flex;border-top:1px solid #26262a;background:#111113;padding:9px 8px 14px">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:3px"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Home</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0;border-radius:12px;background:#1a1a1d"><div style="width:19px;height:19px;border:2px solid #e0533d;border-radius:50%"></div><div style="font:700 10.5px ui-sans-serif,system-ui,sans-serif;color:#e0533d">Channels</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border-radius:50%;background:#2b2b31"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">You</div></div>
+  </div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section class="dv-turn" id="tb4b">
+<div class="dv-thd"><a class="dv-tid" href="#tb4b">B4</a><span class="dv-tname">You page</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="b4c">
+<div class="dv-olabel"><a class="dv-oid" href="#b4c">b4c</a>Detailed rails plus the features — time left and blocked windows at the top, a downloading card in Downloads, and Make a request at the bottom.</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:50</span><span>WI-FI · 32%</span></div>
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 14px">
+    <div style="width:34px;height:34px;border-radius:10px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:11px solid #0b0b0c;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></div>
+    <div style="flex:1;min-width:0;font-size:19px;font-weight:700;color:#f2f0ec">{{ kidName }}</div>
+    <div style="flex:none;display:flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:9px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:7px;height:7px;border-radius:4px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">20m</span>
+    </div>
+    <div style="width:44px;height:44px;border-radius:22px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none">
+      <div style="width:15px;height:15px;border:2px solid #f2f0ec;border-radius:50%;position:relative"><div style="position:absolute;right:-6px;bottom:-4px;width:8px;height:2px;background:#f2f0ec;border-radius:1px;transform:rotate(45deg)"></div></div>
+    </div>
+    <div style="width:40px;height:40px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;flex:none"></div>
+  </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:2px 0 16px">
+    <div style="margin:0 16px 16px;padding:13px 14px;border-radius:16px;background:#111113;border:1px solid #2b2b31">
+      <div style="">
+        <div style="font:700 9.5px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78;margin-bottom:9px">Videos are off · 40 of 60 minutes used</div>
+        <div class="sa" style="display:flex;gap:8px;overflow-x:auto">
+          <sc-for list="{{ blockedTimes }}" as="b" hint-placeholder-count="3">
+            <div style="flex:none;display:flex;align-items:center;gap:7px;min-height:34px;padding:0 12px;border-radius:17px;background:#1a1a1d;border:1px solid #2b2b31">
+              <span style="width:7px;height:7px;border-radius:4px;background:{{ b.dot }};flex:none"></span>
+              <span style="font:600 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap">{{ b.label }}</span>
+              <span style="font:700 11px ui-monospace,Menlo,monospace;color:#9a9aa2;white-space:nowrap">{{ b.range }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px 10px">
+      <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+        <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Favorites</div>
+        <span style="font:700 13px/1.2 ui-monospace,Menlo,monospace;color:#6f6f78">4</span>
+      </div>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d;white-space:nowrap;flex:none">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:13px;overflow-x:auto;padding:0 16px 14px">
+      <sc-for list="{{ favorites }}" as="v" hint-placeholder-count="3">
+        <div style="flex:none;width:176px">
+          <div class="ph" style="height:99px;border-radius:14px;background:{{ v.tint }}">
+            <div style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.82);border-radius:5px;padding:3px 6px;font:700 11px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ v.dur }}</div>
+          </div>
+          <div style="font-size:13.5px;font-weight:600;line-height:1.35;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ v.title }}</div>
+          <div style="font-size:11.5px;color:#9a9aa2;margin-top:3px">{{ v.channel }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="height:1px;background:#26262a;margin:0 16px 14px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px 10px">
+      <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+        <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Watch later</div>
+        <span style="font:700 13px/1.2 ui-monospace,Menlo,monospace;color:#6f6f78">3</span>
+      </div>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d;white-space:nowrap;flex:none">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:13px;overflow-x:auto;padding:0 16px 14px">
+      <sc-for list="{{ upNextQueue }}" as="k" hint-placeholder-count="3">
+        <div style="flex:none;width:176px">
+          <div class="ph" style="height:99px;border-radius:14px;background:{{ k.tint }}">
+            <div style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.82);border-radius:5px;padding:3px 6px;font:700 11px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ k.dur }}</div>
+          </div>
+          <div style="font-size:13.5px;font-weight:600;line-height:1.35;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ k.title }}</div>
+          <div style="font-size:11.5px;color:#9a9aa2;margin-top:3px">{{ k.channel }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="height:1px;background:#26262a;margin:0 16px 14px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px 10px">
+      <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+        <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">History</div>
+        <span style="font:700 13px/1.2 ui-monospace,Menlo,monospace;color:#6f6f78">9</span>
+      </div>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d;white-space:nowrap;flex:none">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:13px;overflow-x:auto;padding:0 16px 14px">
+      <sc-for list="{{ history }}" as="h" hint-placeholder-count="3">
+        <div style="flex:none;width:176px">
+          <div class="ph" style="height:99px;border-radius:14px;background:{{ h.tint }}">
+            <div style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.82);border-radius:5px;padding:3px 6px;font:700 11px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ h.dur }}</div>
+          </div>
+          <div style="font-size:13.5px;font-weight:600;line-height:1.35;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ h.title }}</div>
+          <div style="font-size:11.5px;color:#6f6f78;margin-top:3px">{{ h.channel }} · {{ h.when }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="height:1px;background:#26262a;margin:0 16px 14px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px 10px">
+      <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+        <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Downloads</div>
+        <span style="font:700 13px/1.2 ui-monospace,Menlo,monospace;color:#6f6f78">3</span>
+      </div>
+      <span style="font:700 14.5px/1.2 ui-sans-serif,system-ui,sans-serif;color:#e0533d;white-space:nowrap;flex:none">Manage</span>
+    </div>
+    <div class="sa" style="display:flex;gap:13px;overflow-x:auto;padding:0 16px 14px">
+      <div style="flex:none;width:176px">
+        <div class="ph" style="height:99px;border-radius:14px;background:#5a3f6b">
+          <div style="position:absolute;inset:0;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center;z-index:2"><div style="font:700 15px ui-monospace,Menlo,monospace;color:#f2f0ec">42%</div></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;height:5px;background:rgba(0,0,0,.5);z-index:3"><div style="width:42%;height:5px;background:#47b877"></div></div>
+        </div>
+        <div style="font-size:13.5px;font-weight:600;line-height:1.35;color:#f2f0ec;margin-top:8px;text-wrap:pretty">The Biggest Volcano Ever is in Space!</div>
+        <div style="font:700 10px ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:#47b877;margin-top:4px">downloading</div>
+      </div>
+      <sc-for list="{{ downloads }}" as="d" hint-placeholder-count="3">
+        <div style="flex:none;width:176px">
+          <div class="ph" style="height:99px;border-radius:14px;background:{{ d.tint }}">
+            <div style="position:absolute;left:8px;bottom:8px;width:24px;height:24px;border-radius:12px;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:2"><span style="color:#47b877;font-size:13px;line-height:1">&#8595;</span></div>
+            <div style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.82);border-radius:5px;padding:3px 6px;font:700 11px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ d.dur }}</div>
+          </div>
+          <div style="font-size:13.5px;font-weight:600;line-height:1.35;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ d.title }}</div>
+          <div style="font-size:11.5px;color:#9a9aa2;margin-top:3px">{{ d.channel }} · {{ d.size }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="height:1px;background:#26262a;margin:0 16px 14px"></div>
+    <div style="display:flex;align-items:center;gap:11px;margin:0 16px 12px;padding:12px 13px;border-radius:14px;background:rgba(74,139,141,.12);border:1px solid #4a8b8d">
+      <span style="width:9px;height:9px;border-radius:5px;background:#4a8b8d;flex:none"></span>
+      <div style="flex:1;font-size:12.5px;line-height:1.45;color:#f2f0ec">You're offline. <span style="color:#9a9aa2">3 downloads still play.</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:11px;margin:0 16px 12px;padding:12px 13px;border-radius:14px;background:#111113;border:1px solid #2b2b31">
+      <span style="width:9px;height:9px;border-radius:5px;background:#d8a13a;flex:none"></span>
+      <div style="flex:1;font-size:12.5px;line-height:1.45;color:#f2f0ec">Your ask for <strong>Bluey</strong> is waiting</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:13px;margin:0 16px;padding:14px;border-radius:18px;background:#111113;border:1px dashed #2b2b31">
+      <div style="width:46px;height:46px;border-radius:15px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:22px;color:#e0533d;flex:none">+</div>
+      <div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:700;color:#f2f0ec">Make a request</div><div style="font-size:12px;color:#9a9aa2;margin-top:2px">a grown-up will see your ask</div></div>
+    </div>
+  </div>
+  <div style="display:flex;border-top:1px solid #26262a;background:#111113;padding:9px 8px 14px">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:3px"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Home</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:50%"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Channels</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0;border-radius:12px;background:#1a1a1d"><div style="width:19px;height:19px;border-radius:50%;background:#e0533d"></div><div style="font:700 10.5px ui-sans-serif,system-ui,sans-serif;color:#e0533d">You</div></div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="b4d">
+<div class="dv-olabel"><a class="dv-oid" href="#b4d">b4d</a>Simple card view with the same features — time left and blocked windows as a card, downloading count on Downloads, Make a request as the fifth card.</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:50</span><span>WI-FI · 32%</span></div>
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 14px">
+    <div style="width:34px;height:34px;border-radius:10px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:11px solid #0b0b0c;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></div>
+    <div style="flex:1;min-width:0;font-size:19px;font-weight:700;color:#f2f0ec">{{ kidName }}</div>
+    <div style="flex:none;display:flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:9px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:7px;height:7px;border-radius:4px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">20m</span>
+    </div>
+    <div style="width:44px;height:44px;border-radius:22px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none">
+      <div style="width:15px;height:15px;border:2px solid #f2f0ec;border-radius:50%;position:relative"><div style="position:absolute;right:-6px;bottom:-4px;width:8px;height:2px;background:#f2f0ec;border-radius:1px;transform:rotate(45deg)"></div></div>
+    </div>
+    <div style="width:40px;height:40px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;flex:none"></div>
+  </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:2px 16px 16px">
+    <div style="padding:13px 14px;border-radius:16px;background:#111113;border:1px solid #2b2b31;margin-bottom:14px">
+      <div style="margin-top:11px;">
+        <div style="font:700 9.5px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78;margin-bottom:9px">Videos are off · 40 of 60 minutes used</div>
+        <div class="sa" style="display:flex;gap:8px;overflow-x:auto">
+          <sc-for list="{{ blockedTimes }}" as="b" hint-placeholder-count="3">
+            <div style="flex:none;display:flex;align-items:center;gap:7px;min-height:34px;padding:0 12px;border-radius:17px;background:#1a1a1d;border:1px solid #2b2b31">
+              <span style="width:7px;height:7px;border-radius:4px;background:{{ b.dot }};flex:none"></span>
+              <span style="font:600 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap">{{ b.label }}</span>
+              <span style="font:700 11px ui-monospace,Menlo,monospace;color:#9a9aa2;white-space:nowrap">{{ b.range }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div style="border-radius:22px;overflow:hidden;background:#111113;border:1px solid #2b2b31">
+        <div class="ph" style="height:112px;background:#b8452f">
+          <div style="position:absolute;left:12px;top:12px;width:38px;height:38px;border-radius:12px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center;z-index:2;font-size:18px;color:#f2f0ec">&#9829;</div>
+        </div>
+        <div style="padding:13px 14px 15px"><div style="font-size:17px;font-weight:700;color:#f2f0ec">Favorites</div><div style="font:700 10px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#6f6f78;margin-top:5px">4 videos</div></div>
+      </div>
+      <div style="border-radius:22px;overflow:hidden;background:#111113;border:1px solid #2b2b31">
+        <div class="ph" style="height:112px;background:#4a8b8d"><div style="position:absolute;left:12px;top:12px;width:38px;height:38px;border-radius:12px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center;z-index:2;font-size:18px;color:#f2f0ec">&#9776;</div></div>
+        <div style="padding:13px 14px 15px"><div style="font-size:17px;font-weight:700;color:#f2f0ec">Watch later</div><div style="font:700 10px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#6f6f78;margin-top:5px">3 videos</div></div>
+      </div>
+      <div style="border-radius:22px;overflow:hidden;background:#111113;border:1px solid #2b2b31">
+        <div class="ph" style="height:112px;background:#3f7a8c"><div style="position:absolute;left:12px;top:12px;width:38px;height:38px;border-radius:12px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center;z-index:2;font-size:18px;color:#f2f0ec">&#8635;</div></div>
+        <div style="padding:13px 14px 15px"><div style="font-size:17px;font-weight:700;color:#f2f0ec">History</div><div style="font:700 10px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#6f6f78;margin-top:5px">9 videos</div></div>
+      </div>
+      <div style="border-radius:22px;overflow:hidden;background:#111113;border:1px solid #2b2b31">
+        <div class="ph" style="height:112px;background:#2f7a56">
+          <div style="position:absolute;left:12px;top:12px;width:38px;height:38px;border-radius:12px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center;z-index:2;font-size:18px;color:#f2f0ec">&#8595;</div>
+          <div style="position:absolute;left:0;right:0;bottom:0;height:5px;background:rgba(0,0,0,.5);z-index:2"><div style="width:42%;height:5px;background:#47b877"></div></div>
+        </div>
+        <div style="padding:13px 14px 15px"><div style="font-size:17px;font-weight:700;color:#f2f0ec">Downloads</div><div style="font:700 10px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#47b877;margin-top:5px">3 saved · 1 downloading</div></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:13px;margin-top:14px;padding:14px;border-radius:18px;background:#111113;border:1px dashed #2b2b31">
+      <div style="width:46px;height:46px;border-radius:15px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:22px;color:#e0533d;flex:none">+</div>
+      <div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:700;color:#f2f0ec">Make a request</div><div style="font-size:12px;color:#9a9aa2;margin-top:2px">a grown-up will see your ask</div></div>
+    </div>
+  </div>
+  <div style="display:flex;border-top:1px solid #26262a;background:#111113;padding:9px 8px 14px">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:3px"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Home</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:50%"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Channels</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0;border-radius:12px;background:#1a1a1d"><div style="width:19px;height:19px;border-radius:50%;background:#e0533d"></div><div style="font:700 10.5px ui-sans-serif,system-ui,sans-serif;color:#e0533d">You</div></div>
+  </div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section class="dv-turn" id="tb5">
+<div class="dv-thd"><a class="dv-tid" href="#tb5">B5</a><span class="dv-tname">Search</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="b5">
+<div class="dv-olabel"><a class="dv-oid" href="#b5">b5</a>Search — field with a clear button, then results with sort and filter chips (All / Newest / Unwatched / Most watched).</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:50</span><span>WI-FI · 32%</span></div>
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 14px">
+    <div style="width:34px;height:34px;border-radius:10px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:11px solid #0b0b0c;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></div>
+    <div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:700;color:#f2f0ec">Search</div></div>
+    <div style="flex:none;display:flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:9px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:7px;height:7px;border-radius:4px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">20m</span>
+    </div>
+    <div style="width:40px;height:40px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;flex:none"></div>
+  </div>
+  <div style="padding:0 16px 10px">
+    <div style="min-height:56px;border-radius:16px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:11px;padding:0 8px 0 14px">
+      <div style="width:17px;height:17px;border:2px solid #9a9aa2;border-radius:50%;position:relative;flex:none"><div style="position:absolute;right:-6px;bottom:-4px;width:9px;height:2px;background:#9a9aa2;border-radius:1px;transform:rotate(45deg)"></div></div>
+      <div style="flex:1;min-width:0;font-size:15.5px;font-weight:600;color:#f2f0ec">salamander</div>
+      <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex:none">
+        <div style="width:26px;height:26px;border-radius:13px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;color:#9a9aa2">&#215;</div>
+      </div>
+      <div style="width:44px;height:44px;border-radius:14px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none">
+        <div style="width:18px;height:24px;position:relative">
+          <div style="position:absolute;left:5px;top:0;width:8px;height:13px;border-radius:4px;background:#e0533d"></div>
+          <div style="position:absolute;left:1px;top:10px;width:16px;height:8px;border:2px solid #e0533d;border-top:0;border-radius:0 0 9px 9px"></div>
+          <div style="position:absolute;left:8px;top:18px;width:2px;height:4px;background:#e0533d"></div>
+          <div style="position:absolute;left:4px;top:21px;width:10px;height:2px;border-radius:1px;background:#e0533d"></div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12.5px;color:#6f6f78;margin-top:9px;padding:0 4px">Only your channels — nothing else can turn up.</div>
+  </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:0 16px 16px">
+    <div class="sa" style="display:flex;gap:8px;overflow-x:auto;margin:0 -16px 18px;padding:0 16px">
+      <div style="flex:none;min-height:40px;padding:0 15px;border-radius:11px;background:#f2f0ec;display:flex;align-items:center;font:700 12.5px ui-sans-serif,system-ui,sans-serif;color:#0b0b0c">All 14</div>
+      <div style="flex:none;min-height:40px;padding:0 15px;border-radius:11px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;font:600 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Newest</div>
+      <div style="flex:none;min-height:40px;padding:0 15px;border-radius:11px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;font:600 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Unwatched</div>
+      <div style="flex:none;min-height:40px;padding:0 15px;border-radius:11px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;font:600 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Most watched</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <sc-for list="{{ upNext }}" as="u" hint-placeholder-count="3">
+        <div style="opacity:{{ u.fade }}">
+          <div class="ph" style="height:196px;border-radius:14px;background:{{ u.tint }}">
+            <div style="position:absolute;right:9px;bottom:9px;background:rgba(0,0,0,.82);border-radius:5px;padding:3px 7px;font:700 11.5px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ u.dur }}</div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:flex-start;margin-top:11px">
+            <div class="ph" style="width:40px;height:40px;border-radius:12px;background:#7b4fa8;flex:none"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15.5px;font-weight:600;line-height:1.35;color:#f2f0ec;text-wrap:pretty">{{ u.title }}</div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                <span style="font-size:12.5px;color:#9a9aa2">SciShow Kids · {{ u.when }}</span>
+                <span style="font:700 9px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#47b877">{{ u.state }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+      <div style="font:600 13px ui-sans-serif,system-ui,sans-serif;color:#6f6f78">You looked for</div>
+      <span style="font:700 13px ui-sans-serif,system-ui,sans-serif;color:#e0533d;white-space:nowrap;flex:none">Clear all</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:9px">
+      <div style="min-height:44px;padding:0 8px 0 15px;border-radius:22px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:6px;font-size:14px;color:#f2f0ec">salamander<span style="width:28px;height:28px;border-radius:14px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;color:#9a9aa2;flex:none">&#215;</span></div>
+      <div style="min-height:44px;padding:0 8px 0 15px;border-radius:22px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:6px;font-size:14px;color:#f2f0ec">volcanoes<span style="width:28px;height:28px;border-radius:14px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;color:#9a9aa2;flex:none">&#215;</span></div>
+      <div style="min-height:44px;padding:0 8px 0 15px;border-radius:22px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:6px;font-size:14px;color:#f2f0ec">rounding<span style="width:28px;height:28px;border-radius:14px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;color:#9a9aa2;flex:none">&#215;</span></div>
+    </div>
+  </div>
+  <div style="display:flex;border-top:1px solid #26262a;background:#111113;padding:9px 8px 14px">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0;border-radius:12px;background:#1a1a1d"><div style="width:19px;height:19px;border:2px solid #e0533d;border-radius:3px"></div><div style="font:700 10.5px ui-sans-serif,system-ui,sans-serif;color:#e0533d">Home</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:50%"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Channels</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border-radius:50%;background:#9a9aa2"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">You</div></div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="b5b">
+<div class="dv-olabel"><a class="dv-oid" href="#b5b">b5b</a>Simple view of <a class="dv-oid" href="#b5">b5</a> — mic first, two-up result tiles, one sort control. Pairs with <a class="dv-oid" href="#b2c">b2c</a>, <a class="dv-oid" href="#b3d">b3d</a> and <a class="dv-oid" href="#b4d">b4d</a>.</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:50</span><span>WI-FI · 32%</span></div>
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 14px">
+    <div style="width:34px;height:34px;border-radius:10px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:11px solid #0b0b0c;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></div>
+    <div style="flex:1;min-width:0;font-size:19px;font-weight:700;color:#f2f0ec">Search</div>
+    <div style="flex:none;display:flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:9px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:7px;height:7px;border-radius:4px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">20m</span>
+    </div>
+    <div style="width:40px;height:40px;border-radius:20px;background:#1a1a1d;border:1px solid #2b2b31;flex:none"></div>
+  </div>
+  <div style="padding:0 16px 14px">
+    <div style="display:flex;align-items:center;gap:14px;padding:14px;border-radius:20px;background:#111113;border:1px solid #2b2b31">
+      <div style="width:56px;height:56px;border-radius:18px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;flex:none">
+        <div style="width:22px;height:30px;position:relative">
+          <div style="position:absolute;left:6px;top:0;width:10px;height:16px;border-radius:5px;background:#e0533d"></div>
+          <div style="position:absolute;left:1px;top:12px;width:20px;height:10px;border:2px solid #e0533d;border-top:0;border-radius:0 0 11px 11px"></div>
+          <div style="position:absolute;left:10px;top:22px;width:2px;height:5px;background:#e0533d"></div>
+          <div style="position:absolute;left:5px;top:26px;width:12px;height:2px;border-radius:1px;background:#e0533d"></div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:700;color:#f2f0ec">Say it out loud</div><div style="font-size:12.5px;color:#9a9aa2;margin-top:2px">or tap to type</div></div>
+    </div>
+  </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:0 16px 16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px">
+      <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+        <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">salamander</div>
+        <span style="font:700 13px/1.2 ui-monospace,Menlo,monospace;color:#6f6f78">14</span>
+      </div>
+      <div style="flex:none;min-height:38px;padding:0 13px;border-radius:19px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;gap:7px;font:600 12.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Newest <span style="color:#f2f0ec">&#9662;</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <sc-for list="{{ upNext }}" as="u" hint-placeholder-count="6">
+        <div style="opacity:{{ u.fade }}">
+          <div class="ph" style="height:98px;border-radius:18px;background:{{ u.tint }}">
+            <div style="position:absolute;right:7px;bottom:7px;background:rgba(0,0,0,.82);border-radius:5px;padding:2px 6px;font:700 10.5px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ u.dur }}</div>
+          </div>
+          <div style="font-size:14px;font-weight:700;line-height:1.3;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ u.title }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="height:1px;background:#26262a;margin:18px 0 14px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+      <div style="font:600 13px ui-sans-serif,system-ui,sans-serif;color:#6f6f78">You looked for</div>
+      <span style="font:700 13px ui-sans-serif,system-ui,sans-serif;color:#e0533d;white-space:nowrap;flex:none">Clear all</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:9px">
+      <div style="min-height:44px;padding:0 8px 0 15px;border-radius:22px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:6px;font-size:14px;color:#f2f0ec">volcanoes<span style="width:28px;height:28px;border-radius:14px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;color:#9a9aa2;flex:none">&#215;</span></div>
+      <div style="min-height:44px;padding:0 8px 0 15px;border-radius:22px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:6px;font-size:14px;color:#f2f0ec">rounding<span style="width:28px;height:28px;border-radius:14px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;color:#9a9aa2;flex:none">&#215;</span></div>
+    </div>
+  </div>
+  <div style="display:flex;border-top:1px solid #26262a;background:#111113;padding:9px 8px 14px">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0;border-radius:12px;background:#1a1a1d"><div style="width:19px;height:19px;border:2px solid #e0533d;border-radius:3px"></div><div style="font:700 10.5px ui-sans-serif,system-ui,sans-serif;color:#e0533d">Home</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border:2px solid #9a9aa2;border-radius:50%"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">Channels</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0"><div style="width:19px;height:19px;border-radius:50%;background:#2b2b31"></div><div style="font:600 10.5px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2">You</div></div>
+  </div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section class="dv-turn" id="tb6">
+<div class="dv-thd"><a class="dv-tid" href="#tb6">B6</a><span class="dv-tname">Player</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="b6">
+<div class="dv-olabel"><a class="dv-oid" href="#b6">b6</a>Player — Autoplay on the overlay, a ring countdown popup when time is nearly up, actions Favorite / Watch later / Queue, list switches More from channel / Similar.</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:51</span><span>WI-FI · 31%</span></div>
+  <div class="ph" style="height:214px;background:#7b4fa8;flex:none">
+    <div style="position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;justify-content:space-between;padding:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="width:42px;height:42px;border-radius:21px;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center;color:#f2f0ec;font-size:19px">&#8592;</div>
+        <div style="display:flex;gap:9px">
+          <div style="height:32px;padding:0 10px;border-radius:9px;background:rgba(11,11,12,.6);border:1px solid rgba(224,83,61,.85);display:flex;align-items:center;gap:6px;font:700 10px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Autoplay<span style="font:700 8.5px ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#e0533d">ON</span></div>
+          <div style="height:32px;padding:0 10px;border-radius:9px;background:rgba(11,11,12,.6);display:flex;align-items:center;font:700 10px ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#f2f0ec">CC</div>
+          <div style="width:32px;height:32px;border-radius:9px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center"><div style="width:14px;height:11px;border:2px solid #f2f0ec;border-radius:2px"></div></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:26px">
+        <div style="width:52px;height:52px;border-radius:26px;background:rgba(11,11,12,.5);display:flex;align-items:center;justify-content:center;color:#f2f0ec;font-size:20px">&#9198;</div>
+        <div style="width:78px;height:78px;border-radius:39px;background:#f2f0ec;display:flex;align-items:center;justify-content:center;gap:7px"><div style="width:8px;height:32px;background:#0b0b0c;border-radius:2px"></div><div style="width:8px;height:32px;background:#0b0b0c;border-radius:2px"></div></div>
+        <div style="width:52px;height:52px;border-radius:26px;background:rgba(11,11,12,.5);display:flex;align-items:center;justify-content:center;color:#f2f0ec;font-size:20px">&#9197;</div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+          <div style="font:700 13px ui-monospace,Menlo,monospace;color:#f2f0ec">0:42 / 5:34</div>
+          <div style="width:36px;height:36px;border-radius:10px;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center"><div style="width:15px;height:15px;border:2px solid #f2f0ec"></div></div>
+        </div>
+        <div style="height:8px;border-radius:4px;background:rgba(255,255,255,.28);position:relative"><div style="position:absolute;left:0;top:0;height:8px;width:13%;border-radius:4px;background:#e0533d"></div><div style="position:absolute;left:13%;top:-6px;width:20px;height:20px;border-radius:10px;background:#e0533d;border:3px solid #0b0b0c;margin-left:-10px"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:16px">
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 13px 9px 9px;border-radius:15px;background:rgba(216,161,58,.1);border:1px solid #d8a13a;margin-bottom:14px">
+      <div style="width:36px;height:36px;border-radius:18px;background:conic-gradient(#d8a13a 0 76%, rgba(255,255,255,.14) 76% 100%);display:flex;align-items:center;justify-content:center;flex:none">
+        <div style="width:27px;height:27px;border-radius:14px;background:#0b0b0c;display:flex;align-items:center;justify-content:center;font:700 10.5px ui-monospace,Menlo,monospace;color:#d8a13a">5m</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font:700 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">5 minutes left today</div>
+        <div style="font-size:11px;color:#9a9aa2;margin-top:2px">This video ends in 4:52</div>
+      </div>
+    </div>
+    <div style="font-size:19px;font-weight:700;line-height:1.32;color:#f2f0ec;text-wrap:pretty">Think Like an Engineer: Let's Design a Solution!</div>
+    <div style="display:flex;align-items:center;gap:11px;margin:15px 0 16px;padding:10px;border-radius:14px;background:#111113;border:1px solid #2b2b31">
+      <div class="ph" style="width:44px;height:44px;border-radius:13px;background:#7b4fa8;flex:none"></div>
+      <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;color:#f2f0ec">SciShow Kids</div><div style="font:700 9.5px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#6f6f78;margin-top:3px">30+ videos · 29 playlists</div></div>
+      <div style="color:#9a9aa2;font-size:19px">&#8250;</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:18px">
+      <div style="flex:1;min-width:0;min-height:46px;border-radius:12px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:7px">
+        <span style="font-size:13px;line-height:1;color:#e0533d">&#9829;</span>
+        <span style="font:600 12px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap">Favorite</span>
+      </div>
+      <div style="flex:1;min-width:0;min-height:46px;border-radius:12px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:7px">
+        <span style="width:12px;height:12px;border:2px solid #4a8b8d;border-radius:4px;display:inline-block"></span>
+        <span style="font:600 12px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap">Watch later</span>
+      </div>
+      <div style="flex:1;min-width:0;min-height:46px;border-radius:12px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:7px">
+        <span style="font-size:13px;line-height:1;color:#d8a13a">&#9776;</span>
+        <span style="font:600 12px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap">Queue</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:22px;border-bottom:1px solid #26262a;margin-bottom:16px">
+      <div style="padding:0 0 10px;border-bottom:2px solid #f2f0ec;font:700 13.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">More from channel</div>
+      <div style="padding:0 0 10px;font:600 13.5px ui-sans-serif,system-ui,sans-serif;color:#6f6f78">Similar</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <sc-for list="{{ upNext }}" as="u" hint-placeholder-count="4">
+        <div style="display:flex;gap:12px;align-items:center">
+          <div class="ph" style="width:118px;height:68px;border-radius:11px;background:{{ u.tint }};flex:none">
+            <div style="position:absolute;right:5px;bottom:5px;background:rgba(0,0,0,.78);border-radius:4px;padding:2px 5px;font:700 10px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ u.dur }}</div>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:600;line-height:1.35;color:#f2f0ec;text-wrap:pretty">{{ u.title }}</div>
+            <div style="font-size:11.5px;color:#6f6f78;margin-top:4px">{{ u.when }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</div>
+<div class="dv-opt" id="b6b">
+<div class="dv-olabel"><a class="dv-oid" href="#b6b">b6b</a>Simple view of <a class="dv-oid" href="#b6">b6</a> — rewind / pause / forward, CC, channel card, two-up next tiles, no tabs or scrubber handle. Pairs with <a class="dv-oid" href="#b2c">b2c</a>, <a class="dv-oid" href="#b3d">b3d</a>, <a class="dv-oid" href="#b4d">b4d</a> and <a class="dv-oid" href="#b5b">b5b</a>.</div>
+<div class="dv-card" style="width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:51</span><span>WI-FI · 31%</span></div>
+  <div class="ph" style="height:214px;background:#7b4fa8;flex:none">
+    <div style="position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;justify-content:space-between;padding:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="width:44px;height:44px;border-radius:22px;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center;color:#f2f0ec;font-size:19px">&#8592;</div>
+        <div style="display:flex;align-items:center;gap:8px">
+        <div style="height:32px;padding:0 10px;border-radius:9px;background:rgba(11,11,12,.6);border:1px solid rgba(224,83,61,.85);display:flex;align-items:center;gap:6px;font:700 10px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Autoplay<span style="font:700 8.5px ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#e0533d">ON</span></div>
+          <div style="height:32px;padding:0 10px;border-radius:9px;background:rgba(11,11,12,.6);display:flex;align-items:center;font:700 10px ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#f2f0ec">CC</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:22px">
+        <div style="width:56px;height:56px;border-radius:28px;background:rgba(11,11,12,.5);display:flex;align-items:center;justify-content:center;gap:2px">
+          <div style="width:3px;height:16px;border-radius:2px;background:#f2f0ec"></div>
+          <div style="width:0;height:0;border-right:13px solid #f2f0ec;border-top:9px solid transparent;border-bottom:9px solid transparent"></div>
+        </div>
+        <div style="width:88px;height:88px;border-radius:44px;background:rgba(242,240,236,.94);display:flex;align-items:center;justify-content:center;gap:8px"><div style="width:10px;height:34px;background:#0b0b0c;border-radius:3px"></div><div style="width:10px;height:34px;background:#0b0b0c;border-radius:3px"></div></div>
+        <div style="width:56px;height:56px;border-radius:28px;background:rgba(11,11,12,.5);display:flex;align-items:center;justify-content:center;gap:2px">
+          <div style="width:0;height:0;border-left:13px solid #f2f0ec;border-top:9px solid transparent;border-bottom:9px solid transparent"></div>
+          <div style="width:3px;height:16px;border-radius:2px;background:#f2f0ec"></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font:700 12px ui-monospace,Menlo,monospace;color:#f2f0ec">0:42</div>
+        <div style="flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.28)"><div style="width:13%;height:6px;border-radius:3px;background:#e0533d"></div></div>
+        <div style="font:700 12px ui-monospace,Menlo,monospace;color:#9a9aa2">5:34</div>
+      </div>
+    </div>
+  </div>
+  <div class="sa" style="flex:1;overflow-y:auto;padding:16px">
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 13px 9px 9px;border-radius:15px;background:rgba(216,161,58,.1);border:1px solid #d8a13a;margin-bottom:14px">
+      <div style="width:36px;height:36px;border-radius:18px;background:conic-gradient(#d8a13a 0 76%, rgba(255,255,255,.14) 76% 100%);display:flex;align-items:center;justify-content:center;flex:none">
+        <div style="width:27px;height:27px;border-radius:14px;background:#0b0b0c;display:flex;align-items:center;justify-content:center;font:700 10.5px ui-monospace,Menlo,monospace;color:#d8a13a">5m</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font:700 12.5px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">5 minutes left today</div>
+        <div style="font-size:11px;color:#9a9aa2;margin-top:2px">This video ends in 4:52</div>
+      </div>
+    </div>
+    <div style="font-size:18px;font-weight:700;line-height:1.32;color:#f2f0ec;text-wrap:pretty">Think Like an Engineer: Let's Design a Solution!</div>
+    <div style="display:flex;align-items:center;gap:11px;margin:13px 0 16px;padding:10px;border-radius:14px;background:#111113;border:1px solid #2b2b31">
+      <div class="ph" style="width:44px;height:44px;border-radius:13px;background:#7b4fa8;flex:none"></div>
+      <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;color:#f2f0ec">SciShow Kids</div><div style="font:700 9.5px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#6f6f78;margin-top:3px">30+ videos · 29 playlists</div></div>
+      <div style="color:#9a9aa2;font-size:19px">&#8250;</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      <div style="flex:1;min-height:46px;border-radius:12px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;gap:7px"><span style="font-size:13px;line-height:1;color:#e0533d">&#9829;</span><span style="font:600 12px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Favorite</span></div>
+      <div style="flex:1;min-height:46px;border-radius:12px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;gap:7px"><span style="width:12px;height:12px;border:2px solid #4a8b8d;border-radius:4px;display:inline-block"></span><span style="font:600 12px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Watch later</span></div>
+    </div>
+    <div style="font:700 17px/1.2 ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;margin-bottom:12px">More from SciShow Kids</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <sc-for list="{{ upNext }}" as="u" hint-placeholder-count="4">
+        <div style="opacity:{{ u.fade }}">
+          <div class="ph" style="height:98px;border-radius:18px;background:{{ u.tint }}">
+            <div style="position:absolute;right:7px;bottom:7px;background:rgba(0,0,0,.82);border-radius:5px;padding:2px 6px;font:700 10.5px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ u.dur }}</div>
+          </div>
+          <div style="font-size:14px;font-weight:700;line-height:1.3;color:#f2f0ec;margin-top:8px;text-wrap:pretty">{{ u.title }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">B series is now complete: b1 home · b2 channels · b3 channel page · b4 you · b5 search · b6 player.</p>
+</section>
+
+<section class="dv-turn" id="tv" style="padding-bottom:8px;border-bottom:none">
+<div class="dv-thd"><a class="dv-tid" href="#tv">TV</a><span class="dv-tname">TV / tablet screens — 1280×720 (build at 1920×1080, ×1.5)</span></div>
+</section>
+
+<section class="dv-turn" id="tv1">
+<div class="dv-thd"><a class="dv-tid" href="#tv1">TV1</a><span class="dv-tname">Home — 1920×1080, remote-first</span></div>
+<div class="dv-opts">
+<div class="dv-opt" id="t1a">
+<div class="dv-olabel"><a class="dv-oid" href="#t1a">t1a</a>Same content as phone <span class="dv-oid">b1</span> — pinned hero (all three equal, focused card ringed), Channels, Keep watching, More like what you watch, Videos — re-cut for a remote: left nav rail, one focused card at a time, nothing below the fold that needs scrolling to understand.</div>
+<div class="dv-card" style="width:1280px;height:720px;display:flex;background:#0b0b0c">
+
+  <div style="width:196px;flex:none;background:#111113;border-right:1px solid #26262a;display:flex;flex-direction:column;padding:26px 0;gap:10px">
+    <div style="display:flex;align-items:center;gap:11px;padding:0 12px;margin-bottom:20px">
+      <div style="width:40px;height:40px;border-radius:12px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:15px solid #0b0b0c;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+      <div style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ kidName }}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;padding:0 12px">
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px;background:#1a1a1d;border:2px solid #e0533d">
+        <div style="width:20px;height:20px;border:2.5px solid #e0533d;border-radius:5px;flex:none"></div>
+        <div style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap">Home</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:50%;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Channels</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border-radius:50%;background:#9a9aa2;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">You</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:50%;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Search</div>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:9px;margin:0 12px;padding:11px 13px;border-radius:14px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:10px;height:10px;border-radius:5px;background:#d8a13a;flex:none"></span>
+      <div style="font:700 14px ui-monospace,Menlo,monospace;color:#f2f0ec">20m left</div>
+    </div>
+  </div>
+
+  <div class="sa" style="flex:1;min-width:0;display:block;overflow-y:auto">
+    <div style="display:flex;align-items:center;gap:16px;padding:24px 44px 18px">
+      <div style="flex:1;min-width:0;font:700 30px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Hi, {{ kidName }}</div>
+      <div style="width:46px;height:46px;border-radius:23px;background:#1a1a1d;border:2px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:22px;height:22px;border-radius:11px;background:#e0533d"></div></div>
+    </div>
+
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 24px">
+      <sc-for list="{{ tvHeroAll }}" as="h" hint-placeholder-count="3">
+        <div style="flex:none;width:344px;border-radius:18px;overflow:hidden;border:{{ h.border }};box-shadow:{{ h.glow }}">
+          <div class="ph" style="height:194px;background:{{ h.tint }}">
+            <div style="position:absolute;left:14px;top:14px;padding:5px 11px;border-radius:8px;background:rgba(11,11,12,.66);font:700 11.5px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#f2f0ec;z-index:2">Pinned</div>
+            <div style="position:absolute;left:0;right:0;bottom:0;padding:16px 18px;background:linear-gradient(transparent,rgba(11,11,12,.92));z-index:2;display:flex;align-items:flex-end;gap:14px">
+              <div style="flex:1;min-width:0">
+                <div style="font:700 21px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;text-wrap:pretty">{{ h.name }}</div>
+                <div style="font:700 11.5px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:rgba(242,240,236,.7);margin-top:7px">{{ h.meta }}</div>
+              </div>
+              <div style="width:52px;height:52px;border-radius:26px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:16px solid #0b0b0c;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="height:1px;background:#26262a;margin:0 44px 20px"></div>
+
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Channels</div>
+      <span style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 30px">
+      <sc-for list="{{ tvChannels }}" as="c" hint-placeholder-count="6">
+        <div style="flex:none;width:124px;display:flex;flex-direction:column;align-items:center;gap:11px">
+          <div class="ph" style="width:124px;height:124px;border-radius:30px;background:{{ c.tint }}"></div>
+          <div style="font:600 15px ui-sans-serif,system-ui,sans-serif;line-height:1.25;color:#9a9aa2;text-align:center">{{ c.name }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Keep watching</div>
+      <span style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 24px">
+      <sc-for list="{{ tvKeepWatching }}" as="k" hint-placeholder-count="4">
+        <div style="flex:none;width:250px">
+          <div class="ph" style="height:141px;border-radius:14px;background:{{ k.tint }}">
+            <div style="position:absolute;left:0;right:0;bottom:0;height:6px;background:rgba(0,0,0,.5);z-index:2"><div style="height:6px;background:#e0533d;width:{{ k.pct }}"></div></div>
+            <div style="position:absolute;right:10px;bottom:14px;background:rgba(0,0,0,.82);border-radius:6px;padding:3px 8px;font:700 13px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ k.left }}</div>
+          </div>
+          <div style="font:600 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ k.title }}</div>
+          <div style="font-size:14.5px;color:#9a9aa2;margin-top:5px">{{ k.channel }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="height:1px;background:#26262a;margin:0 44px 20px"></div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">More like what you watch</div>
+      <span style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 26px">
+      <sc-for list="{{ moreLike }}" as="u" hint-placeholder-count="4">
+        <div style="flex:none;width:250px">
+          <div class="ph" style="height:141px;border-radius:14px;background:{{ u.tint }}">
+            <div style="position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.82);border-radius:6px;padding:3px 8px;font:700 13px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ u.dur }}</div>
+          </div>
+          <div style="font:600 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ u.title }}</div>
+          <div style="font-size:14.5px;color:#9a9aa2;margin-top:5px">{{ u.channel }} · {{ u.when }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="height:1px;background:#26262a;margin:0 44px 20px"></div>
+    <div style="display:flex;align-items:center;gap:14px;padding:0 44px 18px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;flex:none">Videos</div>
+      <div style="flex:none;height:44px;padding:0 18px;border-radius:22px;background:#1a1a1d;border:2px solid #e0533d;display:flex;align-items:center;gap:10px;font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec"><span style="font-size:18px;line-height:1">&#127873;</span>Surprise me</div>
+      <div style="flex:none;width:1px;height:28px;background:#2b2b31"></div>
+      <div class="sa" style="flex:1;display:flex;gap:11px;overflow-x:auto">
+        <div style="flex:none;height:44px;padding:0 16px;border-radius:22px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">New</div>
+        <div style="flex:none;height:44px;padding:0 16px;border-radius:22px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Favorites</div>
+        <div style="flex:none;height:44px;padding:0 16px;border-radius:22px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Most watched</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:22px;padding:0 44px 34px">
+      <sc-for list="{{ homeFeed }}" as="v" hint-placeholder-count="3">
+        <div>
+          <div class="ph" style="height:190px;border-radius:16px;background:{{ v.tint }}">
+            <div style="position:absolute;right:11px;bottom:11px;background:rgba(0,0,0,.82);border-radius:6px;padding:4px 9px;font:700 14px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ v.dur }}</div>
+          </div>
+          <div style="font:600 18px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:12px;text-wrap:pretty">{{ v.title }}</div>
+          <div style="font-size:15px;color:#9a9aa2;margin-top:6px">{{ v.channel }} · {{ v.when }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</div>
+<</div>
+</section>
+
+<section class="dv-turn" id="tv2">
+<div class="dv-thd"><a class="dv-tid" href="#tv2">TV2</a><span class="dv-tname">Channels — grid built for a d-pad</span></div>
+<div class="dv-opts">
+<div class="dv-opt" id="t2a">
+<div class="dv-olabel"><a class="dv-oid" href="#t2a">t2a</a>Phone <span class="dv-oid">b2c</span>'s picture grid at TV scale — Pinned row on top, then four across, name only, coral dot for new, and one card focused. Surprise me sits in the grid as the first cell so it's reachable without leaving the row.</div>
+<div class="dv-card" style="width:1280px;height:720px;display:flex;background:#0b0b0c">
+  <div style="width:196px;flex:none;background:#111113;border-right:1px solid #26262a;display:flex;flex-direction:column;padding:26px 0;gap:10px">
+    <div style="display:flex;align-items:center;gap:11px;padding:0 12px;margin-bottom:20px">
+      <div style="width:40px;height:40px;border-radius:12px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:15px solid #0b0b0c;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+      <div style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ kidName }}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;padding:0 12px">
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:5px;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Home</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px;background:#1a1a1d;border:2px solid #e0533d">
+        <div style="width:20px;height:20px;border:2.5px solid #e0533d;border-radius:50%;flex:none"></div>
+        <div style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap">Channels</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border-radius:50%;background:#9a9aa2;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">You</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:50%;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Search</div>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:9px;margin:0 12px;padding:11px 13px;border-radius:14px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:10px;height:10px;border-radius:5px;background:#d8a13a;flex:none"></span>
+      <div style="font:700 14px ui-monospace,Menlo,monospace;color:#f2f0ec">20m left</div>
+    </div>
+  </div>
+
+  <div class="sa" style="flex:1;min-width:0;display:block;overflow-y:auto">
+    <div style="display:flex;align-items:center;gap:16px;padding:24px 44px 16px">
+      <div style="flex:1;min-width:0;display:flex;align-items:baseline;gap:14px">
+        <div style="font:700 30px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Channels</div>
+        <div style="font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78">50 · 6 with new videos</div>
+      </div>
+      <div style="width:46px;height:46px;border-radius:23px;background:#1a1a1d;border:2px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:22px;height:22px;border-radius:11px;background:#e0533d"></div></div>
+    </div>
+
+    <div class="sa" style="display:flex;gap:12px;overflow-x:auto;padding:0 44px 20px">
+      <div style="flex:none;height:44px;padding:0 18px;border-radius:14px;background:#1a1a1d;border:2px solid #e0533d;display:flex;align-items:center;font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">A–Z</div>
+      <div style="flex:none;height:44px;padding:0 18px;border-radius:14px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">New</div>
+      <div style="flex:none;height:44px;padding:0 18px;border-radius:14px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Favorites</div>
+      <div style="flex:none;height:44px;padding:0 18px;border-radius:14px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Most watched</div>
+    </div>
+
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Pinned</div>
+      <span style="font:700 16px ui-monospace,Menlo,monospace;color:#6f6f78">3</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 24px">
+      <sc-for list="{{ tvHeroAll }}" as="h" hint-placeholder-count="3">
+        <div style="flex:none;width:214px">
+          <div class="ph" style="height:120px;border-radius:16px;background:{{ h.tint }}">
+            <div style="position:absolute;left:10px;top:10px;padding:4px 9px;border-radius:7px;background:rgba(11,11,12,.7);font:700 10px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#f2f0ec;z-index:2">Pinned</div>
+          </div>
+          <div style="font:700 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ h.name }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="height:1px;background:#26262a;margin:0 44px 20px"></div>
+    <div class="sa" style="flex:1;overflow-y:auto;padding:0 44px 30px">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:22px">
+        <div style="border-radius:22px;background:#111113;border:3px solid #e0533d;box-shadow:0 0 0 6px rgba(224,83,61,.18);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;min-height:196px">
+          <div style="width:66px;height:66px;border-radius:20px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:30px;line-height:1">&#127873;</div>
+          <div style="font:700 19px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Surprise me</div>
+        </div>
+        <sc-for list="{{ tvChannelRows }}" as="c" hint-placeholder-count="7">
+          <div>
+            <div class="ph" style="height:158px;border-radius:22px;background:{{ c.tint }}">
+              <div style="position:absolute;right:12px;top:12px;width:20px;height:20px;border-radius:10px;background:#e0533d;border:3px solid #0b0b0c;z-index:2;opacity:{{ c.dotOpacity }}"></div>
+            </div>
+            <div style="font:700 18px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:12px;text-wrap:pretty">{{ c.name }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<</div>
+</section>
+
+<section class="dv-turn" id="tv3">
+<div class="dv-thd"><a class="dv-tid" href="#tv3">TV3</a><span class="dv-tname">Player — full-bleed video, overlay on wake</span></div>
+<div class="dv-opts">
+<div class="dv-opt" id="t3a">
+<div class="dv-olabel"><a class="dv-oid" href="#t3a">t3a</a>Phone <span class="dv-oid">b6</span>'s player at 10 feet: video fills the frame, controls sit in a bottom scrim that appears on any remote press and fades after a few seconds. Left/right on the d-pad scrubs, OK plays and pauses. The daily countdown keeps the same amber ring. When a video ends, Up next takes the centre of the screen — big thumbnail with the play button on it, the title beneath, then the countdown chip — OK plays it, Back stops — rather than a permanent list — the phone's tabbed queue does not survive a remote.</div>
+<div class="dv-card" style="width:1280px;height:720px;position:relative;background:#0b0b0c">
+  <div class="ph" style="position:absolute;inset:0;background:#7b4fa8"></div>
+
+  <div style="position:absolute;left:0;right:0;top:0;padding:26px 44px;background:linear-gradient(rgba(11,11,12,.78),transparent);z-index:3;display:flex;align-items:flex-start;gap:18px">
+    <div style="flex:1;min-width:0">
+      <div style="font:700 30px ui-sans-serif,system-ui,sans-serif;line-height:1.25;color:#f2f0ec;text-wrap:pretty">Think Like an Engineer: Let's Design a Solution!</div>
+      <div style="display:flex;align-items:center;gap:11px;margin-top:11px">
+        <div class="ph" style="width:34px;height:34px;border-radius:11px;background:#7b4fa8;flex:none"></div>
+        <span style="font:600 17px ui-sans-serif,system-ui,sans-serif;color:rgba(242,240,236,.82)">SciShow Kids</span>
+        <span style="color:#6f6f78">·</span>
+        <span style="font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:rgba(242,240,236,.6)">today</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 14px 9px 9px;border-radius:16px;background:rgba(11,11,12,.8);border:1px solid #d8a13a;flex:none">
+      <div style="width:42px;height:42px;border-radius:21px;background:conic-gradient(#d8a13a 0 76%, rgba(255,255,255,.16) 76% 100%);display:flex;align-items:center;justify-content:center;flex:none">
+        <div style="width:31px;height:31px;border-radius:16px;background:#0b0b0c;display:flex;align-items:center;justify-content:center;font:700 13px ui-monospace,Menlo,monospace;color:#d8a13a">5m</div>
+      </div>
+      <div>
+        <div style="font:700 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">5 minutes left today</div>
+        <div style="font-size:13px;color:#9a9aa2;margin-top:2px">This video ends in 4:52</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:0;right:0;bottom:0;padding:120px 44px 34px;background:linear-gradient(transparent,rgba(11,11,12,.9));z-index:3">
+    <div style="display:flex;align-items:center;gap:26px;margin-bottom:22px">
+      <div style="width:70px;height:70px;border-radius:35px;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center;gap:3px;flex:none">
+        <div style="width:4px;height:22px;border-radius:2px;background:#f2f0ec"></div>
+        <div style="width:0;height:0;border-right:17px solid #f2f0ec;border-top:12px solid transparent;border-bottom:12px solid transparent"></div>
+      </div>
+      <div style="width:96px;height:96px;border-radius:48px;background:#f2f0ec;display:flex;align-items:center;justify-content:center;gap:10px;flex:none;box-shadow:0 0 0 6px rgba(224,83,61,.28)"><div style="width:12px;height:40px;background:#0b0b0c;border-radius:3px"></div><div style="width:12px;height:40px;background:#0b0b0c;border-radius:3px"></div></div>
+      <div style="width:70px;height:70px;border-radius:35px;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center;gap:3px;flex:none">
+        <div style="width:0;height:0;border-left:17px solid #f2f0ec;border-top:12px solid transparent;border-bottom:12px solid transparent"></div>
+        <div style="width:4px;height:22px;border-radius:2px;background:#f2f0ec"></div>
+      </div>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:11px">
+        <div style="height:44px;padding:0 15px;border-radius:14px;background:rgba(11,11,12,.6);border:1px solid #e0533d;display:flex;align-items:center;gap:9px;font:700 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Autoplay<span style="font:700 12px ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#e0533d">ON</span></div>
+        <div style="height:44px;padding:0 15px;border-radius:14px;background:rgba(11,11,12,.6);display:flex;align-items:center;font:700 14px ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#f2f0ec">CC</div>
+        <div style="width:44px;height:44px;border-radius:14px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1;color:#e0533d">&#9829;</div>
+        <div style="width:44px;height:44px;border-radius:14px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center"><span style="width:16px;height:16px;border:2.5px solid #4a8b8d;border-radius:5px;display:inline-block"></span></div>
+        <div style="width:44px;height:44px;border-radius:14px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1;color:#d8a13a">&#9776;</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="font:700 17px ui-monospace,Menlo,monospace;color:#f2f0ec;flex:none">0:42</div>
+      <div style="flex:1;height:10px;border-radius:5px;background:rgba(255,255,255,.26);position:relative">
+        <div style="position:absolute;left:0;top:0;height:10px;width:13%;border-radius:5px;background:#e0533d"></div>
+        <div style="position:absolute;left:13%;top:-7px;width:24px;height:24px;border-radius:12px;background:#e0533d;border:4px solid #0b0b0c;margin-left:-12px"></div>
+      </div>
+      <div style="font:700 17px ui-monospace,Menlo,monospace;color:#9a9aa2;flex:none">5:34</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="t3b">
+<div class="dv-olabel"><a class="dv-oid" href="#t3b">t3b</a>End-of-video state — the same frame with Up next over it: thumbnail with the play button, title, then the countdown chip. OK plays it, Back stops.</div>
+<div class="dv-card" style="width:1280px;height:720px;position:relative;background:#0b0b0c">
+  <div style="position:absolute;inset:0;z-index:5;background:rgba(11,11,12,.72);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px">
+    <div style="font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.18em;text-transform:uppercase;color:#9a9aa2">Up next</div>
+    <div class="ph" style="width:420px;height:236px;border-radius:22px;background:#4f7a2f;border:3px solid #e0533d;box-shadow:0 0 0 7px rgba(224,83,61,.18)">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:2">
+        <div style="width:96px;height:96px;border-radius:48px;background:#e0533d;display:flex;align-items:center;justify-content:center"><div style="width:0;height:0;border-left:30px solid #0b0b0c;border-top:20px solid transparent;border-bottom:20px solid transparent;margin-left:7px"></div></div>
+      </div>
+      <div style="position:absolute;right:11px;bottom:11px;background:rgba(0,0,0,.82);border-radius:6px;padding:3px 9px;font:700 14px ui-monospace,Menlo,monospace;color:#fff;z-index:2">26:34</div>
+    </div>
+    <div style="width:520px;text-align:center">
+      <div style="font:700 26px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;text-wrap:pretty">The Yuckiest Animals | SciShow Kids Compilation</div>
+      <div style="font-size:16px;color:#9a9aa2;margin-top:9px">SciShow Kids · today</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:11px;height:52px;padding:0 20px 0 9px;border-radius:26px;background:rgba(11,11,12,.7);border:1px solid #2b2b31">
+      <div style="width:36px;height:36px;border-radius:18px;background:conic-gradient(#e0533d 0 62%, rgba(255,255,255,.16) 62% 100%);display:flex;align-items:center;justify-content:center;flex:none">
+        <div style="width:27px;height:27px;border-radius:14px;background:#0b0b0c;display:flex;align-items:center;justify-content:center;font:700 13.5px ui-monospace,Menlo,monospace;color:#f2f0ec">5</div>
+      </div>
+      <span style="font:700 18px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Playing in 5 seconds</span>
+    </div>
+  </div>
+  <div class="ph" style="position:absolute;inset:0;background:#7b4fa8"></div>
+
+  <div style="position:absolute;left:0;right:0;top:0;padding:26px 44px;background:linear-gradient(rgba(11,11,12,.78),transparent);z-index:3;display:flex;align-items:flex-start;gap:18px">
+    <div style="flex:1;min-width:0">
+      <div style="font:700 30px ui-sans-serif,system-ui,sans-serif;line-height:1.25;color:#f2f0ec;text-wrap:pretty">Think Like an Engineer: Let's Design a Solution!</div>
+      <div style="display:flex;align-items:center;gap:11px;margin-top:11px">
+        <div class="ph" style="width:34px;height:34px;border-radius:11px;background:#7b4fa8;flex:none"></div>
+        <span style="font:600 17px ui-sans-serif,system-ui,sans-serif;color:rgba(242,240,236,.82)">SciShow Kids</span>
+        <span style="color:#6f6f78">·</span>
+        <span style="font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:rgba(242,240,236,.6)">today</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 14px 9px 9px;border-radius:16px;background:rgba(11,11,12,.8);border:1px solid #d8a13a;flex:none">
+      <div style="width:42px;height:42px;border-radius:21px;background:conic-gradient(#d8a13a 0 76%, rgba(255,255,255,.16) 76% 100%);display:flex;align-items:center;justify-content:center;flex:none">
+        <div style="width:31px;height:31px;border-radius:16px;background:#0b0b0c;display:flex;align-items:center;justify-content:center;font:700 13px ui-monospace,Menlo,monospace;color:#d8a13a">5m</div>
+      </div>
+      <div>
+        <div style="font:700 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">5 minutes left today</div>
+        <div style="font-size:13px;color:#9a9aa2;margin-top:2px">This video ends in 4:52</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:0;right:0;bottom:0;padding:120px 44px 34px;background:linear-gradient(transparent,rgba(11,11,12,.9));z-index:3">
+    <div style="display:flex;align-items:center;gap:26px;margin-bottom:22px">
+      <div style="width:70px;height:70px;border-radius:35px;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center;gap:3px;flex:none">
+        <div style="width:4px;height:22px;border-radius:2px;background:#f2f0ec"></div>
+        <div style="width:0;height:0;border-right:17px solid #f2f0ec;border-top:12px solid transparent;border-bottom:12px solid transparent"></div>
+      </div>
+      <div style="width:96px;height:96px;border-radius:48px;background:#f2f0ec;display:flex;align-items:center;justify-content:center;gap:10px;flex:none;box-shadow:0 0 0 6px rgba(224,83,61,.28)"><div style="width:12px;height:40px;background:#0b0b0c;border-radius:3px"></div><div style="width:12px;height:40px;background:#0b0b0c;border-radius:3px"></div></div>
+      <div style="width:70px;height:70px;border-radius:35px;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center;gap:3px;flex:none">
+        <div style="width:0;height:0;border-left:17px solid #f2f0ec;border-top:12px solid transparent;border-bottom:12px solid transparent"></div>
+        <div style="width:4px;height:22px;border-radius:2px;background:#f2f0ec"></div>
+      </div>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:11px">
+        <div style="height:44px;padding:0 15px;border-radius:14px;background:rgba(11,11,12,.6);border:1px solid #e0533d;display:flex;align-items:center;gap:9px;font:700 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Autoplay<span style="font:700 12px ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#e0533d">ON</span></div>
+        <div style="height:44px;padding:0 15px;border-radius:14px;background:rgba(11,11,12,.6);display:flex;align-items:center;font:700 14px ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#f2f0ec">CC</div>
+        <div style="width:44px;height:44px;border-radius:14px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1;color:#e0533d">&#9829;</div>
+        <div style="width:44px;height:44px;border-radius:14px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center"><span style="width:16px;height:16px;border:2.5px solid #4a8b8d;border-radius:5px;display:inline-block"></span></div>
+        <div style="width:44px;height:44px;border-radius:14px;background:rgba(11,11,12,.6);display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1;color:#d8a13a">&#9776;</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="font:700 17px ui-monospace,Menlo,monospace;color:#f2f0ec;flex:none">0:42</div>
+      <div style="flex:1;height:10px;border-radius:5px;background:rgba(255,255,255,.26);position:relative">
+        <div style="position:absolute;left:0;top:0;height:10px;width:13%;border-radius:5px;background:#e0533d"></div>
+        <div style="position:absolute;left:13%;top:-7px;width:24px;height:24px;border-radius:12px;background:#e0533d;border:4px solid #0b0b0c;margin-left:-12px"></div>
+      </div>
+      <div style="font:700 17px ui-monospace,Menlo,monospace;color:#9a9aa2;flex:none">5:34</div>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+</section>
+
+<section class="dv-turn" id="tv4">
+<div class="dv-thd"><a class="dv-tid" href="#tv4">TV4</a><span class="dv-tname">Channel page</span></div>
+<div class="dv-opts">
+<div class="dv-opt" id="t4a">
+<div class="dv-olabel"><a class="dv-oid" href="#t4a">t4a</a>Phone <span class="dv-oid">b3c</span> at TV scale — channel block, three square actions, New videos, Playlists, then the full video list. Filter chips move up beside the Videos header so the d-pad reaches them from the rail above.</div>
+<div class="dv-card" style="width:1280px;height:720px;display:flex;background:#0b0b0c">
+  <div style="width:196px;flex:none;background:#111113;border-right:1px solid #26262a;display:flex;flex-direction:column;padding:26px 0;gap:10px">
+    <div style="display:flex;align-items:center;gap:11px;padding:0 12px;margin-bottom:20px">
+      <div style="width:40px;height:40px;border-radius:12px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:15px solid #0b0b0c;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+      <div style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ kidName }}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;padding:0 12px">
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:5px;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Home</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px;background:#1a1a1d;border:2px solid #e0533d">
+        <div style="width:20px;height:20px;border:2.5px solid #e0533d;border-radius:50%;flex:none"></div>
+        <div style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap">Channels</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border-radius:50%;background:#9a9aa2;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">You</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:50%;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Search</div>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:9px;margin:0 12px;padding:11px 13px;border-radius:14px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:10px;height:10px;border-radius:5px;background:#d8a13a;flex:none"></span>
+      <div style="font:700 14px ui-monospace,Menlo,monospace;color:#f2f0ec">20m left</div>
+    </div>
+  </div>
+  <div class="sa" style="flex:1;min-width:0;display:block;overflow-y:auto">
+    <div style="display:flex;align-items:center;gap:16px;padding:24px 44px 16px">
+      <div style="flex:1;min-width:0;display:flex;align-items:baseline;gap:14px">
+        <div style="font:700 30px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Channels</div>
+        <div style="font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78">30+ videos · 29 playlists</div>
+      </div>
+      <div style="width:46px;height:46px;border-radius:23px;background:#1a1a1d;border:2px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:22px;height:22px;border-radius:11px;background:#e0533d"></div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:20px;padding:0 44px 20px">
+      <div class="ph" style="width:108px;height:108px;border-radius:30px;background:#7b4fa8;flex:none"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font:700 30px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">SciShow Kids</div>
+        <div style="font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78;margin-top:8px">30+ videos · 29 playlists</div>
+      </div>
+      <div style="display:flex;gap:14px;flex:none">
+        <div style="width:132px;height:104px;border-radius:18px;background:#111113;border:3px solid #e0533d;box-shadow:0 0 0 6px rgba(224,83,61,.18);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
+          <div style="width:44px;height:44px;border-radius:14px;background:#1a1a1d;display:flex;align-items:center;justify-content:center"><div style="width:0;height:0;border-left:16px solid #e0533d;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+          <div style="font:700 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Newest</div>
+        </div>
+        <div style="width:132px;height:104px;border-radius:18px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
+          <div style="width:44px;height:44px;border-radius:14px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;color:#e0533d">&#9829;</div>
+          <div style="font:700 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Favorite</div>
+        </div>
+        <div style="width:132px;height:104px;border-radius:18px;background:#111113;border:1px solid #2b2b31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
+          <div style="width:44px;height:44px;border-radius:14px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:21px;line-height:1">&#127873;</div>
+          <div style="font:700 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Surprise</div>
+        </div>
+      </div>
+    </div>
+    <div style="height:1px;background:#26262a;margin:0 44px 20px"></div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">New videos</div>
+      <span style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 26px">
+      <sc-for list="{{ tvChannelNew }}" as="v" hint-placeholder-count="4">
+        <div style="flex:none;width:250px">
+          <div class="ph" style="height:141px;border-radius:14px;background:{{ v.tint }}">
+            <div style="position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.82);border-radius:6px;padding:3px 8px;font:700 13px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ v.dur }}</div>
+          </div>
+          <div style="font:600 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ v.title }}</div>
+          <div style="font-size:14.5px;color:#9a9aa2;margin-top:5px">{{ v.channel }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Playlists</div>
+      <span style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 26px">
+      <sc-for list="{{ tvPlaylists }}" as="p" hint-placeholder-count="4">
+        <div style="flex:none;width:250px">
+          <div class="ph" style="height:141px;border-radius:16px;background:{{ p.tint }}">
+            <div style="position:absolute;right:0;top:0;bottom:0;width:36px;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font:700 17px ui-monospace,Menlo,monospace;color:#fff;z-index:2">&#9776;</div>
+          </div>
+          <div style="font:700 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ p.name }}</div>
+          <div style="font:700 11.5px ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:#6f6f78;margin-top:6px">{{ p.n }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;flex:none">Videos</div>
+      <div style="font:700 14px ui-monospace,Menlo,monospace;color:#6f6f78;flex:none">30+</div>
+      <div class="sa" style="flex:1;display:flex;gap:11px;overflow-x:auto">
+        <div style="flex:none;height:40px;padding:0 16px;border-radius:13px;background:#1a1a1d;border:2px solid #e0533d;display:flex;align-items:center;font:700 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Newest</div>
+        <div style="flex:none;height:40px;padding:0 16px;border-radius:13px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">A–Z</div>
+        <div style="flex:none;height:40px;padding:0 16px;border-radius:13px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Unwatched</div>
+        <div style="flex:none;height:40px;padding:0 16px;border-radius:13px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;font:600 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Random</div>
+      </div>
+      <div style="flex:none;height:40px;padding:0 16px;border-radius:13px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;gap:9px;font:700 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Watched<span style="color:#6f6f78">2</span></div>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 26px">
+      <sc-for list="{{ tvChannelVideos }}" as="u" hint-placeholder-count="4">
+        <div style="flex:none;width:250px">
+          <div class="ph" style="height:141px;border-radius:14px;background:{{ u.tint }}">
+            <div style="position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.82);border-radius:6px;padding:3px 8px;font:700 13px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ u.dur }}</div>
+          </div>
+          <div style="font:600 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ u.title }}</div>
+          <div style="font-size:14.5px;color:#9a9aa2;margin-top:5px">{{ u.channel }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+</section>
+
+<section class="dv-turn" id="tv5">
+<div class="dv-thd"><a class="dv-tid" href="#tv5">TV5</a><span class="dv-tname">You</span></div>
+<div class="dv-opts">
+<div class="dv-opt" id="t5a">
+<div class="dv-olabel"><a class="dv-oid" href="#t5a">t5a</a>Phone <span class="dv-oid">b4c</span> at TV scale — blocked windows, offline and request banners, then one rail per category — Favorites, Watch later, History, Downloads. Make a request sits at the end of the Downloads row so the d-pad path stays flat.</div>
+<div class="dv-card" style="width:1280px;height:720px;display:flex;background:#0b0b0c">
+  <div style="width:196px;flex:none;background:#111113;border-right:1px solid #26262a;display:flex;flex-direction:column;padding:26px 0;gap:10px">
+    <div style="display:flex;align-items:center;gap:11px;padding:0 12px;margin-bottom:20px">
+      <div style="width:40px;height:40px;border-radius:12px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:15px solid #0b0b0c;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+      <div style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ kidName }}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;padding:0 12px">
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:5px;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Home</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:50%;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Channels</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px;background:#1a1a1d;border:2px solid #e0533d">
+        <div style="width:20px;height:20px;border-radius:50%;background:#e0533d;flex:none"></div>
+        <div style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap">You</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:50%;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Search</div>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:9px;margin:0 12px;padding:11px 13px;border-radius:14px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:10px;height:10px;border-radius:5px;background:#d8a13a;flex:none"></span>
+      <div style="font:700 14px ui-monospace,Menlo,monospace;color:#f2f0ec">20m left</div>
+    </div>
+  </div>
+  <div class="sa" style="flex:1;min-width:0;display:block;overflow-y:auto">
+    <div style="display:flex;align-items:center;gap:16px;padding:24px 44px 16px">
+      <div style="flex:1;min-width:0;display:flex;align-items:baseline;gap:14px">
+        <div style="font:700 30px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">{{ kidName }}</div>
+        <div style="font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78">9 videos this week · 50 channels</div>
+      </div>
+      <div style="width:46px;height:46px;border-radius:23px;background:#1a1a1d;border:2px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:22px;height:22px;border-radius:11px;background:#e0533d"></div></div>
+    </div>
+    <div style="margin:0 44px 20px;padding:16px 18px;border-radius:18px;background:#111113;border:1px solid #2b2b31">
+      <div style="font:700 12.5px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78;margin-bottom:12px">Videos are off</div>
+      <div style="display:flex;gap:11px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:9px;height:42px;padding:0 15px;border-radius:21px;background:#1a1a1d;border:1px solid #2b2b31"><span style="width:9px;height:9px;border-radius:5px;background:#d8a13a"></span><span style="font:600 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Bedtime</span><span style="font:700 14px ui-monospace,Menlo,monospace;color:#9a9aa2">8:00pm</span></div>
+        <div style="display:flex;align-items:center;gap:9px;height:42px;padding:0 15px;border-radius:21px;background:#1a1a1d;border:1px solid #2b2b31"><span style="width:9px;height:9px;border-radius:5px;background:#4a8b8d"></span><span style="font:600 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">School</span><span style="font:700 14px ui-monospace,Menlo,monospace;color:#9a9aa2">8:30–3:30</span></div>
+        <div style="display:flex;align-items:center;gap:9px;height:42px;padding:0 15px;border-radius:21px;background:#1a1a1d;border:1px solid #2b2b31"><span style="width:9px;height:9px;border-radius:5px;background:#9a9aa2"></span><span style="font:600 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Dinner</span><span style="font:700 14px ui-monospace,Menlo,monospace;color:#9a9aa2">5:30–6:15</span></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:16px;padding:0 44px 22px">
+      <div style="flex:1;display:flex;align-items:center;gap:13px;padding:15px 17px;border-radius:16px;background:rgba(74,139,141,.12);border:1px solid #4a8b8d">
+        <span style="width:11px;height:11px;border-radius:6px;background:#4a8b8d;flex:none"></span>
+        <div style="flex:1;font:600 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">You're offline. <span style="color:#9a9aa2;font-weight:400">3 downloads still play.</span></div>
+      </div>
+      <div style="flex:1;display:flex;align-items:center;gap:13px;padding:15px 17px;border-radius:16px;background:#111113;border:1px solid #2b2b31">
+        <span style="width:11px;height:11px;border-radius:6px;background:#d8a13a;flex:none"></span>
+        <div style="flex:1;font:600 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Your ask for Bluey is waiting</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Favorites</div>
+      <span style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 26px">
+      <sc-for list="{{ tvFavorites }}" as="v" hint-placeholder-count="4">
+        <div style="flex:none;width:250px">
+          <div class="ph" style="height:141px;border-radius:14px;background:{{ v.tint }}">
+            <div style="position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.82);border-radius:6px;padding:3px 8px;font:700 13px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ v.dur }}</div>
+          </div>
+          <div style="font:600 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ v.title }}</div>
+          <div style="font-size:14.5px;color:#9a9aa2;margin-top:5px">{{ v.channel }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Watch later</div>
+      <span style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 26px">
+      <sc-for list="{{ watchLater }}" as="k" hint-placeholder-count="4">
+        <div style="flex:none;width:250px">
+          <div class="ph" style="height:141px;border-radius:14px;background:{{ k.tint }}">
+            <div style="position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.82);border-radius:6px;padding:3px 8px;font:700 13px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ k.dur }}</div>
+          </div>
+          <div style="font:600 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ k.title }}</div>
+          <div style="font-size:14.5px;color:#9a9aa2;margin-top:5px">{{ k.channel }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">History</div>
+      <span style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 26px">
+      <sc-for list="{{ tvHistoryRail }}" as="h" hint-placeholder-count="4">
+        <div style="flex:none;width:250px">
+          <div class="ph" style="height:141px;border-radius:14px;background:{{ h.tint }}">
+            <div style="position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.82);border-radius:6px;padding:3px 8px;font:700 13px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ h.dur }}</div>
+          </div>
+          <div style="font:600 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ h.title }}</div>
+          <div style="font-size:14.5px;color:#9a9aa2;margin-top:5px">{{ h.channel }} · {{ h.when }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Downloads</div>
+      <span style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#e0533d">Manage</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 30px">
+      <sc-for list="{{ tvDownloads }}" as="d" hint-placeholder-count="3">
+        <div style="flex:none;width:250px">
+          <div class="ph" style="height:141px;border-radius:14px;background:{{ d.tint }}">
+            <div style="position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.82);border-radius:6px;padding:4px 9px;z-index:2"><span style="color:#47b877;font-size:14px;line-height:1">&#8595;</span><span style="font:700 11.5px ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:#f2f0ec">saved</span></div>
+            <div style="position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.82);border-radius:6px;padding:3px 8px;font:700 13px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ d.dur }}</div>
+          </div>
+          <div style="font:600 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ d.title }}</div>
+          <div style="font-size:14.5px;color:#9a9aa2;margin-top:5px">{{ d.channel }} · {{ d.size }}</div>
+        </div>
+      </sc-for>
+      <div style="flex:none;width:250px;height:141px;border-radius:16px;background:#111113;border:1px dashed #2b2b31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+        <div style="width:52px;height:52px;border-radius:17px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:26px;color:#e0533d;line-height:1">+</div>
+        <div style="font:700 17px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Make a request</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+</section>
+
+<section class="dv-turn" id="tv6">
+<div class="dv-thd"><a class="dv-tid" href="#tv6">TV6</a><span class="dv-tname">Search</span></div>
+<div class="dv-opts">
+<div class="dv-opt" id="t6a">
+<div class="dv-olabel"><a class="dv-oid" href="#t6a">t6a</a>Phone <span class="dv-oid">b5</span> on TV: full-width field with the voice card beside it, a recents row, then results four across below. No on-screen keyboard — the TV OS raises its own when the field is focused.</div>
+<div class="dv-card" style="width:1280px;height:720px;display:flex;background:#0b0b0c">
+  <div style="width:196px;flex:none;background:#111113;border-right:1px solid #26262a;display:flex;flex-direction:column;padding:26px 0;gap:10px">
+    <div style="display:flex;align-items:center;gap:11px;padding:0 12px;margin-bottom:20px">
+      <div style="width:40px;height:40px;border-radius:12px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:15px solid #0b0b0c;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+      <div style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ kidName }}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;padding:0 12px">
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:5px;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Home</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:50%;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">Channels</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px">
+        <div style="width:20px;height:20px;border-radius:50%;background:#9a9aa2;flex:none"></div>
+        <div style="font:600 16px ui-sans-serif,system-ui,sans-serif;color:#9a9aa2;white-space:nowrap">You</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:14px;background:#1a1a1d;border:2px solid #e0533d">
+        <div style="width:20px;height:20px;border:2.5px solid #e0533d;border-radius:50%;flex:none"></div>
+        <div style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;white-space:nowrap">Search</div>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:9px;margin:0 12px;padding:11px 13px;border-radius:14px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:10px;height:10px;border-radius:5px;background:#d8a13a;flex:none"></span>
+      <div style="font:700 14px ui-monospace,Menlo,monospace;color:#f2f0ec">20m left</div>
+    </div>
+  </div>
+  <div class="sa" style="flex:1;min-width:0;display:block;overflow-y:auto">
+    <div style="display:flex;align-items:center;gap:16px;padding:24px 44px 16px">
+      <div style="flex:1;min-width:0;display:flex;align-items:baseline;gap:14px">
+        <div style="font:700 30px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Search</div>
+        <div style="font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78">only your channels</div>
+      </div>
+      <div style="width:46px;height:46px;border-radius:23px;background:#1a1a1d;border:2px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:22px;height:22px;border-radius:11px;background:#e0533d"></div></div>
+    </div>
+    <div style="display:flex;gap:16px;padding:0 44px 18px">
+      <div style="flex:1;min-width:0;min-height:68px;border-radius:18px;background:#111113;border:2px solid #e0533d;box-shadow:0 0 0 5px rgba(224,83,61,.16);display:flex;align-items:center;gap:14px;padding:0 12px 0 20px">
+        <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:50%;position:relative;flex:none"><div style="position:absolute;right:-8px;bottom:-5px;width:11px;height:2.5px;background:#9a9aa2;border-radius:2px;transform:rotate(45deg)"></div></div>
+        <div style="flex:1;min-width:0;font:600 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">salamander</div>
+        <div style="width:48px;height:48px;border-radius:15px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;color:#9a9aa2;flex:none">&#215;</div>
+      </div>
+      <div style="flex:none;min-height:68px;padding:0 20px;border-radius:18px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:13px">
+        <div style="width:20px;height:28px;position:relative;flex:none">
+          <div style="position:absolute;left:5px;top:0;width:10px;height:15px;border-radius:5px;background:#e0533d"></div>
+          <div style="position:absolute;left:1px;top:11px;width:18px;height:9px;border:2.5px solid #e0533d;border-top:0;border-radius:0 0 10px 10px"></div>
+          <div style="position:absolute;left:9px;top:20px;width:2.5px;height:5px;background:#e0533d"></div>
+          <div style="position:absolute;left:5px;top:24px;width:10px;height:2.5px;border-radius:2px;background:#e0533d"></div>
+        </div>
+        <div><div style="font:700 17px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Say it out loud</div><div style="font-size:13.5px;color:#9a9aa2;margin-top:2px">hold the mic on the remote</div></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:0 44px 20px">
+      <div style="font:600 15px ui-sans-serif,system-ui,sans-serif;color:#6f6f78;flex:none">You looked for</div>
+      <div class="sa" style="flex:1;display:flex;gap:11px;overflow-x:auto">
+        <div style="flex:none;height:44px;padding:0 9px 0 16px;border-radius:22px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:9px;font:600 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">volcanoes<span style="width:28px;height:28px;border-radius:14px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;color:#9a9aa2;flex:none">&#215;</span></div>
+        <div style="flex:none;height:44px;padding:0 9px 0 16px;border-radius:22px;background:#111113;border:1px solid #2b2b31;display:flex;align-items:center;gap:9px;font:600 15px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">rounding<span style="width:28px;height:28px;border-radius:14px;background:#1a1a1d;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;color:#9a9aa2;flex:none">&#215;</span></div>
+      </div>
+      <span style="font:700 15px ui-sans-serif,system-ui,sans-serif;color:#e0533d;flex:none">Clear all</span>
+    </div>
+    <div style="height:1px;background:#26262a;margin:0 44px 20px"></div>
+    <div style="display:flex;align-items:baseline;gap:14px;padding:0 44px 16px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">14 videos</div>
+      <div style="font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f6f78">3 channels · only your channels</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:22px;padding:0 44px 34px">
+      <sc-for list="{{ tvSearchResults }}" as="u" hint-placeholder-count="4">
+        <div>
+          <div class="ph" style="height:141px;border-radius:16px;background:{{ u.tint }}">
+            <div style="position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.82);border-radius:6px;padding:3px 8px;font:700 13px ui-monospace,Menlo,monospace;color:#fff;z-index:2">{{ u.dur }}</div>
+          </div>
+          <div style="font:600 17px ui-sans-serif,system-ui,sans-serif;line-height:1.3;color:#f2f0ec;margin-top:11px;text-wrap:pretty">{{ u.title }}</div>
+          <div style="font-size:14.5px;color:#9a9aa2;margin-top:5px">{{ u.channel }} · {{ u.when }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+</section>
+
+<section class="dv-turn" id="tv7">
+<div class="dv-thd"><a class="dv-tid" href="#tv7">TV7</a><span class="dv-tname">Nav rail — collapsed state</span></div>
+<div class="dv-opts">
+<div class="dv-opt" id="t7a">
+<div class="dv-olabel"><a class="dv-oid" href="#t7a">t7a</a>The rail collapsed. It starts expanded (as on every other TV screen); the moment focus moves right into the content it narrows to 88px of icons, giving the rails their full width. Pressing left expands it again.</div>
+<div class="dv-card" style="width:1280px;height:720px;display:flex;background:#0b0b0c">
+  <div style="width:88px;flex:none;background:#111113;border-right:1px solid #26262a;display:flex;flex-direction:column;align-items:center;padding:26px 0;gap:10px">
+    <div style="width:48px;height:48px;border-radius:14px;background:#e0533d;display:flex;align-items:center;justify-content:center;margin-bottom:22px;flex:none"><div style="width:0;height:0;border-left:15px solid #0b0b0c;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+    <div style="width:56px;height:56px;border-radius:17px;display:flex;align-items:center;justify-content:center;background:#1a1a1d;border:2px solid #2b2b31">
+      <div style="width:22px;height:22px;border:2.5px solid #f2f0ec;border-radius:5px;flex:none"></div>
+    </div>
+    <div style="width:56px;height:56px;border-radius:17px;display:flex;align-items:center;justify-content:center">
+      <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:50%;flex:none"></div>
+    </div>
+    <div style="width:56px;height:56px;border-radius:17px;display:flex;align-items:center;justify-content:center">
+      <div style="width:20px;height:20px;border-radius:50%;background:#9a9aa2;flex:none"></div>
+    </div>
+    <div style="width:56px;height:56px;border-radius:17px;display:flex;align-items:center;justify-content:center">
+      <div style="width:20px;height:20px;border:2.5px solid #9a9aa2;border-radius:50%;flex:none"></div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="width:56px;height:56px;border-radius:17px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
+      <span style="width:9px;height:9px;border-radius:5px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">20m</span>
+    </div>
+  </div>
+  <div class="sa" style="flex:1;min-width:0;display:block;overflow-y:auto">
+    <div style="display:flex;align-items:center;gap:16px;padding:24px 44px 18px">
+      <div style="flex:1;min-width:0;font:700 30px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Hi, {{ kidName }}</div>
+      <div style="width:46px;height:46px;border-radius:23px;background:#1a1a1d;border:2px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:22px;height:22px;border-radius:11px;background:#e0533d"></div></div>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 24px">
+      <sc-for list="{{ tvHeroAll }}" as="h" hint-placeholder-count="3">
+        <div style="flex:none;width:344px;border-radius:18px;overflow:hidden;border:{{ h.border }};box-shadow:{{ h.glow }}">
+          <div class="ph" style="height:194px;background:{{ h.tint }}">
+            <div style="position:absolute;left:14px;top:14px;padding:5px 11px;border-radius:8px;background:rgba(11,11,12,.66);font:700 11.5px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#f2f0ec;z-index:2">Pinned</div>
+            <div style="position:absolute;left:0;right:0;bottom:0;padding:16px 18px;background:linear-gradient(transparent,rgba(11,11,12,.92));z-index:2;display:flex;align-items:flex-end;gap:14px">
+              <div style="flex:1;min-width:0">
+                <div style="font:700 21px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;text-wrap:pretty">{{ h.name }}</div>
+                <div style="font:700 11.5px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:rgba(242,240,236,.7);margin-top:7px">{{ h.meta }}</div>
+              </div>
+              <div style="width:52px;height:52px;border-radius:26px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:16px solid #0b0b0c;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 44px 14px">
+      <div style="font:700 22px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec">Channels</div>
+      <span style="font:700 16px ui-sans-serif,system-ui,sans-serif;color:#e0533d">See all</span>
+    </div>
+    <div class="sa" style="display:flex;gap:20px;overflow-x:auto;padding:0 44px 30px">
+      <sc-for list="{{ tvChannels }}" as="c" hint-placeholder-count="6">
+        <div style="flex:none;width:124px;display:flex;flex-direction:column;align-items:center;gap:11px">
+          <div class="ph" style="width:124px;height:124px;border-radius:30px;background:{{ c.tint }}"></div>
+          <div style="font:600 15px ui-sans-serif,system-ui,sans-serif;line-height:1.25;color:#9a9aa2;text-align:center">{{ c.name }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"kidName":{"editor":"text","default":"Amelia","tsType":"string","section":"Content"},"forYouCount":{"editor":"int","default":5,"min":1,"max":5,"tsType":"number","section":"Content"},"showWatchedState":{"editor":"boolean","default":true,"tsType":"boolean","section":"Behaviour"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const watched = this.props.showWatchedState ?? true;
+    const hero = [
+      {name:"SciShow Kids", tint:"#7b4fa8", meta:"3 new videos"},
+      {name:"The World of Insects", tint:"#4f7a2f", meta:"4 videos · 21 min"},
+      {name:"Maddie Moate", tint:"#2f7a56", meta:"1 new video"}
+    ];
+    const forYou = [
+      {title:"Summer Adventures with Maddie | Pineapples, Cork Trees and Goats", channel:"Maddie Moate", dur:"29:59", tint:"#2f7a56", seen:false},
+      {title:"Catching Massive Salamanders! (2 feet long)", channel:"Coyote Peterson", dur:"4:38", tint:"#6b5a3a", seen:true},
+      {title:"The Weird Connection Between Saliva and Quantum Physics", channel:"The Action Lab", dur:"7:35", tint:"#b8452f", seen:false},
+      {title:"What 4.6-Billion-Year-Old Meteorites Reveal About Our DNA", channel:"BBC Earth Science", dur:"5:15", tint:"#1f3a6b", seen:false},
+      {title:"Multiplication - UK (Part 1/7) | StoryBots: Answer Time", channel:"StonerBang", dur:"2:56", tint:"#3f7a8c", seen:true}
+    ];
+    return {
+      kidName: this.props.kidName ?? "Amelia",
+      forYou: forYou.slice(0, this.props.forYouCount ?? 5).map(v => ({
+        ...v,
+        fade: (watched && v.seen) ? .48 : 1,
+        state: (watched && v.seen) ? "watched" : ""
+      })),
+      channels: [
+        {name:"BBC Earth Science", tint:"#1f3a6b"},
+        {name:"Maddie Moate", tint:"#2f7a56"},
+        {name:"SciShow Kids", tint:"#7b4fa8"},
+        {name:"Coyote Peterson", tint:"#6b5a3a"},
+        {name:"The Action Lab", tint:"#b8452f"},
+        {name:"Math with Mr. J", tint:"#2b2b31"},
+        {name:"Deep Look", tint:"#c2531f"}
+      ],
+      channelsNew: [
+        {name:"SciShow Kids", tint:"#7b4fa8", badge:"3 new", last:"Think Like an Engineer: Let's Design a Solution!", ltint:"#7b4fa8", dur:"5:34", when:"today"},
+        {name:"Maddie Moate", tint:"#2f7a56", badge:"1 new", last:"Summer Adventures with Maddie", ltint:"#2f7a56", dur:"29:59", when:"today"},
+        {name:"Coyote Peterson", tint:"#6b5a3a", badge:"2 new", last:"Catching Massive Salamanders!", ltint:"#6b5a3a", dur:"4:38", when:"yesterday"}
+      ],
+      channelsAZ: [
+        {letter:"B", items:[
+          {name:"BBC Earth Science", tint:"#1f3a6b", last:"What 4.6-Billion-Year-Old Meteorites Reveal", ltint:"#1f3a6b", dur:"5:15", badge:""},
+          {name:"Bluey", tint:"#3f7a8c", last:"Bluey and Family Fun by the Creek", ltint:"#3f7a8c", dur:"1:02:11", badge:""}
+        ]},
+        {letter:"C", items:[
+          {name:"Coyote Peterson", tint:"#6b5a3a", last:"Catching Massive Salamanders!", ltint:"#6b5a3a", dur:"4:38", badge:"2 new"},
+          {name:"Crash Course Kids", tint:"#4a8b8d", last:"How to find themes (A Writer's Guide)", ltint:"#4a8b8d", dur:"5:22", badge:""}
+        ]},
+        {letter:"D", items:[
+          {name:"Deep Look", tint:"#c2531f", last:"A Baby Dragonfly's Mouth Will Give You Nightmares", ltint:"#c2531f", dur:"3:48", badge:""}
+        ]}
+      ].map(g => ({...g, items: g.items.map(c => ({...c, dotOpacity: c.badge ? 1 : 0}))})),
+      channelRows: [
+        {name:"SciShow Kids", tint:"#7b4fa8", meta:"30+ videos · 29 playlists", badge:"3 NEW", last:"Think Like an Engineer: Let's Design a Solution!", ltint:"#7b4fa8", lastDur:"5:34"},
+        {name:"Maddie Moate", tint:"#2f7a56", meta:"120 videos · 8 playlists", badge:"1 NEW", last:"Summer Adventures with Maddie", ltint:"#2f7a56", lastDur:"29:59"},
+        {name:"BBC Earth Science", tint:"#1f3a6b", meta:"64 videos · 5 playlists", badge:"", last:"What 4.6-Billion-Year-Old Meteorites Reveal", ltint:"#1f3a6b", lastDur:"5:15"},
+        {name:"Coyote Peterson", tint:"#6b5a3a", meta:"200+ videos · 12 playlists", badge:"2 NEW", last:"Catching Massive Salamanders! (2 feet long)", ltint:"#6b5a3a", lastDur:"4:38"},
+        {name:"The Action Lab", tint:"#b8452f", meta:"88 videos · 4 playlists", badge:"", last:"The Weird Connection Between Saliva and Quantum Physics", ltint:"#b8452f", lastDur:"7:35"},
+        {name:"Math with Mr. J", tint:"#2b2b31", meta:"310 videos · 22 playlists", badge:"", last:"Rounding to the Nearest 10", ltint:"#3f7a8c", lastDur:"6:12"}
+      ].map((c, i) => ({...c, dotOpacity: c.badge ? 1 : 0, when: ["today","today","last week","yesterday","3 days ago","last month"][i] || "last month"})),
+      playlists: [
+        {name:"The World of Insects", n:"4 videos", tint:"#4f7a2f"},
+        {name:"Exploring Australia!", n:"2 videos", tint:"#8c6a2f"},
+        {name:"Let's Explore Mars!", n:"6 videos", tint:"#b8452f"},
+        {name:"How Weather Works", n:"5 videos", tint:"#2f6f72"}
+      ],
+      topics: [
+        {name:"Animals", tint:"#4f7a2f", n:"41 videos"},
+        {name:"Space", tint:"#1f3a6b", n:"18 videos"},
+        {name:"Maths", tint:"#b8452f", n:"26 videos"},
+        {name:"Volcanoes", tint:"#8c3a1f", n:"9 videos"},
+        {name:"Bugs", tint:"#6b5a3a", n:"14 videos"},
+        {name:"Games", tint:"#5a3f6b", n:"22 videos"}
+      ],
+      history: [
+        {title:"How to find themes (A Writer's Guide)", channel:"Crash Course Kids", when:"Today", tint:"#4a8b8d", dur:"5:22", dlOpacity:0},
+        {title:"Multiplication - UK (Part 1/7)", channel:"StoryBots", when:"Today", tint:"#3f7a8c", dur:"2:56", dlOpacity:0},
+        {title:"Catching Massive Salamanders! (2 feet long)", channel:"Coyote Peterson", when:"Yesterday", tint:"#6b5a3a", dur:"4:38", dlOpacity:0},
+        {title:"Rounding to the Nearest 10", channel:"Math with Mr. J", when:"Yesterday", tint:"#3f7a8c", dur:"6:12", dlOpacity:0}
+      ],
+      blockedTimes: [
+        {label:"Bedtime", range:"8:00pm", dot:"#d8a13a"},
+        {label:"School", range:"8:30–3:30", dot:"#4a8b8d"},
+        {label:"Dinner", range:"5:30–6:15", dot:"#9a9aa2"}
+      ],
+      downloads: [
+        {title:"KABOOM! All About Volcanoes!", channel:"SciShow Kids", tint:"#b8452f", dur:"21:17", size:"142 MB"},
+        {title:"Summer Adventures with Maddie", channel:"Maddie Moate", tint:"#2f7a56", dur:"29:59", size:"210 MB"},
+        {title:"Every Kind of Volcano", channel:"SciShow Kids", tint:"#8c6a2f", dur:"8:24", size:"64 MB"}
+      ],
+      favorites: [
+        {title:"KABOOM! All About Volcanoes!", channel:"SciShow Kids", tint:"#b8452f", dur:"21:17", dlOpacity:1},
+        {title:"The Yuckiest Animals | SciShow Kids", channel:"SciShow Kids", tint:"#4f7a2f", dur:"26:34", dlOpacity:0},
+        {title:"Summer Adventures with Maddie", channel:"Maddie Moate", tint:"#2f7a56", dur:"29:59", dlOpacity:1},
+        {title:"A Baby Dragonfly's Mouth", channel:"Deep Look", tint:"#c2531f", dur:"3:48", dlOpacity:0}
+      ],
+      hero: [
+        {name:"SciShow Kids", tint:"#7b4fa8", kind:"Channel", meta:"3 new videos", dot:"#e0533d"},
+        {name:"The World of Insects", tint:"#4f7a2f", kind:"Playlist", meta:"4 videos · 21 min", dot:"#2b2b31"},
+        {name:"Maddie Moate", tint:"#2f7a56", kind:"Channel", meta:"1 new video", dot:"#2b2b31"}
+      ].slice(0, this.props.heroCount ?? 3),
+      shelves: [
+        {name:"Coyote Peterson", tint:"#6b5a3a", videos:[
+          {title:"Catching Massive Salamanders! (2 feet long)", dur:"4:38", tint:"#6b5a3a"},
+          {title:"World's Heaviest Snake!", dur:"12:04", tint:"#4f7a2f"},
+          {title:"Giant Water Bug Bite!", dur:"9:22", tint:"#8c6a2f"}
+        ]},
+        {name:"BBC Earth Science", tint:"#1f3a6b", videos:[
+          {title:"What 4.6-Billion-Year-Old Meteorites Reveal", dur:"5:15", tint:"#1f3a6b"},
+          {title:"Why Do Volcanoes Erupt?", dur:"6:40", tint:"#b8452f"},
+          {title:"How Deep Is the Ocean?", dur:"8:11", tint:"#2f6f72"}
+        ]},
+        {name:"Maddie Moate", tint:"#2f7a56", videos:[
+          {title:"Summer Adventures with Maddie | Pineapples and Goats", dur:"29:59", tint:"#2f7a56"},
+          {title:"How Is Paper Recycled?", dur:"11:18", tint:"#8c6a2f"},
+          {title:"Inside a Beehive", dur:"7:02", tint:"#d8a13a"}
+        ]}
+      ],
+      channelHistory: [
+        {title:"KABOOM! All About Volcanoes!", dur:"21:17", tint:"#b8452f", when:"yesterday"},
+        {title:"Hawai'i: Land of Volcanoes", dur:"8:05", tint:"#2f6f72", when:"last week"}
+      ],
+      channelNew: [
+        {title:"Think Like an Engineer: Let's Design a Solution!", dur:"5:34", tint:"#7b4fa8", when:"today"},
+        {title:"Why Do We Get Hiccups?", dur:"4:12", tint:"#4a8b8d", when:"today"},
+        {title:"Meet the Assassin Bug", dur:"6:58", tint:"#4f7a2f", when:"2 days ago"}
+      ],
+      upNextQueue: [
+        {title:"Every Kind of Volcano", channel:"SciShow Kids", tint:"#8c6a2f", dur:"8:24"},
+        {title:"The Biggest Volcano Ever is in Space!", channel:"SciShow Kids", tint:"#5a3f6b", dur:"5:48"},
+        {title:"A Baby Dragonfly's Mouth", channel:"Deep Look", tint:"#c2531f", dur:"3:48"}
+      ],
+      keepWatching: [
+        {title:"How to find themes (A Writer's Guide)", channel:"Crash Course Kids", tint:"#4a8b8d", pct:"52%", left:"2:41 left", dur:"5:22"},
+        {title:"Multiplication - UK (Part 1/7)", channel:"StoryBots", tint:"#3f7a8c", pct:"18%", left:"2:20 left", dur:"2:56"},
+        {title:"Every Kind of Volcano", channel:"SciShow Kids", tint:"#8c6a2f", pct:"0%", left:"8:24", dur:"8:24"}
+      ],
+      upNext: [
+        {n:"1", title:"The Yuckiest Animals | SciShow Kids Compilation", dur:"26:34", tint:"#4f7a2f", seen:false, when:"today"},
+        {n:"2", title:"KABOOM! All About Volcanoes! | SciShow Kids", dur:"21:17", tint:"#b8452f", seen:true, when:"2 days ago"},
+        {n:"3", title:"Every Kind of Volcano | SciShow Kids", dur:"8:24", tint:"#8c6a2f", seen:false, when:"last week"},
+        {n:"4", title:"The Biggest Volcano Ever is in Space!", dur:"5:48", tint:"#5a3f6b", seen:false, when:"2 weeks ago"},
+        {n:"5", title:"Hawai'i: Land of Volcanoes | SciShow Kids", dur:"8:05", tint:"#2f6f72", seen:true, when:"last month"}
+      ].map(u => ({
+        ...u,
+        fade: (watched && u.seen) ? .48 : 1,
+        state: (watched && u.seen) ? "watched" : ""
+      }))
+    ,
+      tvHeroRest: hero.slice(1),
+      tvHeroAll: hero.map((h, i) => ({
+        ...h,
+        border: i === 0 ? "3px solid #e0533d" : "1px solid #2b2b31",
+        glow: i === 0 ? "0 0 0 6px rgba(224,83,61,.18)" : "none"
+      })),
+      tvChannels: [
+        {name:"BBC Earth Science", tint:"#1f3a6b"},
+        {name:"Maddie Moate", tint:"#2f7a56"},
+        {name:"SciShow Kids", tint:"#7b4fa8"},
+        {name:"Coyote Peterson", tint:"#6b5a3a"},
+        {name:"The Action Lab", tint:"#b8452f"},
+        {name:"Math with Mr. J", tint:"#3f7a8c"},
+        {name:"Deep Look", tint:"#c2531f"}
+      ],
+      tvChannelRows: [
+        {name:"SciShow Kids", tint:"#7b4fa8", badge:"3 NEW"},
+        {name:"Maddie Moate", tint:"#2f7a56", badge:"1 NEW"},
+        {name:"BBC Earth Science", tint:"#1f3a6b", badge:""},
+        {name:"Coyote Peterson", tint:"#6b5a3a", badge:"2 NEW"},
+        {name:"The Action Lab", tint:"#b8452f", badge:""},
+        {name:"Math with Mr. J", tint:"#3f7a8c", badge:""},
+        {name:"Deep Look", tint:"#c2531f", badge:""}
+      ].map(c => ({...c, dotOpacity: c.badge ? 1 : 0})),
+      homeFeed: [
+        {title:"Summer Adventures with Maddie | Pineapples, Cork Trees and Goats", channel:"Maddie Moate", tint:"#2f7a56", dur:"29:59", when:"today"},
+        {title:"What 4.6-Billion-Year-Old Meteorites Reveal About Our DNA", channel:"BBC Earth Science", tint:"#1f3a6b", dur:"5:15", when:"today"},
+        {title:"Rounding to the Nearest 10", channel:"Math with Mr. J", tint:"#3f7a8c", dur:"6:12", when:"yesterday"}
+      ],
+      tvChannelNew: [
+        {title:"Think Like an Engineer: Let's Design a Solution!", channel:"today", tint:"#7b4fa8", dur:"5:34"},
+        {title:"Why Do We Get Hiccups?", channel:"today", tint:"#4a8b8d", dur:"4:12"},
+        {title:"Meet the Assassin Bug", channel:"2 days ago", tint:"#4f7a2f", dur:"6:58"}
+      ],
+      moreLike: [
+        {title:"A Baby Dragonfly's Mouth Will Give You Nightmares", channel:"Deep Look", tint:"#c2531f", dur:"3:48", when:"last week"},
+        {title:"Why Do Volcanoes Erupt?", channel:"BBC Earth Science", tint:"#b8452f", dur:"6:40", when:"2 weeks ago"},
+        {title:"Inside a Beehive", channel:"Maddie Moate", tint:"#d8a13a", dur:"7:02", when:"last month"},
+        {title:"How Deep Is the Ocean?", channel:"BBC Earth Science", tint:"#2f6f72", dur:"8:11", when:"last month"}
+      ],
+      tvChannelVideos: [
+        {title:"The Yuckiest Animals | SciShow Kids Compilation", channel:"SciShow Kids", tint:"#4f7a2f", dur:"26:34", when:"today"},
+        {title:"KABOOM! All About Volcanoes!", channel:"SciShow Kids", tint:"#b8452f", dur:"21:17", when:"2 days ago"},
+        {title:"Every Kind of Volcano", channel:"SciShow Kids", tint:"#8c6a2f", dur:"8:24", when:"last week"},
+        {title:"The Biggest Volcano Ever is in Space!", channel:"SciShow Kids", tint:"#5a3f6b", dur:"5:48", when:"2 weeks ago"}
+      ],
+      tvPlaylists: [
+        {name:"The World of Insects", n:"4 videos", tint:"#4f7a2f"},
+        {name:"Exploring Australia!", n:"2 videos", tint:"#8c6a2f"},
+        {name:"Let's Explore Mars!", n:"6 videos", tint:"#b8452f"},
+        {name:"How Weather Works", n:"5 videos", tint:"#2f6f72"}
+      ],
+      tvFavorites: [
+        {title:"KABOOM! All About Volcanoes!", channel:"SciShow Kids", tint:"#b8452f", dur:"21:17"},
+        {title:"The Yuckiest Animals", channel:"SciShow Kids", tint:"#4f7a2f", dur:"26:34"},
+        {title:"Summer Adventures with Maddie", channel:"Maddie Moate", tint:"#2f7a56", dur:"29:59"},
+        {title:"A Baby Dragonfly's Mouth", channel:"Deep Look", tint:"#c2531f", dur:"3:48"}
+      ],
+      watchLater: [
+        {title:"Every Kind of Volcano", channel:"SciShow Kids", tint:"#8c6a2f", dur:"8:24"},
+        {title:"The Biggest Volcano Ever is in Space!", channel:"SciShow Kids", tint:"#5a3f6b", dur:"5:48"},
+        {title:"A Baby Dragonfly's Mouth", channel:"Deep Look", tint:"#c2531f", dur:"3:48"}
+      ],
+      tvHistory: [
+        {title:"How to find themes (A Writer's Guide)", channel:"Crash Course Kids · Today", tint:"#4a8b8d", dur:"5:22"},
+        {title:"Multiplication - UK (Part 1/7)", channel:"StoryBots · Today", tint:"#3f7a8c", dur:"2:56"},
+        {title:"Catching Massive Salamanders!", channel:"Coyote Peterson · Yesterday", tint:"#6b5a3a", dur:"4:38"},
+        {title:"Rounding to the Nearest 10", channel:"Math with Mr. J · Yesterday", tint:"#3f7a8c", dur:"6:12"}
+      ],
+      tvHistoryRail: [
+        {title:"How to find themes (A Writer's Guide)", channel:"Crash Course Kids", when:"Today", tint:"#4a8b8d", dur:"5:22"},
+        {title:"Multiplication - UK (Part 1/7)", channel:"StoryBots", when:"Today", tint:"#3f7a8c", dur:"2:56"},
+        {title:"Catching Massive Salamanders!", channel:"Coyote Peterson", when:"Yesterday", tint:"#6b5a3a", dur:"4:38"},
+        {title:"Rounding to the Nearest 10", channel:"Math with Mr. J", when:"Yesterday", tint:"#3f7a8c", dur:"6:12"}
+      ],
+      tvSearchResults: [
+        {title:"KABOOM! All About Volcanoes!", channel:"SciShow Kids", tint:"#b8452f", dur:"21:17", when:"2 days ago"},
+        {title:"Why Do Volcanoes Erupt?", channel:"BBC Earth Science", tint:"#1f3a6b", dur:"6:40", when:"last week"},
+        {title:"Catching Massive Salamanders!", channel:"Coyote Peterson", tint:"#6b5a3a", dur:"4:38", when:"yesterday"},
+        {title:"A Baby Dragonfly's Mouth", channel:"Deep Look", tint:"#c2531f", dur:"3:48", when:"last month"}
+      ],
+      tvDownloads: [
+        {title:"KABOOM! All About Volcanoes!", channel:"SciShow Kids", tint:"#b8452f", dur:"21:17", size:"142 MB"},
+        {title:"Summer Adventures with Maddie", channel:"Maddie Moate", tint:"#2f7a56", dur:"29:59", size:"210 MB"},
+        {title:"Every Kind of Volcano", channel:"SciShow Kids", tint:"#8c6a2f", dur:"8:24", size:"64 MB"}
+      ],
+      tvKeepWatching: [
+        {title:"How to find themes (A Writer's Guide)", channel:"Crash Course Kids", tint:"#4a8b8d", pct:"52%", left:"2:41 left"},
+        {title:"Multiplication - UK (Part 1/7)", channel:"StoryBots", tint:"#3f7a8c", pct:"18%", left:"2:20 left"},
+        {title:"Every Kind of Volcano", channel:"SciShow Kids", tint:"#8c6a2f", pct:"64%", left:"3:02 left"},
+        {title:"Catching Massive Salamanders!", channel:"Coyote Peterson", tint:"#6b5a3a", pct:"9%", left:"4:10 left"}
+      ]
+    };
+  }
+}
+</script>
+</body></html>

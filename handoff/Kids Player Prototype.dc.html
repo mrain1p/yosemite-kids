@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><style>
+body{margin:0;background:#0b0b0c;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;align-items:flex-start;justify-content:center;padding:28px 0}
+a{color:#e0533d;text-decoration:none}a:hover{color:#f2f0ec}
+.sa{scrollbar-width:none}
+.sa::-webkit-scrollbar{width:0;height:0}
+.ph{overflow:hidden;position:relative;background:#1a1a1d}
+.ph:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.055) 0 8px,transparent 8px 16px)}
+.tap{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tap:active{opacity:.72}
+</style></helmet>
+
+<div style="display:flex;flex-direction:column;gap:14px;align-items:center">
+<sc-if value="{{ showCaption }}" hint-placeholder-val="{{ true }}"><div style="font:600 12px ui-sans-serif,system-ui,sans-serif;color:#6f6f78;text-align:center;max-width:380px;text-wrap:pretty">Tap anything: tabs, channels, videos, filters, the search field, favourites. Back arrows return.</div></sc-if>
+
+<div style="{{ frameStyle }}">
+  <sc-if value="{{ isTV }}" hint-placeholder-val="{{ false }}">{{ navRail }}</sc-if>
+  <div style="{{ innerStyle }}">
+
+  <sc-if value="{{ showStatusBar }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0;font:700 10px ui-monospace,Menlo,monospace;color:#6f6f78"><span>2:50</span><span>WI-FI · 32%</span></div>
+  </sc-if>
+
+  <sc-if value="{{ showTopBar }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 14px">
+    <sc-if value="{{ showBack }}" hint-placeholder-val="{{ false }}">
+      <div class="tap" onClick="{{ goBack }}" style="width:34px;height:34px;border-radius:17px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;color:#f2f0ec;font-size:17px;flex:none">&#8592;</div>
+    </sc-if>
+    <sc-if value="{{ showLogo }}" hint-placeholder-val="{{ true }}">
+      <div style="width:34px;height:34px;border-radius:10px;background:#e0533d;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:0;height:0;border-left:11px solid #0b0b0c;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></div>
+    </sc-if>
+    <div style="flex:1;min-width:0;font-size:19px;font-weight:700;color:#f2f0ec">{{ pageTitle }}</div>
+    <div style="flex:none;display:flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:9px;background:#1a1a1d;border:1px solid #2b2b31">
+      <span style="width:7px;height:7px;border-radius:4px;background:#d8a13a"></span>
+      <span style="font:700 11px ui-monospace,Menlo,monospace;color:#f2f0ec">{{ minsLeft }}</span>
+    </div>
+    <div class="tap" onClick="{{ openSearch }}" style="width:44px;height:44px;border-radius:22px;background:#1a1a1d;border:1px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none">
+      <div style="width:15px;height:15px;border:2px solid #f2f0ec;border-radius:50%;position:relative"><div style="position:absolute;right:-6px;bottom:-4px;width:8px;height:2px;background:#f2f0ec;border-radius:1px;transform:rotate(45deg)"></div></div>
+    </div>
+    <div class="tap" onClick="{{ openProfile }}" style="width:40px;height:40px;border-radius:20px;background:#1a1a1d;border:2px solid #2b2b31;display:flex;align-items:center;justify-content:center;flex:none"><div style="width:19px;height:19px;border-radius:10px;background:#e0533d"></div></div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ tvHeader }}" hint-placeholder-val="{{ false }}">{{ tvHeader }}</sc-if>
+
+  <div class="sa" style="flex:1;overflow-y:auto;padding:0 0 16px">{{ screenBody }}</div>
+
+  <sc-if value="{{ showTabs }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;border-top:1px solid #26262a;background:#111113;padding:9px 8px 14px">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+        <div class="tap" onClick="{{ t.go }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0;border-radius:12px;background:{{ t.bg }}">
+          <div style="width:19px;height:19px;border-radius:{{ t.radius }};border:2px solid {{ t.stroke }};background:{{ t.fill }}"></div>
+          <div style="font:700 10.5px ui-sans-serif,system-ui,sans-serif;color:{{ t.color }}">{{ t.label }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+  </div>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;left:16px;right:16px;bottom:96px;padding:13px 15px;border-radius:14px;background:#1a1a1d;border:1px solid #e0533d;font:600 13px ui-sans-serif,system-ui,sans-serif;color:#f2f0ec;z-index:9">{{ toast }}</div>
+  </sc-if>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:420,&quot;height&quot;:880},&quot;variant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;standard&quot;,&quot;simple&quot;,&quot;tv&quot;],&quot;default&quot;:&quot;standard&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;}}">
+const CH = {
+  scishow: {name:"SciShow Kids", tint:"#7b4fa8", meta:"30+ videos · 29 playlists", newCount:3},
+  maddie: {name:"Maddie Moate", tint:"#2f7a56", meta:"120 videos · 8 playlists", newCount:1},
+  bbc: {name:"BBC Earth Science", tint:"#1f3a6b", meta:"64 videos · 5 playlists", newCount:0},
+  coyote: {name:"Coyote Peterson", tint:"#6b5a3a", meta:"200+ videos · 12 playlists", newCount:2},
+  action: {name:"The Action Lab", tint:"#b8452f", meta:"88 videos · 4 playlists", newCount:0},
+  math: {name:"Math with Mr. J", tint:"#3f7a8c", meta:"310 videos · 22 playlists", newCount:0}
+};
+const VIDS = [
+  {id:"v1", title:"Think Like an Engineer: Let's Design a Solution!", ch:"scishow", dur:"5:34", when:"today", tint:"#7b4fa8"},
+  {id:"v2", title:"Summer Adventures with Maddie | Pineapples and Goats", ch:"maddie", dur:"29:59", when:"today", tint:"#2f7a56"},
+  {id:"v3", title:"KABOOM! All About Volcanoes!", ch:"scishow", dur:"21:17", when:"2 days ago", tint:"#b8452f"},
+  {id:"v4", title:"Catching Massive Salamanders! (2 feet long)", ch:"coyote", dur:"4:38", when:"yesterday", tint:"#6b5a3a"},
+  {id:"v5", title:"What 4.6-Billion-Year-Old Meteorites Reveal", ch:"bbc", dur:"5:15", when:"last week", tint:"#1f3a6b"},
+  {id:"v6", title:"Rounding to the Nearest 10", ch:"math", dur:"6:12", when:"last week", tint:"#3f7a8c"},
+  {id:"v7", title:"The Yuckiest Animals | SciShow Kids", ch:"scishow", dur:"26:34", when:"2 weeks ago", tint:"#4f7a2f"},
+  {id:"v8", title:"Inside a Beehive", ch:"maddie", dur:"7:02", when:"last month", tint:"#d8a13a"}
+];
+const R = React.createElement;
+
+class Component extends DCLogic {
+  state = {
+    screen: "home", channel: "scishow", video: "v1", sort: "New",
+    favs: ["v3"], later: ["v6"], watched: ["v3", "v7"], playing: true,
+    stack: [], toast: "", minsLeft: 20, query: ""
+  };
+
+  go = (screen, extra) => this.setState(s => ({
+    ...extra, screen, stack: [...s.stack, {screen: s.screen, channel: s.channel, video: s.video}]
+  }));
+  back = () => this.setState(s => {
+    const prev = s.stack[s.stack.length - 1];
+    return prev ? {...prev, stack: s.stack.slice(0, -1)} : {screen: "home", stack: []};
+  });
+  flash = (msg) => {
+    this.setState({toast: msg});
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState({toast: ""}), 1600);
+  };
+  toggle = (key, id, onLabel, offLabel) => this.setState(s => {
+    const has = s[key].includes(id);
+    this.flash(has ? offLabel : onLabel);
+    return {[key]: has ? s[key].filter(x => x !== id) : [...s[key], id]};
+  });
+  play = (id) => this.setState(s => ({
+    screen: "player", video: id, playing: true,
+    watched: s.watched.includes(id) ? s.watched : [...s.watched, id],
+    stack: [...s.stack, {screen: s.screen, channel: s.channel, video: s.video}]
+  }));
+
+  // ---- building blocks ----
+  hdr = (title, count, link, onLink) => R("div", {key: "h" + title, style: {display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, padding: "0 " + this.G() + "px " + "10px"}},
+    R("div", {style: {display: "flex", alignItems: "baseline", gap: 9, minWidth: 0}},
+      R("div", {style: {font: "700 17px/1.2 ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, title),
+      count ? R("span", {style: {font: "700 13px/1.2 ui-monospace, Menlo, monospace", color: "#6f6f78"}}, count) : null),
+    link ? R("span", {className: "tap", onClick: onLink, style: {font: "700 14.5px/1.2 ui-sans-serif, system-ui, sans-serif", color: "#e0533d", whiteSpace: "nowrap", flex: "none"}}, link) : null);
+
+  divider = (k) => R("div", {key: "d" + k, style: {height: 1, background: "#26262a", margin: "0 16px 14px"}});
+
+  thumb = (v, w, h) => R("div", {className: "ph", style: {width: w, height: h, borderRadius: 14, background: v.tint, flex: "none"}},
+    R("div", {style: {position: "absolute", right: 8, bottom: 8, background: "rgba(0,0,0,.82)", borderRadius: 5, padding: "3px 6px", font: "700 11px ui-monospace, Menlo, monospace", color: "#fff", zIndex: 2}}, v.dur));
+
+  railCard = (v) => {
+    const seen = this.state.watched.includes(v.id);
+    const tv = this.V === "tv", simple = this.V === "simple";
+    const w = tv ? 250 : (simple ? 220 : 176), h = tv ? 141 : (simple ? 124 : 99);
+    return R("div", {key: v.id, className: "tap", onClick: () => this.play(v.id), style: {flex: "none", width: w, opacity: seen ? .48 : 1}},
+      this.thumb(v, w, h),
+      R("div", {style: {fontSize: tv ? 17 : (simple ? 15 : 13.5), fontWeight: simple || tv ? 700 : 600, lineHeight: 1.3, color: "#f2f0ec", marginTop: tv ? 11 : 8, textWrap: "pretty"}}, v.title),
+      simple ? null : R("div", {style: {display: "flex", gap: 7, alignItems: "center", marginTop: 3}},
+        R("span", {style: {fontSize: tv ? 14.5 : 11.5, color: "#9a9aa2"}}, CH[v.ch].name),
+        seen ? R("span", {style: {font: "700 9px ui-monospace, Menlo, monospace", letterSpacing: ".12em", textTransform: "uppercase", color: "#47b877"}}, "watched") : null));
+  };
+
+  rail = (k, vids) => R("div", {key: "r" + k, className: "sa", style: {display: "flex", gap: 13, overflowX: "auto", padding: "0 " + this.G() + "px " + "14px"}}, vids.map(v => this.railCard(v)));
+
+  feedCard = (v) => {
+    const seen = this.state.watched.includes(v.id);
+    return R("div", {key: v.id, style: {opacity: seen ? .48 : 1}},
+      R("div", {className: "tap ph", onClick: () => this.play(v.id), style: {height: 196, borderRadius: 14, background: v.tint}},
+        R("div", {style: {position: "absolute", right: 9, bottom: 9, background: "rgba(0,0,0,.82)", borderRadius: 5, padding: "3px 7px", font: "700 11.5px ui-monospace, Menlo, monospace", color: "#fff", zIndex: 2}}, v.dur)),
+      R("div", {style: {display: "flex", gap: 12, alignItems: "flex-start", marginTop: 11}},
+        R("div", {className: "tap ph", onClick: () => this.go("channel", {channel: v.ch}), style: {width: 40, height: 40, borderRadius: 12, background: CH[v.ch].tint, flex: "none"}}),
+        R("div", {style: {flex: 1, minWidth: 0}},
+          R("div", {className: "tap", onClick: () => this.play(v.id), style: {fontSize: 15.5, fontWeight: 600, lineHeight: 1.35, color: "#f2f0ec", textWrap: "pretty"}}, v.title),
+          R("div", {style: {display: "flex", gap: 8, alignItems: "center", marginTop: 4}},
+            R("span", {style: {fontSize: 12.5, color: "#9a9aa2"}}, CH[v.ch].name + " · " + v.when),
+            seen ? R("span", {style: {font: "700 9px ui-monospace, Menlo, monospace", letterSpacing: ".12em", textTransform: "uppercase", color: "#47b877"}}, "watched") : null)),
+        R("div", {className: "tap", onClick: () => this.flash("Only a grown-up can remove videos"), style: {color: "#9a9aa2", fontSize: 17, lineHeight: 1, flex: "none"}}, "\u22ee")));
+  };
+
+  chip = (label, active, onClick) => R("div", {key: label, className: "tap", onClick, style: {flex: "none", minHeight: 40, padding: "0 14px", borderRadius: 20, background: active ? "#1a1a1d" : "#111113", border: active ? "1px solid #e0533d" : "1px solid #2b2b31", display: "flex", alignItems: "center", gap: 7, font: (active ? 700 : 600) + " 13px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, label);
+
+  channelTile = (key) => {
+    const c = CH[key];
+    return R("div", {key, className: "tap", onClick: () => this.go("channel", {channel: key}), style: {flex: "none", width: this.V === "tv" ? 130 : (this.V === "simple" ? 98 : 74), display: "flex", flexDirection: "column", alignItems: "center", gap: this.V === "standard" ? 7 : 11}},
+      R("div", {className: "ph", style: {width: this.V === "tv" ? 124 : (this.V === "simple" ? 92 : 68), height: this.V === "tv" ? 124 : (this.V === "simple" ? 92 : 68), borderRadius: this.V === "tv" ? 30 : (this.V === "simple" ? 26 : 20), background: c.tint}},
+        c.newCount ? R("div", {style: {position: "absolute", right: 2, top: 2, width: 14, height: 14, borderRadius: 7, background: "#e0533d", border: "2px solid #0b0b0c", zIndex: 2}}) : null),
+      R("div", {style: {fontSize: 11.5, lineHeight: 1.25, color: "#9a9aa2", textAlign: "center"}}, c.name));
+  };
+
+  // ---- screens ----
+  G = () => this.V === "tv" ? 44 : 16;
+  homeBody = () => {
+    const s = this.state;
+    const tv = this.V === "tv", simple = this.V === "simple";
+    const G = tv ? 44 : 16;
+    const unfinished = VIDS.filter(v => !s.watched.includes(v.id)).slice(0, 3);
+    const feed = VIDS.filter(v => s.sort !== "Favorites" || s.favs.includes(v.id)).slice(0, 4);
+    return [
+      R("div", {key: "hero", className: "sa", style: {display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", padding: "0 " + this.G() + "px " + "8px"}},
+        [VIDS[0], VIDS[1]].map(v => R("div", {key: v.id, className: "tap", onClick: () => this.play(v.id), style: {flex: "none", width: tv ? 344 : 348, borderRadius: 18, overflow: "hidden", border: "1px solid #2b2b31", scrollSnapAlign: "center"}},
+          R("div", {className: "ph", style: {height: tv ? 194 : 176, background: CH[v.ch].tint}},
+            R("div", {style: {position: "absolute", left: 12, top: 12, padding: "4px 8px", borderRadius: 6, background: "rgba(11,11,12,.6)", font: "700 9px ui-monospace, Menlo, monospace", letterSpacing: ".12em", textTransform: "uppercase", color: "#f2f0ec", zIndex: 2}}, "Pinned"),
+            R("div", {style: {position: "absolute", left: 0, right: 0, bottom: 0, padding: "14px 15px", background: "linear-gradient(transparent,rgba(11,11,12,.9))", zIndex: 2, display: "flex", alignItems: "flex-end", gap: 12}},
+              R("div", {style: {flex: 1, minWidth: 0}},
+                R("div", {style: {fontSize: 19, fontWeight: 700, color: "#f2f0ec"}}, CH[v.ch].name),
+                R("div", {style: {font: "700 9.5px ui-monospace, Menlo, monospace", letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(242,240,236,.65)", marginTop: 5}}, CH[v.ch].newCount + (CH[v.ch].newCount === 1 ? " new video" : " new videos"))),
+              R("div", {style: {width: 52, height: 52, borderRadius: 26, background: "#e0533d", display: "flex", alignItems: "center", justifyContent: "center", flex: "none"}},
+                R("div", {style: {width: 0, height: 0, borderLeft: "16px solid #0b0b0c", borderTop: "10px solid transparent", borderBottom: "10px solid transparent", marginLeft: 4}}))))))),
+      R("div", {key: "dots", style: {display: "flex", justifyContent: "center", gap: 7, padding: "0 " + this.G() + "px " + "14px"}},
+        [0, 1].map(i => R("div", {key: i, style: {width: 7, height: 7, borderRadius: 4, background: i === 0 ? "#e0533d" : "#2b2b31"}}))),
+      this.divider(1),
+      this.hdr("Channels", "6", "See all", () => this.go("channels")),
+      R("div", {key: "chr", className: "sa", style: {display: "flex", gap: 12, overflowX: "auto", padding: "0 " + this.G() + "px " + "18px"}}, Object.keys(CH).map(k => this.channelTile(k))),
+      this.divider(2),
+      this.hdr("Keep watching", String(unfinished.length), "See all", () => this.go("you")),
+      R("div", {key: "kwr", className: "sa", style: {display: "flex", gap: 13, overflowX: "auto", padding: "0 " + this.G() + "px " + "14px"}},
+        unfinished.map((v, i) => R("div", {key: v.id, className: "tap", onClick: () => this.play(v.id), style: {flex: "none", width: tv ? 250 : (simple ? 220 : 176)}},
+          R("div", {className: "ph", style: {height: tv ? 141 : (simple ? 124 : 99), borderRadius: 14, background: v.tint}},
+            R("div", {style: {position: "absolute", right: 8, bottom: 12, background: "rgba(0,0,0,.82)", borderRadius: 5, padding: "3px 6px", font: "700 11px ui-monospace, Menlo, monospace", color: "#fff", zIndex: 2}}, ["2:41 left", "2:20 left", "3:02 left"][i] || "1:10 left"),
+            R("div", {style: {position: "absolute", left: 0, right: 0, bottom: 0, height: 5, background: "rgba(0,0,0,.5)", zIndex: 2}},
+              R("div", {style: {height: 5, background: "#e0533d", width: ["52%", "18%", "64%"][i] || "30%"}}))),
+          R("div", {style: {fontSize: tv ? 17 : (simple ? 15 : 13.5), fontWeight: simple || tv ? 700 : 600, lineHeight: 1.3, color: "#f2f0ec", marginTop: tv ? 11 : 8, textWrap: "pretty"}}, v.title),
+          simple ? null : R("div", {style: {fontSize: tv ? 14.5 : 11.5, color: "#9a9aa2", marginTop: 3}}, CH[v.ch].name)))),
+      this.divider(31),
+      this.hdr("More like what you watch", null, "See all", () => this.flash("More suggestions")),
+      this.rail("ml", VIDS.slice(4, 8)),
+      this.divider(3),
+      this.hdr("Videos", null, null),
+      R("div", {key: "ctrl", className: "sa", style: {display: "flex", alignItems: "center", gap: 9, overflowX: "auto", padding: "0 " + this.G() + "px " + "16px"}},
+        R("div", {className: "tap", onClick: () => this.play(VIDS[Math.floor(Math.random() * VIDS.length)].id), style: {flex: "none", minHeight: 40, padding: "0 " + this.G() + "px", borderRadius: 20, background: "#1a1a1d", border: "1px solid #e0533d", display: "flex", alignItems: "center", gap: 8, font: "700 13.5px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, "\uD83C\uDF81 Surprise me"),
+        R("div", {style: {flex: "none", width: 1, height: 24, background: "#2b2b31", margin: "0 2px"}}),
+        ["New", "Favorites", "Most watched"].map(x => this.chip(x, this.state.sort === x, () => this.setState({sort: x})))),
+      this.V === "standard"
+        ? R("div", {key: "feed", style: {display: "flex", flexDirection: "column", gap: 18, padding: "0 " + this.G() + "px"}},
+            feed.length ? feed.map(v => this.feedCard(v)) : R("div", {style: {padding: 14, borderRadius: 14, background: "#111113", border: "1px dashed #2b2b31", fontSize: 12.5, color: "#9a9aa2"}}, "Nothing favourited yet. Tap the heart on a video."))
+        : R("div", {key: "feed", style: {display: "grid", gridTemplateColumns: this.V === "tv" ? "repeat(3,1fr)" : "1fr 1fr", gap: 14, padding: this.V === "tv" ? "0 44px" : "0 16px"}},
+            feed.map(v => R("div", {key: v.id, className: "tap", onClick: () => this.play(v.id), style: {opacity: this.state.watched.includes(v.id) ? .48 : 1}},
+              R("div", {className: "ph", style: {height: this.V === "tv" ? 190 : 98, borderRadius: this.V === "tv" ? 22 : 18, background: v.tint}},
+                R("div", {style: {position: "absolute", right: 8, bottom: 8, background: "rgba(0,0,0,.82)", borderRadius: 5, padding: "2px 6px", font: "700 11px ui-monospace, Menlo, monospace", color: "#fff", zIndex: 2}}, v.dur)),
+              R("div", {style: {fontSize: this.V === "tv" ? 20 : 14, fontWeight: 700, lineHeight: 1.3, color: "#f2f0ec", marginTop: 9, textWrap: "pretty"}}, v.title))))
+    ];
+  };
+
+  channelsBody = () => this.V === "simple" ? [
+    R("div", {key: "surp", className: "tap", onClick: () => this.play(VIDS[Math.floor(Math.random() * VIDS.length)].id), style: {display: "flex", alignItems: "center", gap: 14, margin: "0 16px 16px", padding: 16, borderRadius: 20, background: "#111113", border: "1px solid #2b2b31"}},
+      R("div", {style: {width: 56, height: 56, borderRadius: 18, background: "#e0533d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, flex: "none"}}, "\uD83C\uDF81"),
+      R("div", {style: {fontSize: 19, fontWeight: 700, color: "#f2f0ec"}}, "Surprise me")),
+    R("div", {key: "grid", style: {display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, padding: "0 16px"}},
+      Object.keys(CH).map(k => R("div", {key: k, className: "tap", onClick: () => this.go("channel", {channel: k})},
+        R("div", {className: "ph", style: {height: 158, borderRadius: 22, background: CH[k].tint}},
+          CH[k].newCount ? R("div", {style: {position: "absolute", right: 10, top: 10, width: 16, height: 16, borderRadius: 8, background: "#e0533d", border: "2px solid #0b0b0c", zIndex: 2}}) : null),
+        R("div", {style: {fontSize: 15, fontWeight: 700, lineHeight: 1.3, color: "#f2f0ec", marginTop: 9, textWrap: "pretty"}}, CH[k].name))))
+  ] : [
+    R("div", {key: "surp", className: "tap", onClick: () => this.play(VIDS[Math.floor(Math.random() * VIDS.length)].id), style: {display: "flex", alignItems: "center", gap: 14, margin: "0 16px 14px", padding: 14, borderRadius: 20, background: "#111113", border: "1px solid #2b2b31"}},
+      R("div", {style: {width: 52, height: 52, borderRadius: 16, background: "#e0533d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, color: "#0b0b0c", flex: "none"}}, "\uD83C\uDF81"),
+      R("div", {style: {flex: 1, minWidth: 0}},
+        R("div", {style: {fontSize: 18, fontWeight: 700, color: "#f2f0ec"}}, "Surprise me"),
+        R("div", {style: {fontSize: 12.5, color: "#9a9aa2", marginTop: 2}}, "play something from any channel"))),
+    R("div", {key: "pin", style: {padding: "0 " + this.G() + "px " + "10px", display: "flex", alignItems: "baseline", gap: 9}},
+      R("div", {style: {font: "700 17px/1.2 ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, "Pinned"),
+      R("span", {style: {font: "700 13px/1.2 ui-monospace, Menlo, monospace", color: "#6f6f78"}}, "2")),
+    R("div", {key: "pinr", className: "sa", style: {display: "flex", gap: 11, overflowX: "auto", padding: "0 " + this.G() + "px " + "14px"}},
+      ["scishow", "maddie"].map(k => R("div", {key: k, className: "tap", onClick: () => this.go("channel", {channel: k}), style: {flex: "none", width: 108}},
+        R("div", {className: "ph", style: {height: 72, borderRadius: 14, background: CH[k].tint}}),
+        R("div", {style: {fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, color: "#f2f0ec", marginTop: 8}}, CH[k].name)))),
+    this.divider("c1"),
+    R("div", {key: "rows", style: {display: "flex", flexDirection: "column", gap: 2, padding: "0 " + this.G() + "px"}},
+      Object.keys(CH).map(k => {
+        const c = CH[k];
+        const newest = VIDS.find(v => v.ch === k) || VIDS[0];
+        return R("div", {key: k, style: {display: "flex", alignItems: "center", gap: 20, padding: "12px 0", borderBottom: "1px solid #26262a"}},
+          R("div", {className: "tap", onClick: () => this.go("channel", {channel: k}), style: {display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0}},
+            R("div", {className: "ph", style: {width: 68, height: 68, borderRadius: 20, background: c.tint, flex: "none"}}),
+            R("div", {style: {flex: 1, minWidth: 0}},
+              R("div", {style: {display: "flex", alignItems: "baseline", gap: 8}},
+                R("span", {style: {fontSize: 15.5, fontWeight: 700, color: "#f2f0ec"}}, c.name),
+                c.newCount ? R("span", {style: {font: "700 9px ui-monospace, Menlo, monospace", letterSpacing: ".1em", textTransform: "uppercase", color: "#e0533d"}}, c.newCount + " NEW") : null),
+              R("div", {style: {fontSize: 12.5, lineHeight: 1.35, color: "#9a9aa2", marginTop: 4, textWrap: "pretty"}}, newest.title),
+              R("div", {style: {fontSize: 11.5, color: "#6f6f78", marginTop: 3}}, newest.when))),
+          R("div", {className: "tap ph", onClick: () => this.play(newest.id), style: {width: 44, height: 44, borderRadius: 22, background: newest.tint, flex: "none"}},
+            R("div", {style: {position: "absolute", inset: 0, background: "rgba(11,11,12,.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2}},
+              R("div", {style: {width: 0, height: 0, borderLeft: "11px solid #f2f0ec", borderTop: "7px solid transparent", borderBottom: "7px solid transparent", marginLeft: 2}}))));
+      }))
+  ];
+
+  channelBody = () => {
+    const key = this.state.channel, c = CH[key];
+    const vids = VIDS.filter(v => v.ch === key);
+    const list = vids.length ? vids : VIDS.slice(0, 3);
+    return [
+      R("div", {key: "id", style: {display: "flex", alignItems: "center", gap: 14, padding: "0 " + this.G() + "px " + "16px"}},
+        R("div", {className: "ph", style: {width: 76, height: 76, borderRadius: 22, background: c.tint, flex: "none"}}),
+        R("div", {style: {flex: 1, minWidth: 0}},
+          R("div", {style: {fontSize: 21, fontWeight: 700, lineHeight: 1.25, color: "#f2f0ec"}}, c.name),
+          R("div", {style: {font: "700 9.5px ui-monospace, Menlo, monospace", letterSpacing: ".14em", textTransform: "uppercase", color: "#6f6f78", marginTop: 5}}, c.meta))),
+      R("div", {key: "acts", style: {display: "flex", gap: 10, padding: "0 16px 20px"}},
+        [["Newest", () => this.play(list[0].id), R("div", {style: {width: 0, height: 0, borderLeft: "13px solid #e0533d", borderTop: "8px solid transparent", borderBottom: "8px solid transparent", marginLeft: 3}})],
+         ["Favorite", () => this.toggle("favs", list[0].id, "Added to Favorites", "Removed from Favorites"), R("span", {style: {fontSize: 16, lineHeight: 1, color: "#e0533d"}}, "\u2665")],
+         ["Surprise", () => this.play(list[Math.floor(Math.random() * list.length)].id), R("span", {style: {fontSize: 17, lineHeight: 1}}, "\uD83C\uDF81")]
+        ].map(([label, onClick, icon]) => R("div", {key: label, className: "tap", onClick, style: {flex: 1, minWidth: 0, height: 88, borderRadius: 16, background: "#111113", border: "1px solid #2b2b31", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8}},
+          R("div", {style: {width: 34, height: 34, borderRadius: 11, background: "#1a1a1d", display: "flex", alignItems: "center", justifyContent: "center"}}, icon),
+          R("div", {style: {font: "700 12.5px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, label)))),
+      this.hdr("New videos", String(c.newCount || list.length), "See all", () => this.flash("Full list")),
+      this.rail("cn", list.slice(0, 3)),
+      this.divider("ch1"),
+      this.hdr("Videos", String(list.length), null),
+      R("div", {key: "feed", style: {display: "flex", flexDirection: "column", gap: 18, padding: "0 " + this.G() + "px"}}, list.map(v => this.feedCard(v)))
+    ];
+  };
+
+  youBody = () => {
+    const s = this.state;
+    if (this.V === "simple") {
+      const n = (x) => x + (x === 1 ? " video" : " videos");
+      const cards = [["Favorites", n(s.favs.length), "#b8452f", "\u2665"], ["Watch later", n(s.later.length), "#4a8b8d", "\u25a1"], ["History", n(s.watched.length), "#3f7a8c", "\u21ba"], ["Downloads", "3 saved", "#2f7a56", "\u2193"]];
+      return [
+        R("div", {key: "grid", style: {display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, padding: "0 16px"}},
+          cards.map(([t, sub, tint, glyph]) => R("div", {key: t, className: "tap", onClick: () => this.flash(t), style: {borderRadius: 22, overflow: "hidden", background: "#111113", border: "1px solid #2b2b31"}},
+            R("div", {className: "ph", style: {height: 112, background: tint}},
+              R("div", {style: {position: "absolute", left: 12, top: 12, width: 38, height: 38, borderRadius: 12, background: "rgba(11,11,12,.6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#f2f0ec", zIndex: 2}}, glyph)),
+            R("div", {style: {padding: "13px 14px 15px"}},
+              R("div", {style: {fontSize: 17, fontWeight: 700, color: "#f2f0ec"}}, t),
+              R("div", {style: {font: "700 10px ui-monospace, Menlo, monospace", letterSpacing: ".12em", textTransform: "uppercase", color: "#6f6f78", marginTop: 5}}, sub))))),
+        R("div", {key: "ask", className: "tap", onClick: () => this.flash("Your ask was sent to a grown-up"), style: {display: "flex", alignItems: "center", gap: 13, margin: "14px 16px 0", padding: 14, borderRadius: 18, background: "#111113", border: "1px dashed #2b2b31"}},
+          R("div", {style: {width: 46, height: 46, borderRadius: 15, background: "#1a1a1d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#e0533d", flex: "none"}}, "+"),
+          R("div", {style: {fontSize: 15.5, fontWeight: 700, color: "#f2f0ec"}}, "Make a request"))
+      ];
+    }
+    const pick = ids => VIDS.filter(v => ids.includes(v.id));
+    const sections = [
+      ["Favorites", pick(s.favs), "See all"],
+      ["Watch later", pick(s.later), "See all"],
+      ["History", pick(s.watched), "See all"],
+      ["Downloads", VIDS.slice(2, 4), "Manage"]
+    ];
+    const out = [
+      R("div", {key: "limit", style: {margin: "0 16px 14px", padding: "13px 14px", borderRadius: 16, background: "#111113", border: "1px solid #2b2b31"}},
+        R("div", {style: {font: "700 9.5px ui-monospace, Menlo, monospace", letterSpacing: ".14em", textTransform: "uppercase", color: "#6f6f78", marginBottom: 10}}, "Videos are off · 40 of 60 minutes used"),
+        R("div", {style: {display: "flex", gap: 8, flexWrap: "wrap"}},
+          [["Bedtime", "8:00pm", "#d8a13a"], ["School", "8:30–3:30", "#4a8b8d"], ["Dinner", "5:30–6:15", "#9a9aa2"]].map(([l, r, dot]) =>
+            R("div", {key: l, style: {display: "flex", alignItems: "center", gap: 7, minHeight: 34, padding: "0 12px", borderRadius: 17, background: "#1a1a1d", border: "1px solid #2b2b31"}},
+              R("span", {style: {width: 7, height: 7, borderRadius: 4, background: dot}}),
+              R("span", {style: {font: "600 12.5px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, l),
+              R("span", {style: {font: "700 11px ui-monospace, Menlo, monospace", color: "#9a9aa2"}}, r))))),
+      R("div", {key: "ask", className: "tap", onClick: () => this.flash("Your ask was sent to a grown-up"), style: {display: "flex", alignItems: "center", gap: 13, margin: "0 16px 18px", padding: 14, borderRadius: 18, background: "#111113", border: "1px dashed #2b2b31"}},
+        R("div", {style: {width: 46, height: 46, borderRadius: 15, background: "#1a1a1d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#e0533d", flex: "none"}}, "+"),
+        R("div", {style: {flex: 1, minWidth: 0}},
+          R("div", {style: {fontSize: 15.5, fontWeight: 700, color: "#f2f0ec"}}, "Make a request"),
+          R("div", {style: {fontSize: 12, color: "#9a9aa2", marginTop: 2}}, "a grown-up will see your ask")))
+    ];
+    sections.forEach(([title, vids, link], i) => {
+      out.push(this.divider("y" + i));
+      out.push(this.hdr(title, String(vids.length), link, () => this.flash(title)));
+      out.push(vids.length ? this.rail("y" + i, vids) :
+        R("div", {key: "e" + i, style: {margin: "0 16px 14px", padding: 13, borderRadius: 14, background: "#111113", border: "1px dashed #2b2b31", fontSize: 12.5, lineHeight: 1.5, color: "#9a9aa2"}}, "Nothing here yet."));
+    });
+    return out;
+  };
+
+  searchBody = () => {
+    const q = this.state.query;
+    const simpleV = this.V === "simple";
+    const results = q ? VIDS.filter(v => (v.title + CH[v.ch].name).toLowerCase().includes(q.toLowerCase())) : [];
+    return [
+      simpleV ? R("div", {key: "mic", className: "tap", onClick: () => this.setState({query: "volcanoes"}), style: {display: "flex", alignItems: "center", gap: 14, margin: "0 16px 16px", padding: 16, borderRadius: 20, background: "#111113", border: "1px solid #2b2b31"}},
+        R("div", {style: {width: 56, height: 56, borderRadius: 18, background: "#1a1a1d", display: "flex", alignItems: "center", justifyContent: "center", flex: "none"}},
+          R("div", {style: {width: 20, height: 28, position: "relative"}},
+            R("div", {style: {position: "absolute", left: 5, top: 0, width: 10, height: 15, borderRadius: 5, background: "#e0533d"}}),
+            R("div", {style: {position: "absolute", left: 1, top: 11, width: 18, height: 9, border: "2.5px solid #e0533d", borderTop: 0, borderRadius: "0 0 10px 10px"}}),
+            R("div", {style: {position: "absolute", left: 9, top: 20, width: 2.5, height: 5, background: "#e0533d"}}),
+            R("div", {style: {position: "absolute", left: 5, top: 24, width: 10, height: 2.5, borderRadius: 2, background: "#e0533d"}}))),
+        R("div", {style: {flex: 1, minWidth: 0}},
+          R("div", {style: {fontSize: 18, fontWeight: 700, color: "#f2f0ec"}}, "Say it out loud"),
+          R("div", {style: {fontSize: 12.5, color: "#9a9aa2", marginTop: 2}}, "tap and say what you want")))
+      : R("div", {key: "field", style: {padding: "0 " + this.G() + "px " + "10px"}},
+        R("div", {style: {minHeight: 56, borderRadius: 16, background: "#111113", border: "1px solid #2b2b31", display: "flex", alignItems: "center", gap: 11, padding: "0 8px 0 14px"}},
+          R("div", {style: {width: 17, height: 17, border: "2px solid #9a9aa2", borderRadius: "50%", position: "relative", flex: "none"}},
+            R("div", {style: {position: "absolute", right: -6, bottom: -4, width: 9, height: 2, background: "#9a9aa2", borderRadius: 1, transform: "rotate(45deg)"}})),
+          R("input", {value: q, placeholder: "What do you want to watch?", onChange: e => this.setState({query: e.target.value}),
+            style: {flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", font: "600 15.5px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}),
+          q ? R("div", {className: "tap", onClick: () => this.setState({query: ""}), style: {width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", flex: "none"}},
+            R("div", {style: {width: 26, height: 26, borderRadius: 13, background: "#1a1a1d", border: "1px solid #2b2b31", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#9a9aa2"}}, "\u00d7")) : null),
+        R("div", {style: {fontSize: 12.5, color: "#6f6f78", marginTop: 9, padding: "0 4px"}}, "Only your channels — nothing else can turn up.")),
+      q ? R("div", {key: "res", style: simpleV ? {display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, padding: "6px 16px 0"} : {display: "flex", flexDirection: "column", gap: 18, padding: "16px 16px 0"}},
+        results.length ? results.map(v => simpleV
+          ? R("div", {key: v.id, className: "tap", onClick: () => this.play(v.id)},
+              R("div", {className: "ph", style: {height: 98, borderRadius: 18, background: v.tint}},
+                R("div", {style: {position: "absolute", right: 8, bottom: 8, background: "rgba(0,0,0,.82)", borderRadius: 5, padding: "2px 6px", font: "700 11px ui-monospace, Menlo, monospace", color: "#fff", zIndex: 2}}, v.dur)),
+              R("div", {style: {fontSize: 14, fontWeight: 700, lineHeight: 1.3, color: "#f2f0ec", marginTop: 9, textWrap: "pretty"}}, v.title))
+          : this.feedCard(v))
+          : R("div", {style: {padding: 14, borderRadius: 14, background: "#111113", border: "1px dashed #2b2b31", fontSize: 13, color: "#9a9aa2"}}, "Nothing found in your channels."))
+        : R("div", {key: "rec", style: {padding: "8px 16px 0"}},
+          R("div", {style: {font: "600 13px ui-sans-serif, system-ui, sans-serif", color: "#6f6f78", marginBottom: 10}}, "You looked for"),
+          R("div", {style: {display: "flex", flexWrap: "wrap", gap: 9}},
+            ["volcanoes", "salamander", "rounding"].map(t => R("div", {key: t, className: "tap", onClick: () => this.setState({query: t}), style: {minHeight: 44, padding: "0 15px", borderRadius: 22, background: "#111113", border: "1px solid #2b2b31", display: "flex", alignItems: "center", fontSize: 14, color: "#f2f0ec"}}, t))))
+    ];
+  };
+
+  playerBody = () => {
+    const v = VIDS.find(x => x.id === this.state.video) || VIDS[0];
+    const c = CH[v.ch];
+    const next = VIDS.filter(x => x.ch === v.ch && x.id !== v.id).concat(VIDS.filter(x => x.ch !== v.ch)).slice(0, 4);
+    const fav = this.state.favs.includes(v.id), later = this.state.later.includes(v.id);
+    return [
+      R("div", {key: "vid", className: "ph", style: {height: 214, background: v.tint, flex: "none", margin: "0 0 16px"}},
+        R("div", {style: {position: "absolute", inset: 0, zIndex: 2, display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 12}},
+          R("div", {style: {display: "flex", alignItems: "center", justifyContent: "space-between"}},
+            R("div", {className: "tap", onClick: this.back, style: {width: 42, height: 42, borderRadius: 21, background: "rgba(11,11,12,.55)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f2f0ec", fontSize: 19}}, "\u2190"),
+            R("div", {style: {display: "flex", gap: 8}},
+              R("div", {className: "tap", onClick: () => this.flash("Autoplay off"), style: {height: 32, padding: "0 10px", borderRadius: 9, background: "rgba(11,11,12,.6)", border: "1px solid rgba(224,83,61,.85)", display: "flex", alignItems: "center", gap: 6, font: "700 10px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}},
+                "Autoplay", R("span", {style: {font: "700 8.5px ui-monospace, Menlo, monospace", color: "#e0533d"}}, "ON")),
+              R("div", {className: "tap", onClick: () => this.flash("Captions on"), style: {height: 32, padding: "0 10px", borderRadius: 9, background: "rgba(11,11,12,.6)", display: "flex", alignItems: "center", font: "700 10px ui-monospace, Menlo, monospace", color: "#f2f0ec"}}, "CC"))),
+          R("div", {style: {display: "flex", alignItems: "center", justifyContent: "center", gap: 26}},
+            R("div", {className: "tap", onClick: () => this.flash("Back 10s"), style: {width: 52, height: 52, borderRadius: 26, background: "rgba(11,11,12,.5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f2f0ec", fontSize: 20}}, "\u23ee"),
+            R("div", {className: "tap", onClick: () => this.setState(s => ({playing: !s.playing})), style: {width: 78, height: 78, borderRadius: 39, background: "#f2f0ec", display: "flex", alignItems: "center", justifyContent: "center", gap: 7}},
+              this.state.playing
+                ? [R("div", {key: "a", style: {width: 8, height: 32, background: "#0b0b0c", borderRadius: 2}}), R("div", {key: "b", style: {width: 8, height: 32, background: "#0b0b0c", borderRadius: 2}})]
+                : R("div", {style: {width: 0, height: 0, borderLeft: "26px solid #0b0b0c", borderTop: "17px solid transparent", borderBottom: "17px solid transparent", marginLeft: 7}})),
+            R("div", {className: "tap", onClick: () => this.play(next[0].id), style: {width: 52, height: 52, borderRadius: 26, background: "rgba(11,11,12,.5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f2f0ec", fontSize: 20}}, "\u23ed")),
+          R("div", null,
+            R("div", {style: {display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7}},
+              R("div", {style: {font: "700 13px ui-monospace, Menlo, monospace", color: "#f2f0ec"}}, "0:42 / " + v.dur),
+              R("div", {className: "tap", onClick: () => this.flash("Fullscreen"), style: {width: 36, height: 36, borderRadius: 10, background: "rgba(11,11,12,.55)", display: "flex", alignItems: "center", justifyContent: "center"}},
+                R("div", {style: {width: 15, height: 15, border: "2px solid #f2f0ec"}}))),
+            R("div", {style: {height: 8, borderRadius: 4, background: "rgba(255,255,255,.28)", position: "relative"}},
+              R("div", {style: {position: "absolute", left: 0, top: 0, height: 8, width: "13%", borderRadius: 4, background: "#e0533d"}}),
+              R("div", {style: {position: "absolute", left: "13%", top: -6, width: 20, height: 20, borderRadius: 10, background: "#e0533d", border: "3px solid #0b0b0c", marginLeft: -10}}))))),
+      R("div", {key: "cd", style: {display: "flex", alignItems: "center", gap: 11, margin: "0 16px 14px", padding: "9px 13px 9px 9px", borderRadius: 15, background: "rgba(216,161,58,.1)", border: "1px solid #d8a13a"}},
+        R("div", {style: {width: 36, height: 36, borderRadius: 18, background: "conic-gradient(#d8a13a 0 76%, rgba(255,255,255,.14) 76% 100%)", display: "flex", alignItems: "center", justifyContent: "center", flex: "none"}},
+          R("div", {style: {width: 27, height: 27, borderRadius: 14, background: "#0b0b0c", display: "flex", alignItems: "center", justifyContent: "center", font: "700 10.5px ui-monospace, Menlo, monospace", color: "#d8a13a"}}, this.state.minsLeft + "m")),
+        R("div", {style: {flex: 1, minWidth: 0}},
+          R("div", {style: {font: "700 12.5px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, this.state.minsLeft + " minutes left today"),
+          R("div", {style: {fontSize: 11, color: "#9a9aa2", marginTop: 2}}, "Videos stop at 8:00 tonight"))),
+      R("div", {key: "title", style: {padding: "0 " + this.G() + "px", fontSize: 19, fontWeight: 700, lineHeight: 1.32, color: "#f2f0ec", textWrap: "pretty"}}, v.title),
+      R("div", {key: "chan", className: "tap", onClick: () => this.go("channel", {channel: v.ch}), style: {display: "flex", alignItems: "center", gap: 11, margin: "15px 16px 16px", padding: 10, borderRadius: 14, background: "#111113", border: "1px solid #2b2b31"}},
+        R("div", {className: "ph", style: {width: 44, height: 44, borderRadius: 13, background: c.tint, flex: "none"}}),
+        R("div", {style: {flex: 1, minWidth: 0}},
+          R("div", {style: {fontSize: 15, fontWeight: 600, color: "#f2f0ec"}}, c.name),
+          R("div", {style: {font: "700 9.5px ui-monospace, Menlo, monospace", letterSpacing: ".12em", textTransform: "uppercase", color: "#6f6f78", marginTop: 3}}, c.meta)),
+        R("div", {style: {color: "#9a9aa2", fontSize: 19}}, "\u203a")),
+      R("div", {key: "acts", style: {display: "flex", gap: 8, padding: "0 " + this.G() + "px " + "18px"}},
+        [["Favorite", fav, "#e0533d", "\u2665", () => this.toggle("favs", v.id, "Added to Favorites", "Removed from Favorites")],
+         ["Watch later", later, "#4a8b8d", "\u25a1", () => this.toggle("later", v.id, "Saved to Watch later", "Removed from Watch later")],
+         ["Queue", false, "#d8a13a", "\u2630", () => this.flash("Added to the queue")]
+        ].filter(x => !(this.V === "simple" && x[0] === "Queue")).map(([label, on, colour, glyph, onClick]) => R("div", {key: label, className: "tap", onClick, style: {flex: 1, minWidth: 0, minHeight: 46, borderRadius: 12, background: on ? "#1a1a1d" : "#111113", border: on ? "1px solid " + colour : "1px solid #2b2b31", display: "flex", alignItems: "center", justifyContent: "center", gap: 7}},
+          R("span", {style: {fontSize: 13, lineHeight: 1, color: colour}}, glyph),
+          R("span", {style: {font: "600 12px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec", whiteSpace: "nowrap"}}, label)))),
+      this.V === "simple" ? R("div", {key: "tabs", style: {padding: "0 16px 12px", font: "700 17px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, "More from " + c.name) : R("div", {key: "tabs", style: {display: "flex", gap: 22, padding: "0 " + this.G() + "px", borderBottom: "1px solid #26262a", margin: "0 0 16px"}},
+        R("div", {style: {padding: "0 0 10px", borderBottom: "2px solid #f2f0ec", font: "700 13.5px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, "More from channel"),
+        R("div", {className: "tap", onClick: () => this.flash("Similar videos"), style: {padding: "0 0 10px", font: "600 13.5px ui-sans-serif, system-ui, sans-serif", color: "#6f6f78"}}, "Similar")),
+      R("div", {key: "next", style: {display: "flex", flexDirection: "column", gap: 12, padding: "0 " + this.G() + "px"}},
+        next.map(n => R("div", {key: n.id, className: "tap", onClick: () => this.play(n.id), style: {display: "flex", gap: 12, alignItems: "center", opacity: this.state.watched.includes(n.id) ? .48 : 1}},
+          this.thumb(n, 118, 68),
+          R("div", {style: {flex: 1, minWidth: 0}},
+            R("div", {style: {fontSize: 14, fontWeight: 600, lineHeight: 1.35, color: "#f2f0ec", textWrap: "pretty"}}, n.title),
+            R("div", {style: {fontSize: 11.5, color: "#6f6f78", marginTop: 4}}, n.when)))))
+    ];
+  };
+
+  profileBody = () => this.V === "tv" ? [
+    R("div", {key: "who", style: {display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 34, padding: "60px 44px 0"}},
+      R("div", {style: {font: "700 13px ui-monospace, Menlo, monospace", letterSpacing: ".18em", textTransform: "uppercase", color: "#9a9aa2"}}, "Who's watching?"),
+      R("div", {style: {display: "flex", gap: 40}},
+        [["Amelia", "#e0533d", true], ["Theo", "#4a8b8d", false]].map(([nm, tint, on]) =>
+          R("div", {key: nm, className: "tap", onClick: () => this.flash("Switched to " + nm), style: {display: "flex", flexDirection: "column", alignItems: "center", gap: 16}},
+            R("div", {style: {width: 168, height: 168, borderRadius: 84, background: tint, border: on ? "4px solid #f2f0ec" : "4px solid transparent", boxShadow: on ? "0 0 0 8px rgba(224,83,61,.2)" : "none"}}),
+            R("div", {style: {font: (on ? 700 : 600) + " 22px ui-sans-serif, system-ui, sans-serif", color: on ? "#f2f0ec" : "#9a9aa2"}}, nm)))),
+      R("div", {style: {height: 1, background: "#26262a", width: 620, margin: "10px 0"}}),
+      R("div", {className: "tap", onClick: () => this.flash("A grown-up code is needed"), style: {display: "flex", alignItems: "center", gap: 14, padding: "16px 24px", borderRadius: 20, background: "#111113", border: "1px solid #2b2b31"}},
+        R("div", {style: {width: 48, height: 48, borderRadius: 15, background: "#1a1a1d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: "#d8a13a", flex: "none"}}, "\u2691"),
+        R("div", null,
+          R("div", {style: {fontSize: 18, fontWeight: 700, color: "#f2f0ec"}}, "Grown-ups"),
+          R("div", {style: {fontSize: 14, color: "#9a9aa2", marginTop: 3}}, "settings, channels and time limits"))))
+  ] : [
+    R("div", {key: "who", style: {padding: "0 " + this.G() + "px " + "18px"}},
+      R("div", {style: {font: "700 17px/1.2 ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec", marginBottom: 12}}, "Who's watching?"),
+      R("div", {style: {display: "flex", gap: 14}},
+        [["Amelia", "#e0533d"], ["Theo", "#4a8b8d"]].map(([n, t]) => R("div", {key: n, className: "tap", onClick: () => this.flash("Switched to " + n), style: {display: "flex", flexDirection: "column", alignItems: "center", gap: 9}},
+          R("div", {style: {width: 88, height: 88, borderRadius: 44, background: t, border: n === "Amelia" ? "3px solid #f2f0ec" : "3px solid transparent"}}),
+          R("div", {style: {font: "700 14px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, n))))),
+    this.divider("p1"),
+    R("div", {key: "parent", className: "tap", onClick: () => this.flash("A grown-up code is needed"), style: {display: "flex", alignItems: "center", gap: 13, margin: "0 16px", padding: 15, borderRadius: 16, background: "#111113", border: "1px solid #2b2b31"}},
+      R("div", {style: {width: 44, height: 44, borderRadius: 14, background: "#1a1a1d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#d8a13a", flex: "none"}}, "\u2691"),
+      R("div", {style: {flex: 1, minWidth: 0}},
+        R("div", {style: {fontSize: 15.5, fontWeight: 700, color: "#f2f0ec"}}, "Grown-ups"),
+        R("div", {style: {fontSize: 12, color: "#9a9aa2", marginTop: 2}}, "settings, channels and time limits")),
+      R("div", {style: {color: "#9a9aa2", fontSize: 19}}, "\u203a"))
+  ];
+
+  renderVals() {
+    const s = this.state;
+    const variant = this.props.variant ?? "standard";
+    this.V = variant;
+    const tv = variant === "tv";
+    const frameStyle = tv
+      ? "width:1280px;height:720px;display:flex;flex-direction:row;border-radius:14px;background:#0b0b0c;border:1px solid #2b2b31;overflow:hidden;position:relative"
+      : "width:380px;height:812px;display:flex;flex-direction:column;border-radius:26px;background:#0b0b0c;border:1px solid #2b2b31;overflow:hidden;position:relative";
+    const innerStyle = "flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden";
+    const navItem = (label, radius, fill, screen) => {
+      const on = s.screen === screen || (screen === "channels" && s.screen === "channel");
+      return R("div", {key: label, className: "tap", onClick: () => this.setState({screen, stack: []}),
+        style: {display: "flex", alignItems: "center", gap: 12, height: 48, padding: "0 12px", borderRadius: 14, background: on ? "#1a1a1d" : "transparent", border: on ? "2px solid #e0533d" : "2px solid transparent"}},
+        R("div", {style: {width: 20, height: 20, borderRadius: radius, border: fill ? "none" : "2.5px solid " + (on ? "#e0533d" : "#9a9aa2"), background: fill ? (on ? "#e0533d" : "#9a9aa2") : "transparent", flex: "none"}}),
+        R("div", {style: {font: (on ? 700 : 600) + " 16px ui-sans-serif, system-ui, sans-serif", color: on ? "#f2f0ec" : "#9a9aa2", whiteSpace: "nowrap"}}, label));
+    };
+    const navRail = R("div", {style: {width: 196, flex: "none", background: "#111113", borderRight: "1px solid #26262a", display: "flex", flexDirection: "column", padding: "26px 0", gap: 10}},
+      R("div", {style: {display: "flex", alignItems: "center", gap: 11, padding: "0 12px", marginBottom: 20}},
+        R("div", {style: {width: 40, height: 40, borderRadius: 12, background: "#e0533d", display: "flex", alignItems: "center", justifyContent: "center", flex: "none"}},
+          R("div", {style: {width: 0, height: 0, borderLeft: "13px solid #0b0b0c", borderTop: "8px solid transparent", borderBottom: "8px solid transparent", marginLeft: 3}})),
+        R("div", {style: {font: "700 16px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, "Amelia")),
+      R("div", {style: {display: "flex", flexDirection: "column", gap: 8, padding: "0 12px"}},
+        navItem("Home", "5px", false, "home"),
+        navItem("Channels", "50%", false, "channels"),
+        navItem("You", "50%", true, "you"),
+        navItem("Search", "50%", false, "search")),
+      R("div", {style: {flex: 1}}),
+      R("div", {style: {display: "flex", alignItems: "center", gap: 9, margin: "0 12px", padding: "11px 13px", borderRadius: 14, background: "#1a1a1d", border: "1px solid #2b2b31"}},
+        R("span", {style: {width: 10, height: 10, borderRadius: 5, background: "#d8a13a", flex: "none"}}),
+        R("div", {style: {font: "700 14px ui-monospace, Menlo, monospace", color: "#f2f0ec"}}, s.minsLeft + "m left")));
+    const titles = {home: "Hi, Amelia", channels: "Channels", channel: "Channels", you: "Amelia", search: "Search", player: "", profile: "You"};
+    const bodies = {home: this.homeBody, channels: this.channelsBody, channel: this.channelBody, you: this.youBody, search: this.searchBody, player: this.playerBody, profile: this.profileBody};
+    const tab = (label, radius, fill, screen) => ({
+      label, radius, go: () => this.setState({screen, stack: []}),
+      bg: s.screen === screen ? "#1a1a1d" : "transparent",
+      stroke: fill ? "transparent" : (s.screen === screen ? "#e0533d" : "#9a9aa2"),
+      fill: fill ? (s.screen === screen ? "#e0533d" : "#2b2b31") : "transparent",
+      color: s.screen === screen ? "#e0533d" : "#9a9aa2"
+    });
+    return {
+      frameStyle, innerStyle, navRail,
+      isTV: tv,
+      showCaption: (this.props.chrome ?? "true") !== "false",
+      pageTitle: titles[s.screen] ?? "",
+      minsLeft: s.minsLeft + "m",
+      showBack: s.screen === "channel" || s.screen === "search" || s.screen === "profile",
+      showLogo: s.screen === "home",
+      showTabs: s.screen !== "player" && !tv,
+      showStatusBar: !tv,
+      showTopBar: s.screen !== "player" && !tv,
+      tvHeader: tv && s.screen !== "player" ? R("div", {style: {display: "flex", alignItems: "baseline", gap: 14, padding: "26px 44px 18px"}},
+        R("div", {style: {font: "700 30px ui-sans-serif, system-ui, sans-serif", color: "#f2f0ec"}}, ({home: "Home", channels: "Channels", channel: "Channels", you: "Your videos", search: "Search", profile: "Profiles"})[s.screen] ?? ""),
+        s.screen === "channel" ? R("div", {className: "tap", onClick: this.back, style: {font: "700 15px ui-sans-serif, system-ui, sans-serif", color: "#e0533d"}}, "\u2190 Back") : null) : null,
+      toast: s.toast,
+      screenBody: (bodies[s.screen] || this.homeBody)(),
+      goBack: this.back,
+      openSearch: () => this.go("search"),
+      openProfile: () => this.go("profile"),
+      tabs: [
+        tab("Home", "3px", false, "home"),
+        tab("Channels", "50%", false, "channels"),
+        tab("You", "50%", true, "you")
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

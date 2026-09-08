@@ -1587,6 +1587,69 @@ if ($tokStyles -ne $tokListed) {
     Fail-Guard "KidType declares $tokStyles type styles and KidType.all lists $tokListed. A step missing from the list is a step the browser does not have."
 }
 
+# 49. One answer to "does this kid share a budget", and the ledger never
+#     authors the shared number.
+#     Limits.budgetScope is a STRING so a mode a later build invents falls back
+#     to today's behaviour on the televisions that predate it. That only holds
+#     while every reader asks Limits.sharesBudget: a second `== "shared"`
+#     written somewhere else is how a build that meets a scope it does not know
+#     starts answering two different ways in the same house - strict on the
+#     television and lenient on the tablet, with nothing to say which was
+#     right. Assignment is fine; the settings switch has to write the constant.
+$wl = "core/src/main/kotlin/io/yosemitekids/app/data/Whitelist.kt"
+if (-not (Get-Content $wl -Raw).Contains("val sharesBudget: Boolean")) {
+    Fail-Guard "$wl no longer declares Limits.sharesBudget; guard 49 is blind. Unknown scopes fall back to per-device in ONE place or in as many places as there are readers."
+}
+$srcMain = @("app/src/main", "core/src/main", "crawl/src/main", "hub/src/main")
+$wlLeaf = Split-Path $wl -Leaf
+$scopeCmp = @(Get-ChildItem -Recurse -Include *.kt -Path $srcMain |
+    Where-Object { $_.Name -ne $wlLeaf } |
+    ForEach-Object {
+        $sf = $_
+        Get-Content $sf.FullName |
+            Select-String -Pattern '[!=]=\s*BUDGET_SCOPE_SHARED|BUDGET_SCOPE_SHARED\s*[!=]=' |
+            ForEach-Object { "$($sf.Name):$($_.LineNumber): $($_.Line.Trim())" }
+    })
+if ($scopeCmp.Count -gt 0) {
+    Fail-Guard "a budget scope is compared against BUDGET_SCOPE_SHARED outside $wl. Ask Limits.sharesBudget - it is where a scope this build does not recognise is decided to mean per-device, and a second test of it is a second answer. Found: $($scopeCmp -join '; ')"
+}
+$scopeLit = @(Get-ChildItem -Recurse -Include *.kt -Path $srcMain | ForEach-Object {
+    $sf = $_
+    Get-Content $sf.FullName |
+        Select-String -Pattern 'budgetScope\s*[!=]=\s*"' |
+        ForEach-Object { "$($sf.Name):$($_.LineNumber): $($_.Line.Trim())" }
+})
+if ($scopeLit.Count -gt 0) {
+    Fail-Guard "a budget scope is compared against a string literal: $($scopeLit -join '; '). That is the same rule spelled a second time, and it will not be the one that gets updated. Use Limits.sharesBudget."
+}
+#     (b) The scope has to reach the enforcer. SessionGuard rebuilds its rules
+#         from its own prefs mirror, so a field written to the config and not
+#         to that mirror is a switch a parent turns on that changes nothing on
+#         the box doing the stopping - and nothing anywhere says so.
+$sgPath = "app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt"
+$sgScope = @(Get-Content $sgPath | Select-String -Pattern 'l_scope' -SimpleMatch).Count
+if ($sgScope -lt 2) {
+    Fail-Guard "$sgPath does not both write and read `"l_scope`". The rules the player enforces come from the prefs mirror, not from the config, so a scope that stops at saveLimits is a setting with no effect."
+}
+#     (c) A device's own ledger cell is authored from its OWN minutes.
+#         watchedTodayMin() is own + peers; recordOwn writes what other devices
+#         then read back and add to their own live counters. Feeding one to the
+#         other is a budget that consumes itself in an afternoon, with every
+#         number on every screen agreeing with every other. It has no symptom
+#         short of a child being stopped at ten minutes.
+Get-ChildItem -Recurse -Include *.kt -Path app/src/main | ForEach-Object {
+    $lf = $_
+    $text = Get-Content $lf.FullName -Raw
+    if ($text.Contains("recordOwn(")) {
+        $bad = @(Get-Content $lf.FullName |
+            Select-String -Pattern '\.watchedTodayMin\(' |
+            ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" })
+        if ($bad.Count -gt 0) {
+            Fail-Guard "$($lf.Name) authors a watch-ledger cell and also reads the SHARED total: $($bad -join '; '). A cell carries this device's own minutes - SessionGuard.ownWatchedTodayMin(). The shared figure is what peers add their own minutes to."
+        }
+    }
+}
+
 # 52. A channel's own words reach a child with every way out already gone.
 #     A YouTube channel description is a paragraph followed by a list of
 #     places to go: a shop, a Discord, a second channel, an e-mail address.

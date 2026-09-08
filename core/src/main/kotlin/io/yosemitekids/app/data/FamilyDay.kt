@@ -42,6 +42,29 @@ object FamilyDay {
         Instant.ofEpochMilli(epochMillis).atZone(zone).toLocalDate().toString()
 
     /**
+     * The moment [epochMillis] falls on in [zone], in the pair [TimeWindows]
+     * works in: [java.util.Calendar]'s day of the week (Sunday = 1) and the
+     * minute of the day.
+     *
+     * A window is a stretch of *clock* on a *day of the week* and buckets
+     * nothing, which is why `TimeWindows` takes those two numbers and reads no
+     * calendar. Somebody has to produce them, though, and until the hub had to
+     * evaluate a bedtime the only caller was a device using its own
+     * `Calendar.getInstance()`. A container may not do that — its clock is UTC
+     * and the family's is not (guard 27) — so the conversion is minted here,
+     * beside [of], from a zone the family named. That also keeps every name
+     * for a calendar out of `:hub` entirely: the hub passes a zone it got from
+     * [zoneOrNull] and gets two integers back.
+     */
+    fun clockAt(epochMillis: Long, zone: ZoneId): Pair<Int, Int> {
+        val t = Instant.ofEpochMilli(epochMillis).atZone(zone)
+        // java.time counts Monday as 1 and Sunday as 7; Calendar counts Sunday
+        // as 1. Rotating by one is the whole conversion, and getting it wrong
+        // moves every bedtime by a day without anything throwing.
+        return (t.dayOfWeek.value % 7 + 1) to (t.hour * 60 + t.minute)
+    }
+
+    /**
      * The zone named by [id], or [fallback] when it is null, blank, or not a
      * zone this JVM knows.
      *

@@ -176,6 +176,31 @@ class MergeConvergenceTest {
             doc(limits = Limits(sessionMinutes = 45), at = mapOf(ConfigStamp.SETTINGS to T)),
             doc(limits = Limits(sessionMinutes = 30), at = mapOf(ConfigStamp.SETTINGS to T))
         ),
+        // budgetScope is a limits scalar riding lim.rules / kid.rules, so it
+        // must settle exactly like the sessionMinutes pair above. Both shapes,
+        // because the family default and a kid's own copy take different code
+        // paths through the limits merge — and one of them is a value neither
+        // build knows, which must still converge rather than being coerced by
+        // whichever side parses it last.
+        Triple(
+            "a shared budget against a per-device one, equal stamps",
+            doc(
+                limits = Limits(sessionMinutes = 45, budgetScope = "shared"),
+                at = mapOf(ConfigStamp.LIM_RULES to T)
+            ),
+            doc(limits = Limits(sessionMinutes = 45), at = mapOf(ConfigStamp.LIM_RULES to T))
+        ),
+        Triple(
+            "a kid's shared budget against a scope neither build knows",
+            doc(
+                profiles = listOf(kid.copy(limits = Limits(sessionMinutes = 20, budgetScope = "shared"))),
+                at = mapOf(ConfigStamp.kid("k1") to T, ConfigStamp.kidRules("k1") to T)
+            ),
+            doc(
+                profiles = listOf(kid.copy(limits = Limits(sessionMinutes = 20, budgetScope = "school-nights"))),
+                at = mapOf(ConfigStamp.kid("k1") to T, ConfigStamp.kidRules("k1") to T)
+            )
+        ),
         // The pinned hero: an ordered, parent-authored list, which is the
         // shape that converges worst. One unit per card and the rank inside
         // it, so these three have to settle like everything above.
