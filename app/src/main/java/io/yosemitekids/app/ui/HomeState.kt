@@ -110,6 +110,8 @@ data class UiState(
     val homeFilter: String = VIDEO_FILTER_NEW,
     /** The kid's order for channel pages (VIDEO_FILTER_*), the parent's layout as default. */
     val channelFilter: String = VIDEO_FILTER_NEW,
+    /** The kid's order for search results ([SearchOrder]); relevance until they pick. */
+    val searchOrder: String = SearchOrder.BEST,
     /** The parent's page size: videos a grid shows before "Show more"; null = all. */
     val pageSize: Int? = null,
     /** The parent's "show when a video came out" switch. */
@@ -273,22 +275,39 @@ internal fun orderByWatched(items: List<VideoItem>, watchedAt: (String) -> Long)
 
 /**
  * The channel row / Channels tab in the order the kid (or, by default, the
- * parent) asked for. Most watched = most opened here; A to Z; a shuffle that
- * holds still for the whole visit ([seed] — a row that reorders under the
- * kid's thumb is a bug, not a surprise); latest video = the channel whose
- * newest upload is newest, channels with no dated upload last. Every sort is
- * stable, so ties keep the whitelist order.
+ * parent) asked for. Most watched = most opened here; A to Z and the same
+ * alphabet backwards; a shuffle that holds still for the whole visit ([seed]
+ * — a row that reorders under the kid's thumb is a bug, not a surprise);
+ * latest video = the channel whose newest upload is newest, channels with no
+ * dated upload last; just added = newest arrival first, by [addedAt]. Every
+ * sort is stable, so ties keep the whitelist order — which is also insertion
+ * order, so channels this device has always known (all [addedAt] 0) fall back
+ * to the order the parent's list is in rather than to nothing.
+ *
+ * [addedAt] is keyed by **URL** where the other two are keyed by id, and that
+ * asymmetry is the whole trap. `opens` and `latestUpload` are written under
+ * the *resolved* id, so an id join is right for them. What a source was
+ * called when it entered the whitelist is not: resolution canonicalizes
+ * `/user/`, `/c/` and `@handle` entries to `UC…` form, so a store filled from
+ * `WhitelistEntry.id` and read back by `Source.id` misses every entry a
+ * parent pasted as a handle — which is most of them. It does not throw and it
+ * does not log; the sort simply comes back in list order and looks like it
+ * was never wired up. `MainViewModel.refresh` says the same thing about its
+ * own joins, and this was still got wrong once.
  */
 internal fun orderChannels(
     channels: List<Source>,
     sort: String,
     opens: (String) -> Int,
     latestUpload: (String) -> Long?,
-    seed: Long
+    seed: Long,
+    addedAt: (String) -> Long = { 0L }
 ): List<Source> = when (sort) {
     CHANNEL_ORDER_ALPHA -> channels.sortedBy { it.name.lowercase() }
+    CHANNEL_ORDER_ALPHA_DESC -> channels.sortedByDescending { it.name.lowercase() }
     CHANNEL_ORDER_RANDOM -> channels.shuffled(kotlin.random.Random(seed))
     CHANNEL_ORDER_LATEST -> channels.sortedByDescending { latestUpload(it.id) ?: Long.MIN_VALUE }
+    CHANNEL_ORDER_ADDED -> channels.sortedByDescending { addedAt(it.url) }
     else -> channels.sortedByDescending { opens(it.id) }
 }
 

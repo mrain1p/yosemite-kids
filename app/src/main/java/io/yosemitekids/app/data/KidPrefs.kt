@@ -26,6 +26,11 @@ class KidPrefs(context: Context, profileSuffix: String) {
     fun channelFilter(): String? = prefs.getString("channel_filter", null)?.takeIf { it in VIDEO_FILTERS }
     fun setChannelFilter(filter: String?) = prefs.edit().putString("channel_filter", filter).apply()
 
+    /** Null = best match, which is [SearchRank]'s own order. */
+    fun searchOrder(): String? =
+        prefs.getString("search_order", null)?.takeIf { it in SearchOrder.ALL }
+    fun setSearchOrder(order: String?) = prefs.edit().putString("search_order", order).apply()
+
     /** The kid's look: dark (default), light, or tinted with their own colour. */
     fun theme(): String = prefs.getString("theme", null) ?: "dark"
     fun setTheme(theme: String) = prefs.edit().putString("theme", theme).apply()

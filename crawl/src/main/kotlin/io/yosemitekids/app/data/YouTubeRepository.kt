@@ -39,7 +39,15 @@ data class Source(
     val avatarUrl: String?,
     val kind: SourceKind,
     /** Screen-time drain rate in percent (100 = normal, 0 = FREE), from the whitelist entry. */
-    val timeMultiplierPercent: Int = 100
+    val timeMultiplierPercent: Int = 100,
+    /**
+     * The channel's own description, **already through [SafeText.forKids]** —
+     * the raw one is a list of ways to leave the app and never enters the
+     * model. Null when the channel wrote none, or wrote nothing but links.
+     * Stripped here, at the boundary, rather than where it is drawn, so no
+     * future screen can render it by accident (guard 52).
+     */
+    val about: String? = null
 ) : io.yosemitekids.app.ui.PinnableSource
 
 data class Video(
@@ -238,13 +246,15 @@ class YouTubeRepository {
                     }
                     Source(id, entry.url, entry.label ?: info.name,
                         info.avatars.pick(QualityTargets.avatarMinWidth), entry.kind,
-                        entry.timeMultiplierPercent)
+                        entry.timeMultiplierPercent,
+                        about = SafeText.forKids(info.description))
                 }
                 SourceKind.PLAYLIST -> {
                     val info = playlistInfo(entry.id, entry.url, limiter)
                     Source(entry.id, entry.url, entry.label ?: info.name,
                         info.thumbnails.pick(QualityTargets.videoThumbMinWidth), entry.kind,
-                        entry.timeMultiplierPercent)
+                        entry.timeMultiplierPercent,
+                        about = SafeText.forKids(info.description?.content))
                 }
             }
         }

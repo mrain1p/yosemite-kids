@@ -129,6 +129,12 @@ class MainViewModel(
     private val channelIndex: ChannelIndex? = null,
     /** The kid's recent searches (phones); null on TV and in tests. */
     private val searchHistory: SearchHistoryStore? = null,
+    /**
+     * When this device first met each source — the Just added order, and the
+     * trigger for warming a newcomer at once. Device-wide, not per kid, and
+     * folded over the *whole* whitelist so two kids on one device agree.
+     */
+    private val firstSeen: io.yosemitekids.app.data.SourceFirstSeen? = null,
     private val yt: YouTubeRepository = YouTubeRepository()
 ) : ViewModel() {
 
@@ -344,7 +350,10 @@ class MainViewModel(
             channels, effectiveChannelSort(),
             opens = { usage.opens(it) },
             latestUpload = { id -> videoCache.load(id).take(10).mapNotNull { it.publishedAt }.maxOrNull() },
-            seed = shuffleSeed
+            seed = shuffleSeed,
+            // By URL. See orderChannels: an id join here silently loses every
+            // @handle entry the moment resolution canonicalizes it.
+            addedAt = { url -> firstSeen?.addedAt(url) ?: 0L }
         )
 
     private fun effectiveChannelSort(): String = kidChannelSort ?: channelOrder
@@ -461,7 +470,7 @@ class MainViewModel(
         rawVideos = withContext(Dispatchers.IO) {
             searchMatches.filter { screener?.isVisible(it) != false }
         }
-        _state.value = _state.value.copy(loading = false, videos = annotated(includeFinished = true))
+        _state.value = _state.value.copy(loading = false, videos = searchItems())
         screenMoreSearch()
     }
 
@@ -469,6 +478,47 @@ class MainViewModel(
     // The crawled index is never pre-screened (that would bill the AI for a
     // whole back catalog nobody may ever search), so search screens on demand:
     // a window of the best matches now, the next window when the kid scrolls.
+
+    /**
+     * The kid's search chip. Relevance until they pick otherwise; persisted
+     * per kid like the other three chips, and only ever a *display* order —
+     * see [searchItems].
+     */
+    private var searchOrder: String = io.yosemitekids.app.data.SearchOrder.BEST
+    private var searchShuffleSeed = kotlin.random.Random.nextLong()
+
+    /**
+     * The results as the grid should show them.
+     *
+     * The order is applied here, at publish, and never to [searchMatches] —
+     * that list is relevance-ordered because it is also the *screening* queue,
+     * and the AI must keep spending on the best matches first however the kid
+     * has the grid arranged. With the default chip this is the identity, so
+     * the append-only behaviour verdicts rely on is unchanged.
+     */
+    private fun searchItems(): List<VideoItem> =
+        io.yosemitekids.app.data.SearchOrder.order(
+            annotated(includeFinished = true), searchOrder, searchShuffleSeed
+        ) { it.video.durationSeconds }
+
+    /** The search screen's Best match · Shortest · Mix chip. */
+    fun setSearchOrder(order: String) {
+        if (order == io.yosemitekids.app.data.SearchOrder.MIX) {
+            searchShuffleSeed = kotlin.random.Random.nextLong()
+        }
+        searchOrder = order
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { kidPrefs?.setSearchOrder(order) }
+            // No scrollTo, for the reason setChannelFilter gives: the chips
+            // sit above the list they reorder and must not move out from
+            // under the finger that just tapped one.
+            _state.value = _state.value.copy(
+                searchOrder = order,
+                videos = if (_state.value.screen is Screen.SearchResults) searchItems()
+                else _state.value.videos
+            )
+        }
+    }
 
     /** Relevance-ordered, deduped, unblocked matches for the current query. */
     private var searchMatches: List<Video> = emptyList()
@@ -537,7 +587,7 @@ class MainViewModel(
         }
         if (_state.value.screen !is Screen.SearchResults) return
         _state.value = _state.value.copy(
-            videos = annotated(includeFinished = true),
+            videos = searchItems(),
             held = heldNow,
             searchScreening = if (pending > 0) SearchScreening(
                 total = searchSent,
@@ -1014,6 +1064,21 @@ class MainViewModel(
                 _state.value = _state.value.copy(refreshing = false) // pull completes here
                 refreshInFlight = false
 
+                // A source this device has never seen jumps every queue. The
+                // reported "several minutes" was not a missing shelf: a new
+                // entry is APPENDED to the whitelist, so it was resolved last
+                // by the pass below and warmed last by warmCaches(), behind
+                // every channel the family already had, one at a time in the
+                // background lane. Whichever device the parent added it on is
+                // the device a child is standing in front of, so it fetches
+                // here, first, in the interactive lane.
+                val newcomers = withContext(Dispatchers.IO) {
+                    firstSeen?.sync(list.sources.map { it.url }).orEmpty()
+                }
+                if (newcomers.isNotEmpty()) {
+                    launch { warmNew(list.sources.filter { it.url in newcomers }) }
+                }
+
                 // Slow detail resolution — background lane when tiles are cosmetic.
                 launch {
                     val cosmetic = cached.isNotEmpty()
@@ -1056,12 +1121,70 @@ class MainViewModel(
     }
 
     /**
+     * Everything [warmCaches] does, for one just-added source, immediately.
+     *
+     * The interactive lane on purpose: this is not maintenance, it is the
+     * answer to a child standing there asking where their channel is. It
+     * resolves the entry (which also settles the real name and artwork), saves
+     * page one to the video cache so the home feed and the channel page have
+     * something, screens it, and harvests the same page into the search index
+     * — the three things that were each several minutes away.
+     *
+     * What it deliberately does NOT do is crawl the back catalogue. That is
+     * still [IndexCrawlWorker]'s, still master-only, and still minutes of
+     * requests; search finds the newcomer's newest page here and the rest as
+     * the crawl reaches it.
+     */
+    private suspend fun warmNew(entries: List<WhitelistEntry>) {
+        for (entry in entries) {
+            val resolved = runCatching { yt.source(entry) }.getOrNull()
+            if (resolved == null) {
+                android.util.Log.w("YosemiteKids", "new source ${entry.id} did not resolve")
+                continue
+            }
+            // Matched by URL, never by id, for the reason the refresh above
+            // gives: resolution canonicalizes @handle and /c/ ids to UC… form.
+            sources = sources.map { if (it.url == resolved.url) resolved else it }
+            val videos = runCatching { yt.uploadsPage(resolved).videos }
+                .getOrElse { e ->
+                    android.util.Log.w("YosemiteKids", "warm new ${resolved.id} failed", e)
+                    emptyList()
+                }
+            if (videos.isNotEmpty()) {
+                withContext(Dispatchers.IO) { videoCache.save(resolved.id, videos) }
+                prefetchThumbs(videos.mapNotNull { it.thumbnailUrl })
+                kickScreening(videos)
+                crawler?.harvestPage1(resolved, videos)
+            }
+            android.util.Log.i(
+                "YosemiteKids", "new source ${resolved.id} warmed with ${videos.size} video(s)"
+            )
+            // Republish per source rather than once at the end: two channels
+            // added together should appear one after the other, not together
+            // after both have been fetched.
+            publishChannels(sources)
+        }
+    }
+
+    /**
      * Walks every source one at a time in the background lane, persisting each
      * source's videos to the disk cache as they land — so channels the kid has
      * never opened still open instantly afterwards (and feed the surprise pool).
      */
     private suspend fun warmCaches() {
-        for (source in sources) {
+        // Stalest first, which is ContentWarm's rule and not a second one:
+        // whatever the whitelist's own order is, the channel with nothing
+        // cached leads. It used to walk the list as written, so a channel
+        // appended half an hour ago was fetched behind every channel the
+        // family had — after warmNew that is a fallback rather than the
+        // path, but it is the path whenever the device was offline when the
+        // entry arrived.
+        val walk = withContext(Dispatchers.IO) {
+            io.yosemitekids.app.data.ContentWarm.stalest(
+                sources, { videoCache.ageMillis(it.id) }, limit = sources.size
+            )
+        }
+        for (source in walk) {
             val videos = runCatching { yt.uploadsPage(source, background = true).videos }
                 .getOrElse { e ->
                     android.util.Log.w("YosemiteKids", "warm ${source.id} failed", e)
@@ -1978,7 +2101,9 @@ class MainViewModel(
             kidChannelSort = p.channelSort()
             kidHomeFilter = p.homeFilter()
             kidChannelFilter = p.channelFilter()
+            searchOrder = p.searchOrder() ?: io.yosemitekids.app.data.SearchOrder.BEST
         }
+        _state.value = _state.value.copy(searchOrder = searchOrder)
         viewModelScope.launch {
             // All five sets are file reads — off-main like everything else
             // here; the home rows render immediately, badges land a beat later.

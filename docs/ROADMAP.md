@@ -293,25 +293,48 @@ are regressions from the revamp and outrank the rest.**
 
 **Discovery — the biggest complaint, and the deepest.**
 
-- **A newly added channel takes minutes to appear**, and even then needed a
-  refresh, a page change and a search to find. A child asked for a channel and
-  could not see it. Wants a *newly added* row and/or a "newly added" sort. The
-  real cause is the crawl and warm cadence, not the shelf — see §2B — so a row
-  alone would be a row that stays empty for the same several minutes.
-- **Search is static and unranked.** "My daughter loves Mario videos but every
-  time I search it just starts with the same static list and I have to scroll
-  down past 70 to find the ones she likes." `ChannelIndex.search` is a token
-  match with no relevance at all; `MainViewModel.search` then applies exactly
-  one rule, title-hits before channel-name-only hits. Wants real relevance,
-  weighted by recently watched, favourites and recency, plus sort/filter chips
-  on the search screen (most recent, relevance, …).
+- ~~**A newly added channel takes minutes to appear**~~ — **mostly done.** The
+  diagnosis in this entry was right and the fix was not the shelf. A new entry
+  is *appended* to the whitelist, so it was resolved last by the refresh's
+  slow pass and warmed last by `warmCaches`, behind every channel the family
+  already had, one at a time in the background lane — which is the several
+  minutes. Now: `MainViewModel.warmNew` fetches a newcomer's page one in the
+  **interactive** lane the moment it is seen (`SourceFirstSeen.sync` reports
+  it), saves it to the video cache, screens it and harvests it into the search
+  index; and `warmCaches` walks `ContentWarm.stalest` order rather than list
+  order, so even the fallback path takes the newcomer first. A "Just added"
+  chip on the Channels page orders by when this device first saw the source.
+  **What is still slow:** the *back catalogue*. Search finds the newcomer's
+  newest page in seconds; older uploads appear as `IndexCrawlWorker` reaches
+  them, which is still master-only and still minutes-to-hours. That is §2B and
+  is unchanged.
+- **Search is static and unranked** — **done, with one gap.** "My daughter
+  loves Mario videos but every time I search it just starts with the same
+  static list and I have to scroll down past 70 to find the ones she likes."
+  Relevance shipped in 1.2.0 (`SearchRank` in `:crawl`) and is the default;
+  the chips shipped with `SearchOrder`: best match, shortest, mix it up.
+  **The gap, and why:** "most recent" and anything popularity-shaped are *not*
+  offered, because `ChannelIndex.IndexedVideo` stores neither an upload date
+  nor a view count — `toVideo()` hands back nulls for both, so either chip
+  would draw and do nothing, which is worse than a missing chip. Closing it is
+  a crawl change: add `publishedAt` (and, if wanted, `viewCount`) to the
+  indexed row, write them in `IndexCrawler`, and re-crawl to backfill.
+  `SearchOrderTest` asserts both fields are still absent, so the day they
+  arrive is the day the test says to add the chips.
 
 **Channels and the channel page.**
 
-- **Sort the Channels page A–Z and reverse.** A–Z exists; reverse does not.
-- **Show the channel's description** on the channel page, with an option to
-  strip links out of it. (Worth checking whether the extractor even returns a
-  description — it may not, in which case this is a crawl change first.)
+- ~~**Sort the Channels page A–Z and reverse.**~~ Done: `CHANNEL_ORDER_ALPHA_DESC`,
+  one more value in the existing vocabulary rather than a direction toggle
+  beside it, so the parent's default and the hub's manifest get it for free.
+- ~~**Show the channel's description**~~ Done. The extractor does return one
+  (`ChannelInfo.getDescription`, and `PlaylistInfo.getDescription().content`).
+  It is stripped at the boundary by `SafeText.forKids` in `:core` — links,
+  bare domains, @handles, e-mail addresses — and lands in `Source.about`
+  already safe, so no screen can render the raw text by accident; guard 52
+  holds that. Drawn collapsed to three lines under the channel's name with a
+  More/Less toggle. Not built: a parent switch for it, because a switch whose
+  "off" position lets links through is not a switch a family should have.
 - **Favourite (subscribe to) a *channel*, not just a video.** Possibly a
   parent-set thing rather than a kid-set one. New per-kid state either way, so
   it rides the sectioned merge like pins do.

@@ -1,6 +1,8 @@
 package io.yosemitekids.app
 
+import io.yosemitekids.app.data.CHANNEL_ORDER_ADDED
 import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA
+import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA_DESC
 import io.yosemitekids.app.data.CHANNEL_ORDER_LATEST
 import io.yosemitekids.app.data.CHANNEL_ORDER_RANDOM
 import io.yosemitekids.app.data.CHANNEL_ORDER_WATCHED
@@ -45,6 +47,45 @@ class KidSortFilterTest {
         assertEquals(
             listOf("Arthur", "Bluey", "Curious George"),
             orderChannels(channels, CHANNEL_ORDER_ALPHA, { 0 }, { null }, 1L).map { it.name }
+        )
+    }
+
+    @Test
+    fun reverseAlphabeticalIsTheAlphabetBackwards() {
+        assertEquals(
+            listOf("Curious George", "Bluey", "Arthur"),
+            orderChannels(channels, CHANNEL_ORDER_ALPHA_DESC, { 0 }, { null }, 1L).map { it.name }
+        )
+        // Not merely "the A-to-Z list reversed by accident of stability": the
+        // two must be exact mirrors of each other for a distinct name set.
+        assertEquals(
+            orderChannels(channels, CHANNEL_ORDER_ALPHA, { 0 }, { null }, 1L).reversed(),
+            orderChannels(channels, CHANNEL_ORDER_ALPHA_DESC, { 0 }, { null }, 1L)
+        )
+    }
+
+    @Test
+    fun justAddedLeadsWithTheNewestArrivalAndKeepsListOrderForTheRest() {
+        // Only UCc has ever been stamped; the other two predate the store and
+        // sort 0, which must leave them in the whitelist's own order.
+        //
+        // Keyed by URL, and that is the point of the test rather than an
+        // incidental detail. Resolution canonicalizes /user/, /c/ and @handle
+        // entries to their UC… form, so a store written from the whitelist's
+        // id and read back from the resolved Source's id misses every channel
+        // a parent pasted as a handle — silently, with the sort coming back in
+        // list order looking like it was never wired up. Seeding this map by
+        // id is exactly that bug, and it is how it first shipped.
+        val added = mapOf(src("UCc", "Curious George").url to 5_000L)
+        assertEquals(
+            listOf("UCc", "UCb", "UCa"),
+            orderChannels(channels, CHANNEL_ORDER_ADDED, { 0 }, { null }, 1L) { added[it] ?: 0L }
+                .map { it.id }
+        )
+        // With nothing stamped at all the order is exactly the list's.
+        assertEquals(
+            channels.map { it.id },
+            orderChannels(channels, CHANNEL_ORDER_ADDED, { 0 }, { null }, 1L).map { it.id }
         )
     }
 

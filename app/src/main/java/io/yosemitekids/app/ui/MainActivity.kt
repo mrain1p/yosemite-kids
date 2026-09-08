@@ -437,7 +437,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         // Both shapes now. The television went without a history
                         // for as long as it had no search; the rail gives it one.
                         searchHistory = SearchHistoryStore(applicationContext, profileSuffix),
-                        kidPrefs = io.yosemitekids.app.data.KidPrefs(applicationContext, profileSuffix)
+                        kidPrefs = io.yosemitekids.app.data.KidPrefs(applicationContext, profileSuffix),
+                        // Unsuffixed: "when did this DEVICE first see it" is
+                        // one fact for the box, not one per child.
+                        firstSeen = io.yosemitekids.app.data.SourceFirstSeen(applicationContext)
                     )
                 }
                 // TV: a paired phone just pushed new config — apply it live.

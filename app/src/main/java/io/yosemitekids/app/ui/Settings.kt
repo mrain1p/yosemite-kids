@@ -42,6 +42,7 @@ import io.yosemitekids.app.data.Whitelist
 import io.yosemitekids.app.data.CHANNEL_LAYOUT_PLAYLISTS
 import io.yosemitekids.app.data.CHANNEL_LAYOUT_POPULAR
 import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA
+import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA_DESC
 import io.yosemitekids.app.data.CHANNEL_ORDER_RANDOM
 import io.yosemitekids.app.data.CHANNEL_ORDER_LATEST
 import io.yosemitekids.app.data.YouTubeRepository
@@ -1359,6 +1360,8 @@ private fun AdminScreen(
                                 when (channelOrder) {
                                     CHANNEL_ORDER_ALPHA ->
                                         "A steady order, so the first chip is always the same one."
+                                    CHANNEL_ORDER_ALPHA_DESC ->
+                                        "The same alphabet from the other end, for a list that always starts with the same four."
                                     CHANNEL_ORDER_RANDOM ->
                                         "Re-mixed on every visit, so nothing stays buried."
                                     CHANNEL_ORDER_LATEST ->
@@ -1917,6 +1920,7 @@ private fun AdminScreen(
                     },
                     when (channelOrder) {
                         CHANNEL_ORDER_ALPHA -> "A to Z"
+                        CHANNEL_ORDER_ALPHA_DESC -> "Z to A"
                         CHANNEL_ORDER_RANDOM -> "random"
                         CHANNEL_ORDER_LATEST -> "latest video"
                         else -> "most watched"

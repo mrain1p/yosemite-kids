@@ -32,6 +32,18 @@ class VideoCache(context: Context) {
         return parsed
     }
 
+    /**
+     * How stale this source's cache is, in ms; [Long.MAX_VALUE] when there is
+     * no file at all. Never-fetched wins outright, which is what makes a
+     * just-added channel the first one a warm walk picks up — the same rule
+     * [ContentWarm.stalest] sorts by, so the foreground and the worker agree
+     * about which channel matters most.
+     */
+    fun ageMillis(sourceId: String, now: Long = System.currentTimeMillis()): Long {
+        val file = fileFor(sourceId)
+        return if (file.isFile) now - file.lastModified() else Long.MAX_VALUE
+    }
+
     fun save(sourceId: String, videos: List<Video>) {
         runCatching {
             val file = fileFor(sourceId)

@@ -76,8 +76,19 @@ val PAGE_SIZES = listOf<Int?>(null, 10, 20, 30)
 
 const val CHANNEL_ORDER_WATCHED = "watched"
 const val CHANNEL_ORDER_ALPHA = "alpha"
+
+/**
+ * The same alphabet, read from the other end. A direction rather than a
+ * second kind of sort: a family whose list starts with four "A…" channels
+ * has no way to reach the tail of it without one, and a "reverse" toggle
+ * beside the chips would be a second control for a row that has exactly one.
+ */
+const val CHANNEL_ORDER_ALPHA_DESC = "alphaDesc"
 const val CHANNEL_ORDER_RANDOM = "random"
-val CHANNEL_ORDERS = listOf(CHANNEL_ORDER_WATCHED, CHANNEL_ORDER_ALPHA, CHANNEL_ORDER_RANDOM, CHANNEL_ORDER_LATEST)
+val CHANNEL_ORDERS = listOf(
+    CHANNEL_ORDER_WATCHED, CHANNEL_ORDER_ALPHA, CHANNEL_ORDER_ALPHA_DESC,
+    CHANNEL_ORDER_RANDOM, CHANNEL_ORDER_LATEST
+)
 
 /**
  * Listening chip cycle: Off first — null disables screen-off listening
@@ -259,8 +270,8 @@ data class Whitelist(
     /**
      * How the home screen's channel row (and the Channels tab) is ordered —
      * one of [CHANNEL_ORDERS]: "watched" (most-opened first, the default),
-     * "alpha", or "random" (reshuffled on every refresh, for the kid who
-     * always picks the first tile).
+     * "alpha" and its reverse "alphaDesc", or "random" (reshuffled on every
+     * refresh, for the kid who always picks the first tile).
      */
     val channelOrder: String = CHANNEL_ORDER_WATCHED,
     /**
