@@ -1218,6 +1218,44 @@ foreach ($u in $units38) {
 }
 
 
+# 42. One place mints a pinned card, and one number is the row's ceiling.
+#     Two faces edit the pinned hero - the phone's settings form and the
+#     hub's browser - and the row's rules are arithmetic: ranks spaced by
+#     Pins.RANK_STEP so an insert touches only the cards that moved, a cap of
+#     Pins.MAX on growing a row but never on parsing one, and the same
+#     visibleTo filter resolvePins applies at draw time. A second copy of any
+#     of that does not throw. It drifts, and the symptom is a home screen
+#     whose order differs between the television and the NAS, or a pin that
+#     saves and never appears. Guard 26(a) cannot see this: it reads the
+#     declared properties of Whitelist, Limits and AiConfig, and every field
+#     of a Pin is nested a level below `pins`.
+#     (a) Nothing outside :core builds a Pin. Every add, move and remove goes
+#         through Pins.withRow.
+$pinNew = @(Get-ChildItem -Recurse -Include *.kt -Path app/src/main, hub/src/main | ForEach-Object {
+    $pf = $_
+    Get-Content $pf.FullName |
+        Select-String -Pattern '[^A-Za-z]Pin\(' -CaseSensitive |
+        ForEach-Object { "$($pf.Name):$($_.LineNumber): $($_.Line.Trim())" }
+})
+if ($pinNew.Count -gt 0) {
+    Fail-Guard "a pinned card is built outside :core. The cap, the RANK_STEP spacing and the fail-closed filter live in Pins.withRow, and a card minted anywhere else has none of them. Found: $($pinNew -join '; ')"
+}
+#     (b) The renderer's ceiling and the editor's cap are one number. Two
+#         would mean a card that saves, syncs and is never drawn.
+$pinsMaxLine = @(Get-Content "app/src/main/java/io/yosemitekids/app/ui/HomeSections.kt" |
+    Select-String -Pattern '^const val HOME_PINS_MAX = Pins\.MAX$' -CaseSensitive)
+if ($pinsMaxLine.Count -eq 0) {
+    Fail-Guard "HOME_PINS_MAX must be Pins.MAX. A second 3 is a cap the home screen and the editor can disagree about, and the editor is the one a parent watches."
+}
+#     (c) The hub mints the ranks a browser sends it. index.html sends ids in
+#         the parent's order and nothing else; HubWeb.applyPatch runs them
+#         through Pins.withRow. Without that the page becomes the second
+#         authority this guard exists to prevent.
+$hubWeb40 = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt" -Raw
+if (-not $hubWeb40.Contains("Pins.withRow")) {
+    Fail-Guard "HubWeb no longer runs an incoming home patch through Pins.withRow, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedPins."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

@@ -1269,7 +1269,11 @@
   }
 
   function listingLine() {
+    var pinned = pinsAll().length;
     return [
+      // The hero leads when there is one: the only thing on that page a
+      // parent set deliberately rather than left at a default.
+      pinned ? pinned + " pinned" : null,
       cfg().showVideoAge ? "Dates on" : "Dates off",
       optionLabel("listing-channel-layout", cfg().channelLayout),
       optionLabel("listing-channel-order", cfg().channelOrder)
@@ -1589,7 +1593,14 @@
         var vis = el("div", "line");
         vis.style.marginTop = "8px";
         vis.appendChild(el("span", "sub", "Visible to"));
-        var picked = e.kids || [];
+        // `profiles` on the wire, `kids` in the request body — two different
+        // words for the same list, and this read used the request's. Every
+        // chip drew as "Everyone" however a channel was actually restricted,
+        // so a parent looking at the hub could not see the restriction and
+        // re-set it from here with one tap. The pins editor below reads the
+        // same field to decide what it may offer a kid, which is what turned
+        // it up.
+        var picked = e.profiles || [];
         var all = el("button", "chip", "Everyone");
         all.setAttribute("aria-pressed", String(picked.length === 0));
         all.onclick = function () {
@@ -1634,8 +1645,192 @@
     return out;
   }
 
+  // --- the pinned hero -------------------------------------------------
+  //
+  // Declared CUSTOM in the manifest as `listing-pins`, so this card carries
+  // data-control and guard 26(b) can tell hand-written from forgotten.
+  //
+  // The page decides almost nothing. It sends the ids of one kid's row, in
+  // the order the parent left them, and HubWeb.normalisedPins mints every
+  // rank through Pins.withRow in :core — where the cap, the RANK_STEP
+  // spacing and the fail-closed filter already live for the phone. Rank
+  // arithmetic written here would be a second copy of those rules that
+  // nothing compares against the first.
+
+  /** Which kid's row this card is showing. Outlives a re-render, like the route does. */
+  var pinsKid = null;
+
+  /** The row cap, from :core. Never a 3 typed here — see HubWeb.state. */
+  function pinsMax() { return (state.pins && state.pins.max) || 0; }
+
+  /** The stored cards, whatever this build knows about `home`. */
+  function pinsAll() { return (cfg().home && cfg().home.pins) || []; }
+
+  /** One kid's cards, in the order they are drawn. `null` is the family's own row. */
+  function pinsRow(kidId) {
+    return pinsAll().filter(function (p) { return (p.kid || null) === kidId; });
+  }
+
+  /**
+   * WhitelistEntry.visibleTo, in the browser.
+   *
+   * Advisory only, and worth saying so: `Pins.withRow` applies the same
+   * filter on the way in, so a mistake here cannot store a card a kid may
+   * not see — it would only offer one that then silently failed to appear.
+   */
+  function entryVisibleTo(e, kidId) {
+    var only = e.profiles || [];
+    return !only.length || !kidId || only.indexOf(kidId) >= 0;
+  }
+
+  function entryById(id) {
+    return (cfg().entries || []).filter(function (e) { return e.id === id; })[0] || null;
+  }
+
+  /**
+   * Apply one edit — a pin, an unpin, a move — to a **freshly read** row.
+   *
+   * This re-fetch is the whole hazard of patching `home`. A patch replaces
+   * the entire object, so a card missing from this page's copy is an unpin;
+   * a tab left open on the Listing page while a co-parent pins something on
+   * their phone would silently take it away again on the next tap here. So
+   * [change] is a function of the row as the hub holds it *now*, never of
+   * what was drawn, and every other kid's cards are copied across verbatim.
+   *
+   * What it does not fix: two parents moving the same card. That resolves by
+   * the later stamp, per card, silently, with nothing to put it back — the
+   * cost `Pin`'s own KDoc records, and a browser makes it three-way rather
+   * than two-way.
+   */
+  function editPins(kidId, change) {
+    return api("/api/state").then(function (s) {
+      state = s;
+      var fresh = pinsAll();
+      var order = change(pinsRow(kidId).map(function (p) { return p.src; }));
+      var body = fresh.filter(function (p) { return (p.kid || null) !== kidId; });
+      order.forEach(function (src, i) {
+        // The array's position is the parent's order on the way in, and the
+        // rank rides along as that position: the hub ignores it and mints the
+        // real one from what it has stored, so nothing here has to know how
+        // ranks are spaced. It is written rather than left out because
+        // ConfigJson.pinsFromJson drops a card that carries no rank at all.
+        var one = { src: src, rank: i };
+        if (kidId) one.kid = kidId;
+        body.push(one);
+      });
+      return patch({ home: { pins: body } });
+    });
+  }
+
+  function cardPins() {
+    var ctl = controlById("listing-pins");
+    var c = card(ctl.label, ctl.sub);
+    c.dataset.control = "listing-pins";
+
+    var list = kids();
+    // A household with no kids has one row — the family's own, keyed absent,
+    // which is what Whitelist.pinsFor resolves for a device where nobody has
+    // been picked. Nothing to choose between, so nothing is offered.
+    if (list.length) {
+      if (!list.filter(function (k) { return k.id === pinsKid; }).length) pinsKid = list[0].id;
+      var pick = el("div", "line");
+      list.forEach(function (k) {
+        var b = el("button", "chip", k.name);
+        b.setAttribute("aria-pressed", String(k.id === pinsKid));
+        b.onclick = function () { pinsKid = k.id; render(); };
+        pick.appendChild(b);
+      });
+      c.appendChild(pick);
+    } else {
+      pinsKid = null;
+    }
+    var kidId = pinsKid;
+    var row = pinsRow(kidId);
+
+    var ul = el("ul", "rows");
+    if (!row.length) {
+      ul.appendChild(emptyLi("Nothing pinned. The home screen opens straight into the channel rows."));
+    }
+    row.forEach(function (p, i) {
+      var e = entryById(p.src);
+      var li = el("li");
+      var line = el("div", "line");
+      var box = el("div", "grow");
+      box.appendChild(el("div", "name", (i + 1) + ". " + ((e && e.label) || p.src)));
+      // A card whose channel has since been restricted to a sibling stays
+      // listed and says so, rather than vanishing: the kid's home already
+      // refuses to draw it, and this is the only place a parent can find out.
+      if (!e) {
+        box.appendChild(el("div", "sub", "That channel is no longer on the list."));
+      } else if (!entryVisibleTo(e, kidId)) {
+        box.appendChild(el("div", "sub", "Not shown — this kid can’t see it any more."));
+      }
+      line.appendChild(box);
+      if (i > 0) {
+        line.appendChild(button("↑", "quiet", function () {
+          return editPins(kidId, function (ids) { return moved(ids, p.src, -1); });
+        }));
+      }
+      if (i < row.length - 1) {
+        line.appendChild(button("↓", "quiet", function () {
+          return editPins(kidId, function (ids) { return moved(ids, p.src, 1); });
+        }));
+      }
+      line.appendChild(button("Remove", "quiet", function () {
+        return editPins(kidId, function (ids) {
+          return ids.filter(function (x) { return x !== p.src; });
+        });
+      }));
+      li.appendChild(line);
+      ul.appendChild(li);
+    });
+    c.appendChild(ul);
+
+    if (row.length >= pinsMax()) {
+      c.appendChild(el("p", "hint", pinsMax() + " is the most the home screen draws."));
+      return c;
+    }
+    var pinned = row.map(function (p) { return p.src; });
+    var offer = (cfg().entries || []).filter(function (e) {
+      return pinned.indexOf(e.id) < 0 && entryVisibleTo(e, kidId);
+    });
+    if (!offer.length) {
+      c.appendChild(el("p", "hint", "Nothing left to pin for this kid."));
+      return c;
+    }
+    var addLine = el("div", "line");
+    var sel = el("select");
+    offer.forEach(function (e) {
+      var o = el("option", null, (e.label || e.id) + (e.kind === "PLAYLIST" ? " (playlist)" : ""));
+      o.value = e.id;
+      sel.appendChild(o);
+    });
+    addLine.appendChild(sel);
+    addLine.appendChild(button("Pin", null, function () {
+      var chosen = sel.value;
+      return editPins(kidId, function (ids) { return ids.concat([chosen]); });
+    }));
+    c.appendChild(addLine);
+    return c;
+  }
+
+  /** [id] shifted [by] places. The whole of a move, expressed as the order it leaves. */
+  function moved(ids, id, by) {
+    var at = ids.indexOf(id);
+    if (at < 0) return ids;
+    var to = at + by;
+    if (to < 0 || to >= ids.length) return ids;
+    var next = ids.slice();
+    next[at] = ids[to];
+    next[to] = id;
+    return next;
+  }
+
   function pageListing() {
     var out = document.createDocumentFragment();
+    // The hero first: the biggest thing on the kid's home, and the only
+    // control on this page that is set per kid rather than for the family.
+    add(out, cardPins());
     // Every control here came from the manifest the moment this page stopped
     // being hand-written, and three of the four were wrong before it did: page
     // sizes of 12/24/48 against the app's 10/20/30 and All, layouts of

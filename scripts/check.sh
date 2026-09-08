@@ -1070,6 +1070,34 @@ $stamp_units
 EOF
 
 
+# 42. One place mints a pinned card, and one number is the row's ceiling.
+#     Two faces edit the pinned hero — the phone's settings form and the
+#     hub's browser — and the row's rules are arithmetic: ranks spaced by
+#     Pins.RANK_STEP so an insert touches only the cards that moved, a cap of
+#     Pins.MAX on growing a row but never on parsing one, and the same
+#     visibleTo filter resolvePins applies at draw time. A second copy of any
+#     of that does not throw. It drifts, and the symptom is a home screen
+#     whose order differs between the television and the NAS, or a pin that
+#     saves and never appears. Guard 26(a) cannot see this: it reads the
+#     declared properties of Whitelist, Limits and AiConfig, and every field
+#     of a Pin is nested a level below `pins`.
+#     (a) Nothing outside :core builds a Pin. Every add, move and remove goes
+#         through Pins.withRow.
+pin_new=$(grep -rnE "[^A-Za-z]Pin\(" --include=*.kt app/src/main hub/src/main 2>/dev/null || true)
+[ -z "$pin_new" ] ||
+  guard_fail "a pinned card is built outside :core. The cap, the RANK_STEP spacing and the fail-closed filter live in Pins.withRow, and a card minted anywhere else has none of them. Found:
+$pin_new"
+#     (b) The renderer's ceiling and the editor's cap are one number. Two
+#         would mean a card that saves, syncs and is never drawn.
+grep -qE "^const val HOME_PINS_MAX = Pins[.]MAX$" app/src/main/java/io/yosemitekids/app/ui/HomeSections.kt ||
+  guard_fail "HOME_PINS_MAX must be Pins.MAX. A second 3 is a cap the home screen and the editor can disagree about, and the editor is the one a parent watches."
+#     (c) The hub mints the ranks a browser sends it. index.html sends ids in
+#         the parent's order and nothing else; HubWeb.applyPatch runs them
+#         through Pins.withRow. Without that the page becomes the second
+#         authority this guard exists to prevent.
+grep -qF "Pins.withRow" hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt ||
+  guard_fail "HubWeb no longer runs an incoming home patch through Pins.withRow, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedPins."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 

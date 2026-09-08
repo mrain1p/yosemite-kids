@@ -552,6 +552,7 @@ private fun AdminScreen(
     var qualityPhone by remember(initial) { mutableStateOf(initial.qualityPhone) }
     var pageSize by remember(initial) { mutableStateOf(initial.pageSize) }
     var showVideoAge by remember(initial) { mutableStateOf(initial.showVideoAge) }
+    var pins by remember(initial) { mutableStateOf(initial.pins) }
     var baseline by remember(initial) { mutableStateOf(initial) }
     /** Entries added by this session's URL import — shown with a NEW tag for review. */
     var newIds by remember { mutableStateOf(setOf<String>()) }
@@ -679,7 +680,8 @@ private fun AdminScreen(
             qualityTv = qualityTv,
             qualityPhone = qualityPhone,
             pageSize = pageSize,
-            showVideoAge = showVideoAge
+            showVideoAge = showVideoAge,
+            pins = pins
         ).toConfig(baseline)
     }
 
@@ -720,6 +722,7 @@ private fun AdminScreen(
             qualityPhone = f.qualityPhone
             pageSize = f.pageSize
             showVideoAge = f.showVideoAge
+            pins = f.pins
             baseline = result.baseline
         }
     }
@@ -1210,7 +1213,7 @@ private fun AdminScreen(
                         Box(Modifier.padding(horizontal = 16.dp)) {
                             ValueRow(
                                 title = "How videos are listed",
-                                summary = "Row order, page layout, dates, page size",
+                                summary = "Pinned cards, row order, page layout, dates",
                                 onClick = { pageFrom = SettingsPage.Channels; page = SettingsPage.Listing }
                             )
                         }
@@ -1230,6 +1233,21 @@ private fun AdminScreen(
                     // No SectionTitle: the app bar already carries this page name,
                     // and repeating it verbatim two lines down reads as a bug.
                     Spacer(Modifier.height(16.dp))
+                    // The hero first, above the four family-wide defaults, for
+                    // the reason it is the hero: it is the biggest thing on the
+                    // kid's home and the only control on this page that is set
+                    // per kid. Its own card, because a per-kid control among
+                    // four family ones inside one border reads as family-wide.
+                    SettingsCard(padded = false) {
+                        PinnedHeroEditor(
+                            entries = entries,
+                            profiles = profiles,
+                            resolvedNames = resolvedNames,
+                            pins = pins,
+                            onPins = { pins = it }
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
                     // One card, four blocks, each padded 12dp with a divider
                     // running the full width between them — the dividers used
                     // to sit inside the card's own padding and stop 16dp short
@@ -1888,6 +1906,10 @@ private fun AdminScreen(
                 // subtitle rather than seeing a destination.
                 YosemiteIcons.Playlist, "How videos are listed",
                 listOf(
+                    // The hero leads when there is one: it is the only thing
+                    // on that page a parent set deliberately rather than left
+                    // at a default, so it is the one worth reading back.
+                    pins.size.takeIf { it > 0 }?.let { "$it pinned" },
                     if (showVideoAge) "Dates on" else "Dates off",
                     when (channelLayout) {
                         CHANNEL_LAYOUT_POPULAR -> "popular first"
@@ -1899,7 +1921,7 @@ private fun AdminScreen(
                         CHANNEL_ORDER_LATEST -> "latest video"
                         else -> "most watched"
                     }
-                ).joinToString(" · ")
+                ).filterNotNull().joinToString(" · ")
             ) { page = SettingsPage.Listing }
             SettingsDivider()
             HubRow(
@@ -2239,7 +2261,7 @@ internal fun SettingsDivider() {
  * [FlowRow] can wrap it.
  */
 @Composable
-private fun SegmentChip(
+internal fun SegmentChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,

@@ -230,11 +230,26 @@ for the next round rather than rushed:
   `tvUnits`, never measured. Read `adb shell wm size` and `wm density` off
   the real Chromecast (and once with the display-size setting stepped) and
   either confirm the factor or fix it in one place.
-- **Pins have a container but no editor** (release N of two). The editor —
-  choosing and ordering pins, then the full row editor for which home shelves
-  appear — ships only once every device and the hub image are on ≥1.1.0,
-  because an older build drops the field on round-trip and the config hashes
-  would never agree again. See `Pins.kt` and the sync skill.
+- ~~**Pins have a container but no editor**~~ — **done.** The editor ships on
+  both faces: `PinnedHeroEditor` on the phone's "How videos are listed" page
+  and `cardPins()` on the hub's, declared once as `listing-pins` in
+  `SettingsSurface`. Every add, move and remove on either face goes through
+  `Pins.withRow`, which mints the ranks, holds the row to `Pins.MAX` and drops
+  anything the kid cannot see; guard 42 keeps it the only place that does.
+  **The release condition still stands:** an older build drops `home` on the
+  round trip, so a household is only safe to pin on once every device *and*
+  the hub image are on ≥1.1.0.
+- **The home ROW ORDER editor is not started, and is further off than it
+  looks.** Verified 2026-09-07 while building the pin editor: `HomeShelf` and
+  `HOME_SHELVES` read like data, but `UiState.homeSections` is initialised to
+  `homeSections(emptyList())` and **assigned nowhere in the repo**; `Whitelist`
+  has no row-order property; and `ConfigJson` knows exactly one key under
+  `home` (`pins`). So the shelf order is a hardcoded catalogue wearing a data
+  shape, and an editor for it is not UI work — it is a whole config-field
+  cycle first (a merge unit, a stamp, a change code, a safe state, omitted-at-
+  default serialisation, the fingerprint tail, the four canonical tests, and a
+  loop in `ConfigMerge.merge` so guard 38 is satisfied). §4 of the sync skill
+  is the checklist. Do that before drawing anything.
 - **The hero uses the channel avatar as artwork**, upscaled. Real channel
   banners would fix the weakest thing on the home screen.
 
