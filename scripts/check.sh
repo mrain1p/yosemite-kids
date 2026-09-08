@@ -1369,6 +1369,29 @@ tok_listed=$(sed -n '/val all: List<TypeStyle> = listOf(/,/^    )/p' "$tok" | tr
 [ "$tok_styles" = "$tok_listed" ] ||
   guard_fail "KidType declares $tok_styles type styles and KidType.all lists $tok_listed. A step missing from the list is a step the browser does not have."
 
+# 52. A channel's own words reach a child with every way out already gone.
+#     A YouTube channel description is a paragraph followed by a list of
+#     places to go: a shop, a Discord, a second channel, an e-mail address.
+#     This app's promise is that what a child can reach is what a parent
+#     allowed, so the links, bare domains, @handles and e-mail addresses come
+#     out — and they come out at the BOUNDARY, in Source.about, not at the
+#     point of drawing. That is the whole reason this is a guard: stripping
+#     at the draw site is one `Text(source.description)` away from being
+#     bypassed by a screen written next year, and nothing would fail. Strip
+#     it where it enters and there is no raw description in the model to
+#     render by accident. SafeTextTest covers what the stripper removes;
+#     this covers that nothing skips it.
+about_decl=crawl/src/main/kotlin/io/yosemitekids/app/data/YouTubeRepository.kt
+grep -qF 'val about: String?' "$about_decl" ||
+  guard_fail "Source no longer declares 'val about: String?' in $about_decl; guard 52 is blind. If the kid-facing blurb was renamed, rename it in guard 52 in check.sh AND check.ps1."
+about_raw=$(grep -rnE "about[[:space:]]*=" --include=*.kt app/src/main crawl/src/main | grep -v SafeText | grep -vE ":[[:space:]]*(//|\*)" || true)
+[ -z "$about_raw" ] ||
+  guard_fail "a Source is given a description that has not been through SafeText.forKids. A kid-facing surface must carry no tappable (or readable-aloud) route out of the app. Found:
+$about_raw"
+about_stripped=$(grep -rcE "about[[:space:]]*=[[:space:]]*SafeText" --include=*.kt app/src/main crawl/src/main | awk -F: '{ n += $2 } END { print n + 0 }' || true)
+[ "$about_stripped" -ge 2 ] ||
+  guard_fail "guard 52 found $about_stripped stripped description site(s); the extractor and the source cache are both meant to be there. It is blind."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 

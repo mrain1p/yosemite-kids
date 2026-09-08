@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -831,7 +832,10 @@ private fun ChannelHeadBlock(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
         ) {
-            Box(Modifier.weight(1f)) { ChannelIdentity(source, meta, metrics, formFactor) }
+            Column(Modifier.weight(1f)) {
+                ChannelIdentity(source, meta, metrics, formFactor)
+                ChannelAbout(source.about, formFactor)
+            }
             Spacer(Modifier.width(24.dp))
             // Three cards a shade wider than they are tall, plus their two
             // gaps: "square-ish" is what the design draws, and a weight here
@@ -846,6 +850,7 @@ private fun ChannelHeadBlock(
     } else {
         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
             ChannelIdentity(source, meta, metrics, formFactor)
+            ChannelAbout(source.about, formFactor)
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ChannelActionCards(metrics, onNewest, onFavorite, onSurprise)
@@ -853,6 +858,79 @@ private fun ChannelHeadBlock(
         }
     }
 }
+
+/**
+ * What the channel says about itself, in the channel's own words — three
+ * lines of it, and the rest behind "More".
+ *
+ * The words are the channel's; the *routes* in them are not. Everything that
+ * could take a child somewhere a parent did not allow — links, bare domains,
+ * @handles, e-mail addresses — is gone before this ever sees the string
+ * ([Source.about] is stripped at the extractor boundary by
+ * `SafeText.forKids`, and guard 52 holds it there). So this composable can be
+ * what it looks like: a paragraph.
+ *
+ * Collapsed by default because a channel description is nearly always longer
+ * than a kid will read, and the three things they came to press sit directly
+ * underneath it. The toggle appears only when there is actually more — a
+ * "More" that reveals nothing is worse than no More at all.
+ */
+@Composable
+private fun ChannelAbout(
+    text: String?,
+    formFactor: FormFactor = LocalFormFactor.current
+) {
+    if (text.isNullOrBlank()) return
+    var expanded by remember(text) { mutableStateOf(false) }
+    var overflows by remember(text) { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = if (formFactor.isTv) tvUnits(14f) else 10.dp)
+    ) {
+        Text(
+            text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = if (expanded) Int.MAX_VALUE else COLLAPSED_ABOUT_LINES,
+            overflow = TextOverflow.Ellipsis,
+            // Only the collapsed pass can tell us whether there is more; the
+            // expanded one never overflows, so its answer must not be taken.
+            onTextLayout = { if (!expanded) overflows = it.hasVisualOverflow },
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = if (formFactor.isTv) tvTypeUnits(19f) else 13.5.sp,
+                lineHeight = if (formFactor.isTv) tvTypeUnits(26f) else 19.sp
+            )
+        )
+        if (overflows || expanded) {
+            Text(
+                if (expanded) "Less" else "More",
+                color = kidTokens.action,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontSize = if (formFactor.isTv) tvTypeUnits(18f) else 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    // A remote has to be able to reach it, and a thumb has to
+                    // be able to hit it: the 44 dp floor comes from the height,
+                    // not from the two words.
+                    .heightIn(min = 44.dp)
+                    .tvFocusHighlight(cornerRadius = 8.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(
+                        interactionSource = interaction,
+                        indication = LocalIndication.current
+                    ) { expanded = !expanded }
+                    .padding(horizontal = 8.dp, vertical = 11.dp)
+            )
+        }
+    }
+}
+
+/** Three lines: enough for what the channel is, short of the link list that follows it. */
+private const val COLLAPSED_ABOUT_LINES = 3
 
 @Composable
 private fun ChannelIdentity(

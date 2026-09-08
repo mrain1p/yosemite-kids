@@ -309,9 +309,14 @@ are regressions from the revamp and outrank the rest.**
 **Channels and the channel page.**
 
 - **Sort the Channels page A–Z and reverse.** A–Z exists; reverse does not.
-- **Show the channel's description** on the channel page, with an option to
-  strip links out of it. (Worth checking whether the extractor even returns a
-  description — it may not, in which case this is a crawl change first.)
+- ~~**Show the channel's description**~~ Done. The extractor does return one
+  (`ChannelInfo.getDescription`, and `PlaylistInfo.getDescription().content`).
+  It is stripped at the boundary by `SafeText.forKids` in `:core` — links,
+  bare domains, @handles, e-mail addresses — and lands in `Source.about`
+  already safe, so no screen can render the raw text by accident; guard 52
+  holds that. Drawn collapsed to three lines under the channel's name with a
+  More/Less toggle. Not built: a parent switch for it, because a switch whose
+  "off" position lets links through is not a switch a family should have.
 - **Favourite (subscribe to) a *channel*, not just a video.** Possibly a
   parent-set thing rather than a kid-set one. New per-kid state either way, so
   it rides the sectioned merge like pins do.

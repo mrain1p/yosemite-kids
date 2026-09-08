@@ -1587,6 +1587,39 @@ if ($tokStyles -ne $tokListed) {
     Fail-Guard "KidType declares $tokStyles type styles and KidType.all lists $tokListed. A step missing from the list is a step the browser does not have."
 }
 
+# 52. A channel's own words reach a child with every way out already gone.
+#     A YouTube channel description is a paragraph followed by a list of
+#     places to go: a shop, a Discord, a second channel, an e-mail address.
+#     This app's promise is that what a child can reach is what a parent
+#     allowed, so the links, bare domains, @handles and e-mail addresses come
+#     out - and they come out at the BOUNDARY, in Source.about, not at the
+#     point of drawing. That is the whole reason this is a guard: stripping
+#     at the draw site is one `Text(source.description)` away from being
+#     bypassed by a screen written next year, and nothing would fail. Strip
+#     it where it enters and there is no raw description in the model to
+#     render by accident. SafeTextTest covers what the stripper removes;
+#     this covers that nothing skips it.
+$aboutDeclFile = "crawl/src/main/kotlin/io/yosemitekids/app/data/YouTubeRepository.kt"
+if ((Get-Content $aboutDeclFile -Raw) -notmatch 'val about: String\?') {
+    Fail-Guard "Source no longer declares 'val about: String?' in $aboutDeclFile; guard 52 is blind. If the kid-facing blurb was renamed, rename it in guard 52 in check.ps1 AND check.sh."
+}
+$aboutRaw = @(Get-ChildItem -Recurse -Filter *.kt app/src/main, crawl/src/main |
+    ForEach-Object {
+        $af = $_
+        Get-Content $af.FullName |
+            Select-String -Pattern 'about\s*=' |
+            Where-Object { $_.Line -notmatch 'SafeText' -and $_.Line.Trim() -notmatch '^(//|\*|/\*)' } |
+            ForEach-Object { "$($af.Name):$($_.LineNumber): $($_.Line.Trim())" }
+    })
+if ($aboutRaw.Count -gt 0) {
+    Fail-Guard "a Source is given a description that has not been through SafeText.forKids. A kid-facing surface must carry no tappable (or readable-aloud) route out of the app. Found: $($aboutRaw -join '; ')"
+}
+$aboutStripped = @(Get-ChildItem -Recurse -Filter *.kt app/src/main, crawl/src/main |
+    ForEach-Object { Get-Content $_.FullName | Select-String -Pattern 'about\s*=\s*SafeText' }).Count
+if ($aboutStripped -lt 2) {
+    Fail-Guard "guard 52 found $aboutStripped stripped description site(s); the extractor and the source cache are both meant to be there. It is blind."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

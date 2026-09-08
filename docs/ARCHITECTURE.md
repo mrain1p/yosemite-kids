@@ -134,6 +134,10 @@ core/src/main/kotlin/io/yosemitekids/app/data/     the pure rules: no disk, no c
 ├── UsageLedger.kt      The watch ledger's laws: grow-only cells keyed
 │                       (kid, day, device), joined by per-cell max, no clock.
 │                       Deliberately NOT part of the config (guard 44)
+├── SafeText.kt         What a child may read of stranger-written prose: a
+│                       channel's description with every link, bare domain,
+│                       @handle and e-mail address taken out. Applied at the
+│                       extractor boundary, never at the draw site (guard 52)
 ├── Grants.kt / KidChoices.kt / Profile.kt / TimeWindows.kt / Tsv.kt
 ├── MasterElection.kt / MasterToken.kt   Who builds the search index (clock passed in)
 └── BackupFile.kt       The backup envelope, so the phone and the hub write one shape
