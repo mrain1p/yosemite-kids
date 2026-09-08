@@ -1059,7 +1059,7 @@ if ($ffBad.Count -gt 0) {
 #     all, silently, on both form factors. The compiler cannot help: `when`
 #     over a String has no exhaustiveness, which is the price of ids that
 #     survive a build inserting a shelf in the middle.
-$shelfSrc = Get-Content "app/src/main/java/io/yosemitekids/app/ui/HomeSections.kt" -Raw
+$shelfSrc = Get-Content "core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt" -Raw
 $shelvesSrc = Get-Content "app/src/main/java/io/yosemitekids/app/ui/HomeShelves.kt" -Raw
 $shelfObj = [regex]::Match($shelfSrc, 'object HomeShelf \{[\s\S]*?\n\}').Value
 $shelfIds = @([regex]::Matches($shelfObj, 'const val ([A-Z_]+)') | ForEach-Object { $_.Groups[1].Value })
@@ -1342,7 +1342,7 @@ if ($pinNew.Count -gt 0) {
 }
 #     (b) The renderer's ceiling and the editor's cap are one number. Two
 #         would mean a card that saves, syncs and is never drawn.
-$pinsMaxLine = @(Get-Content "app/src/main/java/io/yosemitekids/app/ui/HomeSections.kt" |
+$pinsMaxLine = @(Get-Content "core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt" |
     Select-String -Pattern '^const val HOME_PINS_MAX = Pins\.MAX$' -CaseSensitive)
 if ($pinsMaxLine.Count -eq 0) {
     Fail-Guard "HOME_PINS_MAX must be Pins.MAX. A second 3 is a cap the home screen and the editor can disagree about, and the editor is the one a parent watches."
@@ -1474,6 +1474,45 @@ $scrApp = @(Get-ChildItem -Recurse -Include *.kt -Path app/src/main | ForEach-Ob
 })
 if ($scrApp.Count -gt 0) {
     Fail-Guard "a visibility predicate in :app that is not a one-line delegation to Screening in :crawl. Two copies of this rule do not throw - they let a video the television hides appear on a tablet. Found: $($scrApp -join '; ')"
+}
+
+# 47. One home, one shelf model.
+#     The shelves, the saved order, the pinned hero and the opening focus are
+#     data, not drawing, and they moved to :core so a browser renders from the
+#     same list the phone does. Add a shelf and both faces get it; keep a copy
+#     in :app and the web home is a second implementation that is right until
+#     the day somebody edits one of them. Only homeShelfCounts stayed behind,
+#     because it reads UiState.
+$homeSrc = "core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt"
+if (-not (Test-Path $homeSrc)) {
+    Fail-Guard "$homeSrc is gone; guard 47 is blind. The shared shelf model lives there."
+}
+$homeSrcText = Get-Content $homeSrc -Raw
+foreach ($decl in @("object HomeShelf", "val HOME_SHELVES", "resolvePins(", "fun homeSections(", "fun firstFocusableShelf(")) {
+    if (-not $homeSrcText.Contains($decl)) {
+        Fail-Guard "$homeSrc no longer declares '$decl'. Moving a piece of the shelf model back into :app makes the browser's home a second implementation of it."
+    }
+}
+$homeApp = @(Get-ChildItem -Recurse -Include *.kt -Path app/src/main | ForEach-Object {
+    $hf = $_
+    Get-Content $hf.FullName |
+        Select-String -Pattern 'object HomeShelf|val HOME_SHELVES|fun homeSections\(|fun resolvePins\(|fun pinMeta\(|fun firstFocusableShelf\(|data class HomeSection|data class PinnedItem' |
+        ForEach-Object { "$($hf.Name):$($_.LineNumber): $($_.Line.Trim())" }
+})
+if ($homeApp.Count -gt 0) {
+    Fail-Guard "the shelf model is being declared in :app as well as :core. It belongs to :core so the phone, the television and the browser draw one list. Found: $($homeApp -join '; ')"
+}
+#     And no file may be named the same in both halves of that package. Two
+#     files called HomeSections.kt, one in :core and one in :app, both compile
+#     to io.yosemitekids.app.ui.HomeSectionsKt - and whichever loses the
+#     classpath race takes its functions with it. The build is clean; the
+#     failure is a NoSuchMethodError at runtime, in a test that had nothing to
+#     do with the edit. That happened while this guard was being written.
+$shadowed = @(Get-ChildItem "core/src/main/kotlin/io/yosemitekids/app/ui" -Filter *.kt |
+    Where-Object { Test-Path (Join-Path "app/src/main/java/io/yosemitekids/app/ui" $_.Name) } |
+    ForEach-Object { $_.Name })
+if ($shadowed.Count -gt 0) {
+    Fail-Guard "$($shadowed -join ' ') exists in both core/.../ui and app/.../ui. Same package, same file name, same JVM class - one shadows the other on the classpath and nothing says so. Rename one for what is actually in it."
 }
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }

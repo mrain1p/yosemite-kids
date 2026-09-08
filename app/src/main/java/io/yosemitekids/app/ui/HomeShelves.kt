@@ -156,7 +156,7 @@ internal interface HomePage {
     fun block(key: String, content: @Composable () -> Unit)
 
     /** The pinned hero. Snap carousel under a thumb, static row under a remote. */
-    fun hero(items: List<PinnedItem>, firstFocus: FocusRequester?, onOpen: (Source) -> Unit)
+    fun hero(items: List<PinnedItem<Source>>, firstFocus: FocusRequester?, onOpen: (Source) -> Unit)
 
     /** The feed. One card; the phone's page IS the grid, the TV's arrives as rows of three. */
     fun feed(items: List<VideoItem>, card: @Composable (VideoItem) -> Unit)
@@ -318,7 +318,7 @@ private class GridPage(
     override fun block(key: String, content: @Composable () -> Unit) =
         scope.item(key = key, span = { GridItemSpan(maxLineSpan) }) { content() }
 
-    override fun hero(items: List<PinnedItem>, firstFocus: FocusRequester?, onOpen: (Source) -> Unit) =
+    override fun hero(items: List<PinnedItem<Source>>, firstFocus: FocusRequester?, onOpen: (Source) -> Unit) =
         block("hero") { PinnedHeroCarousel(items, metrics, firstFocus, onOpen) }
 
     // The phone's page is itself the feed's grid — one card to a line, or as
@@ -338,7 +338,7 @@ private class ColumnPage(
     override fun block(key: String, content: @Composable () -> Unit) =
         scope.item(key = key) { content() }
 
-    override fun hero(items: List<PinnedItem>, firstFocus: FocusRequester?, onOpen: (Source) -> Unit) =
+    override fun hero(items: List<PinnedItem<Source>>, firstFocus: FocusRequester?, onOpen: (Source) -> Unit) =
         block("hero") { PinnedHeroRow(items, metrics, firstFocus, onOpen) }
 
     // A column has no cells, so the grid is built: chunks of three, each chunk
@@ -650,7 +650,7 @@ private fun ChannelRail(
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun PinnedHeroCarousel(
-    items: List<PinnedItem>,
+    items: List<PinnedItem<Source>>,
     metrics: HomeMetrics,
     firstFocus: FocusRequester?,
     onOpen: (Source) -> Unit
@@ -711,7 +711,7 @@ private fun HeroDots(count: Int, current: Int) {
  */
 @Composable
 private fun PinnedHeroRow(
-    items: List<PinnedItem>,
+    items: List<PinnedItem<Source>>,
     metrics: HomeMetrics,
     firstFocus: FocusRequester?,
     onOpen: (Source) -> Unit
@@ -754,7 +754,7 @@ private fun PinnedHeroRow(
  */
 @Composable
 private fun PinnedHeroCard(
-    item: PinnedItem,
+    item: PinnedItem<Source>,
     /** Null on the television, where the three cards share the row by weight. */
     width: Dp?,
     height: Dp,

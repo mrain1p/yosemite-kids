@@ -1,17 +1,12 @@
 package io.yosemitekids.app
 
-import io.yosemitekids.app.data.Source
-import io.yosemitekids.app.data.SourceKind
-import io.yosemitekids.app.data.Video
 import io.yosemitekids.app.ui.HOME_PINS_MAX
 import io.yosemitekids.app.ui.HOME_SHELVES
 import io.yosemitekids.app.ui.HomeSection
 import io.yosemitekids.app.ui.HomeShelf
-import io.yosemitekids.app.ui.UiState
-import io.yosemitekids.app.ui.VideoItem
+import io.yosemitekids.app.ui.PinnableSource
 import io.yosemitekids.app.ui.firstFocusableShelf
 import io.yosemitekids.app.ui.homeSections
-import io.yosemitekids.app.ui.homeShelfCounts
 import io.yosemitekids.app.ui.pinMeta
 import io.yosemitekids.app.ui.resolvePins
 import org.junit.Assert.assertEquals
@@ -27,15 +22,16 @@ import org.junit.Test
  * until it is wrong in a way nobody can see — a saved order that silently
  * shifted after an update, or a channel restricted to an older sibling drawn
  * as the biggest thing on a five-year-old's home screen.
+ *
+ * In `:core` rather than `:app` for the reason every merge test is: here it
+ * covers the browser home the hub is about to serve as well as the phone's.
  */
 class HomeSectionsTest {
 
-    private fun source(id: String, name: String = id) =
-        Source(id, "https://youtube.com/$id", name, null, SourceKind.CHANNEL)
+    /** All the hero asks of a pinnable thing, so all a test of it needs. */
+    private data class Src(override val id: String) : PinnableSource
 
-    private fun item(id: String) = VideoItem(
-        Video("https://youtu.be/$id", "Video $id", "A channel", null, 100), null
-    )
+    private fun source(id: String) = Src(id)
 
     // --- the shelf list ----------------------------------------------------
 
@@ -120,7 +116,7 @@ class HomeSectionsTest {
 
     @Test
     fun `nothing visible means no hero at all`() {
-        assertTrue(resolvePins(listOf("a", "b"), emptyList()).isEmpty())
+        assertTrue(resolvePins(listOf("a", "b"), emptyList<Src>()).isEmpty())
         assertTrue(resolvePins(emptyList(), listOf(source("a"))).isEmpty())
     }
 
@@ -167,25 +163,7 @@ class HomeSectionsTest {
         assertEquals(listOf("2 new videos", "5 videos"), pins.map { it.meta })
     }
 
-    // --- counts and the television's opening focus -------------------------
-
-    @Test
-    fun `counts come from the state each shelf actually draws`() {
-        val state = UiState(
-            channels = listOf(source("a"), source("b")),
-            keepWatching = listOf(item("k1")),
-            suggested = emptyList(),
-            feed = listOf(item("f1"), item("f2"), item("f3")),
-            recentHistory = listOf(item("h1"))
-        )
-        val counts = homeShelfCounts(state)
-        assertEquals(0, counts[HomeShelf.PINNED])
-        assertEquals(2, counts[HomeShelf.CHANNELS])
-        assertEquals(1, counts[HomeShelf.KEEP_WATCHING])
-        assertEquals(0, counts[HomeShelf.SUGGESTED])
-        assertEquals(3, counts[HomeShelf.VIDEOS])
-        assertEquals(1, counts[HomeShelf.HISTORY])
-    }
+    // --- the television's opening focus ------------------------------------
 
     @Test
     fun `opening focus skips empty shelves and disabled ones`() {

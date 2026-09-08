@@ -701,7 +701,7 @@ private fun SurpriseCell(
  */
 @Composable
 private fun PinnedSourceRail(
-    items: List<PinnedItem>,
+    items: List<PinnedItem<Source>>,
     metrics: ChannelMetrics,
     onOpen: (Source) -> Unit
 ) {
@@ -718,7 +718,7 @@ private fun PinnedSourceRail(
 
 @Composable
 private fun PinnedSourceTile(
-    item: PinnedItem,
+    item: PinnedItem<Source>,
     metrics: ChannelMetrics,
     onOpen: (Source) -> Unit,
     formFactor: FormFactor = LocalFormFactor.current

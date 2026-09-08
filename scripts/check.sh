@@ -925,7 +925,7 @@ $ffread"
 #     all, silently, on both form factors. The compiler cannot help: `when`
 #     over a String has no exhaustiveness, which is the price of ids that
 #     survive a build inserting a shelf in the middle.
-shelf_src=app/src/main/java/io/yosemitekids/app/ui/HomeSections.kt
+shelf_src=core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt
 shelves_src=app/src/main/java/io/yosemitekids/app/ui/HomeShelves.kt
 shelf_ids=$(sed -n '/object HomeShelf {/,/^}/p' "$shelf_src" | grep -oE 'const val [A-Z_]+' | awk '{print $3}' || true)
 [ -n "$shelf_ids" ] || guard_fail "no ids found in object HomeShelf; guard 33 is blind."
@@ -1175,7 +1175,7 @@ pin_new=$(grep -rnE "[^A-Za-z]Pin\(" --include=*.kt app/src/main hub/src/main 2>
 $pin_new"
 #     (b) The renderer's ceiling and the editor's cap are one number. Two
 #         would mean a card that saves, syncs and is never drawn.
-grep -qE "^const val HOME_PINS_MAX = Pins[.]MAX$" app/src/main/java/io/yosemitekids/app/ui/HomeSections.kt ||
+grep -qE "^const val HOME_PINS_MAX = Pins[.]MAX$" core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt ||
   guard_fail "HOME_PINS_MAX must be Pins.MAX. A second 3 is a cap the home screen and the editor can disagree about, and the editor is the one a parent watches."
 #     (c) The hub mints the ranks a browser sends it. index.html sends ids in
 #         the parent's order and nothing else; HubWeb.applyPatch runs them
@@ -1283,6 +1283,38 @@ scr_app=$(grep -rn "fun isVisible(\|fun needsScreening(" --include=*.kt app/src/
 [ -z "$scr_app" ] ||
   guard_fail "a visibility predicate in :app that is not a one-line delegation to Screening in :crawl. Two copies of this rule do not throw - they let a video the television hides appear on a tablet. Found:
 $scr_app"
+
+# 47. One home, one shelf model.
+#     The shelves, the saved order, the pinned hero and the opening focus are
+#     data, not drawing, and they moved to :core so a browser renders from the
+#     same list the phone does. Add a shelf and both faces get it; keep a copy
+#     in :app and the web home is a second implementation that is right until
+#     the day somebody edits one of them. Only homeShelfCounts stayed behind,
+#     because it reads UiState.
+home_src=core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt
+[ -f "$home_src" ] ||
+  guard_fail "$home_src is gone; guard 47 is blind. The shared shelf model lives there."
+for decl in "object HomeShelf" "val HOME_SHELVES" "resolvePins(" "fun homeSections(" "fun firstFocusableShelf("; do
+  grep -q "$decl" "$home_src" ||
+    guard_fail "$home_src no longer declares '$decl'. Moving a piece of the shelf model back into :app makes the browser's home a second implementation of it."
+done
+home_app=$(grep -rn "object HomeShelf\|val HOME_SHELVES\|fun homeSections(\|fun resolvePins(\|fun pinMeta(\|fun firstFocusableShelf(\|data class HomeSection\|data class PinnedItem" --include=*.kt app/src/main || true)
+[ -z "$home_app" ] ||
+  guard_fail "the shelf model is being declared in :app as well as :core. It belongs to :core so the phone, the television and the browser draw one list. Found:
+$home_app"
+#     And no file may be named the same in both halves of that package. Two
+#     files called HomeSections.kt, one in :core and one in :app, both compile
+#     to io.yosemitekids.app.ui.HomeSectionsKt - and whichever loses the
+#     classpath race takes its functions with it. The build is clean; the
+#     failure is a NoSuchMethodError at runtime, in a test that had nothing to
+#     do with the edit. That happened while this guard was being written.
+shadowed=""
+for f in core/src/main/kotlin/io/yosemitekids/app/ui/*.kt; do
+  b=$(basename "$f")
+  if [ -f "app/src/main/java/io/yosemitekids/app/ui/$b" ]; then shadowed="$shadowed $b"; fi
+done
+[ -z "$shadowed" ] ||
+  guard_fail "$shadowed exists in both core/.../ui and app/.../ui. Same package, same file name, same JVM class - one shadows the other on the classpath and nothing says so. Rename one for what is actually in it."
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

@@ -23,9 +23,16 @@ import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 
-/** A tile on the home screen: a whitelisted channel or playlist. */
+/**
+ * A tile on the home screen: a whitelisted channel or playlist.
+ *
+ * It is a [PinnableSource] because that is all the shared hero row in `:core`
+ * asks of a thing a parent can pin — an id to match against. The phone, the
+ * television and the hub therefore resolve a pinned row with one fail-closed
+ * join rather than one each.
+ */
 data class Source(
-    val id: String,
+    override val id: String,
     /** Canonical YouTube URL — may be a /user/, /c/ or /@handle form, not just /channel/. */
     val url: String,
     val name: String,
@@ -33,7 +40,7 @@ data class Source(
     val kind: SourceKind,
     /** Screen-time drain rate in percent (100 = normal, 0 = FREE), from the whitelist entry. */
     val timeMultiplierPercent: Int = 100
-)
+) : io.yosemitekids.app.ui.PinnableSource
 
 data class Video(
     val url: String,

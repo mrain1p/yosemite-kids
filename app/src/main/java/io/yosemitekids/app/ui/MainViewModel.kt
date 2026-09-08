@@ -619,7 +619,7 @@ class MainViewModel(
      * or one whose whole feed is held for review, become the largest thing on
      * a five-year-old's home screen. Cache reads — call off-main.
      */
-    private fun pinnedRow(visible: List<Source>): List<PinnedItem> =
+    private fun pinnedRow(visible: List<Source>): List<PinnedItem<Source>> =
         resolvePins(
             // Translated through `visible` itself, so an entry this kid may
             // not see yields no id and the join stays fail-closed.

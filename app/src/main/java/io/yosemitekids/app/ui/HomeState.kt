@@ -68,7 +68,7 @@ data class UiState(
      */
     val homeSections: List<HomeSection> = homeSections(emptyList()),
     /** The pinned hero's cards, already filtered to what this kid may see. */
-    val pinned: List<PinnedItem> = emptyList(),
+    val pinned: List<PinnedItem<Source>> = emptyList(),
     val screen: Screen = Screen.Home,
     val videos: List<VideoItem> = emptyList(),
     /**

@@ -1,7 +1,21 @@
 package io.yosemitekids.app.ui
 
 import io.yosemitekids.app.data.Pins
-import io.yosemitekids.app.data.Source
+
+/**
+ * The home screen's shelves — the model, not the drawing.
+ *
+ * **In `:core` because a second face is about to render it.** The phone, the
+ * television and the browser have three different renderers and exactly one
+ * answer to "which shelves, in what order, with what in them": add a shelf
+ * here and every face gets it, rather than a web home that quietly lacks the
+ * row a parent just turned on. Nothing in this file knows what a pixel is,
+ * which is what lets it live beside the merge rules the hub already shares.
+ *
+ * The `ui` package inside `:core` is deliberate: these names were already
+ * `io.yosemitekids.app.ui` and the move must not churn every import in `:app`
+ * to prove a point about directory layout.
+ */
 
 /**
  * The home screen's shelves, named.
@@ -54,7 +68,7 @@ val HOME_SHELVES: List<String> = listOf(
  * ids are appended in catalogue order and switched on. What the saved order
  * *does* name keeps its say, which is the whole point of saving it.
  */
-internal fun homeSections(
+fun homeSections(
     saved: List<HomeSection>,
     catalogue: List<String> = HOME_SHELVES
 ): List<HomeSection> {
@@ -74,15 +88,27 @@ internal fun homeSections(
  */
 const val HOME_PINS_MAX = Pins.MAX
 
+/**
+ * The only thing the hero needs of a thing it can pin: an id to match against.
+ *
+ * An interface rather than the concrete `Source`, because `Source` carries the
+ * extractor with it and `:core` must stay the pure rules — and because the
+ * browser's row will be built from whatever the hub hands the page, which is
+ * not going to be the same class the phone draws.
+ */
+interface PinnableSource {
+    val id: String
+}
+
 /** One hero card: which source it opens, and the mono line under its name. */
-data class PinnedItem(val source: Source, val meta: String)
+data class PinnedItem<out S : PinnableSource>(val source: S, val meta: String)
 
 /**
  * The hero's mono line: what is new here, or how much there is. Never a
  * bare "0 videos" — a channel whose cache has not landed yet says nothing
  * rather than saying it is empty.
  */
-internal fun pinMeta(newCount: Int, videoCount: Int): String = when {
+fun pinMeta(newCount: Int, videoCount: Int): String = when {
     newCount > 0 -> "$newCount new video${if (newCount == 1) "" else "s"}"
     videoCount > 0 -> "$videoCount video${if (videoCount == 1) "" else "s"}"
     else -> ""
@@ -100,14 +126,18 @@ internal fun pinMeta(newCount: Int, videoCount: Int): String = when {
  * any other way — from the whitelist, from a cache, from a name — would put a
  * channel restricted to an older sibling on a five-year-old's home screen as
  * the single biggest thing on it.
+ *
+ * That argument does not become less true in a browser, which is why this is
+ * the function the web home has to call rather than one it re-derives from a
+ * JSON payload.
  */
-internal fun resolvePins(
+fun <S : PinnableSource> resolvePins(
     pinned: List<String>,
-    visible: List<Source>,
-    newCount: (Source) -> Int = { 0 },
-    videoCount: (Source) -> Int = { 0 },
+    visible: List<S>,
+    newCount: (S) -> Int = { 0 },
+    videoCount: (S) -> Int = { 0 },
     max: Int = HOME_PINS_MAX
-): List<PinnedItem> {
+): List<PinnedItem<S>> {
     if (pinned.isEmpty() || visible.isEmpty()) return emptyList()
     val byId = visible.associateBy { it.id }
     return pinned.asSequence()
@@ -119,28 +149,13 @@ internal fun resolvePins(
 }
 
 /**
- * How many items each shelf has to show. Drives three things that must agree:
- * the mono count beside a shelf's title, whether the shelf is drawn at all,
- * and where the television's opening focus goes. They disagreed when each was
- * computed at its own call site — a shelf could carry a count of zero.
- */
-internal fun homeShelfCounts(state: UiState): Map<String, Int> = mapOf(
-    HomeShelf.PINNED to state.pinned.size,
-    HomeShelf.CHANNELS to state.channels.size,
-    HomeShelf.KEEP_WATCHING to state.keepWatching.size,
-    HomeShelf.SUGGESTED to state.suggested.size,
-    HomeShelf.VIDEOS to state.feed.size,
-    HomeShelf.HISTORY to state.recentHistory.size
-)
-
-/**
  * Which shelf the television's opening focus belongs to: the first one that is
  * enabled *and* actually has something focusable in it.
  *
  * An empty shelf draws nothing, so a focus request aimed at it lands nowhere —
  * and "nowhere" on a TV means a remote that does not appear to work at all.
  */
-internal fun firstFocusableShelf(
+fun firstFocusableShelf(
     sections: List<HomeSection>,
     counts: Map<String, Int>
 ): String? = sections.firstOrNull { it.enabled && (counts[it.id] ?: 0) > 0 }?.id
