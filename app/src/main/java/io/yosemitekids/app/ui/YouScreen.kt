@@ -244,9 +244,18 @@ internal fun YouScreen(
             }
         }
         item(key = "you-strip", span = { GridItemSpan(maxLineSpan) }) {
-            Row(
+            // Wraps rather than scrolls. This is a FIXED, small set of the
+            // kid's own shelves, and a horizontal scroller hid the last of
+            // them off the right edge with nothing to say it was there — the
+            // reported symptom was "Up next" clipped mid-word, which reads as
+            // a layout fault rather than as something to swipe. A row that can
+            // grow without bound (the blocked-window pills below) still
+            // scrolls, because wrapping those would push the page down.
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).horizontalScroll(rememberScrollState())
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 shelves.forEach { shelf ->
                     YosemiteChip(

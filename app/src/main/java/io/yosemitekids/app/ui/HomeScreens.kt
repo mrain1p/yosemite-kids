@@ -185,9 +185,14 @@ internal fun channelSortLabel(sort: String): Pair<String, androidx.compose.ui.gr
  */
 @Composable
 internal fun VideoFilterChips(selected: String, onSelect: (String) -> Unit) {
-    Row(
+    // Wraps rather than scrolls, for the reason the You strip does: this is a
+    // fixed set the kid chooses between, and a chip half off the right edge
+    // reads as broken rather than as scrollable. Wrapping costs a second line
+    // only on the narrowest phones at the largest font scales.
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    androidx.compose.foundation.layout.FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier.horizontalScroll(rememberScrollState())
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         VIDEO_FILTERS.forEach { value ->
             val (label, icon) = videoFilterLabel(value)
