@@ -23,7 +23,7 @@ channels, 15-minute session) or `seed --real` (the family's whitelist).
 | Nav rail (TV) | any | `remainingMs` (the time card reads `TimeLeft.kt`), `channels` (no rail on a fresh install) | `TvNavRail.kt` `TvNavRail`, wired in `YosemiteScreen.kt` (`railShown`) | TV AVD, `launch`: starts expanded, collapses on the first key into content, LEFT from the content's left edge re-expands it; `dpad down` walks Home · Channels · You · Search |
 | Player (phone, portrait) | (PlayerActivity) | intent extras, `SessionGuard`, `moreFromChannel` (= `channelCandidates()`) | `PlayerActivity.kt` `PortraitPlayerScaffold` + `PlayerControlsOverlay(compact)` | tap any poster; `wait-stream`; tap the video for controls; the list below scrolls |
 | Player (phone landscape / TV) | (PlayerActivity) | as above | `PlayerActivity.kt` `PlayerStage` + `PlayerControlsOverlay` | `rotate`, or ⛶ in the portrait slot; TV always |
-| Mini-player (PiP, phone) | (PlayerActivity, `inPip`) | `pipEligible()` | the stage with every overlay hidden | `home` or `back` while a video plays; `dumpsys activity activities` shows `mode=pinned` |
+| Mini-player (PiP, phone) | (PlayerActivity, `inPip`) | `pipEligible()` | the stage with every overlay hidden | `home` or `back` while a video plays, the ⤢ button, or a drag down the picture (`PlayerGestures.kt`; `adb shell input swipe X Y X Y+400 260`); `dumpsys activity activities` shows `mode=pinned` |
 | Up next / end card | (PlayerActivity `EndCard`) | queue + `channelCandidates()` | `EndCardOverlay` | drag the scrubber to the end |
 | Blocked / time-up | (PlayerActivity) | `SessionGuard.checkStart/tick` | `BlockedCard` | seed a 2-minute session and keep watching |
 | Error | (PlayerActivity) | `errorState` | `ErrorCard` | pull the emulator's network |

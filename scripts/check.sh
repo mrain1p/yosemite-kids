@@ -1392,6 +1392,41 @@ about_stripped=$(grep -rcE "about[[:space:]]*=[[:space:]]*SafeText" --include=*.
 [ "$about_stripped" -ge 2 ] ||
   guard_fail "guard 52 found $about_stripped stripped description site(s); the extractor and the source cache are both meant to be there. It is blind."
 
+# 55. Every way into the little window asks pipEligible() first, and the
+#     gesture that opens it can be argued with on a laptop.
+#     There are two ways in now — the ⤢ button and the swipe down the finger
+#     makes on the picture — and there will be a third. That is the shape of
+#     this: enterPictureInPictureMode() is a system call that cannot be taken
+#     back, and fired over a blocked card, the pre-play check or a time-up
+#     screen it hands a child a floating window of something the rules had
+#     just said no to. Nothing throws and nothing on screen says so.
+#     enterPip() is the one door, and it asks first.
+player_src=app/src/main/java/io/yosemitekids/app/ui/PlayerActivity.kt
+[ -f "$player_src" ] ||
+  guard_fail "$player_src is gone; guard 55 is blind. The player's one door into picture-in-picture lives there."
+pip_calls=$(grep -c "enterPictureInPictureMode(" "$player_src" || true)
+[ "$pip_calls" = "1" ] ||
+  guard_fail "$player_src calls enterPictureInPictureMode() on $pip_calls lines. It is called once, inside enterPip(), which asks pipEligible() first. Route the new gesture, button or key through enterPip() and read its false."
+pip_door=$(sed -n '/private fun enterPip()/,/^    }/p' "$player_src" || true)
+echo "$pip_door" | grep -q "pipEligible()" ||
+  guard_fail "enterPip() in $player_src no longer asks pipEligible(). That check is the only thing standing between a blocked card and a floating window of the video it blocked."
+#     And the half of the swipe that is arithmetic stays arithmetic. Touch
+#     handling needs a finger; the threshold, the flick velocity and how big
+#     the picture is on the way down do not, and those are the numbers that
+#     get nudged. One androidx import in there and the test needs a device.
+gesture_src=app/src/main/java/io/yosemitekids/app/ui/PlayerGestures.kt
+[ -f "$gesture_src" ] ||
+  guard_fail "$gesture_src is gone; guard 55 is blind. The swipe-to-shrink policy lives there so a JVM test can state it."
+grep -q "object PlayerDismiss" "$gesture_src" ||
+  guard_fail "$gesture_src no longer declares 'object PlayerDismiss'. Inlining the threshold back into PlayerActivity puts it where nothing can assert on it."
+gesture_android=$(grep -nE "^import (androidx|android)\." "$gesture_src" || true)
+[ -z "$gesture_android" ] ||
+  guard_fail "$gesture_src imports Android. It is reached from a plain JVM unit test; a Compose or framework type in there turns the one testable half of the gesture into another thing only a device can check. Found:
+$gesture_android"
+grep -q "PlayerDismiss" app/src/test/java/io/yosemitekids/app/PlayerDismissTest.kt 2>/dev/null ||
+  guard_fail "PlayerDismissTest is gone or no longer exercises PlayerDismiss. The gesture's numbers are only pinned while something reads them."
+
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 
