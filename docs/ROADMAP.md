@@ -210,11 +210,14 @@ Not built, and what this item is for:
 4. **Say what to do when it fails.** The search-index card shows a red dot;
    it should say "check for an extractor update" rather than leaving a
    parent guessing between a ban, an outage and a broken build.
-5. **Never route the hub through a VPN.** Worth writing into `HUB.md` as a
-   warning rather than leaving to instinct: `gluetun` is on this NAS, and
-   putting the hub behind it swaps a residential address, which is treated
-   leniently, for a data-centre one, which is treated far worse. This is the
-   single easiest way to make the problem real.
+5. **Never route the hub through a VPN — written down 2026-09-08**, in
+   `HUB.md` under "Never route the hub through a VPN". `gluetun` is on this
+   NAS and putting the hub behind it is a two-line change that looks like a
+   tidy-up, so the warning names it, says why a data-centre exit is treated
+   worse than a residential one, and says to look there first when
+   extraction breaks after a networking change. Nothing enforces it — the
+   hub cannot see its own egress path — so it stays a rule for whoever edits
+   the compose file.
 
 Named honestly: none of this changes the structural bet. If Google closes
 third-party extraction the app stops, and that was true the day this was

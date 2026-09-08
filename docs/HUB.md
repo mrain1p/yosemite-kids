@@ -455,6 +455,26 @@ It no longer uses host networking. The hub is a plain server that devices dial
 by IP; it never broadcasts or discovers, so host mode bought nothing and cost
 the isolation.
 
+## Never route the hub through a VPN
+
+Written down rather than left to instinct, because `gluetun` is already on
+this NAS and putting a container behind it is a two-line change that looks
+like a tidy-up.
+
+The hub talks to YouTube to build the search index, and — once a browser can
+watch — to resolve a stream. A residential address is treated leniently for
+that. A commercial VPN's exit is a data-centre address, and data-centre
+addresses are treated far worse: challenges, captchas, and extraction that
+simply stops working. It is the single easiest way to turn the bot-detection
+risk in `ROADMAP.md` §K from a thing to be careful about into a thing that
+has happened.
+
+Nothing enforces this — the hub cannot see its own egress path — so it is a
+rule for whoever edits the compose file. If extraction breaks shortly after a
+networking change, look here first, and remember that a ban and an extractor
+that needs updating look identical from inside the container (`scripts/upstream.*`
+exists for exactly that reason).
+
 ## Connecting a phone
 
 On the phone: Settings, then Devices, then the hub section. Enter the address
