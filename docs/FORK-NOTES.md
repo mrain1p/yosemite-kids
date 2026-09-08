@@ -1561,3 +1561,69 @@ stands on its own.
   frame has something to work with. All three now ride every reply, and
   `/approve` and `/pending` join `/login`, `/password` and `/recovery` in
   refusing a foreign `Origin` — no real caller sends one at all.
+
+### The pinned hero gets its editor (1.1.x, release N+1)
+
+1.1.0 shipped the container and nothing that wrote to it, deliberately: an
+older build drops `home` on a round trip, so the whole fleet had to be
+carrying, stamping and merging the list before anything could change it.
+`Pins.RANK_STEP` had zero call sites for a release. It has one now.
+
+- **One declaration, both faces.** `listing-pins` in `SettingsSurface`
+  (CUSTOM, `writes = "pins"`, in `kid-shelves` on "How videos are listed"),
+  and the `NOT_A_CONTROL["pins"]` line that asked for exactly this is gone.
+  The phone draws `PinnedHeroEditor` (`SettingsPins.kt`), the hub draws
+  `cardPins()` — pick a kid, see their cards in order, add one, reorder,
+  remove.
+- **One writer: `Pins.withRow`.** Add, move and remove are the same edit — a
+  new membership and a new order for one row — so they are one function, in
+  `:core`, and it is the only place a rank is minted, the cap applied, or a
+  source the kid cannot see refused. It mints as few ranks as it can (the
+  longest run already in the requested order keeps its ranks; the rest land
+  in the gap `RANK_STEP` left for them), because a rank is a value inside its
+  own merge unit: dragging the third card to the front must stamp one unit,
+  not three.
+- **No new route on either face.** The phone writes through the settings form
+  (`pins` is a `SettingsForm` field, so the auto-save, the stamper and the
+  push carry it with no special case); the hub writes through `home`, already
+  in `HubWeb.PATCHABLE` and already stamped by `HubStore.edit`. Both paths
+  already carried it.
+- **The browser sends order, the hub mints ranks.** `HubWeb.normalisedPins`
+  ignores whatever ranks arrive and re-derives the row through `Pins.withRow`
+  against what is stored, so the page acquires no opinion about spacing, the
+  cap or visibility — the failure mode of a second copy is not a crash but a
+  home screen whose order differs between the television and the NAS.
+- **The hazard that is handled:** a `home` patch replaces the whole object, so
+  a card missing from a stale browser copy is an unpin. The page therefore
+  re-reads `/api/state` immediately before every pin edit and rebuilds the
+  array from what the hub holds *now*.
+- **The hazard that is not:** two parents moving the same card resolve by the
+  later stamp, silently, per card, with nothing to put it back. A browser
+  makes that race three-way rather than two-way. Named in `Pin`'s KDoc since
+  the container shipped, named again here, not solved.
+- **Fail closed at the moment of pinning**, not only at the draw:
+  `Pins.candidates` is the same `visibleTo` predicate `resolvePins` applies,
+  and `withRow` filters through it, so no face has to remember to. A card
+  whose channel is restricted *later* stays listed, greyed, with the reason.
+- **The cap is the editor's, never the parser's.** `HOME_PINS_MAX` is now
+  `Pins.MAX` — one number, not two that can disagree — and `withRow` refuses
+  to grow a row past it while never truncating one that arrived longer.
+- **Guard 42**, both scripts, negative-tested in both: nothing outside
+  `:core` builds a `Pin`, `HOME_PINS_MAX` is `Pins.MAX`, and `HubWeb` runs an
+  incoming `home` patch through `Pins.withRow`. Guard 26(a) could not have
+  caught any of it — it reads the declared properties of `Whitelist`,
+  `Limits` and `AiConfig`, and every field of a `Pin` is a level below that.
+  The value rules are `PinsEditorTest` in `core/src/test` (the hub runs that
+  exact code) and five new cases in `HubWebTest`.
+- **A live hub bug found on the way:** the per-kid "Visible to" chips read
+  `e.kids`, which is the *request* body's word for the field the wire calls
+  `profiles`. Every chip drew as "Everyone" however a channel was restricted,
+  so a parent could not see a restriction on the hub and could undo one with
+  a tap. The pins editor reads the same field, which is what turned it up.
+
+Still not built, and ROADMAP §2K now says why rather than implying otherwise:
+the home **row order** editor. `UiState.homeSections` is initialised to
+`homeSections(emptyList())` and assigned nowhere in the repo, `Whitelist` has
+no row-order property, and `ConfigJson` knows exactly one key under `home`.
+The shelf order is a hardcoded catalogue wearing a data shape; it needs a
+whole config-field cycle (§4 of the sync skill) before any screen.

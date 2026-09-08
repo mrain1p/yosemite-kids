@@ -266,12 +266,21 @@ object SettingsSurface {
                 )
             )),
         SettingsSection("kid-shelves", "How videos are listed", Page.LISTING, "",
-            listOf("showVideoAge", "pageSize", "channelLayout", "channelOrder"),
+            listOf("showVideoAge", "pageSize", "channelLayout", "channelOrder", "pins"),
             Where.BOTH, true,
             "How the kid's home is laid out. Inline on the phone with no " +
                 "composable of its own, which is exactly why this manifest is " +
                 "keyed on fields.",
             controls = listOf(
+                // The one control on this page that is per kid rather than
+                // per family, and the only one either face writes through a
+                // shared function instead of a value: every add, move and
+                // remove goes through Pins.withRow, which mints the ranks.
+                SettingsControl(
+                    "listing-pins", "Pinned on the home screen",
+                    sub = "Up to three channels or playlists, big, at the top of this kid’s home.",
+                    kind = ControlKind.CUSTOM, writes = "pins", json = "home"
+                ),
                 SettingsControl(
                     "listing-video-age", "Show when a video came out",
                     sub = "“3 days ago” beside the channel name",
@@ -561,13 +570,7 @@ object SettingsSurface {
             "by a parent. Both faces show who holds it and neither offers to set it",
         "ai.rulesVersion" to "bumped by SettingsForm.toConfig when the rules, the age, " +
             "the model or the endpoint change, so every device re-screens. A parent " +
-            "setting it by hand would silently un-screen a catalogue",
-        "pins" to "the home screen's pinned hero, release one of two. This build " +
-            "carries, stamps, merges and backs the list up and nothing sets it, so " +
-            "every install's list is empty and no existing hash moves - the " +
-            "fingerprint tail appears only once a card is pinned (PinsConfigTest is " +
-            "the gate). The editor is the next release: give it a control on both " +
-            "faces then, and take this line out"
+            "setting it by hand would silently un-screen a catalogue"
     )
 
     /** [Where.BOTH] groups still to be built on the hub. */

@@ -414,6 +414,178 @@ class HubWebTest {
         assertFalse(java.io.File(tmp.root, "hub/config.json").readText().contains("sk-nope"))
     }
 
+    // --- the pinned hero --------------------------------------------------
+    //
+    // The browser sends one kid's row as ids in the parent's order and the
+    // hub mints every rank through Pins.withRow in :core. That division is
+    // the whole point: the cap, the RANK_STEP spacing and the fail-closed
+    // filter exist once, for both faces, and a page cannot acquire an opinion
+    // about any of them.
+
+    /** Three channels and two kids, as a family that has curated anything holds them. */
+    private fun seedFamily() {
+        store.edit("test", clock) {
+            it.copy(
+                sources = listOf(
+                    io.yosemitekids.app.data.WhitelistEntry(
+                        "UCaaa", "https://www.youtube.com/channel/UCaaa", "Bluey",
+                        io.yosemitekids.app.data.SourceKind.CHANNEL
+                    ),
+                    io.yosemitekids.app.data.WhitelistEntry(
+                        "UCbbb", "https://www.youtube.com/channel/UCbbb", "Numberblocks",
+                        io.yosemitekids.app.data.SourceKind.CHANNEL
+                    ),
+                    io.yosemitekids.app.data.WhitelistEntry(
+                        "UCccc", "https://www.youtube.com/channel/UCccc", "Sibling only",
+                        io.yosemitekids.app.data.SourceKind.CHANNEL,
+                        profileIds = setOf("22222222")
+                    ),
+                    io.yosemitekids.app.data.WhitelistEntry(
+                        "UCddd", "https://www.youtube.com/channel/UCddd", "Alphablocks",
+                        io.yosemitekids.app.data.SourceKind.CHANNEL
+                    ),
+                    io.yosemitekids.app.data.WhitelistEntry(
+                        "UCeee", "https://www.youtube.com/channel/UCeee", "Hey Duggee",
+                        io.yosemitekids.app.data.SourceKind.CHANNEL
+                    )
+                ),
+                profiles = listOf(
+                    io.yosemitekids.app.data.Profile(id = "11111111", name = "Leo"),
+                    io.yosemitekids.app.data.Profile(id = "22222222", name = "Mia")
+                )
+            )
+        }
+    }
+
+    /** A `home` patch shaped exactly as index.html sends one: ids in order, rank as position. */
+    private fun pinBody(kid: String?, vararg srcIds: String): String {
+        val arr = org.json.JSONArray()
+        srcIds.forEachIndexed { i, id ->
+            arr.put(JSONObject().put("src", id).put("rank", i).also { o -> kid?.let { o.put("kid", it) } })
+        }
+        return JSONObject().put("home", JSONObject().put("pins", arr)).toString()
+    }
+
+    @Test
+    fun theBrowsersRanksAreIgnoredAndTheHubMintsItsOwn() {
+        // The page sends positions. If the hub stored them, the next insert
+        // between two cards would have nowhere to land and a reorder would
+        // renumber the row — stamping every card instead of the one that
+        // moved, which is exactly what Pin.rank exists to avoid.
+        val session = signIn()!!
+        seedFamily()
+        assertEquals(200, post("/api/config", pinBody("11111111", "UCaaa", "UCbbb"), session).first)
+
+        val pins = io.yosemitekids.app.data.Pins.rowOf(store.load().pins, "11111111")
+        assertEquals(listOf("UCaaa", "UCbbb"), pins.map { it.sourceId })
+        assertEquals(
+            listOf(io.yosemitekids.app.data.Pins.RANK_STEP, 2 * io.yosemitekids.app.data.Pins.RANK_STEP),
+            pins.map { it.rank }
+        )
+    }
+
+    @Test
+    fun aReorderFromTheBrowserStampsOnlyTheCardsThatHadToMove() {
+        // Three cards, the last one dragged to the front. That is one card's
+        // worth of change and it must cost one unit's worth of stamp — the
+        // whole reason Pin.rank is a value rather than an array position. A
+        // renumbering editor would stamp all three, and the merge would then
+        // have to arbitrate two parents' edits where there was one.
+        val session = signIn()!!
+        seedFamily()
+        post("/api/config", pinBody("11111111", "UCaaa", "UCbbb", "UCddd"), session)
+        val was = store.load().sync.at.filterKeys { it.startsWith("home.pin|") }
+        assertEquals(3, was.size)
+
+        clock += 60_000
+        post("/api/config", pinBody("11111111", "UCddd", "UCaaa", "UCbbb"), session)
+        val now = store.load().sync.at.filterKeys { it.startsWith("home.pin|") }
+
+        assertEquals(
+            "one card moved, so one stamp moved",
+            1,
+            now.count { (k, v) -> v != was[k] }
+        )
+        assertTrue(
+            "and it is the card the parent dragged",
+            now.getValue("home.pin|11111111|UCddd") > was.getValue("home.pin|11111111|UCddd")
+        )
+    }
+
+    @Test
+    fun aCardLeftOutOfTheObjectIsAnUnpinAndTheRestOfTheRowsHaveToBeCopiedAcross() {
+        // The hazard of patching `home` at all, stated as a test: the patch
+        // replaces the whole object, so a card missing from a browser's copy
+        // is an unpin — of that kid's card, and of every other kid's row too
+        // if the page forgets to copy them. That is why index.html re-reads
+        // `home` immediately before every edit and rebuilds the whole array
+        // from what the hub is holding *now*, never from what it drew.
+        val session = signIn()!!
+        seedFamily()
+        post("/api/config", pinBody("11111111", "UCaaa", "UCbbb"), session)
+
+        // As the page sends it: Mia's new card, with Leo's two carried over.
+        val withBoth = org.json.JSONArray()
+            .put(JSONObject().put("kid", "11111111").put("src", "UCaaa").put("rank", 0))
+            .put(JSONObject().put("kid", "11111111").put("src", "UCbbb").put("rank", 1))
+            .put(JSONObject().put("kid", "22222222").put("src", "UCccc").put("rank", 0))
+        post("/api/config", JSONObject().put("home", JSONObject().put("pins", withBoth)).toString(), session)
+        assertEquals(3, store.load().pins.size)
+
+        // Now Leo loses one card, and only that one.
+        val minusOne = org.json.JSONArray()
+            .put(JSONObject().put("kid", "11111111").put("src", "UCaaa").put("rank", 0))
+            .put(JSONObject().put("kid", "22222222").put("src", "UCccc").put("rank", 0))
+        post("/api/config", JSONObject().put("home", JSONObject().put("pins", minusOne)).toString(), session)
+
+        val after = store.load()
+        assertEquals(listOf("UCaaa"), io.yosemitekids.app.data.Pins.rowOf(after.pins, "11111111").map { it.sourceId })
+        assertEquals(listOf("UCccc"), io.yosemitekids.app.data.Pins.rowOf(after.pins, "22222222").map { it.sourceId })
+        // …and the unpin is a tombstone, not an absence, so a stale peer
+        // cannot hand the card back on its next sweep.
+        assertTrue(after.sync.gone.containsKey("home.pin|11111111|UCbbb"))
+    }
+
+    @Test
+    fun aChannelRestrictedToASiblingCannotBePinnedFromTheBrowser() {
+        // The page filters its own list, but the page is not what makes this
+        // true: resolvePins fails closed at draw time, so a card like this
+        // would save, sync, and never appear.
+        val session = signIn()!!
+        seedFamily()
+        assertEquals(200, post("/api/config", pinBody("11111111", "UCaaa", "UCccc"), session).first)
+        assertEquals(
+            listOf("UCaaa"),
+            io.yosemitekids.app.data.Pins.rowOf(store.load().pins, "11111111").map { it.sourceId }
+        )
+    }
+
+    @Test
+    fun aRowFromTheBrowserStopsAtTheCapAndAnUnrelatedPatchDoesNotTrimALongerOne() {
+        val session = signIn()!!
+        seedFamily()
+        post("/api/config", pinBody("11111111", "UCaaa", "UCbbb", "UCddd", "UCeee"), session)
+        assertEquals(
+            listOf("UCaaa", "UCbbb", "UCddd"),
+            io.yosemitekids.app.data.Pins.rowOf(store.load().pins, "11111111").map { it.sourceId }
+        )
+
+        // A row longer than the cap, as a build that allows four would leave
+        // it. An edit to something else entirely must not be what trims it.
+        store.edit("test", clock) {
+            it.copy(
+                pins = listOf(
+                    io.yosemitekids.app.data.Pin("11111111", "UCaaa", 100),
+                    io.yosemitekids.app.data.Pin("11111111", "UCbbb", 200),
+                    io.yosemitekids.app.data.Pin("11111111", "UCddd", 300),
+                    io.yosemitekids.app.data.Pin("11111111", "UCeee", 400)
+                )
+            )
+        }
+        post("/api/config", JSONObject().put("sponsorSkip", false).toString(), session)
+        assertEquals(4, store.load().pins.size)
+    }
+
     // --- kid ids ----------------------------------------------------------
 
     @Test

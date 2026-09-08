@@ -9,6 +9,8 @@ import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.Grant
 import io.yosemitekids.app.data.Grants
 import io.yosemitekids.app.data.Page
+import io.yosemitekids.app.data.Pin
+import io.yosemitekids.app.data.Pins
 import io.yosemitekids.app.data.Profile
 import io.yosemitekids.app.data.ScreeningStore
 import io.yosemitekids.app.data.SettingsSurface
@@ -97,12 +99,15 @@ object HubWeb {
      * again, which is the safe way to fail, while dropping a `blockedFor` entry
      * lifts a block for one kid, which is not.
      *
-     * `home` is the pinned hero's container, patchable ahead of anything on
-     * this page that patches it: the editor is the next release, on both
-     * faces (SettingsSurface.NOT_A_CONTROL records the debt). Safe to open
-     * now because the stamper diffs it per card, so a whole-object patch from
-     * a browser is the same shape as the phone's whole-form save — and a card
-     * left out of it is an unpin, which is what leaving a card out means.
+     * `home` is the pinned hero's container, and the editor that writes it
+     * lives on the Listing page (`listing-pins`). Safe as a whole-object
+     * patch because the stamper diffs it per card, so it is the same shape as
+     * the phone's whole-form save — and a card left out of it is an unpin,
+     * which is what leaving a card out means. Two things follow from that and
+     * both are handled rather than hoped about: the browser re-reads `home`
+     * immediately before every pin edit, because a card missing from a copy
+     * fetched two minutes ago is an unpin nobody asked for; and the ranks in
+     * an incoming `home` are ignored entirely — see [normalisedPins].
      */
     private val PATCHABLE = setOf(
         "entries", "blocked", "profiles", "limits", "ai", "deviceProfiles",
@@ -206,6 +211,13 @@ object HubWeb {
             // which is the whole point: a new toggle on an existing page is one
             // declaration in :core and nothing at all in index.html.
             .put("controls", controlsJson())
+            // The pinned hero's one number the page needs, from :core rather
+            // than typed into index.html. The page decides nothing else about
+            // the row — the ranks it would otherwise have to space are minted
+            // by normalisedPins — but it does have to know when to stop
+            // offering "Pin a channel", and a 3 typed here would be a second
+            // cap to drift from the renderer's.
+            .put("pins", JSONObject().put("max", Pins.MAX))
             // The document itself, minus its bookkeeping. The page renders from
             // this, so a control is only ever as stale as the last fetch.
             .put("config", raw.apply { remove("sync") })
@@ -433,9 +445,55 @@ object HubWeb {
             keys.forEach { if (patch.isNull(it)) doc.remove(it) else doc.put(it, patch.get(it)) }
             mintKidIds(doc)
             refuseDistantPauses(doc, current, now)
-            ConfigJson.fromJson(scrubPatch(doc).toString())
+            val next = ConfigJson.fromJson(scrubPatch(doc).toString())
+            // Only when the patch actually named `home`. Running it on every
+            // patch would re-derive a row nobody touched, and a row four cards
+            // long from a build that allows four would be trimmed by an edit
+            // to the AI model.
+            if ("home" in keys) next.copy(pins = normalisedPins(current, next)) else next
         }
         return true
+    }
+
+    /**
+     * The pinned hero as this hub will store it, given what a browser sent.
+     *
+     * **The browser's ranks are not read at all.** A page cannot mint one:
+     * `Pins.RANK_STEP` spacing, the cap and the fail-closed filter are one set
+     * of rules in `:core`, and a second copy of them in JavaScript would not
+     * fail loudly — it would drift, and the symptom would be a home screen
+     * whose order differs between the television and this box. So the array's
+     * own **position** is the parent's order on the way in (it is
+     * `Pins.ordered` on the way out, as everywhere else), and every rank is
+     * minted here by [Pins.withRow] against the ranks already stored. An
+     * unmoved card therefore keeps its rank and stamps nothing, exactly as it
+     * does on the phone.
+     *
+     * Every row on either side is re-derived, and a row the patch does not
+     * list is **emptied** — that is what leaving a card out of a whole-object
+     * patch means, and it is why the page copies every other kid's cards
+     * across from a copy it fetched moments before. A row that arrives in the
+     * order it is already stored in mints nothing: `Pins.withRow` finds every
+     * rank in place and touches none of them.
+     *
+     * What this cannot fix, and nothing here should pretend to: two parents
+     * moving the same card resolve by the later stamp, silently, per card.
+     */
+    private fun normalisedPins(current: Whitelist, next: Whitelist): List<Pin> {
+        // Both sides, so a row the patch emptied is emptied rather than kept.
+        val rows = (current.pins.map { it.kidId } + next.pins.map { it.kidId }).distinct()
+        var pins = current.pins
+        rows.forEach { kid ->
+            pins = Pins.withRow(
+                pins, kid,
+                next.pins.filter { it.kidId == kid }.map { it.sourceId },
+                // The channels as this same patch leaves them: one request may
+                // restrict a channel to one kid and pin it for another, and the
+                // pin has to lose.
+                next.sources
+            )
+        }
+        return pins
     }
 
     /**

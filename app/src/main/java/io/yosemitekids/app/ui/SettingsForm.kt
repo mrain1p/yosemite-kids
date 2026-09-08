@@ -3,6 +3,7 @@ package io.yosemitekids.app.ui
 import io.yosemitekids.app.data.AiConfig
 import io.yosemitekids.app.data.ConfigStore
 import io.yosemitekids.app.data.Limits
+import io.yosemitekids.app.data.Pin
 import io.yosemitekids.app.data.Profile
 import io.yosemitekids.app.data.Whitelist
 import io.yosemitekids.app.data.WhitelistEntry
@@ -40,7 +41,14 @@ internal data class SettingsForm(
     val qualityTv: Int?,
     val qualityPhone: Int?,
     val pageSize: Int?,
-    val showVideoAge: Boolean
+    val showVideoAge: Boolean,
+    /**
+     * The pinned hero — every kid's row in one list, the way [Whitelist]
+     * holds it. Whole rather than per kid because the stamper diffs it per
+     * card: a row this session never opened is carried through untouched
+     * rather than re-stamped, exactly as a channel the parent did not edit is.
+     */
+    val pins: List<Pin>
 ) {
     /**
      * The form as a config, shaped for saving. [baseline] is what disk holds
@@ -94,7 +102,18 @@ internal data class SettingsForm(
             qualityTv = qualityTv,
             qualityPhone = qualityPhone,
             pageSize = pageSize,
-            showVideoAge = showVideoAge
+            showVideoAge = showVideoAge,
+            // Passed through, unlike the overlays above, and deliberately.
+            // A card whose kid or whose source this save removed is dropped
+            // and tombstoned by `ConfigStamp.stamped`, in the same write and
+            // coupled to the removal that caused it — so a scrub here would
+            // be a second, blinder copy of that rule. The one thing it could
+            // add is dropping a card whose channel was just restricted to a
+            // sibling, and that card is worth keeping: the channel may be
+            // widened again tomorrow, and until then `resolvePins` refuses
+            // to draw it. Fail closed at the render, and at the moment of
+            // pinning (`Pins.withRow`) — not on every unrelated save.
+            pins = pins
         )
     }
 
@@ -120,7 +139,8 @@ internal data class SettingsForm(
             qualityTv = c.qualityTv,
             qualityPhone = c.qualityPhone,
             pageSize = c.pageSize,
-            showVideoAge = c.showVideoAge
+            showVideoAge = c.showVideoAge,
+            pins = c.pins
         )
     }
 }

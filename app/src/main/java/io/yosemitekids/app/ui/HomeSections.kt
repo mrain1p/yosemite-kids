@@ -1,5 +1,6 @@
 package io.yosemitekids.app.ui
 
+import io.yosemitekids.app.data.Pins
 import io.yosemitekids.app.data.Source
 
 /**
@@ -63,8 +64,15 @@ internal fun homeSections(
     return kept + catalogue.filterNot { it in named }.map { HomeSection(it) }
 }
 
-/** The design draws two or three hero cards; three is the ceiling. */
-const val HOME_PINS_MAX = 3
+/**
+ * The design draws two or three hero cards; three is the ceiling.
+ *
+ * One number, from `:core`, because the editor's cap and the renderer's have
+ * to be the same one: a fourth card the editor allowed and the home refused
+ * would be a pin that saved, synced, and never appeared. Guard 42 holds this
+ * line to [Pins.MAX].
+ */
+const val HOME_PINS_MAX = Pins.MAX
 
 /** One hero card: which source it opens, and the mono line under its name. */
 data class PinnedItem(val source: Source, val meta: String)
