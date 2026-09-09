@@ -46,7 +46,7 @@ import java.util.concurrent.RejectedExecutionException
  *
  * ### What it serves
  *
- * Exactly five paths, listed in [start] and pinned by guard 57. There is no
+ * Exactly ten paths, listed in [start] and pinned by guard 57. There is no
  * catch-all page: `/` answers the kid page and every other path is a JSON 404,
  * where the admin listener deliberately answers an unclaimed path with the
  * console. That asymmetry is the point — on this origin an unknown path is
@@ -74,9 +74,20 @@ class HubKidServer(
     private val policy: HubPolicy,
     /** Minutes for a viewer with no `SessionGuard`. See [HubWatchMeter]. */
     private val meter: HubWatchMeter,
+    /**
+     * Where a browser got to in each video. The browser's device store — see
+     * [HubKidHistory] for why the box keeps it and the phone does not.
+     */
+    private val history: HubKidHistory,
     /** Passed in so tests need no clock, like every other class here. */
     private val now: () -> Long = { System.currentTimeMillis() }
 ) {
+
+    /**
+     * What the page is shown. Shape only: every rule it draws on is the app's,
+     * in `:core` or `:crawl`. See [HubKidHome].
+     */
+    private val browse = HubKidHome(policy, store, history)
 
     /**
      * Resolving a video to one playable URL, and carrying its bytes. Built
@@ -117,6 +128,9 @@ class HubKidServer(
      * answer `/claim` or `/whoami` with.
      */
     private var mediaPool: ExecutorService? = null
+
+    /** Poster fetches. Separate from [mediaPool] — see where it is built. */
+    private var thumbPool: ExecutorService? = null
     private val slots = HubMedia.Slots(MAX_CONCURRENT_STREAMS)
 
     /**
@@ -132,9 +146,12 @@ class HubKidServer(
     fun start(): Int {
         HubServer.applyRequestTimeout()
         val s = HttpServer.create(InetSocketAddress(port), 0)
-        // Two, not four: this origin has three control-plane routes and the
-        // expensive one has a pool of its own.
-        s.executor = Executors.newFixedThreadPool(2)
+        // Four, matching the admin listener. The two expensive routes — video
+        // and posters — have pools of their own, so what runs here is JSON
+        // built from files this box already has: fast, but no longer the two
+        // or three calls it was before the page had shelves, and a household
+        // opening three tablets at once should not queue.
+        s.executor = Executors.newFixedThreadPool(4)
 
         // Trade a code for a cookie. Unauthenticated by necessity — a browser
         // that has never been here holds nothing to present — and throttled in
@@ -143,6 +160,18 @@ class HubKidServer(
         // Who this browser is watching as. The page's first call, and what it
         // renders the code box from when the answer is 401.
         s.createContext("/whoami") { ex -> guarded(ex) { whoami(ex) } }
+        // The whole home screen in one answer: shelves, hero, channels, the
+        // countdown. One request rather than six, because six is six chances
+        // to half-draw a five-year-old's page over house wifi.
+        s.createContext("/home") { ex -> guarded(ex) { home(ex) } }
+        // One channel's videos.
+        s.createContext("/channel") { ex -> guarded(ex) { channel(ex) } }
+        // Search within what this kid may see, ranked by the shared SearchRank.
+        s.createContext("/search") { ex -> guarded(ex) { search(ex) } }
+        // "Still watching, and this far in." The one route that writes: it
+        // credits the watch meter, which is how a browser's minutes reach a
+        // kid's daily budget at all, and remembers the resume position.
+        s.createContext("/progress") { ex -> guarded(ex) { progress(ex) } }
         // The kid palette and type scale, generated at build time from :core's
         // one table (guard 48). Also served by the admin listener; it is the
         // single path both origins answer, because it carries no family data
@@ -155,6 +184,23 @@ class HubKidServer(
         }
         mediaPool = media
         s.createContext("/media") { ex -> dispatchMedia(ex, media) }
+        // Thumbnails get a pool of their own, and not the media one: a grid of
+        // forty posters would otherwise fill the three stream slots and a child
+        // pressing play would be told the hub is busy by their own home screen.
+        // Wider than the stream pool because these are small and quick, and
+        // narrow enough that a page of them cannot become this box's whole
+        // uplink. See [thumb].
+        val thumbs = Executors.newFixedThreadPool(THUMB_THREADS) { r ->
+            Thread(r, "yosemite-kids-kid-thumb").apply { isDaemon = true }
+        }
+        thumbPool = thumbs
+        s.createContext("/thumb") { ex ->
+            try {
+                thumbs.execute { guarded(ex) { thumb(ex) } }
+            } catch (e: RejectedExecutionException) {
+                guarded(ex) { respond(ex, 503, JSONObject().put("error", "busy").toString()) }
+            }
+        }
         // The page, at "/" and at nothing else. Registered last like the admin
         // server's, but emphatically not a catch-all: see [page].
         s.createContext("/") { ex -> guarded(ex) { page(ex) } }
@@ -172,6 +218,8 @@ class HubKidServer(
         // hold the container's shutdown for the length of it.
         mediaPool?.shutdownNow()
         mediaPool = null
+        thumbPool?.shutdownNow()
+        thumbPool = null
     }
 
     /** The bound port — for tests, which ask for 0 and let the OS choose. */
@@ -237,13 +285,174 @@ class HubKidServer(
             JSONObject()
                 .put("kid", browser.kid)
                 .put("name", nameOf(browser.kid))
-                // The placeholder page has one video and no way to find
-                // another. Step 4 replaces this whole answer with a home
-                // screen; until then it is what proves the path end to end.
-                .put("video", PLACEHOLDER_VIDEO)
                 .toString()
         )
     }
+
+    // --- browsing -------------------------------------------------------
+
+    /**
+     * `GET /home` — everything a child's home screen draws.
+     *
+     * Behind the credential like every other route here, and the kid it
+     * answers for is the credential's, never a parameter: the same rule
+     * `/media` follows and for the same reason (guard 60). A browser that has
+     * not claimed gets the 401 that renders as the code box.
+     */
+    private fun home(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val browser = watching(ex) ?: return
+        respond(ex, 200, browse.home(browser.kid, meter.ledgerId(browser.token)).toString())
+    }
+
+    /** `GET /channel?id=<source>` — one channel's page, or a 404 if this kid may not see it. */
+    private fun channel(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val browser = watching(ex) ?: return
+        val id = param(ex, "id")
+            ?: return respond(ex, 400, JSONObject().put("error", "no channel").toString())
+        // Null is "not on this kid's list" as much as "no such channel", and
+        // the answer is deliberately the same 404 for both: a child's browser
+        // must not be able to tell a sibling's channel from a missing one.
+        val body = browse.channel(browser.kid, id)
+            ?: return respond(ex, 404, JSONObject().put("error", "not here").toString())
+        respond(ex, 200, body.toString())
+    }
+
+    /** `GET /search?q=` — ranked with the same [io.yosemitekids.app.data.SearchRank] the app uses. */
+    private fun search(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val browser = watching(ex) ?: return
+        val q = param(ex, "q").orEmpty()
+        if (q.length > MAX_QUERY_CHARS) {
+            return respond(ex, 400, JSONObject().put("error", "too long").toString())
+        }
+        respond(ex, 200, browse.search(browser.kid, q).toString())
+    }
+
+    /**
+     * `POST /progress {v, positionMs, durationMs}` — "still watching, and this
+     * far in".
+     *
+     * **This is how a browser's minutes reach a budget at all.** A device
+     * charges its own `SessionGuard`; a page cannot be trusted to charge
+     * anything, so the hub counts the time *it* has observed passing between
+     * beats ([HubWatchMeter.beat]) and files it under a cell derived from the
+     * credential. The position is remembered alongside, which is what makes
+     * Keep watching work on a tablet.
+     *
+     * The kid, again, is the cookie's. The body names a video and a position
+     * and nothing else — a page that could name the kid is a page that could
+     * spend a sibling's afternoon.
+     *
+     * Beating does not grant permission and never has: [media] re-asks
+     * [HubPolicy] on every chunk, so a browser that keeps beating past a
+     * bedtime is a browser whose next chunk stops.
+     */
+    private fun progress(ex: HttpExchange) {
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        val browser = watching(ex) ?: return
+        val body = readBody(ex) ?: return respond(ex, 413, "too large")
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return respond(ex, 400, JSONObject().put("error", "bad body").toString())
+        val videoId = json.optString("v").takeIf { HubMedia.looksLikeVideoId(it) }
+            ?: return respond(ex, 400, JSONObject().put("error", "bad video").toString())
+
+        val minutes = meter.beat(browser.token, browser.kid)
+        history.save(
+            kid = browser.kid,
+            videoUrl = io.yosemitekids.app.data.Video.watchUrl(videoId),
+            positionMs = json.optLong("positionMs").coerceAtLeast(0L),
+            durationMs = json.optLong("durationMs").coerceAtLeast(0L)
+        )
+        // The countdown comes back on every beat, so a page that has been open
+        // since breakfast is never showing this morning's number — and so the
+        // sentence a child reads when their time runs out is the hub's.
+        val time = policy.timeFor(browser.kid, meter.ledgerId(browser.token))
+        respond(
+            ex, 200,
+            JSONObject()
+                .put("minutes", minutes)
+                .put("allowed", time.allowed)
+                .put("reason", time.reason)
+                .apply {
+                    time.spentMinutes?.let { put("spentMinutes", it) }
+                    time.budgetMinutes?.let { put("budgetMinutes", it) }
+                }
+                .toString()
+        )
+    }
+
+    /**
+     * `GET /thumb?u=<poster url>` — one video poster, fetched by the hub.
+     *
+     * **The page loads no image from Google.** It could: a thumbnail URL is
+     * public and a browser would fetch it happily. What that would cost is
+     * every child's tablet announcing itself to Google's CDN — its IP, its
+     * user agent, and the timing of every poster on the shelf — from a product
+     * whose whole proposition is that a family's watching is nobody else's
+     * business. The hub is already talking to those hosts on the family's
+     * behalf; this keeps the number of things that do at one.
+     *
+     * The URL is checked against the same allow-list the crawler is armed with
+     * ([Http.HUB_HOSTS], guard 7) before anything is opened, so this cannot be
+     * turned into a fetcher for arbitrary addresses on the house network — the
+     * classic server-side request forgery, which a route that takes a URL from
+     * a request is exactly the shape of.
+     */
+    private fun thumb(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        // Behind the credential like everything else: an unclaimed browser must
+        // not be able to make this box fetch anything at all.
+        watching(ex) ?: return
+        val raw = param(ex, "u")
+            ?: return respond(ex, 400, JSONObject().put("error", "no url").toString())
+        val url = runCatching { java.net.URI(raw) }.getOrNull()
+            ?: return respond(ex, 400, JSONObject().put("error", "bad url").toString())
+        val host = url.host
+        if (url.scheme != "https" || host == null ||
+            !io.yosemitekids.app.data.Http.hostAllowed(host, io.yosemitekids.app.data.Http.HUB_HOSTS)
+        ) {
+            return respond(ex, 403, JSONObject().put("error", "not allowed").toString())
+        }
+        val request = okhttp3.Request.Builder().url(raw).build()
+        io.yosemitekids.app.data.Http.client.newCall(request).execute().use { response ->
+            val body = response.body
+            if (!response.isSuccessful || body == null) {
+                return respond(ex, 502, JSONObject().put("error", "no image").toString())
+            }
+            val bytes = body.byteStream().readNBytes(MAX_THUMB_BYTES + 1)
+            if (bytes.size > MAX_THUMB_BYTES) {
+                return respond(ex, 502, JSONObject().put("error", "too big").toString())
+            }
+            // Only what an <img> can be, and never what the upstream claims: a
+            // Content-Type echoed from another server is a header this origin
+            // did not choose. Anything that is not an image is refused rather
+            // than relabelled.
+            val type = response.header("Content-Type").orEmpty().substringBefore(';').trim()
+            if (!type.startsWith("image/")) {
+                return respond(ex, 502, JSONObject().put("error", "not an image").toString())
+            }
+            ex.responseHeaders.add("Content-Type", type)
+            // Posters do not change, and a shelf redraws constantly. This is
+            // the one thing on this origin worth caching in a child's browser;
+            // it names no video and says nothing about who watched what.
+            ex.responseHeaders.add("Cache-Control", "private, max-age=86400")
+            securityHeaders(ex)
+            ex.sendResponseHeaders(200, bytes.size.toLong())
+            ex.responseBody.use { it.write(bytes) }
+        }
+    }
+
+    /** One query parameter, decoded. Null when absent or empty. */
+    private fun param(ex: HttpExchange, name: String): String? =
+        ex.requestURI.rawQuery
+            ?.split('&')
+            ?.firstOrNull { it.startsWith("$name=") }
+            ?.substringAfter('=')
+            ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull() }
+            ?.takeIf { it.isNotEmpty() }
 
     // --- media ----------------------------------------------------------
 
@@ -592,14 +801,34 @@ class HubKidServer(
         const val MEDIA_RETRY_AFTER_SECONDS = 5
 
         /**
-         * The one video the placeholder page plays.
+         * How often the page says "still watching".
          *
-         * Step 4 builds the real page — shelves, a home screen, everything a
-         * child actually picks from — and this goes with it. It exists so the
-         * origin and the claim can be proved end to end in a browser rather
-         * than only in a test, and it is a plain id because `HubPolicy` will
-         * refuse it like any other unless the family's own catalogue holds it.
+         * Twenty seconds is a compromise between two failures. Longer, and a
+         * child who closes the lid mid-video has up to that much time credited
+         * that they did not watch — [HubWatchMeter.MAX_GAP_MS] bounds the
+         * damage, but the last beat is still counted. Shorter, and a household
+         * of three tablets is writing this box's disk every few seconds for
+         * nothing; [HubKidHistory.WRITE_INTERVAL_MS] is what keeps the history
+         * file out of that loop.
          */
-        const val PLACEHOLDER_VIDEO = "dQw4w9WgXcQ"
+        const val BEAT_SECONDS = 20
+
+        /** Poster fetches at once. See where the pool is built. */
+        const val THUMB_THREADS = 6
+
+        /**
+         * A poster this big is not a poster. YouTube's largest thumbnail is
+         * well under this; the cap is here because the route hands a remote
+         * body to a child's browser and an unbounded read is an unbounded read
+         * whoever is on the other end.
+         */
+        const val MAX_THUMB_BYTES = 512 * 1024
+
+        /**
+         * A search a child typed. Long enough for anything a six-year-old
+         * hunts for, short enough that the ranking loop cannot be handed a
+         * paragraph to tokenize per candidate video.
+         */
+        const val MAX_QUERY_CHARS = 100
     }
 }

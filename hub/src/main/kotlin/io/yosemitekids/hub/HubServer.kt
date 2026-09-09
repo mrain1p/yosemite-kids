@@ -134,16 +134,25 @@ class HubServer(
     private val browsers = HubBrowsers(store.dataDir)
 
     /**
+     * How far a browser got through each video — the browser's device store,
+     * on the same volume for the same reason [browsers] is: a Keep watching
+     * row that emptied on every `docker pull` is a resume position a family
+     * would stop trusting.
+     */
+    private val kidHistory = HubKidHistory(store.dataDir, now)
+
+    /**
      * The kid's own origin.
      *
-     * Built here because it needs four things this server already holds —
-     * the config, the verdict engine, the meter and the claim store — and
-     * started and stopped with it, so a container has one listener's
-     * lifecycle to think about and gets two. It shares **objects**, not
-     * routes: the two servers answer disjoint path sets (guard 57), and
-     * nothing about the admin session reaches it (guard 59).
+     * Built here because everything it needs is something this server already
+     * holds — the config, the verdict engine, the meter, the claim store and
+     * the browsers' watch history — and started and stopped with it, so a
+     * container has one listener's lifecycle to think about and gets two. It
+     * shares **objects**, not routes: the two servers answer disjoint path
+     * sets (guard 57), and nothing about the admin session reaches it (guard
+     * 59).
      */
-    private val kid = HubKidServer(kidPort, browsers, store, policy, meter, now)
+    private val kid = HubKidServer(kidPort, browsers, store, policy, meter, kidHistory, now)
 
     /** The verdict engine and the browser meter, for tests and a future route. */
     fun policy(): HubPolicy = policy

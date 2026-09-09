@@ -127,6 +127,36 @@ class HubPolicy(
         catalogue(config, limits, kidId, videoId)?.let { return it }
 
         // --- when: the clock half ----------------------------------------
+        return timeFor(kidId, viewer)
+    }
+
+    /**
+     * The clock half of [mayPlay], on its own: pauses, bedtimes, and what is
+     * left of today's minutes — for a caller that has no particular video in
+     * mind.
+     *
+     * The browser's home screen needs exactly this. It draws the countdown
+     * ("20 minutes left today") before a child has picked anything, and it must
+     * be the same answer the play route will give, from the same rules — a page
+     * that says *nine minutes* and a hub that refuses at eight is a child being
+     * lied to by their own screen.
+     *
+     * An allowed [Decision] here carries the numbers; a refused one carries the
+     * sentence. The catalogue half is deliberately not consulted: a home screen
+     * has no video to judge.
+     */
+    fun timeFor(kidId: String?, viewer: String? = null): Decision {
+        val config = runCatching { store.load() }.getOrNull()
+            ?: return no(NO_CONFIG, "this hub holds no family config it can read")
+        return clock(config, config.limitsFor(kidId), kidId, viewer)
+    }
+
+    private fun clock(
+        config: Whitelist,
+        limits: Limits,
+        kidId: String?,
+        viewer: String?
+    ): Decision {
         // A parent's pause first, and outside the zone gate below on purpose:
         // it is an instant on the wall clock, compared against another
         // instant, and answering it needs no calendar at all. A hub that
@@ -204,7 +234,31 @@ class HubPolicy(
                 no(UNKNOWN_VIDEO, "this hub has never indexed that video")
             }
         val (entry, indexed) = hit
+        return rowRefusal(limits, entry, indexed, config.allowedIdsFor(kidId), config, kidId)
+    }
 
+    /**
+     * The two rules that are about a *row* rather than about the list it is on:
+     * how long it is, and whether screening has cleared it. Null when neither
+     * refuses.
+     *
+     * Split out of [catalogue] so [catalogueFor] can apply the identical test to
+     * every row of every source without a second spelling of it. The block
+     * check stays in [catalogue]: it is keyed by video id against the config,
+     * and the browse path answers it in bulk from one set.
+     *
+     * [allowedOverrides] is passed in rather than read here because
+     * `Whitelist.allowedIdsFor` walks the whole config, and doing that once per
+     * video would turn a fifty-channel browse into fifty thousand walks.
+     */
+    private fun rowRefusal(
+        limits: Limits,
+        entry: WhitelistEntry,
+        indexed: ChannelIndex.IndexedVideo,
+        allowedOverrides: Set<String>,
+        config: Whitelist,
+        kidId: String?
+    ): Decision? {
         // The same rule the app applies: an unknown (0) duration passes — a
         // live stream, or a row indexed before durations were stored, is not a
         // clip.
@@ -213,10 +267,9 @@ class HubPolicy(
             return no(TOO_SHORT, "shorter than this kid's minimum video length")
         }
 
-        val video = indexed.toVideo()
         val rules = ScreeningRules(
             config = config.ai,
-            allowedOverrides = config.allowedIdsFor(kidId),
+            allowedOverrides = allowedOverrides,
             // One entry, for the one channel in question: `Screening.isVisible`
             // looks the note up by channel name, and the located source is the
             // only one whose note could apply. Building the whole map would
@@ -226,10 +279,46 @@ class HubPolicy(
                 ?.let { mapOf(indexed.channelName to it) }.orEmpty(),
             activeProfileId = kidId
         )
-        if (!Screening.isVisible(screening, rules, video)) {
+        if (!Screening.isVisible(screening, rules, indexed.toVideo())) {
             return no(NOT_SCREENED, "screening has not cleared this video for this kid")
         }
         return null
+    }
+
+    /** One channel a kid may see, and the rows on it that survived every catalogue rule. */
+    data class VisibleSource(
+        val entry: WhitelistEntry,
+        val videos: List<ChannelIndex.IndexedVideo>
+    )
+
+    /**
+     * Everything [kidId] may browse: their visible channels, each with the rows
+     * that would pass [mayPlay]'s catalogue half.
+     *
+     * **The browse answer and the play answer are the same rules.** A shelf
+     * built from a looser filter is a child tapping a card and being told no,
+     * which is the worst of both — they saw it, and they cannot have it. So
+     * this walks the identical predicates: `visibleTo`, `isBlockedFor`, the
+     * minimum length, and `Screening.isVisible`, via [rowRefusal].
+     *
+     * What it deliberately does **not** apply is the clock. Bedtime and a spent
+     * budget stop *playing*, not browsing, and a home screen that emptied
+     * itself at seven o'clock would read as broken rather than as bedtime — the
+     * page says the sentence instead, from [mayPlay]'s reason when a card is
+     * actually pressed.
+     */
+    fun catalogueFor(kidId: String?): List<VisibleSource> {
+        val config = runCatching { store.load() }.getOrNull() ?: return emptyList()
+        val limits = config.limitsFor(kidId)
+        val allowed = config.allowedIdsFor(kidId)
+        return config.sources.filter { it.visibleTo(kidId) }.map { entry ->
+            val rows = index.loadSource(entry.id).filter { indexed ->
+                val id = indexed.videoId
+                !config.isBlockedFor(id, kidId) &&
+                    rowRefusal(limits, entry, indexed, allowed, config, kidId) == null
+            }
+            VisibleSource(entry, rows)
+        }
     }
 
     /** The whitelisted source [videoId] was indexed under, and the row itself. */

@@ -178,5 +178,16 @@ object HubMedia {
     fun videoIdIn(query: String?): String? =
         VIDEO.find(query.orEmpty())?.groupValues?.get(1)
 
+    /**
+     * A YouTube id and nothing else — for a route that takes one from a JSON
+     * body rather than from a query string.
+     *
+     * The same eleven characters [videoIdIn] accepts, from the same alphabet,
+     * so a video the media route will play is a video the progress route will
+     * file minutes against and no other string is either.
+     */
+    fun looksLikeVideoId(text: String?): Boolean = ID.matches(text.orEmpty())
+
     private val VIDEO = Regex("(?:^|&)v=([A-Za-z0-9_-]{11})(?:&|$)")
+    private val ID = Regex("[A-Za-z0-9_-]{11}")
 }
