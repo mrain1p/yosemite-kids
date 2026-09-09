@@ -130,6 +130,34 @@ object Argb {
         return out
     }
 
+    /**
+     * Push [bg] away from [fg] until the pair clears [min]:1 — the same walk as
+     * [legibleOn], in the other direction.
+     *
+     * Both exist because the two situations are genuinely different. A signal
+     * hue landing on a fixed ground must move itself ([legibleOn]); a *fill*
+     * the kid chose, carrying a label picked to suit it, has to move the fill —
+     * moving the label would only ever pick the other of black and white, which
+     * [readableOn] already rejected.
+     *
+     * The step is 0.06 rather than [legibleOn]'s 0.05 because that is what the
+     * app has walked since the chip colours were fixed, and the two answers
+     * differ by a shade at some tints. Held to Compose byte for byte by
+     * `KidTokensParityTest`.
+     */
+    fun legibleGround(bg: Int, fg: Int, min: Double = 4.5): Int {
+        if (ratio(fg, bg) >= min) return bg
+        val away = if (luminance(fg) > 0.5) BLACK else WHITE
+        var t = 0.06
+        var out = bg
+        while (t <= 1.0) {
+            out = mix(bg, away, t)
+            if (ratio(fg, out) >= min) return out
+            t += 0.06
+        }
+        return out
+    }
+
     val WHITE = 0xFFFFFFFF.toInt()
     val BLACK = 0xFF000000.toInt()
     const val TRANSPARENT = 0
@@ -353,6 +381,78 @@ val KID_LIGHT = KidScheme(
     outlineVariant = 0xFFBEC9C6.toInt(),
     surfaceTint = Argb.TRANSPARENT
 )
+
+// --- "My colour" ------------------------------------------------------------
+
+/**
+ * A kid's own colour, poured into a look — the whole of the "My colour" theme,
+ * in one pure function over ARGB ints.
+ *
+ * **It lives here because the browser needs it too.** `KidTokensCss` says as
+ * much in its own KDoc: the generated stylesheet can carry the two brand looks
+ * because they are constants, but the per-kid ground is chosen at runtime and
+ * no build-time table can enumerate it. The hub therefore computes a kid's
+ * tokens for that kid and sends them as inline custom properties — and the one
+ * thing it must not do is re-derive the blend, because a second implementation
+ * of "7% toward their colour" is two rooms that are almost the same shade.
+ *
+ * `Theme.kidColorScheme` calls this and converts the answer to Compose
+ * `Color`s; `KidTokensParityTest` holds the two together byte for byte, which
+ * is what makes "the browser shows what the app shows" a checked claim rather
+ * than an intention.
+ *
+ * Every fraction below is the one the app has always used, and the comments
+ * are the reasons they are those fractions rather than larger ones.
+ */
+fun kidTinted(base: KidScheme, tint: Int): KidScheme {
+    val light = Argb.mix(tint, Argb.WHITE, 0.30)
+    val deep = Argb.mix(tint, Argb.BLACK, 0.50)
+    // The ground moves toward their colour, but only just — a few percent. A
+    // kid who picks hot pink wants a room that feels pink, not a hot-pink wall
+    // behind white text: past about 10% the thumbnails start fighting the
+    // background and every card needs its own outline to stay readable.
+    fun ground(c: Int) = Argb.mix(c, tint, 0.07)
+    // Cards carry a touch more of the kid's colour than the page behind them,
+    // which is what keeps them legible as separate objects once the ground is
+    // tinted — the alternative is outlining every card, which the wash was
+    // chosen to avoid.
+    fun card(c: Int) = Argb.mix(c, tint, 0.10)
+    // The bottom tab's selected pill and the settings chips are drawn from
+    // this. Left on the brand teal they were the one green thing on an
+    // otherwise pink page. Its label picks whichever of black and white reads
+    // better on the blend, and the blend then moves until that label clears
+    // 4.5:1 — a kid may pick pale yellow as readily as navy, and amber landed
+    // at 3.39:1 before the walk was doing this.
+    val secondaryRaw = Argb.mix(base.secondaryContainer, tint, 0.55)
+    val onSecondary = Argb.readableOn(secondaryRaw)
+    return base.copy(
+        primary = light,
+        onPrimary = KidHues.INK,
+        primaryContainer = deep,
+        onPrimaryContainer = Argb.WHITE,
+        background = ground(base.background),
+        surface = ground(base.surface),
+        // Cards sit on the tinted ground; left neutral they read as grey
+        // patches on a coloured page. This is every step a card, chip, sheet or
+        // tab pill can be drawn from, so tinting only surfaceVariant left all
+        // three grey and the wash looking like a mistake.
+        surfaceVariant = card(base.surfaceVariant),
+        surfaceContainerLowest = card(base.surfaceContainerLowest),
+        surfaceContainerLow = card(base.surfaceContainerLow),
+        surfaceContainer = card(base.surfaceContainer),
+        surfaceContainerHigh = card(base.surfaceContainerHigh),
+        surfaceContainerHighest = card(base.surfaceContainerHighest),
+        // The borders travel with the surfaces they outline, or a tinted card
+        // ends up ringed in grey.
+        outline = card(base.outline),
+        outlineVariant = card(base.outlineVariant),
+        secondaryContainer = Argb.legibleGround(secondaryRaw, onSecondary),
+        onSecondaryContainer = onSecondary,
+        // Carries the kid's colour to the backdrop wash. Transparent on the two
+        // brand looks, which is how the wash knows to stay off.
+        surfaceTint = tint
+    )
+}
 
 // --- the type scale ---------------------------------------------------------
 
