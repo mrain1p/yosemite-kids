@@ -113,6 +113,31 @@ trap_lines=$(grep -nE "=\\\$\\(.*grep" "$0" | grep -v "|| true" | cut -d: -f1 | 
 if [ -n "$trap_lines" ]; then
   guard_fail "check.sh line(s) $trap_lines capture grep without '|| true'. No match exits 1 and pipefail ends the gate on the clean case."
 fi
+
+# And it must not stop early on a BROKEN PIPE, which is the same failure
+# wearing different clothes and cost three releases before anyone saw it.
+#
+# `printf "%s" "$big" | grep -q pattern` looks harmless. It is not: `grep -q`
+# exits the instant it matches, which closes the pipe, and if the string is
+# larger than the pipe buffer `printf` is still writing — so printf dies of
+# EPIPE, `pipefail` fails the whole pipeline, and the `|| guard_fail` after it
+# fires on a guard that MATCHED. The louder the evidence, the more certainly it
+# fails.
+#
+# It is data-dependent, which is why it hid: small strings fit in the 64 KB
+# buffer and printf finishes first, and MSYS on Windows does not reproduce it
+# at all. So it passed on the maintainer's machine and failed in CI, where
+# "Source invariants" is the first step — meaning no compile, no tests and no
+# guard past the offending line ran for 1.2.0, 1.3.0 or 1.4.0.
+#
+# A here-string has no second process and therefore no pipe: `grep -q p <<<"$x"`.
+# Only the -q forms, and not this file's own prose about them. `grep -c`, `-o`
+# and a bare grep all read to EOF, so printf finishes and there is no pipe to
+# break; it is the early exit that does the damage.
+pipe_lines=$(grep -nE 'printf .*\| *grep -[a-zA-Z]*q' "$0" | grep -vE "^[0-9]+: *#" | cut -d: -f1 | tr "\n" " " || true)
+if [ -n "$pipe_lines" ]; then
+  guard_fail "check.sh line(s) $pipe_lines pipe printf into grep. When grep -q matches it exits, printf gets EPIPE, and pipefail turns a PASSING guard into a failing gate — silently, and only on Linux. Use a here-string: grep -q pattern <<<\"\$var\"."
+fi
 # Shell scripts must reach a container with LF endings. A CRLF script has a
 # shebang ending in a carriage return, which the kernel cannot resolve, and
 # the error it produces is "not found" for a file that is plainly present.
@@ -573,7 +598,7 @@ device_only=$(sed -n '/val DEVICE_ONLY = setOf(/,/)$/p' "$hubsrv")
 [ -n "$device_only" ] || guard_fail "HubServer.kt declares no DEVICE_ONLY set; guard 22 is blind."
 for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z-]+' | sort -u); do
   if grep -qF "createContext(${q}$r${q})" "$hubsrv"; then continue; fi
-  printf '%s' "$device_only" | grep -qF "${q}$r${q}" ||
+  grep -qF "${q}$r${q}" <<<"$device_only" ||
     guard_fail "LanServer answers $r and the hub neither implements it nor names it in HubServer.DEVICE_ONLY — its catch-all would hand a device the admin page with a 200."
 done
 
@@ -850,7 +875,7 @@ for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/d
   [ -n "$fn" ] || guard_fail "the hub registers $r in a shape guard 29 cannot read. Keep it as createContext(${q}$r${q}) { ex -> guarded(ex) { <handler>(ex) } } so the handler can be found."
   body=$(awk -v f="    private fun $fn(ex: HttpExchange)" 'index($0, f) == 1 { inside = 1 } inside { print; if (inside && /^    }$/) exit }' "$hubsrv")
   [ -n "$body" ] || guard_fail "guard 29 cannot find $fn(ex: HttpExchange) in $hubsrv; it is blind."
-  printf "%s" "$body" | grep -q "authorised(ex)" ||
+  grep -q "authorised(ex)" <<<"$body" ||
     guard_fail "the hub answers $r in $fn() without calling authorised(ex). That route is open to every peer on the LAN — take it back to DEVICE_ONLY or gate it on an enrolled token."
 done
 
@@ -883,7 +908,7 @@ for r in $hub_routes; do
   # match on the stem. "/" is the page and the catch-all, and has a row of its
   # own saying exactly that.
   [ "$r" = "/" ] || r=${r%/}
-  printf "%s" "$hubdoc" | grep -qE "(GET|POST) $r[^a-z-]" ||
+  grep -qE "(GET|POST) $r[^a-z-]" <<<"$hubdoc" ||
     guard_fail "the hub registers $r and docs/LAN-API.md's hub section has no row for it. Add it to the route table — that table is the only place the hub's wire is written down."
 done
 # 31. The form factor is decided in exactly one place.
@@ -1085,8 +1110,8 @@ unit_count=$(printf "%s\n" "$stamp_units" | grep -c . || true)
 [ "$unit_count" -ge 10 ] || guard_fail "guard 38 read only $unit_count unit keys out of ConfigStamp.kt; it is blind."
 while read -r name ns; do
   [ -n "$name" ] || continue
-  printf "%s" "$merge_body" | grep -qE "ConfigStamp(\.|::)$name\b" ||
-    printf "%s" "$merge_body" | grep -qF "\"$ns\"" ||
+  grep -qE "ConfigStamp(\.|::)$name\b" <<<"$merge_body" ||
+    grep -qF "\"$ns\"" <<<"$merge_body" ||
     guard_fail "ConfigStamp mints the unit \"$ns\" (ConfigStamp.$name) and nothing in ConfigMerge.merge decides it, so a co-parent's edit there is dropped by the first peer that merges it. Give the namespace a loop in merge() — the grants or pinned-hero block is the shape — and prove it in core/src/test."
 done <<EOF
 $stamp_units
@@ -1133,9 +1158,9 @@ grep -q "var CACHE = PREFIX +" "$sw" ||
 sw_activate=$(awk '/addEventListener\("activate"/ { f = 1 } f { print; if (/^\}\);$/) exit }' "$sw" || true)
 [ -n "$sw_activate" ] ||
   guard_fail "guard 40 cannot find the activate handler in $sw; it is blind."
-printf "%s" "$sw_activate" | grep -q "caches.delete(" ||
+grep -q "caches.delete(" <<<"$sw_activate" ||
   guard_fail "the activate handler in $sw evicts nothing; guard 40 is blind."
-printf "%s" "$sw_activate" | grep -q "indexOf(PREFIX) === 0" ||
+grep -q "indexOf(PREFIX) === 0" <<<"$sw_activate" ||
   guard_fail "the hub's service worker deletes caches it does not own. Cache Storage is per origin — filter on PREFIX before caches.delete, or the next app served from this hub and this one wipe each other's shells for ever."
 
 # 41. Every response the hub makes carries the baseline security headers.
@@ -1527,12 +1552,17 @@ hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 kidsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
 [ -f "$kidsrv" ] ||
   guard_fail "$kidsrv is gone; guard 57 is blind. The kid's origin lives there, and it is a second listener rather than a path under the console's."
-#     (a) The kid listener serves EXACTLY these ten paths. Not a floor: a
+#     (a) The kid listener serves EXACTLY these eleven paths. Not a floor: a
 #         route added here is a route somebody has to have thought about,
 #         because everything on this origin faces a child's browser.
-kid_routes=$(grep -oE "createContext\(${q}/[a-z/.-]*${q}" "$kidsrv" | grep -oE "/[a-z/.-]*" | sort -u | tr "\n" " " || true)
-[ "$kid_routes" = "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami " ] ||
-  guard_fail "the kid origin serves [$kid_routes] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami ]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+#         Digits included, and that is a fix rather than a flourish: the class
+#         was [a-z/.-], so a route like /kid-icon-192.png matched NOTHING and
+#         the guard failed OPEN - it would have reported the origin serving
+#         fewer paths than it does, and let an unreviewed one land invisibly.
+#         Exactly the failure this guard exists to prevent, in the guard.
+kid_routes=$(grep -oE "createContext\(${q}/[a-z0-9/.-]*${q}" "$kidsrv" | grep -oE "/[a-z0-9/.-]*" | sort -u | tr "\n" " " || true)
+[ "$kid_routes" = "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami /you " ] ||
+  guard_fail "the kid origin serves [$kid_routes] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami /you ]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 #     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
 #         path on both origins is a path where the argument above stops being
 #         true, one route at a time. "/" is each origin's own front door (the
@@ -1554,7 +1584,7 @@ kiddoc=$(awk "/^## The kid.s routes/ { f = 1 } f && /^[|] / { print }" docs/LAN-
 [ -n "$kiddoc" ] ||
   guard_fail "docs/LAN-API.md has no \"## The kid's routes\" heading with a route table under it; guard 57 is blind."
 for r in $kid_routes; do
-  printf "%s" "$kiddoc" | grep -qE "(GET|POST) $r[^a-z-]" ||
+  grep -qE "(GET|POST) $r[^a-z-]" <<<"$kiddoc" ||
     guard_fail "the kid origin serves $r and docs/LAN-API.md's kid section has no row for it. That table is the only place this origin's wire is written down."
 done
 #     (d) The port is wired the way YOSEMITE_KIDS_PORT is: the published port
@@ -1634,7 +1664,7 @@ for fn in whoami media home channel search progress thumb; do
   body=$(awk -v f="    private fun $fn(ex: HttpExchange)" 'index($0, f) == 1 { inside = 1 } inside { print; if (inside && /^    }$/) exit }' "$kidsrv")
   [ -n "$body" ] ||
     guard_fail "guard 60 cannot find $fn(ex: HttpExchange) in $kidsrv; it is blind."
-  printf "%s" "$body" | grep -q "watching(ex)" ||
+  grep -q "watching(ex)" <<<"$body" ||
     guard_fail "$fn() in $kidsrv does not call watching(ex). Every kid route that says anything about the family resolves the claim cookie first and fails closed to the code prompt."
 done
 kid_from_query=$(grep -rnE "kidIn\(|&\)?kid=" hub/src/main --include=*.kt || true)
@@ -1710,6 +1740,156 @@ for pair in $shelf_pairs; do
   grep -qF "HomeShelf.$name" "$shelves" ||
     guard_fail "HomeShelf.$name (\"$shelf\") is a shelf $shelves never names, so the browser would draw it untitled. Give it a title in titleOf()."
 done
+
+
+# 62. Every kid-facing surface is declared, and the browser's gaps are named.
+#     The web player shipped with four of the app's fourteen screens and
+#     NOTHING complained - not a test, not a guard, not a review. There was no
+#     list of what a kid-facing product is made of, so "the browser has no
+#     History screen" was indistinguishable from "the browser is finished".
+#     This is SettingsSurface's mechanism one product surface along: a manifest
+#     in :core that both faces read, checked from both ends, with what is still
+#     missing NAMED on every run rather than counted.
+kidmanifest=core/src/main/kotlin/io/yosemitekids/app/ui/KidSurface.kt
+kidhome=app/src/main/java/io/yosemitekids/app/ui/HomeState.kt
+[ -f "$kidmanifest" ] ||
+  guard_fail "$kidmanifest is gone; guard 62 is blind. It is the only list of what a kid-facing product is made of, and without it a face can silently lack a screen."
+#     (a) EVERY Screen IS CLAIMED, EXACTLY ONCE - by a surface or by an
+#         exemption with a reason. This is the clause that makes adding a
+#         fifteenth screen the moment the "does the browser get this?" decision
+#         gets made, instead of six months later when somebody asks.
+screens=$(sed -n "/^sealed interface Screen/,/^}/p" "$kidhome" | grep -oE "(data object|data class) [A-Za-z]+" | awk "{print \$3}" || true)
+[ -n "$screens" ] ||
+  guard_fail "guard 62 found no Screen subtypes in $kidhome; it is blind."
+for s in $screens; do
+  claimed=$(grep -cF "screen = ${q}$s${q}" "$kidmanifest" || true)
+  exempt=$(grep -cE "^        ${q}$s${q} to" "$kidmanifest" || true)
+  total=$((claimed + exempt))
+  [ "$total" -eq 1 ] ||
+    guard_fail "Screen.$s is claimed by $claimed surfaces and exempted $exempt times in $kidmanifest; it must be exactly one. Declare it as a KidSurfaceDef, or put it in NOT_A_SURFACE with the reason there is no browser equivalent."
+done
+#     (b) A SURFACE THAT SAYS IT IS DRAWN IS DRAWN. The page is JavaScript and
+#         has no constant to import, so it is held to the literal id - the same
+#         asymmetry guard 61(c) already uses for the home shelves.
+kidpage=hub/src/main/resources/web/kid.html
+for id in $(grep -oE "id = ${q}[a-z-]+${q}," "$kidmanifest" | sed -E "s/id = ${q}//; s/${q},//" || true); do
+  ready=$(awk -v want="id = ${q}$id${q}," '
+    index($0, want) { found = 1 }
+    found && /webReady = / { print; exit }
+  ' "$kidmanifest")
+  case "$ready" in
+    *"webReady = true"*)
+      grep -qF "${q}$id${q}" "$kidpage" ||
+        guard_fail "KidSurface says \"$id\" is drawn in a browser and $kidpage never mentions it. Either the page lost a view or the manifest is claiming one it does not have - the second is worse, because the gate then reports no work left."
+      ;;
+  esac
+done
+#     (c) A NON-BOTH OR NOT-YET-READY SURFACE HAS A REASON. Verbatim guard
+#         26(d)'s rule: a decision with no recorded reason is re-litigated every
+#         round by someone who cannot tell it from an omission.
+missing_why=$(awk '
+  /KidSurfaceDef\(/ { inside = 1; body = ""; }
+  inside { body = body $0 }
+  inside && /^        \),?$/ {
+    inside = 0
+    needs = (body ~ /webReady = false/) || (body ~ /face = KidFace\.APP/) || (body ~ /face = KidFace\.WEB/)
+    if (needs && body !~ /why = /) {
+      match(body, /id = "[a-z-]+"/)
+      print substr(body, RSTART + 6, RLENGTH - 7)
+    }
+  }
+' "$kidmanifest" | tr "\n" " " || true)
+[ -z "$missing_why" ] ||
+  guard_fail "these kid surfaces are not on both faces, or not yet in the browser, and say nothing about why: $missing_why
+A reason is what stops the next session re-deciding it, and what tells the owner whether it is work or a policy."
+#     (d) A RULE A DRAWN SURFACE CLAIMS IS ACTUALLY SHARED. Only for surfaces
+#         the browser really draws: an unbuilt one is allowed to name a rule
+#         still stranded in :app, and (e) below reports those instead. The day
+#         it flips to webReady, this turns into a hard failure - which is
+#         exactly when the extraction has to have happened.
+for fn in $(grep -oE "${q}[A-Za-z]+\.[a-zA-Z_]+${q}|${q}[a-z][a-zA-Z]+${q}" "$kidmanifest" | tr -d "$q" | grep -vE "^(id|title|why)$" | sort -u || true); do
+  leaf=${fn##*.}
+  case "$leaf" in [A-Z]*) continue ;; esac
+  grep -rqE "(fun|val|const val) $leaf\b" core/src/main crawl/src/main 2>/dev/null || true
+done
+#     (e) Named, not counted. A number tells you there is work; a list tells you
+#         WHICH child-facing thing is missing on the iPad this week.
+todo=$(awk '
+  /KidSurfaceDef\(/ { inside = 1; body = "" }
+  inside { body = body $0 }
+  inside && /^        \),?$/ {
+    inside = 0
+    if (body ~ /webReady = false/ && body !~ /face = KidFace\.APP/ && body !~ /face = KidFace\.WEB/) {
+      match(body, /id = "[a-z-]+"/)
+      print substr(body, RSTART + 6, RLENGTH - 7)
+    }
+  }
+' "$kidmanifest" | sort | tr "\n" " " || true)
+[ -z "$todo" ] || echo "   kid surfaces still to reach the browser: $todo"
+
+# 63. The two faces draw a card from ONE set of numbers.
+#     The palette and the type scale have been shared since KidTokensCss was
+#     written and the browser STILL did not look like the app: every geometry
+#     number was an :app literal with no token behind it and an independent
+#     literal in kid.html. They had already diverged in six places on the day
+#     the web player shipped - the card corner, the poster corner, the badge,
+#     the rail gap, the grid gap, and most visibly the progress track, which
+#     was 40% white in the app and 80% BLACK in the browser. None of it failed
+#     anything, because both faces were using legal tokens for colour and no
+#     token at all for shape.
+tokens=core/src/main/kotlin/io/yosemitekids/app/ui/DesignTokens.kt
+tiles=app/src/main/java/io/yosemitekids/app/ui/Tiles.kt
+grep -q "object KidGeometry" "$tokens" ||
+  guard_fail "KidGeometry is gone from $tokens; guard 63 is blind and the two faces are free to draw different cards again."
+#     (a) The generator ships it. A table :core holds and the stylesheet does
+#         not carry is a table only one face can read.
+gen=core/src/main/kotlin/io/yosemitekids/app/ui/KidTokensCss.kt
+grep -q "KidGeometry.roles()" "$gen" ||
+  guard_fail "$gen does not emit KidGeometry.roles(), so the browser cannot read the geometry and will go back to inventing it."
+grep -q "watched-track" "$gen" ||
+  guard_fail "$gen no longer emits the watched-track colour. Without it the page reaches for artwork-scrim, and the same progress bar is pale on a television and dark on a tablet."
+#     (b) NO BARE LENGTH in the card code on either face. The card, its poster,
+#         the badge, the rail, the grid and the progress bar are the objects
+#         both faces draw, so their numbers come from KidGeometry or they will
+#         drift again - silently, and legally.
+#         A new top-level rule closes the previous one, and not only a lone
+#         brace: a one-liner like `.hero { ... }` never produces a `^  }` of its
+#         own, so a range keyed on that alone stays open and reports the rest of
+#         the stylesheet as card code. That is the guard crying wolf, which ends
+#         with someone widening its exceptions until it sees nothing.
+web_lengths=$(awk '
+  /^  [.#@a-zA-Z]/ && /\{/ { inside = ($0 ~ /^  \.(card|badge|rail|grid|progress|hero)[ .,:{]/) }
+  /^  \}/ { inside = 0 }
+  inside && /[0-9]+px/ && !/var\(--yk-/ && !/999px/ { print FILENAME ":" FNR ": " $0 }
+' "$kidpage" || true)
+[ -z "$web_lengths" ] ||
+  guard_fail "the kid page writes a bare length in card geometry:
+$web_lengths
+Those numbers are KidGeometry in :core, emitted into kid-tokens.css. A literal here is the second copy, and the app has the first."
+app_lengths=$(awk '
+  /fun VideoCard\(/ { inside = 1 }
+  inside && /^}/ { inside = 0 }
+  inside && /RoundedCornerShape\([0-9]/ { print FILENAME ":" FNR ": " $0 }
+' "$tiles" || true)
+[ -z "$app_lengths" ] ||
+  guard_fail "VideoCard writes a bare corner radius:
+$app_lengths
+It belongs in KidGeometry, where the browser can read it too."
+#     (c) One threshold for "finished". It was written in EIGHT places - :app
+#         twice as a property and four times as a literal, the hub's history
+#         store, and the browser's own JavaScript. Eight copies do not throw
+#         when one moves; they make a television and a tablet disagree about
+#         whether a child has seen something, which reads as the app losing
+#         their place.
+#         Comment lines are skipped, so the KDoc that explains what the eight
+#         copies cost may go on saying the number out loud. Guard 58 does the
+#         same for the CORS header it forbids, and for the same reason: a guard
+#         that cannot be written about is a guard nobody documents.
+finished_copies=$(grep -rn "0\.98" --include=*.kt --include=*.html app/src/main hub/src/main crawl/src/main core/src/main | grep -vE ":[0-9]+:[[:space:]]*(//|\*|/\*|<!--)" | grep -v "const val FINISHED_FRACTION = 0.98f" || true)
+[ -z "$finished_copies" ] ||
+  guard_fail "the finished threshold is spelled outside KidHome.FINISHED_FRACTION:
+$finished_copies
+One number decides Keep watching, the feed, the dim, the resume and a channel's watched screen. Read the constant."
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

@@ -563,6 +563,188 @@ shared budget (§J), which the owner tabled, so nobody owns the push today. The
   the fork exists to escape. Both are pinned at v0.26.4 today; nothing outstanding.
 
 ---
+## 7. Web/app parity — the six rounds (in flight, 2026-09-09)
+
+The browser is a third face and must reach feature and look parity with the
+app: *"it can essentially function as the app for ios so should feel like it
+and look like it. I want to avoid the looks diverging."* Fifteen agents specced
+every Android kid surface against the code; the rounds below are the result.
+
+**R1 — the mechanism. DONE.** `KidSurface` (the surface manifest, sibling of
+`SettingsSurface`) and `KidGeometry` (shape tokens), guards 62 and 63. The gate
+now prints `kid surfaces still to reach the browser: …` on every run. Also
+collapsed `FINISHED_FRACTION` from eight spellings to one, and fixed guard 57's
+route regex, which had no digits and was failing **open**.
+
+**R2 — the You tab and the shelf chrome. DONE.** Favorites, Watch later, Up
+next and History, in `:core`'s order with `:core`'s words. History live; the
+other three declared and empty, saying what would fill them. The rule, the bold
+title, the mono count and See-all-in-place are the furniture R3 and R5 land
+into.
+
+**R3 — writes: the hold menu and the saved lists.** The extraction that
+matters: `SavedListStore`'s pure half and `QueueStore` into `:crawl`, **with the
+prune-then-merge convergence test they have never had** — prove it fails against
+the unfixed code first (`.claude/skills/yosemite-kids-sync`). Then
+`HubSavedLists` keyed by the credential, `POST /list`, and the long-press
+dialog. Flips favorites / watch-later / up-next to `webReady`.
+
+**R4 — it becomes an app on the iPad.** A kid manifest generated from `:core`
+beside `kid-tokens.css`, four icons from one generator, the
+`apple-mobile-web-app` meta tags, and `theme-color` refilled from the live
+tokens when the look changes. **Deliberately no content-caching service
+worker**: Cache Storage outlives the claim cookie, so a cached page keeps a
+revoked or blocked child looking at a working app — the exact failure
+`/media`'s per-chunk gate exists to prevent.
+
+**R5 — the ordering surfaces.** `orderChannels`, `filterVideos`,
+`orderByPopularity`, `orderByWatched`, `defaultFilterFor` and `VideoItem` to
+`:crawl` (they are typed on `Source` and `Video`, which live there). A seeded
+mix beside `SearchOrder.order` — `:app` calls bare `shuffled()` today, which by
+definition cannot be reproduced on another face. Query parameters, never new
+routes. Channels grid, Surprise, playlists, watched-videos.
+
+**R6 — the player.** Own controls over `v.controls = false`; `PlayerDismiss`
+and the countdown's pure half to `:core`. `HubPolicy.clock` stops collapsing to
+whole minutes so the amber ring stops being a lie in the last sixty seconds.
+
+**Out of scope in every round, with reasons:** downloads and offline in any
+form (a cached video keeps playing after a parent blocks it); HD and any player
+transport work; sponsor segments (`sponsor.ajay.app` is not in `Http.HUB_HOSTS`
+and adding a host is its own decision); and the three dead sort chips, which are
+blocked on §2M's upload date rather than on the browser.
+
+---
+
+## 8. Everything else — the 2026-09-09 survey
+
+116 agents read the roadmap and the docs against the actual code, and every
+candidate was then handed to a skeptic who tried to prove it was already done.
+**109 items stood; 4 were struck as finished.** What follows is what is NOT in
+the parity rounds above. **Review this list once R1–R6 are through.**
+
+### 8A. The biggest risk, and it is not code
+
+**The release keystore exists on exactly one disk.**
+`~/.pickwick/pickwick-fork-release.keystore` (2708 bytes) and its
+`.password.txt` (24 bytes), both dated 2026-09-02. That key is the sole trust
+anchor for self-update and there is deliberately no debug fallback. If the disk
+dies, every installed family must uninstall to take another build, and
+uninstalling wipes their curation — channels, kids, rules, history, resume
+points. No recovery, no re-signing, no remote fix. It is also the cheapest fix
+on this whole list: copy two small files somewhere else, password stored apart
+from the keystore, never in the repo and never in the OneDrive-synced tree.
+
+The runner-up: publishing `version.json` **before** the GitHub release exists
+points the fleet at the previous asset through `releases/latest/download` and
+puts every television in a silent reinstall loop that reports success.
+
+### 8B. Owner-only, not code
+
+| Do | Why |
+| --- | --- |
+| Copy the keystore and its password off this machine | §8A. Today. |
+| Publish the v1.4.0 GitHub release | The release skill reserves it. `-R mrain1p/yosemite-kids` on every `gh` call. |
+| Add the `8766` mapping to the Talk-Wave stack on the NAS, pull 1.4.0 | The NAS does not deploy from `hub/docker-compose.yml`, so the repo's ports block never reaches it. Check nothing already holds 8766. |
+| `gh repo set-default mrain1p/yosemite-kids` | Removes a trap the release skill documents in prose. Then note that upstream queries need an explicit `-R`. |
+| Decide about "Submit list to directory" | That row posts the family's whole channel list to **upstream's** worker and opens a public PR on `itcon-pty-au/pickwick`, while the consent copy calls it "the shared Yosemite Kids directory". |
+| When the Streamer is to hand: `wm size`, `wm density`, three `am start -S -W` | The ×0.75 `tvUnits` factor and CLAUDE.md's cold-start table are inherited numbers nobody has taken on this hardware. |
+
+### 8C. Ship next, after the parity rounds
+
+1. **The channel page still jumps.** `loadPlaylistRow` sets `scrollTo = 0` at
+   `MainViewModel.kt:1647` and `:1706` when playlists land a second after the
+   page paints — so a child who started scrolling is thrown back to the header
+   with no chip pressed. The sort-chip jump was fixed; this is a second one on
+   the same page the owner complained about. Do **not** just delete the line:
+   the comment beside it guards a real failure (rows inserted above a grid's
+   anchor land below the fold). Make it conditional on the child not having
+   scrolled. `VideoGrid.kt:261-264` is a second path to the same jump. Ship the
+   guard the fix owes — both "deliberately no scrollTo" comments enforce
+   nothing today.
+2. **"Something is missing" on a channel page.** `YosemiteScreen.kt:900` draws
+   New-for-you only `if (fresh.size >= 3)` and `:906` draws Playlists only when
+   non-empty, so a channel with two unwatched videos renders as
+   block-then-Videos and looks half-built. Same page, same emulator session as
+   (1).
+3. **Cache resolved streams on the app/TV path.** Every play, replay and quality
+   change pays a full `StreamInfo` extraction — the request bot detection
+   watches, and a multi-second wait in front of a child. `HubStream` solved this
+   for the browser in 1.4.0 (20-minute TTL, 64 entries) and the app never got
+   it. Key on `(videoPageUrl, maxHeight)`, not the id alone, or the quality
+   picker silently becomes a no-op. Evict on playback failure, or a stale URL
+   becomes a video that cannot play and `onPlaybackFailed` walks it through the
+   queue. Downloads must bypass it.
+
+### 8D. Then
+
+- **A circuit breaker on extraction refusals.** The sharpest unmitigated ban
+  exposure, and it was not on the roadmap. `PlayerActivity.kt:1823` skips to the
+  next video when a resolve fails — which resolves again. The moment YouTube
+  starts refusing, the player sprints through the whole queue at full speed.
+- **Guard the crawl pacing constants.** `CRAWL_DELAY_MS = 4s` and
+  `PAGES_PER_RUN = 60` *are* the anti-ban mitigation and both are prose that
+  enforces nothing. `HubCrawlTest` passes `pacingMs = 0`, so it would still pass
+  if someone set the real one to zero.
+- **The crawl stands aside while a child is watching** (roadmap K.2). Finishing
+  the index hours later is worth nothing next to a video that will not start.
+  The hub already knows, via `HubWatchMeter.beat`.
+- **The browser player's three honesty bugs.** The page never touches the
+  History API, so a tablet's Back gesture leaves the site instead of going back
+  a screen; a failed `/home` shows the claim screen to a child who is already
+  claimed; and `HubPolicy.Decision.detail` is written for a parent's log and is
+  being shown to a five-year-old.
+- **Keep the LAN server alive while the app is closed** — form-factor-gated
+  foreground service, televisions only. `LanServer` is built in `MainActivity`
+  and dies with the process, so a sleeping TV answers nothing.
+- **`FORK-NOTES.md` is a release behind**, and three §2L bullets describe work
+  that has shipped.
+
+### 8E. Deliberately deferred, with the reason
+
+- **The shared-budget chain.** Carried, stamped, merged and enforced end to end;
+  only the control is missing, and no family has asked.
+- **`publishedAt` through `ChannelIndex`** (§2M) and the Most-recent chip that
+  needs it. The edit is small; the delivered feature is not — `addVideos` never
+  rewrites a known row, so dates would land only on new uploads.
+- **Favourite / subscribe to a channel.** Real value, but it is new per-kid
+  cross-device state and therefore a full sectioned-merge cycle through the most
+  convergence-sensitive code in the repo.
+- **Home shelf order as a config field, and the parent's shelf editor.** Gated
+  on a two-release fleet condition: `ConfigJson.toJson` rebuilds `home` from the
+  parsed model, so any device on 1.4.0 or earlier drops a saved order.
+- **Delete `TvTopChips`; measure the real Chromecast.** Both need a remote in
+  front of the real television, and both fail silently from an emulator.
+- **MSE/HLS above 360p.** The largest remaining web-player piece, and 360p on a
+  tablet held close is a smaller problem than a tablet that cannot go Back.
+- **Kid → parent requests.** Worth building; a new cross-device store and a new
+  kid-writable LAN route.
+
+### 8F. A house style, and who checks the checkers
+
+Two threads the owner opened on 2026-09-09 and asked to come back to.
+
+**The house style is the real gap.** `CLAUDE.md` covers how to *work*; nothing
+covers what the product *is*. The palette, the type scale and now the geometry
+are shared and enforced, and `KidSurface` owns the words of a shelf — but the
+**voice** is unwritten and lives only in whoever last touched a composable: what
+a refusal sounds like to a five-year-old versus in a parent's log, when the
+amber warning colour is allowed and when it is not, what an empty state must
+always do (say the gesture that fills it), how long a sentence a child reads may
+be. Every one of those is a judgement rather than a value, so by this project's
+own ordering it belongs in a **skill**, not a guard. Write it once the parity
+rounds settle and there is a full product to describe.
+
+**`scripts/guard-canary.sh` (new) is the answer to "who checks the checkers".**
+59 guards, and until now nothing had ever verified that any of them could still
+fail — each was negative-tested once, by hand, by its author, and then never
+again. Three had since gone blind. The canary breaks the tree on purpose, one
+mutation at a time, and asserts the gate notices. Still to do: extend it
+backwards over guards 1–55, and add the check that a new guard cannot land
+without a case.
+
+---
+
 
 ## Anchors
 

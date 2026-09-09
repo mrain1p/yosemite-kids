@@ -7,6 +7,7 @@ import io.yosemitekids.app.data.Video
 import io.yosemitekids.app.ui.HOME_SHELVES
 import io.yosemitekids.app.ui.HomeShelf
 import io.yosemitekids.app.ui.KID_DARK
+import io.yosemitekids.app.ui.KidSurface
 import io.yosemitekids.app.ui.PinnableSource
 import io.yosemitekids.app.ui.homeSections
 import io.yosemitekids.app.ui.kidTinted
@@ -125,7 +126,7 @@ class HubKidHome(
         // --- the shelves ------------------------------------------------
         out.put(
             "keepWatching",
-            videosJson(KidHome.keepWatching(videos, { watched[it] }) { v, f -> v to f })
+            videosJson(KidHome.keepWatching(videos, { watched[it] }) { v, f -> v to f }, watched)
         )
 
         out.put(
@@ -140,7 +141,8 @@ class HubKidHome(
                     .mapNotNull { v ->
                         val point = watched[v.url]
                         if (point?.isFinished == true) null else v to (point?.fraction ?: 0f)
-                    }
+                    },
+                watched
             )
         )
 
@@ -156,17 +158,71 @@ class HubKidHome(
                     channelAffinity = recent.mapNotNull { byUrl[it.key]?.channelName }
                         .groupingBy { it }.eachCount(),
                     limit = KidHome.SUGGEST_ROW_MAX
-                ).map { it to 0f }
+                ).map { it to 0f },
+                watched
             )
         )
 
         out.put(
             "history",
             videosJson(
-                KidHome.history(watched, videos, KidHome.HISTORY_ROW_MAX) { v, f -> v to f }
+                KidHome.history(watched, videos, KidHome.HISTORY_ROW_MAX) { v, f -> v to f },
+                watched
             )
         )
         return out
+    }
+
+    /**
+     * The You tab: this kid's own shelves, in `:core`'s order, each already
+     * capped and already filtered to what they may see.
+     *
+     * **Every shelf is declared even when it is empty**, and that is the app's
+     * shape rather than an oversight: the page has one form, and an empty row
+     * says what would fill it. A shelf that appeared only once it had something
+     * in it would leave a child with no way to learn the gesture that fills it.
+     *
+     * The words come from [KidSurface], so this hub cannot describe a shelf
+     * differently from the phone — which the two Compose screens managed to do
+     * to "Watch later" before the manifest existed.
+     */
+    fun you(kidId: String, viewer: String?): JSONObject {
+        val watched = history.pointsFor(kidId)
+        val videos = policy.catalogueFor(kidId).flatMap { it.videos }.map { it.toVideo() }
+
+        val shelves = JSONArray()
+        for (id in KidSurface.YOU_SHELVES) {
+            val surface = KidSurface.surface(id)
+            // Only History has anything behind it on this box today; the three
+            // saved lists are declared, empty, and say so. When their store
+            // lands they fill in here and nothing about the page changes.
+            val rows = when (id) {
+                "history" -> KidHome.history(
+                    watched, videos, KidSurface.YOU_PAGE_MAX.value
+                ) { v, f -> v to f }
+                else -> emptyList()
+            }
+            // Both lists, and the cap applied HERE. The page may not slice
+            // (guard 61), so "the first twelve" has to arrive already decided —
+            // which is also what keeps the browser's glance the same length as
+            // the phone's rather than whatever a stylesheet happened to fit.
+            shelves.put(
+                JSONObject()
+                    .put("id", surface.id)
+                    .put("title", surface.title)
+                    .put("icon", surface.icon)
+                    .put("emptyText", surface.emptyText)
+                    .put("count", rows.size)
+                    .put("preview", videosJson(rows.take(KidSurface.ROW_PREVIEW.value), watched))
+                    .put("videos", videosJson(rows, watched))
+            )
+        }
+
+        return JSONObject()
+            .put("kid", kidJson(kidId))
+            .put("theme", themeJson(kidId))
+            .put("time", timeJson(kidId, viewer))
+            .put("shelves", shelves)
     }
 
     /** One channel's page: its name, what the parent let through of its description, its videos. */
@@ -179,7 +235,7 @@ class HubKidHome(
             .put("count", source.videos.size)
             .put(
                 "videos",
-                videosJson(source.videos.map { it.toVideo() }.map { it to (watched[it.url]?.fraction ?: 0f) })
+                videosJson(source.videos.map { it.toVideo() }.map { it to (watched[it.url]?.fraction ?: 0f) }, watched)
             )
     }
 
@@ -209,7 +265,7 @@ class HubKidHome(
         }
         return JSONObject()
             .put("query", query)
-            .put("videos", videosJson(ranked.map { it to (watched[it.url]?.fraction ?: 0f) }))
+            .put("videos", videosJson(ranked.map { it to (watched[it.url]?.fraction ?: 0f) }, watched))
     }
 
     // --- shape ----------------------------------------------------------
@@ -219,9 +275,19 @@ class HubKidHome(
             ?: source.videos.firstOrNull()?.channelName
             ?: source.entry.url
 
-    private fun videosJson(items: List<Pair<Video, Float>>): JSONArray {
+    /**
+     * One row on a shelf, as the page needs it.
+     *
+     * [finished] and [resumeMs] are carried rather than derived in the browser,
+     * and that is the point: "past 98% counts as done" and "start from where
+     * they were" are rules, and the page is not allowed to hold one
+     * ([KidHome.FINISHED_FRACTION], guard 61). It used to spell 0.98 and 0.02
+     * itself, which made it the eighth and ninth copy of a threshold.
+     */
+    private fun videosJson(items: List<Pair<Video, Float>>, watched: Map<String, KidHome.WatchPoint>): JSONArray {
         val arr = JSONArray()
         for ((video, progress) in items) {
+            val point = watched[video.url]
             arr.put(
                 JSONObject()
                     .put("id", video.videoId.orEmpty())
@@ -230,6 +296,15 @@ class HubKidHome(
                     .put("thumb", video.thumbnailUrl.orEmpty())
                     .put("seconds", video.durationSeconds)
                     .put("progress", progress)
+                    .put("finished", point?.isFinished ?: false)
+                    // Where to start. Zero for a video never watched, and zero
+                    // for a finished one — starting a finished video four
+                    // seconds from its end is the resume nobody wants.
+                    .put(
+                        "resumeMs",
+                        if (point == null || point.isFinished) 0L
+                        else (point.fraction.toDouble() * video.durationSeconds * 1000).toLong()
+                    )
             )
         }
         return arr

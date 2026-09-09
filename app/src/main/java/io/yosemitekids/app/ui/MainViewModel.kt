@@ -1299,7 +1299,7 @@ class MainViewModel(
         // ones are *also* the History tile that leads the grid — a place to
         // find "that one again", not a shelf they were exiled to.
         val items = orderForLayout(annotated(includeFinished = true))
-        val watched = orderByWatched(items.filter { (it.progress ?: 0f) >= 0.98f }) { url ->
+        val watched = orderByWatched(items.filter { it.isFinished() }) { url ->
             history.progress(url)?.lastWatchedAt ?: 0L
         }
         val onShelf = _state.value.screen is Screen.WatchedVideos
@@ -1694,7 +1694,7 @@ class MainViewModel(
                     .filter { it.durationSeconds !in 1..60 }
                     .filter { it.videoId !in blockedVideoIds && !tooShort(it) && screener?.isVisible(it) != false }
                     .map { VideoItem(it, history.progress(it.url)?.fraction) }
-                    .filter { (it.progress ?: 0f) < 0.98f }
+                    .filter { !it.isFinished() }
                     .take(YOU_PAGE_MAX)
                     .toList()
             }
