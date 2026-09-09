@@ -541,8 +541,8 @@ bedtime and daily budget. It cannot become another child: the credential
 carries the profile the parent chose, and there is no parameter on any request
 that names one.
 
-**What that browser can and cannot do.** It can ask what its name is and it can
-play video. It cannot reach the console, the family's configuration, the
+**What that browser can and cannot do.** It can see that child's home screen,
+search it, and play from it. It cannot reach the console, the family's configuration, the
 backup, the AI key, or any device route — those are on the other origin, and a
 request from the kid's page to them is refused before it is read and could not
 be read back if it were not. It also cannot lock you out: a child mistyping a
@@ -553,10 +553,20 @@ your sign-in, which is a separate counter on purpose.
 browser. It stops on that browser's next request. Deleting the child's profile
 is not the same thing and does not do it for you.
 
-Today the page a child lands on is a **placeholder**: a code box, their name,
-and one video. The real one — shelves, search, everything a child actually
-picks from — is the next round of work. The plumbing under it is finished and
-is what the rest of this section is about.
+**What the page looks like.** The same home screen the television and the
+phone draw: the pinned hero a parent chose, the channel rail, Keep watching,
+More like what you watch, the video feed and Watched lately — in that order,
+because the order comes from the same shared list all three faces read. Tapping
+a channel opens its page; the search box searches only what that child may see,
+ranked the way the app ranks it. A video resumes where they left it, the
+minutes left today sit in the corner and turn amber under five, and a refusal
+says which refusal it is — bedtime, out of time, a parent blocked this — in the
+hub's own words rather than as a video that silently will not start.
+
+The colours are the child's: whichever of Dark, Light and their own colour the
+palette button in the corner is set to, computed by the same code that themes
+the Android app. That choice lives in that browser, like the same switch on a
+phone lives on the phone.
 
 ## Video in a browser — and the quality ceiling
 

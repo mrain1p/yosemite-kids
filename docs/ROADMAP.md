@@ -390,22 +390,54 @@ videos and some undated ones. Decide whether an undated video sorts last under
 (it is not — hiding a video because we lack a date about it is worse than
 showing it late).
 
-### 2N. The web player — steps 1–3 landed; step 4 is the page
+### 2N. The web player — all four steps landed, 1.4.0
 
-Three of the four steps are in. `GET /media` proxies a video's bytes
-(step 1); the kid has an **origin of its own** on a second port, and a claim
-code a parent mints trades for the cookie that gets in (steps 2–3). See
-`docs/LAN-API.md` "The kid's routes" for the wire and the argument, and
-`docs/HUB.md` "Letting a browser watch" for what a parent does.
+A child can open a browser on the LAN, type a code a parent minted, and watch.
+`GET /media` proxies a video's bytes (step 1); the kid has an **origin of its
+own** on a second port, and a claim code trades for the cookie that gets in
+(steps 2–3); and the page itself is a home screen with the television's
+shelves, a channel page, search, and a player that resumes, counts minutes and
+says why when it will not play (step 4). See `docs/LAN-API.md` "The kid's
+routes" for the wire and the argument, and `docs/HUB.md` "Letting a browser
+watch" for what a parent does.
 
-**What is left is step 4: the page itself.** What ships today is a placeholder
-— a code box, the child's name, one video — deliberately with no browse UI, no
-shelves and no styling beyond the generated stylesheet, because it exists to
-prove the door rather than to decide what a child sees. The real page needs a
-home screen, search, a shelf model that agrees with the television's
-(`HomeModel`, guard 47), and the heartbeat that makes `HubWatchMeter` count a
-browser's minutes — `beat()` still has no route, on purpose, and giving it one
-belongs with the page that would send it.
+**The anti-drift shape, because it is the part that has to survive.** Nothing
+about what a child sees is decided in the browser or in the hub. The shelf
+catalogue and order are `homeSections()` in `:core`; their contents are
+`KidHome` in `:crawl`, which `MainViewModel` now calls too, so the phone and
+the browser run one implementation and `SuggestionsTest` /
+`HistoryAndLayoutTest` still prove it is the phone's; the hero is
+`resolvePins()`; search order is `SearchRank`; what may be seen at all is
+`HubPolicy.catalogueFor`, which walks the same predicates `mayPlay` does — and
+`HubKidHomeTest.the browse filter is the play filter` asserts that equivalence
+video by video. The colours are `kidTinted()` in `:core`, which `Theme.kt` now
+calls as well, held to Compose byte for byte by `KidTokensParityTest`. Guard 61
+fails if the page grows a filter, a sort, a cap or a colour of its own.
+
+**Verified in a real browser, not only in tests**: the claim screen, the home
+with its shelves, a channel, search, and a video that played, resumed at the
+position the hub remembered, and credited a minute to the ledger — in all three
+looks (My colour, Dark, Light) at tablet and phone widths.
+
+**What step 4 changed elsewhere.** `HubWatchMeter.beat()` finally has a route:
+`POST /progress`, every 20 s while a video plays, which is *the* mechanism by
+which a browser's minutes reach a budget. `HubKidHistory` is new — the
+browser's device store, since a browser has no other place to remember where it
+got to, and every other face keeps its own watch history locally.
+
+**Still to do here, small and stated rather than left to be discovered.**
+
+- **The hub indexes videos, not channel avatars**, so a channel card wears its
+  newest video instead of the channel's picture. The app has the avatar because
+  it resolves the channel; the crawl throws it away. Worth carrying in
+  `ChannelIndex.SourceState` the next time that file is open.
+- **No favourites in the browser.** `SearchRank.Signals` takes them and the
+  page sends an empty set, so a hearted video does not yet rank higher there.
+  It waits on the same store the app-side favourite/subscribe work needs
+  (§2L).
+- **No "new since you looked" badge.** That is a per-device fact and this
+  device has no memory of previous visits yet; `pinMeta` therefore says "12
+  videos" rather than "3 new".
 
 **What step 1 measured**, kept because it is the reason to build the rest:
 9–11.6 MB/s (73–93 Mbit/s) through the proxy on a development machine, against
@@ -432,10 +464,11 @@ ExoPlayer does and a plain `<video>` cannot.
 
 **Known gaps, stated rather than left to be discovered.**
 
-- A browser that stops beating is not stopped — there is no heartbeat route
-  yet, so a child's minutes are counted only while `/media` is being asked for
-  more bytes. `HubWatchMeter`'s KDoc already says what that costs and why it
-  errs toward counting less.
+- A browser that stops beating stops being credited, which is the right
+  direction — the meter counts time this hub has *seen* pass, and
+  `HubWatchMeter.MAX_GAP_MS` bounds what a closed lid can cost. It is still not
+  an enforcer: what stops a child mid-video is `/media` re-asking `HubPolicy`
+  on the next chunk, exactly as before.
 - The kid origin is plain HTTP on the LAN, like everything else here. A cookie
   that lives six months is worth more than a session one, and the day this box
   faces anything but a home network that is the first thing to change.

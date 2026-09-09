@@ -1527,12 +1527,12 @@ hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 kidsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
 [ -f "$kidsrv" ] ||
   guard_fail "$kidsrv is gone; guard 57 is blind. The kid's origin lives there, and it is a second listener rather than a path under the console's."
-#     (a) The kid listener serves EXACTLY these five paths. Not a floor: a
+#     (a) The kid listener serves EXACTLY these ten paths. Not a floor: a
 #         route added here is a route somebody has to have thought about,
 #         because everything on this origin faces a child's browser.
 kid_routes=$(grep -oE "createContext\(${q}/[a-z/.-]*${q}" "$kidsrv" | grep -oE "/[a-z/.-]*" | sort -u | tr "\n" " " || true)
-[ "$kid_routes" = "/ /claim /kid-tokens.css /media /whoami " ] ||
-  guard_fail "the kid origin serves [$kid_routes] and guard 57 expects [/ /claim /kid-tokens.css /media /whoami ]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+[ "$kid_routes" = "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami " ] ||
+  guard_fail "the kid origin serves [$kid_routes] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami ]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 #     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
 #         path on both origins is a path where the argument above stops being
 #         true, one route at a time. "/" is each origin's own front door (the
@@ -1630,7 +1630,7 @@ fi
 #     route did while it was a placeholder on the admin origin, lets a child
 #     name their older sibling and watch on their bedtime, their budget and
 #     their block list.
-for fn in whoami media; do
+for fn in whoami media home channel search progress thumb; do
   body=$(awk -v f="    private fun $fn(ex: HttpExchange)" 'index($0, f) == 1 { inside = 1 } inside { print; if (inside && /^    }$/) exit }' "$kidsrv")
   [ -n "$body" ] ||
     guard_fail "guard 60 cannot find $fn(ex: HttpExchange) in $kidsrv; it is blind."
@@ -1652,6 +1652,64 @@ kid_headed=$(grep -cF "securityHeaders(ex)" "$kidsrv" || true)
 [ "$kid_sends" = "$kid_headed" ] ||
   guard_fail "$kidsrv writes $kid_sends responses and only $kid_headed of them call securityHeaders(ex). Every reply on the kid origin carries X-Content-Type-Options, X-Frame-Options and Referrer-Policy - route the new one through respond(), or call securityHeaders(ex) before sending its headers."
 
+
+# 61. The kid page draws; it does not decide.
+#     Everything a child sees is chosen by shared code - homeSections() and
+#     resolvePins() in :core, KidHome and SearchRank in :crawl, catalogueFor()
+#     in HubPolicy - and shipped to the page as an answer. A rule implemented
+#     in the page instead would be a rule with two implementations, and the
+#     one a child's browser runs is the one nobody can inspect: it does not
+#     throw, it does not log, and the symptom is a tablet showing a video the
+#     television hides.
+kidpage=hub/src/main/resources/web/kid.html
+[ -f "$kidpage" ] ||
+  guard_fail "$kidpage is gone; guard 61 is blind. The kid page is the one thing on that origin a child looks at."
+#     (a) No filter, no sort, no cap. These are the JavaScript spellings of a
+#         rule. A page that trims a shelf to what fits is a page that has
+#         started deciding what a child may see.
+page_rules=$(grep -nE "\.(filter|sort|slice|splice|reverse)\(" "$kidpage" || true)
+[ -z "$page_rules" ] ||
+  guard_fail "the kid page filters, sorts or caps something:
+$page_rules
+Those belong in :core or :crawl, where the phone and the television read the same answer. The page renders what the hub hands it."
+#     (b) No colour of its own. The two brand looks are generated from :core
+#         (guard 48) and the kid's own tinted ground arrives per-request from
+#         kidTinted(); a literal here would be the second palette this project
+#         has already had once, and it would agree with the first until
+#         somebody changed a colour.
+page_colours=$(grep -nE "#[0-9a-fA-F]{3}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{8}\b|rgba?\(|hsla?\(" "$kidpage" || true)
+[ -z "$page_colours" ] ||
+  guard_fail "the kid page names a colour:
+$page_colours
+Every hue is a --yk-* custom property, from /kid-tokens.css or from /home's theme. Add the role to DesignTokens.kt if the page needs one it has not got."
+#     (c) Every shelf the shared catalogue knows, the page can draw. A shelf
+#         added to HOME_SHELVES that this file has no branch for would simply
+#         not appear in a browser - no error, no test failure, and nobody
+#         looking at a tablet would know a row was missing.
+shelves=hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt
+[ -f "$shelves" ] ||
+  guard_fail "$shelves is gone; guard 61 is blind."
+#         NAME:id pairs, and a `for` rather than a `while read` on a pipe: a
+#         pipeline's loop body runs in a subshell, where guard_fail's exit ends
+#         the subshell and the gate carries on green. That is the shape of the
+#         bug in "bash gate died on its own success", read the other way round.
+shelf_decls=$(grep -oE "const val [A-Z_]+ = \"[a-z-]+\"" core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt || true)
+shelf_pairs=$(printf "%s\n" "$shelf_decls" | sed -E "s/const val ([A-Z_]+) = \"([a-z-]+)\"/\1:\2/")
+[ -n "$shelf_pairs" ] ||
+  guard_fail "guard 61 found no shelf ids in HomeSections.kt; it is blind."
+for pair in $shelf_pairs; do
+  name=${pair%%:*}
+  shelf=${pair#*:}
+  #         The page is JavaScript and has no constant to import, so it is held
+  #         to the literal. The hub is Kotlin and must use the constant: a bare
+  #         "keep-watching" in Kotlin would satisfy a literal check and still be
+  #         the second spelling of an id whose whole KDoc is about not having
+  #         one.
+  grep -qF "\"$shelf\"" "$kidpage" ||
+    guard_fail "HomeShelf names the shelf \"$shelf\" and the kid page has no branch for it, so a browser draws every shelf but that one - silently. Add it to renderHome(), or take it out of the shared catalogue."
+  grep -qF "HomeShelf.$name" "$shelves" ||
+    guard_fail "HomeShelf.$name (\"$shelf\") is a shelf $shelves never names, so the browser would draw it untitled. Give it a title in titleOf()."
+done
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

@@ -1807,15 +1807,15 @@ if (-not (Test-Path $kidSrv)) {
 }
 $kidText = Get-Content $kidSrv -Raw
 $hubText = Get-Content $hubSrv -Raw
-#     (a) The kid listener serves EXACTLY these five paths. Not a floor: a
+#     (a) The kid listener serves EXACTLY these ten paths. Not a floor: a
 #         route added here is a route somebody has to have thought about,
 #         because everything on this origin faces a child's browser.
 $kidRoutes = @(Get-Content $kidSrv |
     Select-String -Pattern 'createContext\("(/[a-z/.-]*)"' -AllMatches |
     ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } |
     Sort-Object -Unique)
-if (($kidRoutes -join " ") -ne "/ /claim /kid-tokens.css /media /whoami") {
-    Fail-Guard "the kid origin serves [$($kidRoutes -join ' ')] and guard 57 expects [/ /claim /kid-tokens.css /media /whoami]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+if (($kidRoutes -join " ") -ne "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami") {
+    Fail-Guard "the kid origin serves [$($kidRoutes -join ' ')] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 }
 #     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
 #         path on both origins is a path where the argument above stops being
@@ -1940,7 +1940,7 @@ if ($hubText.Contains("`"$kidCookie`"")) {
 #     route did while it was a placeholder on the admin origin, lets a child
 #     name their older sibling and watch on their bedtime, their budget and
 #     their block list.
-foreach ($fn in @("whoami", "media")) {
+foreach ($fn in @("whoami", "media", "home", "channel", "search", "progress", "thumb")) {
     $kidFn = [regex]::Match($kidText, "(?ms)^    private fun $fn\(ex: HttpExchange\).*?^    \}").Value
     if (-not $kidFn) {
         Fail-Guard "guard 60 cannot find $fn(ex: HttpExchange) in $kidSrv; it is blind."
@@ -1972,6 +1972,70 @@ if ($kidSends -ne $kidHeaded) {
     Fail-Guard "$kidSrv writes $kidSends responses and only $kidHeaded of them call securityHeaders(ex). Every reply on the kid origin carries X-Content-Type-Options, X-Frame-Options and Referrer-Policy - route the new one through respond(), or call securityHeaders(ex) before sending its headers."
 }
 
+
+# 61. The kid page draws; it does not decide.
+#     Everything a child sees is chosen by shared code - homeSections() and
+#     resolvePins() in :core, KidHome and SearchRank in :crawl, catalogueFor()
+#     in HubPolicy - and shipped to the page as an answer. A rule implemented
+#     in the page instead would be a rule with two implementations, and the
+#     one a child's browser runs is the one nobody can inspect: it does not
+#     throw, it does not log, and the symptom is a tablet showing a video the
+#     television hides.
+$kidPage = "hub/src/main/resources/web/kid.html"
+if (-not (Test-Path $kidPage)) {
+    Fail-Guard "$kidPage is gone; guard 61 is blind. The kid page is the one thing on that origin a child looks at."
+}
+$kidPageText = Get-Content $kidPage -Raw
+#     (a) No filter, no sort, no cap. These are the JavaScript spellings of a
+#         rule. A page that trims a shelf to what fits is a page that has
+#         started deciding what a child may see.
+$pageRules = @(Get-Content $kidPage | Select-String -Pattern '\.(filter|sort|slice|splice|reverse)\(')
+if ($pageRules.Count -gt 0) {
+    Fail-Guard "the kid page filters, sorts or caps something:
+$($pageRules -join "`n")
+Those belong in :core or :crawl, where the phone and the television read the same answer. The page renders what the hub hands it."
+}
+#     (b) No colour of its own. The two brand looks are generated from :core
+#         (guard 48) and the kid's own tinted ground arrives per-request from
+#         kidTinted(); a literal here would be the second palette this project
+#         has already had once, and it would agree with the first until
+#         somebody changed a colour.
+$pageColours = @(Get-Content $kidPage | Select-String -Pattern '#[0-9a-fA-F]{3}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{8}\b|rgba?\(|hsla?\(')
+if ($pageColours.Count -gt 0) {
+    Fail-Guard "the kid page names a colour:
+$($pageColours -join "`n")
+Every hue is a --yk-* custom property, from /kid-tokens.css or from /home's theme. Add the role to DesignTokens.kt if the page needs one it has not got."
+}
+#     (c) Every shelf the shared catalogue knows, the page can draw. A shelf
+#         added to HOME_SHELVES that this file has no branch for would simply
+#         not appear in a browser - no error, no test failure, and nobody
+#         looking at a tablet would know a row was missing.
+$kidHomeSrc = "hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt"
+if (-not (Test-Path $kidHomeSrc)) {
+    Fail-Guard "$kidHomeSrc is gone; guard 61 is blind."
+}
+$kidHomeText = Get-Content $kidHomeSrc -Raw
+$shelfDecls = @([regex]::Matches(
+    (Get-Content "core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt" -Raw),
+    'const val ([A-Z_]+) = "([a-z-]+)"'))
+if ($shelfDecls.Count -lt 1) {
+    Fail-Guard "guard 61 found no shelf ids in HomeSections.kt; it is blind."
+}
+foreach ($decl in $shelfDecls) {
+    $name = $decl.Groups[1].Value
+    $shelf = $decl.Groups[2].Value
+    #         The page is JavaScript and has no constant to import, so it is
+    #         held to the literal. The hub is Kotlin and must use the constant:
+    #         a bare "keep-watching" in Kotlin would satisfy a literal check and
+    #         still be the second spelling of an id whose whole KDoc is about
+    #         not having one.
+    if ($kidPageText -notmatch [regex]::Escape("`"$shelf`"")) {
+        Fail-Guard "HomeShelf names the shelf `"$shelf`" and the kid page has no branch for it, so a browser draws every shelf but that one - silently. Add it to renderHome(), or take it out of the shared catalogue."
+    }
+    if ($kidHomeText -notmatch [regex]::Escape("HomeShelf.$name")) {
+        Fail-Guard "HomeShelf.$name (`"$shelf`") is a shelf $kidHomeSrc never names, so the browser would draw it untitled. Give it a title in titleOf()."
+    }
+}
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
