@@ -218,6 +218,22 @@ object KidBrand {
     val ON_TEAL = 0xFFFFFFFF.toInt()
     /** Watched/played progress — YouTube's convention, deliberately not the teal. */
     val WATCHED_PROGRESS = 0xFFFF0000.toInt()
+
+    /**
+     * The unplayed remainder of that bar: 40% white over the poster.
+     *
+     * Here, and not a literal in `WatchedProgressBar`, because the browser had
+     * no way to know it. Left unexported, the page reached for the nearest role
+     * it could see — `artwork-scrim`, which is 80% **black** — so the same bar
+     * was pale over the thumbnail on a television and dark on a tablet. That is
+     * the exact failure `KidGeometry`'s KDoc describes, in a colour rather than
+     * a length, and the only fix is for the value to have a name.
+     *
+     * White rather than a theme role on purpose: it sits on a photograph, which
+     * is neither light nor dark, and a scrim that followed the look would fail
+     * on exactly the frames it exists for.
+     */
+    val WATCHED_TRACK = 0x66FFFFFF
     /** SponsorBlock-marked stretches on the player scrubber. */
     val SPONSOR_SEGMENT = 0xFF00C853.toInt()
 }
@@ -381,6 +397,148 @@ val KID_LIGHT = KidScheme(
     outlineVariant = 0xFFBEC9C6.toInt(),
     surfaceTint = Argb.TRANSPARENT
 )
+
+// --- geometry ---------------------------------------------------------------
+
+/**
+ * The shapes and distances a card is made of — the second half of "one table",
+ * and the half that was missing.
+ *
+ * ### Why this exists, stated as the failure it was found by
+ *
+ * The palette and the type scale have been shared since `KidTokensCss` was
+ * written, and the browser still did not look like the app. Every geometry
+ * number was an `:app` literal with no token behind it and an independent
+ * literal in `kid.html`, so the two agreed only in the sense that nobody had
+ * put the screens side by side. When somebody did, on the day the web player
+ * shipped, they had already diverged in six places at once: the card corner was
+ * 14dp against 16px, the poster 12dp against a card clipped flush, the duration
+ * badge 4dp against 6px, and the progress track — most visibly — 40% WHITE in
+ * the app against 80% BLACK in the browser.
+ *
+ * None of that failed a test, and none of it could: both faces were using legal
+ * tokens for the colours and no token at all for the shapes. Guard 62 now
+ * refuses a bare length in either face's card code, and a `KidGeometryParityTest`
+ * pins these numbers to the Compose `dp` constants the way `KidTokensParityTest`
+ * pins the palette.
+ *
+ * ### The units
+ *
+ * Plain `Int`s, read as **dp on Android and px in a browser**, which is the same
+ * identity `KidType` already relies on: a dp at a density of 1 is a CSS pixel,
+ * and both faces scale from there. A number here is therefore a promise about
+ * apparent size, not about a device pixel.
+ *
+ * ### What belongs here, and what does not
+ *
+ * A number belongs here when **both faces draw the same object with it** — a
+ * card corner, a badge inset, the gap in a rail. It does not belong here when
+ * it is one platform's own: the 44dp minimum tap target is Android's guideline
+ * and iOS's is 44pt by coincidence rather than by sharing, and the TV's larger
+ * variants are a form-factor decision `FormFactor` already owns. Those stay
+ * where they are, and this file stays the things that must match.
+ */
+object KidGeometry {
+
+    /** The card's own corner. The column, not the poster inside it. */
+    const val CARD_RADIUS = 14
+
+    /** The poster's corner, deliberately tighter than the card's. */
+    const val POSTER_RADIUS = 12
+
+    /** Below the card, between it and the next row. */
+    const val CARD_BOTTOM_PAD = 6
+
+    /** The duration badge: its corner, how far off the poster's edge it sits, and its padding. */
+    const val BADGE_RADIUS = 4
+    const val BADGE_INSET = 6
+    const val BADGE_PAD_X = 5
+    const val BADGE_PAD_Y = 2
+
+    /** The watched bar across the bottom of a poster. */
+    const val PROGRESS_HEIGHT = 4
+
+    /**
+     * How far back a finished card sits.
+     *
+     * Far enough that "seen it" reads at a glance, near enough that it is still
+     * browsable — **kids rewatch**, which is why this is a dim and not a
+     * removal. Expressed in percent because a CSS custom property cannot be a
+     * bare float and a guard that greps for `0.48` should find one spelling.
+     */
+    const val WATCHED_DIM_PERCENT = 48
+
+    /** The title row's offset from the poster, and its side inset. */
+    const val META_TOP = 8
+    const val META_SIDE = 2
+
+    /** The channel face beside a title. Drawn size; the tap target around it is the platform's. */
+    const val AVATAR_SIZE = 34
+
+    /** Between a card's title and the channel name under it. */
+    const val SUB_GAP = 2
+
+    /** The meta line's own corner — it is a tap target for the channel. */
+    const val META_RADIUS = 6
+
+    /** A horizontally-scrolling shelf: the gap between cards, and a card's width. */
+    const val RAIL_GAP = 10
+    const val RAIL_CARD_WIDTH = 200
+
+    /**
+     * The pinned hero — the biggest thing on the home screen.
+     *
+     * The **phone** figures, deliberately. The hero is one of the few surfaces
+     * whose metrics genuinely differ by form factor (the television's card is
+     * 348dp wide against the phone's 258dp), and a browser on an iPad is a
+     * phone-shaped face rather than a ten-foot one. Taking the phone's numbers
+     * is a decision, not a default: the TV's live in `HomeMetrics`, which is
+     * where form-factor variance belongs.
+     */
+    const val HERO_GAP = 15
+    const val HERO_WIDTH = 258
+
+    /**
+     * The video grid. The vertical gap is deliberately half the horizontal one:
+     * cards carry their titles underneath, so the visual gap between rows is
+     * already larger than the number says.
+     */
+    const val GRID_MIN_WIDTH = 170
+    const val GRID_GAP_X = 12
+    const val GRID_GAP_Y = 6
+
+    /** The page's own side margin. */
+    const val PAGE_GUTTER = 16
+
+    /**
+     * Every one of them, named the way the stylesheet names them, so the
+     * generator has no table of its own to keep in step — the same contract
+     * [kidTokenRoles] has for colour.
+     */
+    fun roles(): List<Pair<String, Int>> = listOf(
+        "card-radius" to CARD_RADIUS,
+        "poster-radius" to POSTER_RADIUS,
+        "card-bottom-pad" to CARD_BOTTOM_PAD,
+        "badge-radius" to BADGE_RADIUS,
+        "badge-inset" to BADGE_INSET,
+        "badge-pad-x" to BADGE_PAD_X,
+        "badge-pad-y" to BADGE_PAD_Y,
+        "progress-height" to PROGRESS_HEIGHT,
+        "meta-top" to META_TOP,
+        "meta-side" to META_SIDE,
+        "sub-gap" to SUB_GAP,
+        "meta-radius" to META_RADIUS,
+        "avatar-size" to AVATAR_SIZE,
+        "rail-gap" to RAIL_GAP,
+        "rail-card-width" to RAIL_CARD_WIDTH,
+        "hero-gap" to HERO_GAP,
+        "hero-width" to HERO_WIDTH,
+        "grid-min-width" to GRID_MIN_WIDTH,
+        "grid-gap-x" to GRID_GAP_X,
+        "grid-gap-y" to GRID_GAP_Y,
+        "page-gutter" to PAGE_GUTTER
+    )
+}
 
 // --- "My colour" ------------------------------------------------------------
 

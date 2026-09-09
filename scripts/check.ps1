@@ -1807,15 +1807,19 @@ if (-not (Test-Path $kidSrv)) {
 }
 $kidText = Get-Content $kidSrv -Raw
 $hubText = Get-Content $hubSrv -Raw
-#     (a) The kid listener serves EXACTLY these ten paths. Not a floor: a
+#     (a) The kid listener serves EXACTLY these eleven paths. Not a floor: a
 #         route added here is a route somebody has to have thought about,
 #         because everything on this origin faces a child's browser.
 $kidRoutes = @(Get-Content $kidSrv |
-    Select-String -Pattern 'createContext\("(/[a-z/.-]*)"' -AllMatches |
+    # Digits included, and that is a fix rather than a flourish: the class was
+    # [a-z/.-], so a route like /kid-icon-192.png matched NOTHING and the guard
+    # failed OPEN - it would have reported fewer paths than the origin serves,
+    # and let an unreviewed one land invisibly.
+    Select-String -Pattern 'createContext\("(/[a-z0-9/.-]*)"' -AllMatches |
     ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } |
     Sort-Object -Unique)
-if (($kidRoutes -join " ") -ne "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami") {
-    Fail-Guard "the kid origin serves [$($kidRoutes -join ' ')] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+if (($kidRoutes -join " ") -ne "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami /you") {
+    Fail-Guard "the kid origin serves [$($kidRoutes -join ' ')] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami /you]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 }
 #     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
 #         path on both origins is a path where the argument above stops being
@@ -2035,6 +2039,160 @@ foreach ($decl in $shelfDecls) {
     if ($kidHomeText -notmatch [regex]::Escape("HomeShelf.$name")) {
         Fail-Guard "HomeShelf.$name (`"$shelf`") is a shelf $kidHomeSrc never names, so the browser would draw it untitled. Give it a title in titleOf()."
     }
+}
+
+
+# 62. Every kid-facing surface is declared, and the browser's gaps are named.
+#     The web player shipped with four of the app's fourteen screens and
+#     NOTHING complained - not a test, not a guard, not a review. There was no
+#     list of what a kid-facing product is made of, so "the browser has no
+#     History screen" was indistinguishable from "the browser is finished".
+#     This is SettingsSurface's mechanism one product surface along: a manifest
+#     in :core that both faces read, checked from both ends, with what is still
+#     missing NAMED on every run rather than counted.
+$kidManifest = "core/src/main/kotlin/io/yosemitekids/app/ui/KidSurface.kt"
+$kidHomeState = "app/src/main/java/io/yosemitekids/app/ui/HomeState.kt"
+if (-not (Test-Path $kidManifest)) {
+    Fail-Guard "$kidManifest is gone; guard 62 is blind. It is the only list of what a kid-facing product is made of, and without it a face can silently lack a screen."
+}
+$kidManifestText = Get-Content $kidManifest -Raw
+$screenBlock = [regex]::Match((Get-Content $kidHomeState -Raw), '(?ms)^sealed interface Screen.*?^\}').Value
+$screenNames = @([regex]::Matches($screenBlock, '(?:data object|data class) ([A-Za-z]+)') | ForEach-Object { $_.Groups[1].Value })
+if ($screenNames.Count -lt 1) {
+    Fail-Guard "guard 62 found no Screen subtypes in $kidHomeState; it is blind."
+}
+#     (a) EVERY Screen IS CLAIMED, EXACTLY ONCE - by a surface or by an
+#         exemption with a reason. This is the clause that makes adding a
+#         fifteenth screen the moment the "does the browser get this?" decision
+#         gets made, instead of six months later when somebody asks.
+foreach ($s in $screenNames) {
+    $claimed = ([regex]::Matches($kidManifestText, [regex]::Escape("screen = `"$s`""))).Count
+    $exempt = ([regex]::Matches($kidManifestText, '(?m)^        "' + [regex]::Escape($s) + '" to')).Count
+    if (($claimed + $exempt) -ne 1) {
+        Fail-Guard "Screen.$s is claimed by $claimed surfaces and exempted $exempt times in $kidManifest; it must be exactly one. Declare it as a KidSurfaceDef, or put it in NOT_A_SURFACE with the reason there is no browser equivalent."
+    }
+}
+#     (b) A SURFACE THAT SAYS IT IS DRAWN IS DRAWN. The page is JavaScript and
+#         has no constant to import, so it is held to the literal id - the same
+#         asymmetry guard 61(c) already uses for the home shelves.
+$kidPagePath = "hub/src/main/resources/web/kid.html"
+$kidPageBody = Get-Content $kidPagePath -Raw
+$surfaceBlocks = @([regex]::Matches($kidManifestText, '(?s)KidSurfaceDef\((.*?)\n        \)'))
+foreach ($blk in $surfaceBlocks) {
+    $body = $blk.Groups[1].Value
+    $idMatch = [regex]::Match($body, 'id = "([a-z-]+)"')
+    if (-not $idMatch.Success) { continue }
+    $id = $idMatch.Groups[1].Value
+    if ($body -match 'webReady = true') {
+        if ($kidPageBody -notmatch [regex]::Escape("`"$id`"")) {
+            Fail-Guard "KidSurface says `"$id`" is drawn in a browser and $kidPagePath never mentions it. Either the page lost a view or the manifest is claiming one it does not have - the second is worse, because the gate then reports no work left."
+        }
+    }
+}
+#     (c) A NON-BOTH OR NOT-YET-READY SURFACE HAS A REASON. Verbatim guard
+#         26(d)'s rule: a decision with no recorded reason is re-litigated every
+#         round by someone who cannot tell it from an omission.
+$missingWhy = @()
+foreach ($blk in $surfaceBlocks) {
+    $body = $blk.Groups[1].Value
+    $needs = ($body -match 'webReady = false') -or ($body -match 'face = KidFace\.APP') -or ($body -match 'face = KidFace\.WEB')
+    if ($needs -and ($body -notmatch 'why = ')) {
+        $idMatch = [regex]::Match($body, 'id = "([a-z-]+)"')
+        if ($idMatch.Success) { $missingWhy += $idMatch.Groups[1].Value }
+    }
+}
+if ($missingWhy.Count -gt 0) {
+    Fail-Guard "these kid surfaces are not on both faces, or not yet in the browser, and say nothing about why: $($missingWhy -join ' ')
+A reason is what stops the next session re-deciding it, and what tells the owner whether it is work or a policy."
+}
+#     (e) Named, not counted. A number tells you there is work; a list tells you
+#         WHICH child-facing thing is missing on the iPad this week.
+$todo = @()
+foreach ($blk in $surfaceBlocks) {
+    $body = $blk.Groups[1].Value
+    if (($body -match 'webReady = false') -and ($body -notmatch 'face = KidFace\.APP') -and ($body -notmatch 'face = KidFace\.WEB')) {
+        $idMatch = [regex]::Match($body, 'id = "([a-z-]+)"')
+        if ($idMatch.Success) { $todo += $idMatch.Groups[1].Value }
+    }
+}
+if ($todo.Count -gt 0) {
+    Write-Host "   kid surfaces still to reach the browser: $(($todo | Sort-Object) -join ' ')"
+}
+
+# 63. The two faces draw a card from ONE set of numbers.
+#     The palette and the type scale have been shared since KidTokensCss was
+#     written and the browser STILL did not look like the app: every geometry
+#     number was an :app literal with no token behind it and an independent
+#     literal in kid.html. They had already diverged in six places on the day
+#     the web player shipped - the card corner, the poster corner, the badge,
+#     the rail gap, the grid gap, and most visibly the progress track, which
+#     was 40% white in the app and 80% BLACK in the browser. None of it failed
+#     anything, because both faces were using legal tokens for colour and no
+#     token at all for shape.
+$tokensFile = "core/src/main/kotlin/io/yosemitekids/app/ui/DesignTokens.kt"
+$tilesFile = "app/src/main/java/io/yosemitekids/app/ui/Tiles.kt"
+$tokensText = Get-Content $tokensFile -Raw
+if ($tokensText -notmatch 'object KidGeometry') {
+    Fail-Guard "KidGeometry is gone from $tokensFile; guard 63 is blind and the two faces are free to draw different cards again."
+}
+#     (a) The generator ships it. A table :core holds and the stylesheet does
+#         not carry is a table only one face can read.
+$genFile = "core/src/main/kotlin/io/yosemitekids/app/ui/KidTokensCss.kt"
+$genText = Get-Content $genFile -Raw
+if ($genText -notmatch [regex]::Escape('KidGeometry.roles()')) {
+    Fail-Guard "$genFile does not emit KidGeometry.roles(), so the browser cannot read the geometry and will go back to inventing it."
+}
+if ($genText -notmatch 'watched-track') {
+    Fail-Guard "$genFile no longer emits the watched-track colour. Without it the page reaches for artwork-scrim, and the same progress bar is pale on a television and dark on a tablet."
+}
+#     (b) NO BARE LENGTH in the card code on either face. The card, its poster,
+#         the badge, the rail, the grid and the progress bar are the objects
+#         both faces draw, so their numbers come from KidGeometry or they will
+#         drift again - silently, and legally.
+$webLengths = @()
+$inCardRule = $false
+$lineNo = 0
+foreach ($line in (Get-Content $kidPagePath)) {
+    $lineNo++
+    # A new top-level rule closes the previous one, and not only a lone brace: a
+    # one-liner like `.hero { ... }` never produces a `  }` of its own, so a
+    # range keyed on that alone stays open and reports the rest of the
+    # stylesheet as card code.
+    if (($line -match '^  [.#@a-zA-Z]') -and ($line -match '\{')) {
+        $inCardRule = ($line -match '^  \.(card|badge|rail|grid|progress|hero)[ .,:{]')
+    }
+    if ($line -match '^  \}') { $inCardRule = $false }
+    if ($inCardRule -and ($line -match '[0-9]+px') -and ($line -notmatch 'var\(--yk-') -and ($line -notmatch '999px')) {
+        $webLengths += "${kidPagePath}:${lineNo}: $line"
+    }
+}
+if ($webLengths.Count -gt 0) {
+    Fail-Guard "the kid page writes a bare length in card geometry:
+$($webLengths -join "`n")
+Those numbers are KidGeometry in :core, emitted into kid-tokens.css. A literal here is the second copy, and the app has the first."
+}
+$videoCard = [regex]::Match((Get-Content $tilesFile -Raw), '(?ms)^internal fun VideoCard\(.*?^\}').Value
+$appLengths = @([regex]::Matches($videoCard, 'RoundedCornerShape\([0-9]'))
+if ($appLengths.Count -gt 0) {
+    Fail-Guard "VideoCard writes a bare corner radius. It belongs in KidGeometry, where the browser can read it too."
+}
+#     (c) One threshold for "finished". It was written in EIGHT places - :app
+#         twice as a property and four times as a literal, the hub's history
+#         store, and the browser's own JavaScript. Eight copies do not throw
+#         when one moves; they make a television and a tablet disagree about
+#         whether a child has seen something, which reads as the app losing
+#         their place.
+$finishedCopies = @(Get-ChildItem -Recurse -File -Include *.kt, *.html -Path app/src/main, hub/src/main, crawl/src/main, core/src/main |
+    Select-String -Pattern '0\.98' |
+    # Comment lines are skipped, so the KDoc that explains what the eight copies
+    # cost may go on saying the number out loud - guard 58 does the same for the
+    # CORS header it forbids.
+    Where-Object { $_.Line -notmatch '^\s*(//|\*|/\*|<!--)' } |
+    Where-Object { $_.Line -notmatch 'const val FINISHED_FRACTION = 0\.98f' })
+if ($finishedCopies.Count -gt 0) {
+    Fail-Guard "the finished threshold is spelled outside KidHome.FINISHED_FRACTION:
+$(($finishedCopies | ForEach-Object { "$($_.Path):$($_.LineNumber)" }) -join "`n")
+One number decides Keep watching, the feed, the dim, the resume and a channel's watched screen. Read the constant."
 }
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }

@@ -46,7 +46,7 @@ import java.util.concurrent.RejectedExecutionException
  *
  * ### What it serves
  *
- * Exactly ten paths, listed in [start] and pinned by guard 57. There is no
+ * Exactly eleven paths, listed in [start] and pinned by guard 57. There is no
  * catch-all page: `/` answers the kid page and every other path is a JSON 404,
  * where the admin listener deliberately answers an unclaimed path with the
  * console. That asymmetry is the point — on this origin an unknown path is
@@ -164,6 +164,11 @@ class HubKidServer(
         // countdown. One request rather than six, because six is six chances
         // to half-draw a five-year-old's page over house wifi.
         s.createContext("/home") { ex -> guarded(ex) { home(ex) } }
+        // The kid's own shelves: Favorites, Watch later, Up next, History. In
+        // :core's order, with :core's words, and every shelf declared even when
+        // it is empty - the page has one shape and an empty row says what would
+        // fill it.
+        s.createContext("/you") { ex -> guarded(ex) { you(ex) } }
         // One channel's videos.
         s.createContext("/channel") { ex -> guarded(ex) { channel(ex) } }
         // Search within what this kid may see, ranked by the shared SearchRank.
@@ -303,6 +308,13 @@ class HubKidServer(
         if (ex.requestMethod != "GET") return respond(ex, 405, "no")
         val browser = watching(ex) ?: return
         respond(ex, 200, browse.home(browser.kid, meter.ledgerId(browser.token)).toString())
+    }
+
+    /** `GET /you` — the kid's own shelves. Behind the credential like everything else. */
+    private fun you(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val browser = watching(ex) ?: return
+        respond(ex, 200, browse.you(browser.kid, meter.ledgerId(browser.token)).toString())
     }
 
     /** `GET /channel?id=<source>` — one channel's page, or a 404 if this kid may not see it. */
@@ -641,6 +653,9 @@ class HubKidServer(
         val html = javaClass.getResourceAsStream("/web/kid.html")?.readBytes()
             ?: return respond(ex, 500, "the kid page is missing from this build")
         ex.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+        // Same argument as the stylesheet's: a held page is a child running
+        // last month's markup against this month's payload.
+        ex.responseHeaders.add("Cache-Control", "no-cache")
         securityHeaders(ex)
         ex.sendResponseHeaders(200, html.size.toLong())
         ex.responseBody.use { it.write(html) }
@@ -652,7 +667,19 @@ class HubKidServer(
         val bytes = javaClass.getResourceAsStream("/web/kid-tokens.css")?.readBytes()
             ?: return respond(ex, 404, "missing from this build")
         ex.responseHeaders.add("Content-Type", "text/css; charset=utf-8")
-        ex.responseHeaders.add("Cache-Control", "max-age=86400")
+        // **Revalidated, never held.** This was `max-age=86400`, and a day of
+        // caching is a day in which a hub upgrade changes the palette or the
+        // card geometry and every child's browser keeps drawing the old one -
+        // the two faces diverging in TIME rather than in code, which no guard
+        // can see because both sides of the repo are correct. Found by opening
+        // the page after a rebuild and reading tokens that were right on the
+        // wire and absent in the browser.
+        //
+        // `no-cache` means revalidate, not "do not store": the browser keeps
+        // its copy and gets a 304 for it. On a LAN, for a few KB, that is a
+        // round trip nobody can feel - and it is what makes an upgrade to the
+        // container an upgrade to what a child sees.
+        ex.responseHeaders.add("Cache-Control", "no-cache")
         securityHeaders(ex)
         ex.sendResponseHeaders(200, bytes.size.toLong())
         ex.responseBody.use { it.write(bytes) }

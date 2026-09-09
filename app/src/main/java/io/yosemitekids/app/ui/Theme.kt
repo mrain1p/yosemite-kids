@@ -296,13 +296,18 @@ val WatchedProgressRed = Color(KidBrand.WATCHED_PROGRESS)
 /** The thumbnail-bottom watched bar, one spelling for every grid and row. */
 @Composable
 fun BoxScope.WatchedProgressBar(fraction: Float) {
+    // Both the height and the track colour come from :core, because the browser
+    // draws this same bar and had no way to know either number: it reached for
+    // artwork-scrim (80% black) where this is 40% white, and the same bar was
+    // pale on the television and dark on the tablet.
+    val height = KidGeometry.PROGRESS_HEIGHT.dp
     Box(
         Modifier.align(Alignment.BottomStart).fillMaxWidth()
-            .height(4.dp).background(Color(0x66FFFFFF))
+            .height(height).background(Color(KidBrand.WATCHED_TRACK))
     )
     Box(
         Modifier.align(Alignment.BottomStart).fillMaxWidth(fraction)
-            .height(4.dp).background(WatchedProgressRed)
+            .height(height).background(WatchedProgressRed)
     )
 }
 

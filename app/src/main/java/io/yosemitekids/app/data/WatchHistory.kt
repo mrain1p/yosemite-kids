@@ -15,7 +15,7 @@ data class WatchProgress(
      * small 2% grace for backing out during the credits. Deliberately strict: a
      * video the session guard cut off at 91% must stay resumable in Keep watching.
      */
-    val isFinished: Boolean get() = fraction >= 0.98f
+    val isFinished: Boolean get() = fraction >= io.yosemitekids.app.data.KidHome.FINISHED_FRACTION
 }
 
 /**

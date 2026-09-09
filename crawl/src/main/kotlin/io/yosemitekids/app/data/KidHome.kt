@@ -60,6 +60,27 @@ object KidHome {
     const val KEEP_WATCHING_MIN_FRACTION = 0.02f
 
     /**
+     * At or past this, a video is finished.
+     *
+     * **One number, and it decides five different things**: whether Keep
+     * watching offers a video back, whether the feed drops it, whether a card
+     * dims and wears its WATCHED tag, whether a resume position is honoured or
+     * ignored, and which of a channel's videos are on its "watched" screen.
+     *
+     * Deliberately strict, with a 2% grace for backing out during the credits:
+     * a video the session guard cut off at 91% must stay resumable, and one
+     * abandoned over the closing titles must not.
+     *
+     * It lived in eight places before this constant existed — `:app` twice as a
+     * property and four times as a bare literal, the hub's history store, and
+     * the browser's own JavaScript. Eight copies of a threshold do not throw
+     * when one of them moves; they make a television and a tablet disagree
+     * about whether a child has seen something, which reads as the app losing
+     * their place.
+     */
+    const val FINISHED_FRACTION = 0.98f
+
+    /**
      * Words that carry no signal about what a video is *about*. Kept small and
      * hand-picked rather than a real stoplist: the titles here are kids'
      * YouTube, where "for kids", "episode" and "full" appear on everything and
