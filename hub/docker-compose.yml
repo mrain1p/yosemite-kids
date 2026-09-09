@@ -29,23 +29,33 @@ services:
     container_name: yosemite-kids-hub
     restart: unless-stopped
 
-    # One published port, not host networking.
+    # Two published ports, not host networking.
     #
     # The hub is a plain server: devices dial it by IP and it never broadcasts,
     # discovers, or listens on anything else. Host mode therefore bought it
     # nothing and cost the isolation — a container in host mode sees every
     # interface and every other service on the NAS.
     #
-    # Both sides read the same variable on purpose. Publishing one port while
-    # the process listens on another gives you a container that is healthy,
-    # running, and unreachable, which is a genuinely nasty half hour: the
-    # health check passes because it runs inside the container.
+    # Both sides of each line read the same variable on purpose. Publishing one
+    # port while the process listens on another gives you a container that is
+    # healthy, running, and unreachable, which is a genuinely nasty half hour:
+    # the health check passes because it runs inside the container.
     #
-    # To move it, set YOSEMITE_KIDS_PORT in a .env file beside this one, or export
-    # it before running compose. Then use the new port when you connect a
-    # phone, because the app defaults to 8765.
+    # 8765 is the parents' console and every device's sync. 8766 is where a
+    # child's browser watches, and it is a SECOND ORIGIN rather than a path on
+    # the first — that is a security boundary, not a layout choice. On one
+    # origin a page a child opens can POST to /api/config with a parent's
+    # session cookie riding along, and every check the hub makes agrees that it
+    # may: same host, same site, and HttpOnly does not stop a page sending a
+    # cookie it never reads. Two ports make the browser refuse it for us.
+    #
+    # To move either, set YOSEMITE_KIDS_PORT or YOSEMITE_KIDS_KID_PORT in a
+    # .env file beside this one, or export them before running compose. Then
+    # use the new port when you connect a phone, because the app defaults to
+    # 8765.
     ports:
       - "${YOSEMITE_KIDS_PORT:-8765}:${YOSEMITE_KIDS_PORT:-8765}"
+      - "${YOSEMITE_KIDS_KID_PORT:-8766}:${YOSEMITE_KIDS_KID_PORT:-8766}"
 
     volumes:
       # config.json and devices.json. Deliberately a subfolder, not the folder
@@ -56,8 +66,9 @@ services:
 
     environment:
       - YOSEMITE_KIDS_DATA=/data
-      # The same variable the ports line above uses, so the two cannot drift.
+      # The same variables the ports lines above use, so no pair can drift.
       - YOSEMITE_KIDS_PORT=${YOSEMITE_KIDS_PORT:-8765}
+      - YOSEMITE_KIDS_KID_PORT=${YOSEMITE_KIDS_KID_PORT:-8766}
       # Only affects log timestamps; the merge itself never reads a clock.
       - TZ=America/New_York
       # A config file and a few dozen devices. Left to itself the JVM sizes its

@@ -33,8 +33,19 @@ object Http {
     @Volatile private var allowedHosts: Set<String>? = null
 
     /** YouTube and the CDNs its pages and thumbnails come from. Bare domains; subdomains match. */
+    // youtubei.googleapis.com is the PLAYER endpoint. The crawl reaches
+    // InnerTube through www.youtube.com/youtubei/v1/ and never needed it;
+    // resolving a stream for the web player is the first thing that does.
+    // Named in full rather than as googleapis.com, because matching is
+    // `host == it || host.endsWith(".$it")` and the bare domain would admit
+    // every Google API there is.
+    //
+    // The reason sits ABOVE the declaration on purpose: guard 7 scrapes the
+    // three lines after it, so a comment between the hosts would push one
+    // out of the window and the guard would go blind rather than fail.
     val HUB_HOSTS: Set<String> = setOf(
-        "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "googleusercontent.com"
+        "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com",
+        "googleusercontent.com", "youtubei.googleapis.com"
     )
 
     fun restrictTo(hosts: Set<String>?) { allowedHosts = hosts }

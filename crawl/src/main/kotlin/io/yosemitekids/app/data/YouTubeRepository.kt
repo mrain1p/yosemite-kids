@@ -78,6 +78,16 @@ data class Video(
     companion object {
         // Compiled once: videoId runs per-video in every screening/filter pass.
         private val VIDEO_ID = Regex("[?&]v=([A-Za-z0-9_-]{11})")
+
+        /**
+         * The watch-page URL for an id — the inverse of [videoId], and here
+         * rather than at the call sites because the whole project keys watch
+         * history, favourites and the queue by this string. A second spelling
+         * (`youtu.be/…`, or the same URL with `&t=0`) is not a bug that throws;
+         * it is a resume position that silently never matches the video it
+         * belongs to.
+         */
+        fun watchUrl(videoId: String): String = "https://www.youtube.com/watch?v=$videoId"
     }
 }
 

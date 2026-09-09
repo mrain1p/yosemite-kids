@@ -440,20 +440,53 @@ The icons are generated, not drawn: `node scripts/make-hub-icons.js
 hub/src/main/resources/web` rewrites them, deterministically, so re-running
 it without an edit produces no diff.
 
-## The port
+## The ports — two of them, and why
 
-The hub publishes 8765. Both the `ports` line and `YOSEMITE_KIDS_PORT` in
-`docker-compose.yml` read the same variable, so they cannot drift — publishing
-one port while the process listens on another gives a container that is
-running, healthy and unreachable, and the health check does not catch it
-because it runs inside the container.
+The hub publishes **8765 for parents and devices, and 8766 for children's
+browsers**. Both sides of each line in `docker-compose.yml` read the same
+variable (`YOSEMITE_KIDS_PORT`, `YOSEMITE_KIDS_KID_PORT`), so no pair can
+drift — publishing one port while the process listens on another gives a
+container that is running, healthy and unreachable, and the health check does
+not catch it because it runs inside the container.
 
-To move it, put `YOSEMITE_KIDS_PORT=9000` in a `.env` beside the compose file. Then
-use that port when connecting a phone, because the app assumes 8765.
+To move either, put `YOSEMITE_KIDS_PORT=9000` or
+`YOSEMITE_KIDS_KID_PORT=9001` in a `.env` beside the compose file. Then use
+that port when connecting a phone, because the app assumes 8765.
+
+**The second port is a security boundary, not tidiness.** A child's page and
+the parents' console must not share an origin. If the kid's page lived at
+`/kid/` on 8765, a script on it could `POST /api/config` and the browser would
+attach the parent's session cookie: the host matches, the site matches, and
+`HttpOnly` does not stop a page *sending* a cookie it cannot read. On a shared
+family iPad with a parent signed in, that is a page a child opened rewriting
+the family's blocks, limits and AI settings. Two ports make them two origins,
+and the browser refuses it for you. If you put a reverse proxy in front of this
+hub, keep them two origins — two names or two ports — and do **not** merge
+them under one hostname with different paths.
 
 It no longer uses host networking. The hub is a plain server that devices dial
 by IP; it never broadcasts or discovers, so host mode bought nothing and cost
 the isolation.
+
+## Never route the hub through a VPN
+
+Written down rather than left to instinct, because `gluetun` is already on
+this NAS and putting a container behind it is a two-line change that looks
+like a tidy-up.
+
+The hub talks to YouTube to build the search index, and — once a browser can
+watch — to resolve a stream. A residential address is treated leniently for
+that. A commercial VPN's exit is a data-centre address, and data-centre
+addresses are treated far worse: challenges, captchas, and extraction that
+simply stops working. It is the single easiest way to turn the bot-detection
+risk in `ROADMAP.md` §K from a thing to be careful about into a thing that
+has happened.
+
+Nothing enforces this — the hub cannot see its own egress path — so it is a
+rule for whoever edits the compose file. If extraction breaks shortly after a
+networking change, look here first, and remember that a ban and an extractor
+that needs updating look identical from inside the container (`scripts/upstream.*`
+exists for exactly that reason).
 
 ## Connecting a phone
 
@@ -509,6 +542,131 @@ Guard 7 in `scripts/check.*` fails the build on anything else.
 
 `mem_limit` in the compose file is 384m to leave the crawl room. Measure the
 first full crawl with `docker stats yosemite-kids-hub` and put the number here.
+
+## Letting a browser watch
+
+An iPad, a laptop, an old Android tablet — anything with a browser and no app
+— can watch, on the hub's **second port**. Nothing is installed and no account
+exists; a parent hands over a code and that browser is a watcher from then on.
+
+On the console: **Devices → Watch in a browser**. Tap a child's name and the
+hub mints a six-character code — same alphabet as a device's enrolment code,
+no O/0 and no I/1 — good for ten minutes and for one browser. The card also
+prints the address to open on the tablet, which is this hub's own address on
+the kid port (`http://<nas>:8766`).
+
+On the tablet: open that address, type the code. That browser now carries a
+cookie for six months and plays as **that child**, under that child's blocks,
+bedtime and daily budget. It cannot become another child: the credential
+carries the profile the parent chose, and there is no parameter on any request
+that names one.
+
+**What that browser can and cannot do.** It can see that child's home screen,
+search it, and play from it. It cannot reach the console, the family's configuration, the
+backup, the AI key, or any device route — those are on the other origin, and a
+request from the kid's page to them is refused before it is read and could not
+be read back if it were not. It also cannot lock you out: a child mistyping a
+code ten times slows the kid page down for a minute and does nothing at all to
+your sign-in, which is a separate counter on purpose.
+
+**Losing a tablet.** Devices → Watch in a browser → Remove, beside that
+browser. It stops on that browser's next request. Deleting the child's profile
+is not the same thing and does not do it for you.
+
+**What the page looks like.** The same home screen the television and the
+phone draw: the pinned hero a parent chose, the channel rail, Keep watching,
+More like what you watch, the video feed and Watched lately — in that order,
+because the order comes from the same shared list all three faces read. Tapping
+a channel opens its page; the search box searches only what that child may see,
+ranked the way the app ranks it. A video resumes where they left it, the
+minutes left today sit in the corner and turn amber under five, and a refusal
+says which refusal it is — bedtime, out of time, a parent blocked this — in the
+hub's own words rather than as a video that silently will not start.
+
+The colours are the child's: whichever of Dark, Light and their own colour the
+palette button in the corner is set to, computed by the same code that themes
+the Android app. That choice lives in that browser, like the same switch on a
+phone lives on the phone.
+
+## Video in a browser — and the quality ceiling
+
+`GET /media?v=<id>` on the kid port serves a video's bytes to a browser. Whose
+rules apply comes from the browser's claim cookie, never from the URL — a
+child who could name the kid could name their older sibling and watch on their
+bedtime and their budget.
+
+**The hub carries the bytes; it does not redirect.** That is the expensive
+choice and it is deliberate, for two separate reasons:
+
+- googlevideo throttles a plain progressive GET — and an RFC-7233 `Range:`
+  header on an un-parameterised URL — to roughly playback speed. The form
+  served at link speed is a `range=<start>-<end>` **query** parameter with
+  `rn=` numbering. A browser's `<video>` can only emit the header, so a
+  browser sent straight to Google gets the slow path and stalls. The hub reads
+  the header and asks upstream in the query form (`StreamChunker` in `:crawl`,
+  the same code the television's player uses — guard 56 keeps it one copy).
+- A redirect cannot be taken back. Once a child's browser holds a googlevideo
+  URL, Google serves it for hours and a parent blocking the video mid-play is
+  talking to nobody. Because the hub is in the path, `HubPolicy.mayPlay` is
+  asked again **on every 2 MB chunk**, so a block, a pause or a budget hitting
+  zero stops a video that is already running.
+
+**One host had to be added for this to work at all.** NewPipe's player request
+— the call that turns a video id into a stream URL — goes to
+`youtubei.googleapis.com`, which was not on this container's outbound
+allow-list, so `GET /media` answered `502 {"error":"resolve-failed"}` naming
+the refused host. Everything else the hub does reaches
+`www.youtube.com/youtubei/v1/`, which is why the crawl always worked and this
+did not. It is now one entry in `Http.HUB_HOSTS` and in guard 7's list in both
+gate scripts — named in full rather than as `googleapis.com`, which would have
+admitted every Google API there is. That list is still the whole statement of
+what this box on your network may dial, and widening it stays a decision
+somebody makes on purpose.
+
+**The ceiling: about 360p in a browser, HD in the app.** This serves the muxed
+progressive stream. HD on YouTube means separate video-only and audio-only
+tracks merged at playback, which ExoPlayer does and a plain `<video>` cannot
+without MSE or HLS. Nobody has built that here, so the honest number is 360p —
+and a video with no muxed stream at all is refused with a named reason
+(`no-muxed-stream`, `no-stream-length`, `age-restricted`, `resolve-failed`)
+rather than served as something that will not decode.
+
+**Three streams at once**, on threads of their own. A proxied stream holds its
+thread for as long as the browser reads, so on the small pool the rest of a
+listener answers on, two children watching would starve everything else it
+does. `/media` therefore has its own executor and a hard cap
+(`HubKidServer.MAX_CONCURRENT_STREAMS`); a fourth stream gets `503` with
+`Retry-After`, never a queue.
+
+**One reply carries 2 MB.** Not a throttle — a browser simply asks for the next
+span, which is how every segmented server works. It is there because
+`com.sun.net.httpserver` **does not close a fixed-length response that was
+under-written**: declare `Content-Length: 1000`, write 100 bytes, close the
+exchange, and the socket stays open until the client's own read timeout. On
+this route that would be exactly what a child sees when a parent blocks a video
+mid-play — a stopped video looking like a frozen one. Capping every reply means
+a reply is always finished, and the rules are re-asked between them.
+
+**What it costs this box.** Every byte a child watches crosses the NAS twice —
+in from Google, out to the tablet — so the uplink and the container's CPU are
+now in the playback path in a way they never were for a television. Measure
+before assuming: with the hub running,
+
+```
+curl -s -o /dev/null -w '%{speed_download} B/s  %{http_code}\n' \
+  -H 'Cookie: yk_kid=<from a claimed browser>' -H 'Range: bytes=0-2097151' \
+  http://<nas>:8766/media?v=<video id>
+```
+
+A 360p stream needs roughly 0.5–1 Mbit/s (60–125 kB/s) sustained.
+
+Measured on a development machine (not the NAS) against a 28.5 MB muxed
+stream, 2026-09-08: **10.1–11.3 MB/s per 2 MB span** and 10.2 MB/s for the
+whole file in one reply — 80 to 90 Mbit/s, roughly a hundred times what
+playback needs. With three streams in flight, `GET /health` still answered in
+under 3 ms and the admin page's `/api/state` in 26 ms. Repeat this on the NAS
+before trusting it there: that box has a slower processor and shares its uplink
+with everything else it does.
 
 ## Permissions — read this if the container restarts in a loop
 

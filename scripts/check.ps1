@@ -330,7 +330,7 @@ $hostLines = if ($hostsStart -ge 0) { $httpSrc[$hostsStart..([Math]::Min($hostsS
 $hosts = @($hostLines | Select-String -Pattern '"([a-z0-9.-]+)"' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value })
 if ($hosts.Count -eq 0) { Fail-Guard "Http.HUB_HOSTS is empty or unreadable; the hub's allow-list must name YouTube's hosts." }
 foreach ($h in $hosts) {
-    if ($h -notin @("youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "googleusercontent.com")) {
+    if ($h -notin @("youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "googleusercontent.com", "youtubei.googleapis.com")) {
         Fail-Guard "Http.HUB_HOSTS names $h, which is not one of YouTube's hosts. The hub reaches YouTube and nothing else."
     }
 }
@@ -1728,6 +1728,314 @@ if (-not (Test-Path $dismissTest) -or
     Fail-Guard "PlayerDismissTest is gone or no longer exercises PlayerDismiss. The gesture's numbers are only pinned while something reads them."
 }
 
+# 56. One implementation of the range arithmetic, and the browser's header
+#     stops at the hub.
+#     googlevideo serves a range=<start>-<end> QUERY parameter at link speed
+#     and throttles an RFC-7233 Range: HEADER on the same URL to roughly
+#     playback speed. The television learned that the expensive way - the
+#     measurements are in ChunkedStreamDataSource - and the hub's media proxy
+#     now makes the same translation on behalf of a browser, which can only
+#     ever emit the header and cannot be taught otherwise. Two copies of that
+#     arithmetic would not throw. They would drift, and the symptom is a video
+#     that stalls on one face and not the other, with nothing anywhere to say
+#     which of the two is wrong.
+#     (a) StreamChunker is declared once, in :crawl, where both callers reach it.
+$chunkerSrc = "crawl/src/main/kotlin/io/yosemitekids/app/data/StreamChunker.kt"
+if (-not (Test-Path $chunkerSrc)) {
+    Fail-Guard "$chunkerSrc is gone; guard 56 is blind. The shared range arithmetic lives there so :app and :hub run one copy of it."
+}
+$chunkerMain = @("app/src/main", "core/src/main", "crawl/src/main", "hub/src/main")
+$chunkerDecls = @(Get-ChildItem -Recurse -Filter *.kt $chunkerMain |
+    Where-Object { (Get-Content $_.FullName -Raw) -match 'object StreamChunker' } |
+    ForEach-Object { $_.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/") } | Sort-Object)
+if ($chunkerDecls.Count -ne 1 -or $chunkerDecls[0] -ne $chunkerSrc) {
+    Fail-Guard "guard 56 wanted exactly one 'object StreamChunker', in $chunkerSrc, and found: $(if ($chunkerDecls.Count) { $chunkerDecls -join ', ' } else { 'none' }). The television and the hub translate a position into a URL the same way or they do not; move it back and let both import it."
+}
+#     (b) Nothing else builds a range= query by hand.
+$chunkerCopy = @(Get-ChildItem -Recurse -Filter *.kt $chunkerMain |
+    ForEach-Object {
+        $cf = $_
+        $rel = $cf.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/")
+        if ($rel -eq $chunkerSrc) { return }
+        Get-Content $cf.FullName |
+            Select-String -Pattern '["?&]range=' |
+            ForEach-Object { "${rel}:$($_.LineNumber): $($_.Line.Trim())" }
+    })
+if ($chunkerCopy.Count -gt 0) {
+    Fail-Guard "a range= query is built outside ${chunkerSrc}: $($chunkerCopy -join '; ') — call StreamChunker.chunkUrl(). The rn numbering and the inclusive end are part of the form googlevideo serves fast, and a second spelling of them is the drift this guard exists for."
+}
+#     (c) The hub never forwards a Range HEADER upstream. Header in, query
+#         out: sending both asks one question in two languages, and the
+#         language that answers is the slow one. (:app's DownloadService does
+#         set one, deliberately and against a different concern, which is why
+#         this clause is scoped to the hub.)
+$chunkerFwd = @(Get-ChildItem -Recurse -Filter *.kt "hub/src/main" |
+    ForEach-Object {
+        $cf = $_
+        Get-Content $cf.FullName |
+            Select-String -Pattern '(addHeader|header)\("Range"' |
+            ForEach-Object { "$($cf.Name):$($_.LineNumber): $($_.Line.Trim())" }
+    })
+if ($chunkerFwd.Count -gt 0) {
+    Fail-Guard "the hub sets a Range request header: $($chunkerFwd -join '; ') — that is the throttled form. Translate the browser's header into StreamChunker.chunkUrl() and send the query instead."
+}
+#     (d) The arithmetic keeps its tests, beside the code and not beside the
+#         module it used to live in.
+if (-not (Test-Path "crawl/src/test/kotlin/io/yosemitekids/app/StreamChunkerTest.kt")) {
+    Fail-Guard "crawl/src/test/.../StreamChunkerTest.kt is gone. The range maths moved to :crawl and its coverage moves with it - :app's test task no longer runs it."
+}
+
+# 57. The kid's page and the parents' console are two ORIGINS, not two paths.
+#     This is the load-bearing decision of the whole web player, and the way
+#     it fails is by being quietly softened back into path-scoping by someone
+#     who reads two listeners as duplication. So, stated as a check:
+#
+#     If the kid's page lived at /kid/ on the console's origin, a script on it
+#     could fetch("/api/config", {method:"POST"}) and pass EVERY gate this hub
+#     has. sameOrigin() compares Origin's host to Host and they match. The
+#     parent's session cookie rides along, because cookie Path is matched
+#     against the REQUEST URI and not against the page that made the request.
+#     SameSite=Strict is satisfied, because it genuinely is the same site.
+#     HttpOnly is irrelevant, because the page never reads the cookie - it
+#     only sends it. On a shared family iPad with a parent signed in, that is
+#     a page a child opened rewriting the family's blocks, limits and AI
+#     settings, and minting itself bonus minutes through /api/grant.
+$hubSrv = "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt"
+$kidSrv = "hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt"
+if (-not (Test-Path $kidSrv)) {
+    Fail-Guard "$kidSrv is gone; guard 57 is blind. The kid's origin lives there, and it is a second listener rather than a path under the console's."
+}
+$kidText = Get-Content $kidSrv -Raw
+$hubText = Get-Content $hubSrv -Raw
+#     (a) The kid listener serves EXACTLY these ten paths. Not a floor: a
+#         route added here is a route somebody has to have thought about,
+#         because everything on this origin faces a child's browser.
+$kidRoutes = @(Get-Content $kidSrv |
+    Select-String -Pattern 'createContext\("(/[a-z/.-]*)"' -AllMatches |
+    ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } |
+    Sort-Object -Unique)
+if (($kidRoutes -join " ") -ne "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami") {
+    Fail-Guard "the kid origin serves [$($kidRoutes -join ' ')] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+}
+#     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
+#         path on both origins is a path where the argument above stops being
+#         true, one route at a time. "/" is each origin's own front door (the
+#         console for a parent, the kid page for a child) and the stylesheet
+#         carries no family data - guard 48 requires the console to keep
+#         serving it, and a page cannot be styled from an origin it may not
+#         read.
+foreach ($r in $kidRoutes) {
+    if ($r -eq "/" -or $r -eq "/kid-tokens.css") { continue }
+    if ($hubText.Contains("createContext(`"$r`")")) {
+        Fail-Guard "$r is registered on BOTH listeners. The console must not answer a kid route: /media on a parent's origin is a video served to whatever holds that session, and /claim there is a credential minted on the wrong side of the wall."
+    }
+}
+#     (c) Every kid route has a row in its own section of docs/LAN-API.md.
+#         Guard 30 does this for the console by reading HubServer; the kid's
+#         half is a separate table because the auth, the origin and the
+#         reasoning are all different.
+$kidDoc = @()
+$inKidDoc = $false
+foreach ($line in Get-Content docs/LAN-API.md) {
+    if ($line -match "^## The kid.s routes") { $inKidDoc = $true }
+    if ($inKidDoc -and $line.StartsWith("| ")) { $kidDoc += $line }
+}
+if ($kidDoc.Count -eq 0) {
+    Fail-Guard "docs/LAN-API.md has no `"## The kid's routes`" heading with a route table under it; guard 57 is blind."
+}
+foreach ($r in $kidRoutes) {
+    if (-not (@($kidDoc | Select-String -Pattern ("(GET|POST) " + $r + "[^a-z-]")).Count)) {
+        Fail-Guard "the kid origin serves $r and docs/LAN-API.md's kid section has no row for it. That table is the only place this origin's wire is written down."
+    }
+}
+#     (d) The port is wired the way YOSEMITE_KIDS_PORT is: the published port
+#         and the port the process reads come from ONE variable. Publishing
+#         one and listening on another gives a container that is running,
+#         healthy and unreachable - the health check passes because it runs
+#         inside the container.
+$compose = Get-Content "hub/docker-compose.yml" -Raw
+if (-not $compose.Contains('YOSEMITE_KIDS_KID_PORT:-8766}:${YOSEMITE_KIDS_KID_PORT:-8766}')) {
+    Fail-Guard "hub/docker-compose.yml does not publish the kid port through YOSEMITE_KIDS_KID_PORT on both sides of the ports line. The two halves read one variable or they drift."
+}
+if (-not $compose.Contains('YOSEMITE_KIDS_KID_PORT=${YOSEMITE_KIDS_KID_PORT:-8766}')) {
+    Fail-Guard "hub/docker-compose.yml publishes a kid port the container is never told about. The environment line reads the same variable as the ports line."
+}
+if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/Main.kt" -Raw).Contains("YOSEMITE_KIDS_KID_PORT")) {
+    Fail-Guard "Main.kt no longer reads YOSEMITE_KIDS_KID_PORT, so the compose file's variable moves nothing."
+}
+#     (e) One code alphabet. A device's enrolment code and a kid's claim code
+#         are both read off a screen and typed by hand, so both drop the
+#         vowels and the look-alikes - and a second string with "the
+#         confusable ones taken out" is how an O comes back into one of them.
+$alphabet = @(Get-ChildItem -Recurse -File hub/src/main |
+    Where-Object { (Get-Content $_.FullName -Raw).Contains("ABCDEFGHJKMNPQRSTUVWXYZ23456789") } |
+    ForEach-Object { $_.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/") } | Sort-Object)
+if ($alphabet.Count -ne 1 -or $alphabet[0] -ne "hub/src/main/kotlin/io/yosemitekids/hub/HubTokens.kt") {
+    Fail-Guard "the code alphabet is declared in [$(if ($alphabet.Count) { $alphabet -join ', ' } else { 'nothing' })]; it belongs once, in HubTokens.CODE_ALPHABET, where both code minters read it."
+}
+
+# 58. Neither origin ever tells a browser it may read the other.
+#     The second listener is only half the defence. The other half is that a
+#     cross-origin request which is NOT refused still cannot be read: with no
+#     CORS header the browser withholds the body from the calling page. One
+#     Access-Control-Allow-Origin added in good faith - to make some future
+#     fetch "work" - takes that down without failing a single test, and the
+#     symptom is nothing at all until somebody looks.
+#     Comment lines are skipped, so the KDoc in HubKidServer may go on saying
+#     which header it is that must never appear.
+$cors = @(Get-ChildItem -Recurse -File hub/src/main |
+    ForEach-Object {
+        $cf = $_
+        $rel = $cf.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/")
+        Get-Content $cf.FullName |
+            Select-String -Pattern "Access-Control-" -SimpleMatch |
+            Where-Object { $_.Line.Trim() -notmatch '^(//|\*|/\*|<!--)' } |
+            ForEach-Object { "${rel}:$($_.LineNumber): $($_.Line.Trim())" }
+    })
+if ($cors.Count -gt 0) {
+    Fail-Guard "the hub sets a CORS header: $($cors -join '; ') — the kid origin and the admin origin exist precisely so they cannot read each other. If something needs data across them, move the data, not the wall."
+}
+
+# 59. A child's wrong code cannot lock their parent out.
+#     With one shared counter, a six-year-old mistyping ten times locks the
+#     console for fifteen minutes, then thirty, then an hour - a throttle
+#     causing the exact failure it exists to prevent. HubRate was added for
+#     /enrol on the same argument; this is the second bucket, and the two must
+#     stay two objects.
+if (-not $kidText.Contains("HubRate(")) {
+    Fail-Guard "$kidSrv has no HubRate of its own. /claim is unauthenticated and must be throttled - in ITS OWN bucket, never on HubSessions' counter, which is what a parent signs in against."
+}
+#     Comment lines are skipped here too, so the KDoc may go on explaining
+#     which object it is that this file must never reach.
+$kidSessions = @(Get-Content $kidSrv |
+    Select-String -Pattern "HubSessions" -SimpleMatch |
+    Where-Object { $_.Line.Trim() -notmatch '^(//|\*|/\*)' } |
+    ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" })
+if ($kidSessions.Count -gt 0) {
+    Fail-Guard "$kidSrv names HubSessions: $($kidSessions -join '; ') — that object is the admin lockout and the admin session. A kid route that can reach it is a kid route that can lock a parent out, or worse, one a parent's cookie satisfies."
+}
+#     And the two credentials have different names as well as different
+#     origins, so "which cookie is this" is never a question of routing.
+$kidCookie = [regex]::Match($kidText, 'const val CLAIM_COOKIE = "([a-z_]+)"').Groups[1].Value
+$adminCookie = [regex]::Match($hubText, 'const val SESSION_COOKIE = "([a-z_]+)"').Groups[1].Value
+if (-not $kidCookie -or -not $adminCookie) {
+    Fail-Guard "guard 59 cannot read both cookie names (kid: '$kidCookie', admin: '$adminCookie'); it is blind."
+}
+if ($kidCookie -eq $adminCookie) {
+    Fail-Guard "the kid cookie and the admin session cookie are both $kidCookie. Two names, so neither server can be handed the other's credential by accident."
+}
+if ($kidText.Contains("`"$adminCookie`"")) {
+    Fail-Guard "$kidSrv reads `"$adminCookie`", the admin session cookie. A parent signed in at the console is a stranger on the kid origin, and must stay one."
+}
+if ($hubText.Contains("`"$kidCookie`"")) {
+    Fail-Guard "$hubSrv reads `"$kidCookie`", the kid's claim cookie. A kid credential must never satisfy an admin route."
+}
+
+# 60. A kid route fails closed, and the child it plays as comes from the
+#     credential.
+#     Two halves of one rule. Forgetting the gate in a new handler compiles,
+#     passes every other check here, and is invisible from outside unless
+#     someone thinks to call the route with no cookie - which is guard 29's
+#     lesson, one origin along. And reading the kid from the QUERY, as this
+#     route did while it was a placeholder on the admin origin, lets a child
+#     name their older sibling and watch on their bedtime, their budget and
+#     their block list.
+foreach ($fn in @("whoami", "media", "home", "channel", "search", "progress", "thumb")) {
+    $kidFn = [regex]::Match($kidText, "(?ms)^    private fun $fn\(ex: HttpExchange\).*?^    \}").Value
+    if (-not $kidFn) {
+        Fail-Guard "guard 60 cannot find $fn(ex: HttpExchange) in $kidSrv; it is blind."
+    }
+    if ($kidFn -notmatch "watching\(ex\)") {
+        Fail-Guard "$fn() in $kidSrv does not call watching(ex). Every kid route that says anything about the family resolves the claim cookie first and fails closed to the code prompt."
+    }
+}
+$kidQuery = @(Get-ChildItem -Recurse -Filter *.kt hub/src/main |
+    ForEach-Object {
+        $cf = $_
+        $rel = $cf.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/")
+        Get-Content $cf.FullName |
+            Select-String -Pattern 'kidIn\(|&\)?kid=' |
+            ForEach-Object { "${rel}:$($_.LineNumber): $($_.Line.Trim())" }
+    })
+if ($kidQuery.Count -gt 0) {
+    Fail-Guard "the kid is parsed out of a request: $($kidQuery -join '; ') — whose rules apply is a property of the credential, bound when the parent minted the claim code (HubBrowsers). A parameter naming the kid is a sibling's budget one URL edit away."
+}
+#     And every reply this listener makes carries the same three headers every
+#     hub reply does. Guard 41 counts them in HubServer; this is the same
+#     count for the origin a child's browser actually talks to.
+$kidSends = @(Get-Content $kidSrv | Select-String -Pattern "ex.sendResponseHeaders(" -SimpleMatch).Count
+$kidHeaded = @(Get-Content $kidSrv | Select-String -Pattern "securityHeaders(ex)" -SimpleMatch).Count
+if ($kidSends -lt 1) {
+    Fail-Guard "guard 60 found no ex.sendResponseHeaders( in $kidSrv; it is blind."
+}
+if ($kidSends -ne $kidHeaded) {
+    Fail-Guard "$kidSrv writes $kidSends responses and only $kidHeaded of them call securityHeaders(ex). Every reply on the kid origin carries X-Content-Type-Options, X-Frame-Options and Referrer-Policy - route the new one through respond(), or call securityHeaders(ex) before sending its headers."
+}
+
+
+# 61. The kid page draws; it does not decide.
+#     Everything a child sees is chosen by shared code - homeSections() and
+#     resolvePins() in :core, KidHome and SearchRank in :crawl, catalogueFor()
+#     in HubPolicy - and shipped to the page as an answer. A rule implemented
+#     in the page instead would be a rule with two implementations, and the
+#     one a child's browser runs is the one nobody can inspect: it does not
+#     throw, it does not log, and the symptom is a tablet showing a video the
+#     television hides.
+$kidPage = "hub/src/main/resources/web/kid.html"
+if (-not (Test-Path $kidPage)) {
+    Fail-Guard "$kidPage is gone; guard 61 is blind. The kid page is the one thing on that origin a child looks at."
+}
+$kidPageText = Get-Content $kidPage -Raw
+#     (a) No filter, no sort, no cap. These are the JavaScript spellings of a
+#         rule. A page that trims a shelf to what fits is a page that has
+#         started deciding what a child may see.
+$pageRules = @(Get-Content $kidPage | Select-String -Pattern '\.(filter|sort|slice|splice|reverse)\(')
+if ($pageRules.Count -gt 0) {
+    Fail-Guard "the kid page filters, sorts or caps something:
+$($pageRules -join "`n")
+Those belong in :core or :crawl, where the phone and the television read the same answer. The page renders what the hub hands it."
+}
+#     (b) No colour of its own. The two brand looks are generated from :core
+#         (guard 48) and the kid's own tinted ground arrives per-request from
+#         kidTinted(); a literal here would be the second palette this project
+#         has already had once, and it would agree with the first until
+#         somebody changed a colour.
+$pageColours = @(Get-Content $kidPage | Select-String -Pattern '#[0-9a-fA-F]{3}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{8}\b|rgba?\(|hsla?\(')
+if ($pageColours.Count -gt 0) {
+    Fail-Guard "the kid page names a colour:
+$($pageColours -join "`n")
+Every hue is a --yk-* custom property, from /kid-tokens.css or from /home's theme. Add the role to DesignTokens.kt if the page needs one it has not got."
+}
+#     (c) Every shelf the shared catalogue knows, the page can draw. A shelf
+#         added to HOME_SHELVES that this file has no branch for would simply
+#         not appear in a browser - no error, no test failure, and nobody
+#         looking at a tablet would know a row was missing.
+$kidHomeSrc = "hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt"
+if (-not (Test-Path $kidHomeSrc)) {
+    Fail-Guard "$kidHomeSrc is gone; guard 61 is blind."
+}
+$kidHomeText = Get-Content $kidHomeSrc -Raw
+$shelfDecls = @([regex]::Matches(
+    (Get-Content "core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt" -Raw),
+    'const val ([A-Z_]+) = "([a-z-]+)"'))
+if ($shelfDecls.Count -lt 1) {
+    Fail-Guard "guard 61 found no shelf ids in HomeSections.kt; it is blind."
+}
+foreach ($decl in $shelfDecls) {
+    $name = $decl.Groups[1].Value
+    $shelf = $decl.Groups[2].Value
+    #         The page is JavaScript and has no constant to import, so it is
+    #         held to the literal. The hub is Kotlin and must use the constant:
+    #         a bare "keep-watching" in Kotlin would satisfy a literal check and
+    #         still be the second spelling of an id whose whole KDoc is about
+    #         not having one.
+    if ($kidPageText -notmatch [regex]::Escape("`"$shelf`"")) {
+        Fail-Guard "HomeShelf names the shelf `"$shelf`" and the kid page has no branch for it, so a browser draws every shelf but that one - silently. Add it to renderHome(), or take it out of the shared catalogue."
+    }
+    if ($kidHomeText -notmatch [regex]::Escape("HomeShelf.$name")) {
+        Fail-Guard "HomeShelf.$name (`"$shelf`") is a shelf $kidHomeSrc never names, so the browser would draw it untitled. Give it a title in titleOf()."
+    }
+}
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 

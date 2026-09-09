@@ -134,8 +134,14 @@ class HubTokens(dataDir: File) {
          * No vowels and no look-alikes: someone is reading this off a TV across
          * a room and typing it on a phone. Removing O/0 and I/1/L costs four
          * characters of alphabet and saves every mistyped code.
+         *
+         * Internal rather than private because [HubBrowsers] mints the kid's
+         * claim code from it too, and a second string of characters "with the
+         * confusable ones taken out" would agree with this one right up until
+         * somebody added an O to one of them. Guard 57 fails the build if a
+         * second copy appears anywhere under `hub/src`.
          */
-        private const val ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+        internal const val CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
     }
 
     private fun read(): JSONObject = synchronized(lock) {
@@ -309,7 +315,7 @@ class HubTokens(dataDir: File) {
         // thing written to this file from a route a parent uses while a
         // device is enrolling.
         val code = (1..CODE_LENGTH)
-            .map { ALPHABET[rng.nextInt(ALPHABET.length)] }
+            .map { CODE_ALPHABET[rng.nextInt(CODE_ALPHABET.length)] }
             .joinToString("")
         val root = read()
         val pending = root.optJSONArray("pending") ?: JSONArray()

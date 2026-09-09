@@ -169,7 +169,18 @@ crawl/src/main/kotlin/io/yosemitekids/app/data/    network, disk, clock — plai
 hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container
 ├── Main.kt             Boot: data dir, arm the host allow-list, wire the store
 │                       to the nudge, print (or withhold) the admin token
-├── HubServer.kt        Every route — see docs/LAN-API.md, and guard 30
+├── HubServer.kt        The parents' origin: every console and device route —
+│                       see docs/LAN-API.md, and guard 30. It also builds and
+│                       starts HubKidServer beside itself
+├── HubKidServer.kt     The KID's origin — a second listener on a second port
+│                       (8766). Five paths, a 404 for everything else, and no
+│                       CORS header anywhere: on one origin a page a child
+│                       opened can spend a parent's session cookie against
+│                       /api/config, and every gate here would allow it.
+│                       Guards 57-60
+├── HubBrowsers.kt      browsers.json: the claim codes a parent mints and the
+│                       browsers that redeemed them. A credential that can do
+│                       nothing but play video, bound to one kid at mint time
 ├── HubStore.kt         config.json on the volume. Stamped writes, key stripped
 ├── HubSecrets.kt       secrets.json: the AI key, served to a parent, never merged
 ├── HubUsage.kt         usage.json: the watch ledger. Its own file and its own
@@ -188,6 +199,9 @@ hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container
 └── DataDir.kt
 hub/src/main/resources/web/index.html              the whole GUI: one file, no
                                                    build step, nothing from a CDN
+hub/src/main/resources/web/kid.html                the kid's page, on the other
+                                                   origin — a placeholder until
+                                                   the web player's step 4
 ```
 
 Other top-level directories:
@@ -368,6 +382,7 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Carry watch minutes between devices | `UsageLedger` in `:core` (the join: grow-only cells, per-cell `max`, no clock), `WatchLedgerStore` on a device, `HubUsage` on the hub, `GET\|POST /usage` on both faces |
 | Add a LAN route | `LanServer.handle` (bound every read!) + `LanClient` + `docs/LAN-API.md` (guard 14 checks the row is there) |
 | Add a route to the **hub** | `HubServer.start` + a `private fun <name>(ex)` beside the others + `docs/LAN-API.md`'s hub table (guard 30). If it is a route a device also answers, `authorised(ex)` first (guard 29) and take it off `DEVICE_ONLY` (guard 22). Answer through `respond()`; a route that writes its own headers must call `securityHeaders(ex)` itself, and guard 41 counts |
+| Add a route a **child's browser** calls | `HubKidServer.start` + a `private fun <name>(ex)` beside the others + a row in `docs/LAN-API.md`'s **kid** table + the path in guard 57(a)'s expected set. It must call `watching(ex)` and fail closed to the code prompt (guard 60), answer through `respond()` so it carries the security headers, and take the child from the credential — never from a query. It goes on the kid origin *only*: a path served by both listeners is the wall coming down one route at a time (guard 57) |
 | Bump the **hub's version** | `val hubVersion` in `hub/build.gradle.kts`, kept equal to the app's `versionName` by guard 39. It rides `GET /health`, `GET /status` and the admin page, and it is the only way to tell whether a container is old enough to drop config keys it does not model on the next save |
 | Change what the hub's page shows | `HubWeb.state` (what `GET /api/state` carries) then `hub/src/main/resources/web/index.html` — one file, no build step, nothing fetched from a CDN, because a NAS may have no outbound access. Pages are the `ROUTES` map (guard 11); a control drawn from the manifest needs no markup at all |
 | Change how the hub is signed in to | `HubPassword` (the KDF), `HubTokens.hasPassword`/`setPassword`/`verifyAdminSecret`, `HubSessions` (the escalating lockout), and the one `HubServer.adminGate()` every presentation of the secret goes through (guard 25) |

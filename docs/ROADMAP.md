@@ -210,11 +210,14 @@ Not built, and what this item is for:
 4. **Say what to do when it fails.** The search-index card shows a red dot;
    it should say "check for an extractor update" rather than leaving a
    parent guessing between a ban, an outage and a broken build.
-5. **Never route the hub through a VPN.** Worth writing into `HUB.md` as a
-   warning rather than leaving to instinct: `gluetun` is on this NAS, and
-   putting the hub behind it swaps a residential address, which is treated
-   leniently, for a data-centre one, which is treated far worse. This is the
-   single easiest way to make the problem real.
+5. **Never route the hub through a VPN — written down 2026-09-08**, in
+   `HUB.md` under "Never route the hub through a VPN". `gluetun` is on this
+   NAS and putting the hub behind it is a two-line change that looks like a
+   tidy-up, so the warning names it, says why a data-centre exit is treated
+   worse than a residential one, and says to look there first when
+   extraction breaks after a networking change. Nothing enforces it — the
+   hub cannot see its own egress path — so it stays a rule for whoever edits
+   the compose file.
 
 Named honestly: none of this changes the structural bet. If Google closes
 third-party extraction the app stops, and that was true the day this was
@@ -389,6 +392,89 @@ videos and some undated ones. Decide whether an undated video sorts last under
 "most recent" (recommended: it is honest) or is hidden from that ordering
 (it is not — hiding a video because we lack a date about it is worse than
 showing it late).
+
+### 2N. The web player — all four steps landed, 1.4.0
+
+A child can open a browser on the LAN, type a code a parent minted, and watch.
+`GET /media` proxies a video's bytes (step 1); the kid has an **origin of its
+own** on a second port, and a claim code trades for the cookie that gets in
+(steps 2–3); and the page itself is a home screen with the television's
+shelves, a channel page, search, and a player that resumes, counts minutes and
+says why when it will not play (step 4). See `docs/LAN-API.md` "The kid's
+routes" for the wire and the argument, and `docs/HUB.md` "Letting a browser
+watch" for what a parent does.
+
+**The anti-drift shape, because it is the part that has to survive.** Nothing
+about what a child sees is decided in the browser or in the hub. The shelf
+catalogue and order are `homeSections()` in `:core`; their contents are
+`KidHome` in `:crawl`, which `MainViewModel` now calls too, so the phone and
+the browser run one implementation and `SuggestionsTest` /
+`HistoryAndLayoutTest` still prove it is the phone's; the hero is
+`resolvePins()`; search order is `SearchRank`; what may be seen at all is
+`HubPolicy.catalogueFor`, which walks the same predicates `mayPlay` does — and
+`HubKidHomeTest.the browse filter is the play filter` asserts that equivalence
+video by video. The colours are `kidTinted()` in `:core`, which `Theme.kt` now
+calls as well, held to Compose byte for byte by `KidTokensParityTest`. Guard 61
+fails if the page grows a filter, a sort, a cap or a colour of its own.
+
+**Verified in a real browser, not only in tests**: the claim screen, the home
+with its shelves, a channel, search, and a video that played, resumed at the
+position the hub remembered, and credited a minute to the ledger — in all three
+looks (My colour, Dark, Light) at tablet and phone widths.
+
+**What step 4 changed elsewhere.** `HubWatchMeter.beat()` finally has a route:
+`POST /progress`, every 20 s while a video plays, which is *the* mechanism by
+which a browser's minutes reach a budget. `HubKidHistory` is new — the
+browser's device store, since a browser has no other place to remember where it
+got to, and every other face keeps its own watch history locally.
+
+**Still to do here, small and stated rather than left to be discovered.**
+
+- **The hub indexes videos, not channel avatars**, so a channel card wears its
+  newest video instead of the channel's picture. The app has the avatar because
+  it resolves the channel; the crawl throws it away. Worth carrying in
+  `ChannelIndex.SourceState` the next time that file is open.
+- **No favourites in the browser.** `SearchRank.Signals` takes them and the
+  page sends an empty set, so a hearted video does not yet rank higher there.
+  It waits on the same store the app-side favourite/subscribe work needs
+  (§2L).
+- **No "new since you looked" badge.** That is a per-device fact and this
+  device has no memory of previous visits yet; `pinMeta` therefore says "12
+  videos" rather than "3 new".
+
+**What step 1 measured**, kept because it is the reason to build the rest:
+9–11.6 MB/s (73–93 Mbit/s) through the proxy on a development machine, against
+the 0.06–0.125 MB/s a 360p stream needs, with the control plane answering in
+under 3 ms with three streams in flight.
+
+**Two things it found, both now dealt with.**
+
+1. **The allow-list had to grow by one host.** NewPipe's player request goes to
+   `youtubei.googleapis.com`, which was not one of `Http.HUB_HOSTS`, so
+   `GET /media` answered `502 {"error":"resolve-failed"}`. It is now named in
+   full — not `googleapis.com`, which would admit every Google API there is —
+   in `Http.HUB_HOSTS` and in guard 7's list in both gate scripts.
+2. **Muxed URLs often carry no `clen`.** Measured against a real itag-18 URL:
+   `ratebypass` and `dur` were there, `clen` was not. `HubStream` therefore
+   falls back to a `HEAD`, which answered `Content-Length` and
+   `Accept-Ranges: bytes`. Worth knowing on the app side too — the
+   television's `ChunkedStreamDataSource` gives up and reads progressively in
+   exactly this case, and nobody has measured what that costs.
+
+**The ceiling is about 360p** and will stay there until someone builds MSE or
+HLS: HD on YouTube is separate video and audio tracks merged at playback, which
+ExoPlayer does and a plain `<video>` cannot.
+
+**Known gaps, stated rather than left to be discovered.**
+
+- A browser that stops beating stops being credited, which is the right
+  direction — the meter counts time this hub has *seen* pass, and
+  `HubWatchMeter.MAX_GAP_MS` bounds what a closed lid can cost. It is still not
+  an enforcer: what stops a child mid-video is `/media` re-asking `HubPolicy`
+  on the next chunk, exactly as before.
+- The kid origin is plain HTTP on the LAN, like everything else here. A cookie
+  that lives six months is worth more than a session one, and the day this box
+  faces anything but a home network that is the first thing to change.
 
 ## 3. Known-wrong docs — cleared 2026-09-06
 

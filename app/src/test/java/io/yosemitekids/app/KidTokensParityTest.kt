@@ -15,6 +15,7 @@ import io.yosemitekids.app.ui.YosemiteDarkColors
 import io.yosemitekids.app.ui.YosemiteLightColors
 import io.yosemitekids.app.ui.YosemiteTypography
 import io.yosemitekids.app.ui.kidColorScheme
+import io.yosemitekids.app.ui.kidTinted
 import io.yosemitekids.app.ui.kidTokenRoles
 import io.yosemitekids.app.ui.kidTokensFor
 import kotlin.math.abs
@@ -136,6 +137,59 @@ class KidTokensParityTest {
                 worst.joinToString("\n") { "${it.first}: ${it.third}" },
             worst.isEmpty()
         )
+    }
+
+    @Test
+    fun `every role a kid's colour moves reaches the Compose scheme`() {
+        // kidColorScheme now *calls* kidTinted and converts the answer, so the
+        // blend itself cannot drift — but a role the conversion forgets to copy
+        // would silently keep the untinted value, which is a grey card on a
+        // pink page: it reads as a rendering bug rather than as a missing line.
+        //
+        // Dark only, because "My colour" tints the dark look whichever way the
+        // kid's theme switch is set — kidColorScheme's own base branch cannot
+        // reach Light when the theme is THEME_COLOR, and this test would pass
+        // vacuously if it pretended otherwise.
+        for (argb in PROFILE_COLORS) {
+            val drawn = kidColorScheme(Profile(id = "t", name = "T", colorArgb = argb), THEME_COLOR)
+            val expected = kidTinted(KID_DARK, argb.toInt())
+            val roles = listOf<Triple<String, Int, Color>>(
+                Triple("primary", expected.primary, drawn.primary),
+                Triple("on-primary", expected.onPrimary, drawn.onPrimary),
+                Triple("primary-container", expected.primaryContainer, drawn.primaryContainer),
+                Triple("on-primary-container", expected.onPrimaryContainer, drawn.onPrimaryContainer),
+                Triple("background", expected.background, drawn.background),
+                Triple("surface", expected.surface, drawn.surface),
+                Triple("surface-variant", expected.surfaceVariant, drawn.surfaceVariant),
+                Triple("surface-container-lowest", expected.surfaceContainerLowest, drawn.surfaceContainerLowest),
+                Triple("surface-container-low", expected.surfaceContainerLow, drawn.surfaceContainerLow),
+                Triple("surface-container", expected.surfaceContainer, drawn.surfaceContainer),
+                Triple("surface-container-high", expected.surfaceContainerHigh, drawn.surfaceContainerHigh),
+                Triple("surface-container-highest", expected.surfaceContainerHighest, drawn.surfaceContainerHighest),
+                Triple("outline", expected.outline, drawn.outline),
+                Triple("outline-variant", expected.outlineVariant, drawn.outlineVariant),
+                Triple("secondary-container", expected.secondaryContainer, drawn.secondaryContainer),
+                Triple("on-secondary-container", expected.onSecondaryContainer, drawn.onSecondaryContainer),
+                Triple("surface-tint", expected.surfaceTint, drawn.surfaceTint)
+            )
+            for ((name, core, compose) in roles) {
+                assertEquals("${hex(argb.toInt())} $name", hex(core), hex(compose.toArgb()))
+            }
+        }
+    }
+
+    @Test
+    fun `a tinted chip's label still clears 4 and a half to one`() {
+        // The reason legibleGround exists. Amber as a chip fill reached 3.39:1
+        // before the walk was doing this, and a kid may pick any colour at all.
+        for (argb in PROFILE_COLORS) {
+            val tinted = kidTinted(KID_DARK, argb.toInt())
+            val r = Argb.ratio(tinted.onSecondaryContainer, tinted.secondaryContainer)
+            assertTrue(
+                "chip label on ${hex(argb.toInt())} reaches only ${"%.2f".format(r)}:1",
+                r >= 4.5
+            )
+        }
     }
 
     // --- the tables ---------------------------------------------------------

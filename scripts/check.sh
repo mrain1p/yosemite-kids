@@ -305,7 +305,7 @@ hosts=$(grep -A3 "val HUB_HOSTS" crawl/src/main/kotlin/io/yosemitekids/app/data/
 [ -n "$hosts" ] || guard_fail "Http.HUB_HOSTS is empty or unreadable; the hub's allow-list must name YouTube's hosts."
 for h in $hosts; do
   case "$h" in
-    youtube.com|youtu.be|googlevideo.com|ytimg.com|ggpht.com|googleusercontent.com) ;;
+    youtube.com|youtu.be|googlevideo.com|ytimg.com|ggpht.com|googleusercontent.com|youtubei.googleapis.com) ;;
     *) guard_fail "Http.HUB_HOSTS names $h, which is not one of YouTube's hosts. The hub reaches YouTube and nothing else." ;;
   esac
 done
@@ -1469,6 +1469,247 @@ $gesture_android"
 grep -q "PlayerDismiss" app/src/test/java/io/yosemitekids/app/PlayerDismissTest.kt 2>/dev/null ||
   guard_fail "PlayerDismissTest is gone or no longer exercises PlayerDismiss. The gesture's numbers are only pinned while something reads them."
 
+# 56. One implementation of the range arithmetic, and the browser's header
+#     stops at the hub.
+#     googlevideo serves a range=<start>-<end> QUERY parameter at link speed
+#     and throttles an RFC-7233 Range: HEADER on the same URL to roughly
+#     playback speed. The television learned that the expensive way - the
+#     measurements are in ChunkedStreamDataSource - and the hub's media proxy
+#     now makes the same translation on behalf of a browser, which can only
+#     ever emit the header and cannot be taught otherwise. Two copies of that
+#     arithmetic would not throw. They would drift, and the symptom is a video
+#     that stalls on one face and not the other, with nothing anywhere to say
+#     which of the two is wrong.
+#     (a) StreamChunker is declared once, in :crawl, where both callers reach it.
+chunker=crawl/src/main/kotlin/io/yosemitekids/app/data/StreamChunker.kt
+[ -f "$chunker" ] ||
+  guard_fail "$chunker is gone; guard 56 is blind. The shared range arithmetic lives there so :app and :hub run one copy of it."
+chunker_decls=$(grep -rl "object StreamChunker" --include=*.kt app/src/main core/src/main crawl/src/main hub/src/main | sort | tr "\n" " " || true)
+[ "$chunker_decls" = "$chunker " ] ||
+  guard_fail "guard 56 wanted exactly one 'object StreamChunker', in $chunker, and found: ${chunker_decls:-none}. The television and the hub translate a position into a URL the same way or they do not; move it back and let both import it."
+#     (b) Nothing else builds a range= query by hand.
+chunker_copy=$(grep -rnE "[\"?&]range=" --include=*.kt app/src/main core/src/main crawl/src/main hub/src/main | grep -v "^$chunker:" || true)
+[ -z "$chunker_copy" ] ||
+  guard_fail "a range= query is built outside $chunker:
+$chunker_copy
+Call StreamChunker.chunkUrl(). The rn numbering and the inclusive end are part of the form googlevideo serves fast, and a second spelling of them is the drift this guard exists for."
+#     (c) The hub never forwards a Range HEADER upstream. Header in, query
+#         out: sending both asks one question in two languages, and the
+#         language that answers is the slow one. (:app's DownloadService does
+#         set one, deliberately and against a different concern, which is why
+#         this clause is scoped to the hub.)
+chunker_fwd=$(grep -rnE "(addHeader|header)\(\"Range\"" --include=*.kt hub/src/main || true)
+[ -z "$chunker_fwd" ] ||
+  guard_fail "the hub sets a Range request header:
+$chunker_fwd
+That is the throttled form. Translate the browser's header into StreamChunker.chunkUrl() and send the query instead."
+#     (d) The arithmetic keeps its tests, beside the code and not beside the
+#         module it used to live in.
+[ -f crawl/src/test/kotlin/io/yosemitekids/app/StreamChunkerTest.kt ] ||
+  guard_fail "crawl/src/test/.../StreamChunkerTest.kt is gone. The range maths moved to :crawl and its coverage moves with it - :app's test task no longer runs it."
+
+# 57. The kid's page and the parents' console are two ORIGINS, not two paths.
+#     This is the load-bearing decision of the whole web player, and the way
+#     it fails is by being quietly softened back into path-scoping by someone
+#     who reads two listeners as duplication. So, stated as a check:
+#
+#     If the kid's page lived at /kid/ on the console's origin, a script on it
+#     could fetch("/api/config", {method:"POST"}) and pass EVERY gate this hub
+#     has. sameOrigin() compares Origin's host to Host and they match. The
+#     parent's session cookie rides along, because cookie Path is matched
+#     against the REQUEST URI and not against the page that made the request.
+#     SameSite=Strict is satisfied, because it genuinely is the same site.
+#     HttpOnly is irrelevant, because the page never reads the cookie - it
+#     only sends it. On a shared family iPad with a parent signed in, that is
+#     a page a child opened rewriting the family's blocks, limits and AI
+#     settings, and minting itself bonus minutes through /api/grant.
+hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
+kidsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
+[ -f "$kidsrv" ] ||
+  guard_fail "$kidsrv is gone; guard 57 is blind. The kid's origin lives there, and it is a second listener rather than a path under the console's."
+#     (a) The kid listener serves EXACTLY these ten paths. Not a floor: a
+#         route added here is a route somebody has to have thought about,
+#         because everything on this origin faces a child's browser.
+kid_routes=$(grep -oE "createContext\(${q}/[a-z/.-]*${q}" "$kidsrv" | grep -oE "/[a-z/.-]*" | sort -u | tr "\n" " " || true)
+[ "$kid_routes" = "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami " ] ||
+  guard_fail "the kid origin serves [$kid_routes] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami ]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+#     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
+#         path on both origins is a path where the argument above stops being
+#         true, one route at a time. "/" is each origin's own front door (the
+#         console for a parent, the kid page for a child) and the stylesheet
+#         carries no family data - guard 48 requires the console to keep
+#         serving it, and a page cannot be styled from an origin it may not
+#         read.
+for r in $kid_routes; do
+  case "$r" in /|/kid-tokens.css) continue ;; esac
+  if grep -qF "createContext(${q}$r${q})" "$hubsrv"; then
+    guard_fail "$r is registered on BOTH listeners. The console must not answer a kid route: /media on a parent's origin is a video served to whatever holds that session, and /claim there is a credential minted on the wrong side of the wall."
+  fi
+done
+#     (c) Every kid route has a row in its own section of docs/LAN-API.md.
+#         Guard 30 does this for the console by reading HubServer; the kid's
+#         half is a separate table because the auth, the origin and the
+#         reasoning are all different.
+kiddoc=$(awk "/^## The kid.s routes/ { f = 1 } f && /^[|] / { print }" docs/LAN-API.md)
+[ -n "$kiddoc" ] ||
+  guard_fail "docs/LAN-API.md has no \"## The kid's routes\" heading with a route table under it; guard 57 is blind."
+for r in $kid_routes; do
+  printf "%s" "$kiddoc" | grep -qE "(GET|POST) $r[^a-z-]" ||
+    guard_fail "the kid origin serves $r and docs/LAN-API.md's kid section has no row for it. That table is the only place this origin's wire is written down."
+done
+#     (d) The port is wired the way YOSEMITE_KIDS_PORT is: the published port
+#         and the port the process reads come from ONE variable. Publishing
+#         one and listening on another gives a container that is running,
+#         healthy and unreachable - the health check passes because it runs
+#         inside the container.
+grep -q 'YOSEMITE_KIDS_KID_PORT:-8766}:${YOSEMITE_KIDS_KID_PORT:-8766}' hub/docker-compose.yml ||
+  guard_fail "hub/docker-compose.yml does not publish the kid port through YOSEMITE_KIDS_KID_PORT on both sides of the ports line. The two halves read one variable or they drift."
+grep -q 'YOSEMITE_KIDS_KID_PORT=${YOSEMITE_KIDS_KID_PORT:-8766}' hub/docker-compose.yml ||
+  guard_fail "hub/docker-compose.yml publishes a kid port the container is never told about. The environment line reads the same variable as the ports line."
+grep -q "YOSEMITE_KIDS_KID_PORT" hub/src/main/kotlin/io/yosemitekids/hub/Main.kt ||
+  guard_fail "Main.kt no longer reads YOSEMITE_KIDS_KID_PORT, so the compose file's variable moves nothing."
+#     (e) One code alphabet. A device's enrolment code and a kid's claim code
+#         are both read off a screen and typed by hand, so both drop the
+#         vowels and the look-alikes - and a second string with "the
+#         confusable ones taken out" is how an O comes back into one of them.
+alphabet=$(grep -rl "ABCDEFGHJKMNPQRSTUVWXYZ23456789" hub/src/main | sort | tr "\n" " " || true)
+[ "$alphabet" = "hub/src/main/kotlin/io/yosemitekids/hub/HubTokens.kt " ] ||
+  guard_fail "the code alphabet is declared in [$alphabet]; it belongs once, in HubTokens.CODE_ALPHABET, where both code minters read it."
+
+# 58. Neither origin ever tells a browser it may read the other.
+#     The second listener is only half the defence. The other half is that a
+#     cross-origin request which is NOT refused still cannot be read: with no
+#     CORS header the browser withholds the body from the calling page. One
+#     Access-Control-Allow-Origin added in good faith - to make some future
+#     fetch "work" - takes that down without failing a single test, and the
+#     symptom is nothing at all until somebody looks.
+#     Comment lines are skipped, so the KDoc in HubKidServer may go on saying
+#     which header it is that must never appear.
+cors=$(grep -rn "Access-Control-" hub/src/main | grep -vE ":[0-9]+:[[:space:]]*(//|\*|/\*|<!--)" || true)
+[ -z "$cors" ] ||
+  guard_fail "the hub sets a CORS header:
+$cors
+The kid origin and the admin origin exist precisely so they cannot read each other. If something needs data across them, move the data, not the wall."
+
+# 59. A child's wrong code cannot lock their parent out.
+#     With one shared counter, a six-year-old mistyping ten times locks the
+#     console for fifteen minutes, then thirty, then an hour - a throttle
+#     causing the exact failure it exists to prevent. HubRate was added for
+#     /enrol on the same argument; this is the second bucket, and the two must
+#     stay two objects.
+grep -q "HubRate(" "$kidsrv" ||
+  guard_fail "$kidsrv has no HubRate of its own. /claim is unauthenticated and must be throttled - in ITS OWN bucket, never on HubSessions' counter, which is what a parent signs in against."
+#     Comment lines are skipped here too, so the KDoc may go on explaining
+#     which object it is that this file must never reach.
+kid_sessions=$(grep -n "HubSessions" "$kidsrv" | grep -vE "^[0-9]+:[[:space:]]*(//|\*|/\*)" || true)
+[ -z "$kid_sessions" ] ||
+  guard_fail "$kidsrv names HubSessions:
+$kid_sessions
+That object is the admin lockout and the admin session. A kid route that can reach it is a kid route that can lock a parent out - or worse, one a parent's cookie satisfies."
+#     And the two credentials have different names as well as different
+#     origins, so "which cookie is this" is never a question of routing.
+kid_cookie=$(grep -oE "const val CLAIM_COOKIE = ${q}[a-z_]+${q}" "$kidsrv" | grep -oE "${q}[a-z_]+${q}" || true)
+admin_cookie=$(grep -oE "const val SESSION_COOKIE = ${q}[a-z_]+${q}" "$hubsrv" | grep -oE "${q}[a-z_]+${q}" || true)
+{ [ -n "$kid_cookie" ] && [ -n "$admin_cookie" ]; } ||
+  guard_fail "guard 59 cannot read both cookie names (kid: ${kid_cookie:-none}, admin: ${admin_cookie:-none}); it is blind."
+[ "$kid_cookie" != "$admin_cookie" ] ||
+  guard_fail "the kid cookie and the admin session cookie are both $kid_cookie. Two names, so neither server can be handed the other's credential by accident."
+if grep -qF "$admin_cookie" "$kidsrv"; then
+  guard_fail "$kidsrv reads $admin_cookie, the admin session cookie. A parent signed in at the console is a stranger on the kid origin, and must stay one."
+fi
+if grep -qF "$kid_cookie" "$hubsrv"; then
+  guard_fail "$hubsrv reads $kid_cookie, the kid's claim cookie. A kid credential must never satisfy an admin route."
+fi
+
+# 60. A kid route fails closed, and the child it plays as comes from the
+#     credential.
+#     Two halves of one rule. Forgetting the gate in a new handler compiles,
+#     passes every other check here, and is invisible from outside unless
+#     someone thinks to call the route with no cookie - which is guard 29's
+#     lesson, one origin along. And reading the kid from the QUERY, as this
+#     route did while it was a placeholder on the admin origin, lets a child
+#     name their older sibling and watch on their bedtime, their budget and
+#     their block list.
+for fn in whoami media home channel search progress thumb; do
+  body=$(awk -v f="    private fun $fn(ex: HttpExchange)" 'index($0, f) == 1 { inside = 1 } inside { print; if (inside && /^    }$/) exit }' "$kidsrv")
+  [ -n "$body" ] ||
+    guard_fail "guard 60 cannot find $fn(ex: HttpExchange) in $kidsrv; it is blind."
+  printf "%s" "$body" | grep -q "watching(ex)" ||
+    guard_fail "$fn() in $kidsrv does not call watching(ex). Every kid route that says anything about the family resolves the claim cookie first and fails closed to the code prompt."
+done
+kid_from_query=$(grep -rnE "kidIn\(|&\)?kid=" hub/src/main --include=*.kt || true)
+[ -z "$kid_from_query" ] ||
+  guard_fail "the kid is parsed out of a request:
+$kid_from_query
+Whose rules apply is a property of the credential, bound when the parent minted the claim code (HubBrowsers). A parameter naming the kid is a sibling's budget one URL edit away."
+#     And every reply this listener makes carries the same three headers every
+#     hub reply does. Guard 41 counts them in HubServer; this is the same
+#     count for the origin a child's browser actually talks to.
+kid_sends=$(grep -cF "ex.sendResponseHeaders(" "$kidsrv" || true)
+kid_headed=$(grep -cF "securityHeaders(ex)" "$kidsrv" || true)
+[ "$kid_sends" -ge 1 ] ||
+  guard_fail "guard 60 found no ex.sendResponseHeaders( in $kidsrv; it is blind."
+[ "$kid_sends" = "$kid_headed" ] ||
+  guard_fail "$kidsrv writes $kid_sends responses and only $kid_headed of them call securityHeaders(ex). Every reply on the kid origin carries X-Content-Type-Options, X-Frame-Options and Referrer-Policy - route the new one through respond(), or call securityHeaders(ex) before sending its headers."
+
+
+# 61. The kid page draws; it does not decide.
+#     Everything a child sees is chosen by shared code - homeSections() and
+#     resolvePins() in :core, KidHome and SearchRank in :crawl, catalogueFor()
+#     in HubPolicy - and shipped to the page as an answer. A rule implemented
+#     in the page instead would be a rule with two implementations, and the
+#     one a child's browser runs is the one nobody can inspect: it does not
+#     throw, it does not log, and the symptom is a tablet showing a video the
+#     television hides.
+kidpage=hub/src/main/resources/web/kid.html
+[ -f "$kidpage" ] ||
+  guard_fail "$kidpage is gone; guard 61 is blind. The kid page is the one thing on that origin a child looks at."
+#     (a) No filter, no sort, no cap. These are the JavaScript spellings of a
+#         rule. A page that trims a shelf to what fits is a page that has
+#         started deciding what a child may see.
+page_rules=$(grep -nE "\.(filter|sort|slice|splice|reverse)\(" "$kidpage" || true)
+[ -z "$page_rules" ] ||
+  guard_fail "the kid page filters, sorts or caps something:
+$page_rules
+Those belong in :core or :crawl, where the phone and the television read the same answer. The page renders what the hub hands it."
+#     (b) No colour of its own. The two brand looks are generated from :core
+#         (guard 48) and the kid's own tinted ground arrives per-request from
+#         kidTinted(); a literal here would be the second palette this project
+#         has already had once, and it would agree with the first until
+#         somebody changed a colour.
+page_colours=$(grep -nE "#[0-9a-fA-F]{3}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{8}\b|rgba?\(|hsla?\(" "$kidpage" || true)
+[ -z "$page_colours" ] ||
+  guard_fail "the kid page names a colour:
+$page_colours
+Every hue is a --yk-* custom property, from /kid-tokens.css or from /home's theme. Add the role to DesignTokens.kt if the page needs one it has not got."
+#     (c) Every shelf the shared catalogue knows, the page can draw. A shelf
+#         added to HOME_SHELVES that this file has no branch for would simply
+#         not appear in a browser - no error, no test failure, and nobody
+#         looking at a tablet would know a row was missing.
+shelves=hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt
+[ -f "$shelves" ] ||
+  guard_fail "$shelves is gone; guard 61 is blind."
+#         NAME:id pairs, and a `for` rather than a `while read` on a pipe: a
+#         pipeline's loop body runs in a subshell, where guard_fail's exit ends
+#         the subshell and the gate carries on green. That is the shape of the
+#         bug in "bash gate died on its own success", read the other way round.
+shelf_decls=$(grep -oE "const val [A-Z_]+ = \"[a-z-]+\"" core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt || true)
+shelf_pairs=$(printf "%s\n" "$shelf_decls" | sed -E "s/const val ([A-Z_]+) = \"([a-z-]+)\"/\1:\2/")
+[ -n "$shelf_pairs" ] ||
+  guard_fail "guard 61 found no shelf ids in HomeSections.kt; it is blind."
+for pair in $shelf_pairs; do
+  name=${pair%%:*}
+  shelf=${pair#*:}
+  #         The page is JavaScript and has no constant to import, so it is held
+  #         to the literal. The hub is Kotlin and must use the constant: a bare
+  #         "keep-watching" in Kotlin would satisfy a literal check and still be
+  #         the second spelling of an id whose whole KDoc is about not having
+  #         one.
+  grep -qF "\"$shelf\"" "$kidpage" ||
+    guard_fail "HomeShelf names the shelf \"$shelf\" and the kid page has no branch for it, so a browser draws every shelf but that one - silently. Add it to renderHome(), or take it out of the shared catalogue."
+  grep -qF "HomeShelf.$name" "$shelves" ||
+    guard_fail "HomeShelf.$name (\"$shelf\") is a shelf $shelves never names, so the browser would draw it untitled. Give it a title in titleOf()."
+done
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

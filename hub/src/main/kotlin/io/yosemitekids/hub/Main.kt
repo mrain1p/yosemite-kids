@@ -9,15 +9,24 @@ import kotlin.system.exitProcess
  * Everything it needs comes from the environment, because a compose file is
  * the only configuration surface a NAS user should have to touch:
  *
- *   YOSEMITE_KIDS_DATA  where config.json and devices.json live (default /data)
- *   YOSEMITE_KIDS_PORT  the port to listen on            (default 8765)
+ *   YOSEMITE_KIDS_DATA      where config.json and devices.json live (default /data)
+ *   YOSEMITE_KIDS_PORT      the port to listen on                   (default 8765)
+ *   YOSEMITE_KIDS_KID_PORT  the port a child's browser watches on   (default 8766)
  *
  * 8765 matches the range the app's own LAN server uses, so the number a parent
  * sees here is the number they already half-recognise.
+ *
+ * The kid's port is a **second origin**, not a second path, and that is a
+ * security boundary rather than a layout choice — see [HubKidServer] for what
+ * a page on the admin origin can do with a parent's session cookie. One
+ * consequence a NAS user meets: both ports have to be published, and
+ * `docker-compose.yml` publishes each through the same variable the process
+ * reads, so neither pair can drift.
  */
 fun main() {
     val dataDir = File(System.getenv("YOSEMITE_KIDS_DATA") ?: "/data")
     val port = System.getenv("YOSEMITE_KIDS_PORT")?.toIntOrNull() ?: 8765
+    val kidPort = System.getenv("YOSEMITE_KIDS_KID_PORT")?.toIntOrNull() ?: HubKidServer.DEFAULT_PORT
 
     // Before anything opens a file. An unwritable volume is the single most
     // likely way this container fails on a new machine, and discovering it
@@ -60,10 +69,18 @@ fun main() {
     // serves whatever it has and leaves the crawl to the phone.
     val crawl = HubCrawl.real(store, index, tokens.selfToken())
     val master = HubMaster(store, tokens, probe = HubCrawl::probeYouTube)
-    val server = HubServer(store, tokens, port, envAdmin, index = index, master = master, crawl = crawl)
+    val server = HubServer(
+        store, tokens, port, envAdmin, index = index, master = master, crawl = crawl,
+        kidPort = kidPort
+    )
 
     val bound = server.start()
     println("Yosemite Kids hub listening on $bound, data in ${dataDir.absolutePath}")
+    // Said separately, because it is a separate origin and a parent has to
+    // know which address to type on a tablet. It is also the number that has
+    // to be published in compose: an unpublished kid port is a hub that looks
+    // healthy while every child's page fails to load.
+    println("Kids watch on ${server.kidPort()} — a second origin, deliberately not a path on $bound")
     master.start()
     crawl.start()
     println("Devices enrolled: ${tokens.devices().size}")

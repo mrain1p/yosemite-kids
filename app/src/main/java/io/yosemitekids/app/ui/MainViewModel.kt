@@ -17,14 +17,14 @@ import kotlinx.coroutines.withContext
 private const val SEARCH_SCREEN_BATCH = 50
 
 /** Home feed: this many newest per channel, interleaved, capped overall. */
-private const val FEED_PER_CHANNEL = 12
-private const val FEED_MAX = 80
+private const val FEED_PER_CHANNEL = KidHome.FEED_PER_CHANNEL
+private const val FEED_MAX = KidHome.FEED_MAX
 /** History shelf: the most recent this many watches. */
 private const val HISTORY_MAX = 120
-/** The TV home row is a glance, not the shelf. */
-private const val HISTORY_ROW_MAX = 12
+/** The TV home row is a glance, not the shelf. Shared, so the browser's is the same glance. */
+private const val HISTORY_ROW_MAX = KidHome.HISTORY_ROW_MAX
 /** "More like what you watch" is one row, not a second feed. */
-private const val SUGGEST_ROW_MAX = 12
+private const val SUGGEST_ROW_MAX = KidHome.SUGGEST_ROW_MAX
 /** Playlists shown in a channel page row. */
 private const val PLAYLIST_ROW_MAX = 30
 /** Videos per row on the You tab and per parent-picked playlist row. */
@@ -604,20 +604,21 @@ class MainViewModel(
         )
     }
 
-    /** Partially-watched, unblocked videos across all sources, most recent first. */
+    /**
+     * Partially-watched, unblocked videos across all sources, most recent
+     * first — the rule is [KidHome.keepWatching], shared with the browser.
+     *
+     * The three visibility filters stay here rather than moving with it: they
+     * need the block list, the screener and the parent's minimum length, none
+     * of which a pure rules module may hold. Cache reads — call off-main.
+     */
     private fun keepWatchingRow(): List<VideoItem> =
-        sources.flatMap { videoCache.load(it.id) }
-            .distinctBy { it.url }
-            .filter { it.videoId !in blockedVideoIds && !tooShort(it) }
-            .filter { screener?.isVisible(it) != false }
-            .mapNotNull { video ->
-                history.progress(video.url)
-                    ?.takeIf { !it.isFinished && it.fraction > 0.02f }
-                    ?.let { VideoItem(video, it.fraction) to it.lastWatchedAt }
-            }
-            .sortedByDescending { it.second }
-            .take(10)
-            .map { it.first }
+        KidHome.keepWatching(
+            known = sources.flatMap { videoCache.load(it.id) }
+                .filter { it.videoId !in blockedVideoIds && !tooShort(it) }
+                .filter { screener?.isVisible(it) != false },
+            point = { url -> history.progress(url)?.watchPoint() }
+        ) { video, fraction -> VideoItem(video, fraction) }
 
     /**
      * The TV home's "Watched lately" row: the last dozen videos this kid played,
