@@ -125,7 +125,7 @@ class HubKidHome(
         // --- the shelves ------------------------------------------------
         out.put(
             "keepWatching",
-            videosJson(KidHome.keepWatching(videos, { watched[it] }) { v, f -> v to f })
+            videosJson(KidHome.keepWatching(videos, { watched[it] }) { v, f -> v to f }, watched)
         )
 
         out.put(
@@ -140,7 +140,8 @@ class HubKidHome(
                     .mapNotNull { v ->
                         val point = watched[v.url]
                         if (point?.isFinished == true) null else v to (point?.fraction ?: 0f)
-                    }
+                    },
+                watched
             )
         )
 
@@ -156,14 +157,16 @@ class HubKidHome(
                     channelAffinity = recent.mapNotNull { byUrl[it.key]?.channelName }
                         .groupingBy { it }.eachCount(),
                     limit = KidHome.SUGGEST_ROW_MAX
-                ).map { it to 0f }
+                ).map { it to 0f },
+                watched
             )
         )
 
         out.put(
             "history",
             videosJson(
-                KidHome.history(watched, videos, KidHome.HISTORY_ROW_MAX) { v, f -> v to f }
+                KidHome.history(watched, videos, KidHome.HISTORY_ROW_MAX) { v, f -> v to f },
+                watched
             )
         )
         return out
@@ -179,7 +182,7 @@ class HubKidHome(
             .put("count", source.videos.size)
             .put(
                 "videos",
-                videosJson(source.videos.map { it.toVideo() }.map { it to (watched[it.url]?.fraction ?: 0f) })
+                videosJson(source.videos.map { it.toVideo() }.map { it to (watched[it.url]?.fraction ?: 0f) }, watched)
             )
     }
 
@@ -209,7 +212,7 @@ class HubKidHome(
         }
         return JSONObject()
             .put("query", query)
-            .put("videos", videosJson(ranked.map { it to (watched[it.url]?.fraction ?: 0f) }))
+            .put("videos", videosJson(ranked.map { it to (watched[it.url]?.fraction ?: 0f) }, watched))
     }
 
     // --- shape ----------------------------------------------------------
@@ -219,9 +222,19 @@ class HubKidHome(
             ?: source.videos.firstOrNull()?.channelName
             ?: source.entry.url
 
-    private fun videosJson(items: List<Pair<Video, Float>>): JSONArray {
+    /**
+     * One row on a shelf, as the page needs it.
+     *
+     * [finished] and [resumeMs] are carried rather than derived in the browser,
+     * and that is the point: "past 98% counts as done" and "start from where
+     * they were" are rules, and the page is not allowed to hold one
+     * ([KidHome.FINISHED_FRACTION], guard 61). It used to spell 0.98 and 0.02
+     * itself, which made it the eighth and ninth copy of a threshold.
+     */
+    private fun videosJson(items: List<Pair<Video, Float>>, watched: Map<String, KidHome.WatchPoint>): JSONArray {
         val arr = JSONArray()
         for ((video, progress) in items) {
+            val point = watched[video.url]
             arr.put(
                 JSONObject()
                     .put("id", video.videoId.orEmpty())
@@ -230,6 +243,15 @@ class HubKidHome(
                     .put("thumb", video.thumbnailUrl.orEmpty())
                     .put("seconds", video.durationSeconds)
                     .put("progress", progress)
+                    .put("finished", point?.isFinished ?: false)
+                    // Where to start. Zero for a video never watched, and zero
+                    // for a finished one — starting a finished video four
+                    // seconds from its end is the resume nobody wants.
+                    .put(
+                        "resumeMs",
+                        if (point == null || point.isFinished) 0L
+                        else (point.fraction.toDouble() * video.durationSeconds * 1000).toLong()
+                    )
             )
         }
         return arr

@@ -152,40 +152,53 @@
   }
   .rail {
     display: flex;
-    gap: 12px;
+    gap: var(--yk-rail-gap);
     overflow-x: auto;
-    padding: 2px 16px 6px;
+    padding: 2px var(--yk-page-gutter) 6px;
     scroll-snap-type: x proximity;
     -webkit-overflow-scrolling: touch;
   }
   .rail > * { scroll-snap-align: start; flex: 0 0 auto; }
+  /* The vertical gap is deliberately half the horizontal one, as it is in the
+     app's grid: cards carry their titles underneath, so the space between rows
+     already reads as larger than the number. */
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 14px;
-    padding: 0 16px;
+    grid-template-columns: repeat(auto-fill, minmax(var(--yk-grid-min-width), 1fr));
+    column-gap: var(--yk-grid-gap-x);
+    row-gap: var(--yk-grid-gap-y);
+    padding: 0 var(--yk-page-gutter);
   }
 
   /* --- cards --------------------------------------------------------- */
 
+  /* No background, and that is the app's shape rather than an omission:
+     VideoCard draws a bare poster on the page ground with its title beneath.
+     A filled card here was the single most visible way the two faces differed,
+     and every guard passed because both were using legal tokens. */
   .card {
     display: block;
     width: 100%;
-    padding: 0;
+    padding: 0 0 var(--yk-card-bottom-pad);
     text-align: left;
-    border-radius: 16px;
-    background: var(--yk-surface-container-highest);
-    overflow: hidden;
+    background: none;
+    border-radius: var(--yk-card-radius);
   }
-  .rail .card { width: 200px; }
+  .rail .card { width: var(--yk-rail-card-width); }
   .card .poster {
     position: relative;
     aspect-ratio: 16 / 9;
+    border-radius: var(--yk-poster-radius);
+    overflow: hidden;
     background: var(--yk-surface-container-lowest);
   }
   .card .poster img { width: 100%; height: 100%; object-fit: cover; }
+  /* Finished: dimmed, never removed - kids rewatch. The exception is the app's
+     too: a focused card comes back to full, which on a pointer device is hover. */
+  .card.watched { opacity: var(--yk-watched-dim); }
+  .card.watched:hover, .card.watched:focus-within { opacity: 1; }
   .card .label {
-    padding: 8px 10px 10px;
+    padding: var(--yk-meta-top) var(--yk-meta-side) 0;
     font-size: var(--yk-font-body-medium-size);
     line-height: var(--yk-font-body-medium-line);
   }
@@ -198,35 +211,46 @@
   }
   .card .sub {
     display: block;
-    margin-top: 2px;
+    margin-top: var(--yk-sub-gap);
     color: var(--yk-on-surface-variant);
     font-size: var(--yk-font-label-medium-size);
     line-height: var(--yk-font-label-medium-line);
   }
   .badge {
-    position: absolute; right: 6px; bottom: 6px;
-    padding: 2px 6px;
-    border-radius: 6px;
+    position: absolute;
+    right: var(--yk-badge-inset); bottom: var(--yk-badge-inset);
+    padding: var(--yk-badge-pad-y) var(--yk-badge-pad-x);
+    border-radius: var(--yk-badge-radius);
     background: var(--yk-artwork-scrim);
     color: var(--yk-on-artwork);
     font-size: var(--yk-font-label-small-size);
     line-height: var(--yk-font-label-small-line);
+    font-weight: 700;
   }
+  /* The WATCHED tag takes the badge's place on a finished card, as it does on
+     the app's tile - the bar has nothing left to report. */
+  .badge.watched-tag { letter-spacing: .14em; }
   /* Watched progress is the borrowed YouTube red, deliberately not the brand
-     teal and deliberately not the kid's colour. */
-  .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--yk-artwork-scrim); }
+     teal and deliberately not the kid's colour. The TRACK behind it is 40%
+     white and is now a role of its own: this page used to reach for
+     artwork-scrim, which is 80% black, so the same bar was pale on the
+     television and dark on the tablet. */
+  .progress {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: var(--yk-progress-height);
+    background: var(--yk-watched-track);
+  }
   .progress > i { display: block; height: 100%; background: var(--yk-watched-progress); }
 
   /* The hero. Two or three cards, the biggest thing on the page. */
-  .hero { display: flex; gap: 12px; overflow-x: auto; padding: 2px 16px 6px; }
-  .hero .card { width: min(78vw, 320px); flex: 0 0 auto; }
+  .hero { display: flex; gap: var(--yk-hero-gap); overflow-x: auto; padding: 2px var(--yk-page-gutter) 6px; }
+  .hero .card { width: min(78vw, var(--yk-hero-width)); flex: 0 0 auto; }
   .hero .label { font-size: var(--yk-font-title-medium-size); line-height: var(--yk-font-title-medium-line); }
 
   /* Channel tiles, name under.
      Sixteen by nine and not a square: the hub indexes videos, not channel
      avatars, so a channel wears its newest video — and a square crop of a
      16:9 frame cuts the middle out of every one of them. */
-  .rail .card.chan { width: 168px; }
   .chan .label { text-align: center; }
 
   /* --- the player ---------------------------------------------------- */
@@ -387,14 +411,24 @@
       img.loading = "lazy";
       poster.appendChild(img);
     }
-    var d = duration(video.seconds);
-    if (d) poster.appendChild(el("span", "badge", d));
-    if (video.progress > 0.02) {
-      var bar = el("div", "progress");
-      var fill = el("i");
-      fill.style.width = Math.round(Math.min(video.progress, 1) * 100) + "%";
-      bar.appendChild(fill);
-      poster.appendChild(bar);
+    // A finished card wears the WATCHED tag where an unfinished one wears its
+    // length, and carries no bar: there is nothing left for it to report. Which
+    // is which comes from `finished` in the payload, never from a number
+    // compared here -- the threshold is KidHome.FINISHED_FRACTION and this page
+    // is not allowed to hold a second copy of it (guard 61).
+    if (video.finished) {
+      card.classList.add("watched");
+      poster.appendChild(el("span", "badge watched-tag", "WATCHED"));
+    } else {
+      var d = duration(video.seconds);
+      if (d) poster.appendChild(el("span", "badge", d));
+      if (video.progress > 0) {
+        var bar = el("div", "progress");
+        var fill = el("i");
+        fill.style.width = Math.round(Math.min(video.progress, 1) * 100) + "%";
+        bar.appendChild(fill);
+        poster.appendChild(bar);
+      }
     }
     card.appendChild(poster);
     var label = el("div", "label");
@@ -505,6 +539,8 @@
       note.appendChild(el("strong", null, "Nothing here yet."));
       note.appendChild(el("div", null, "Ask a grown-up to add a channel."));
       main.appendChild(note);
+    // The view names ARE the KidSurface ids, so the manifest and the page share
+    // one vocabulary and guard 62 can check the page draws what it claims.
     }
     state.view = "home";
   }
@@ -531,7 +567,7 @@
     } else {
       main.appendChild(shelf(null, grid(result.videos)));
     }
-    state.view = "search";
+    state.view = "search-results";
   }
 
   // --- the player ------------------------------------------------------
@@ -564,11 +600,11 @@
     main.appendChild(wrap);
     state.view = "player";
 
-    // Resume where they were. The hub knows, because the hub is this
-    // browser's device store -- see HubKidHistory.
-    if (video.progress > 0.02 && video.progress < 0.98 && video.seconds) {
-      v.currentTime = video.progress * video.seconds;
-    }
+    // Resume where they were. The hub knows, because the hub is this browser's
+    // device store (HubKidHistory) -- and it sends the POSITION rather than a
+    // fraction to compare, so "barely started" and "finished" stay one rule in
+    // one place instead of two thresholds spelled here in JavaScript.
+    if (video.resumeMs > 0) v.currentTime = video.resumeMs / 1000;
 
     v.onplaying = function () { startBeating(v, video); };
     v.onpause = stopBeating;

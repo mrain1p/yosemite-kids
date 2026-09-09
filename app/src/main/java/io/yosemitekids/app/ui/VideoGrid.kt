@@ -530,7 +530,7 @@ internal fun VideoActionMenu(
                     // with (it leaves the grid for the Watched shelf), and
                     // undo a stray mark or a video the app called finished
                     // because it was left running.
-                    val seen = (item.progress ?: 0f) >= 0.98f
+                    val seen = item.isFinished()
                     MenuRow(
                         if (seen) "Move back to not watched" else "Mark as watched",
                         if (seen) YosemiteIcons.History else Icons.Filled.Check,

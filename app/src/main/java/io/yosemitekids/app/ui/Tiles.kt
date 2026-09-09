@@ -255,8 +255,16 @@ internal fun CardMetaRow(
     }
 }
 
-/** A finished video: the poster's bar gives way to the WATCHED tag here. */
-internal fun VideoItem.isFinished(): Boolean = (progress ?: 0f) >= 0.98f
+/**
+ * A finished video: the poster's bar gives way to the WATCHED tag here.
+ *
+ * **The app's one spelling of the question.** The threshold itself is
+ * [io.yosemitekids.app.data.KidHome.FINISHED_FRACTION] in `:crawl`, which the
+ * hub's history store and the browser's payload read too — see its KDoc for
+ * what the eight separate copies used to cost.
+ */
+internal fun VideoItem.isFinished(): Boolean =
+    (progress ?: 0f) >= io.yosemitekids.app.data.KidHome.FINISHED_FRACTION
 
 /**
  * Every poster and channel avatar in the app: a soft placeholder block and a
@@ -476,18 +484,20 @@ internal fun VideoCard(
             .pressScale(interaction)
             // 48%: far enough back that a finished video reads as done at a
             // glance, near enough that it is still browsable — kids rewatch.
-            .graphicsLayer { alpha = if (finished && !focused) 0.48f else 1f }
-            .tvFocusHighlight(cornerRadius = 14.dp) { focused = it }
-            .clip(RoundedCornerShape(14.dp))
+            // Every number in this block is [KidGeometry] in :core, because the
+            // browser draws this same card and had nothing to read them from.
+            .graphicsLayer { alpha = if (finished && !focused) KidGeometry.WATCHED_DIM_PERCENT / 100f else 1f }
+            .tvFocusHighlight(cornerRadius = KidGeometry.CARD_RADIUS.dp) { focused = it }
+            .clip(RoundedCornerShape(KidGeometry.CARD_RADIUS.dp))
             .then(if (onOpenMenu != null) Modifier.dpadLongPress { onOpenMenu(item) } else Modifier)
             .then(clickMod)
-            .padding(bottom = 6.dp)
+            .padding(bottom = KidGeometry.CARD_BOTTOM_PAD.dp)
     ) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(KidGeometry.POSTER_RADIUS.dp))
         ) {
             PosterImage(
                 url = item.video.thumbnailUrl,
@@ -501,9 +511,9 @@ internal fun VideoCard(
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                        .background(kidTokens.artworkScrim, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                        .padding(KidGeometry.BADGE_INSET.dp)
+                        .background(kidTokens.artworkScrim, RoundedCornerShape(KidGeometry.BADGE_RADIUS.dp))
+                        .padding(horizontal = KidGeometry.BADGE_PAD_X.dp, vertical = KidGeometry.BADGE_PAD_Y.dp)
                 )
             }
             statusBadge?.invoke(this)
@@ -514,7 +524,11 @@ internal fun VideoCard(
         }
         Row(
             verticalAlignment = Alignment.Top,
-            modifier = Modifier.padding(top = 8.dp, start = 2.dp, end = 2.dp)
+            modifier = Modifier.padding(
+                top = KidGeometry.META_TOP.dp,
+                start = KidGeometry.META_SIDE.dp,
+                end = KidGeometry.META_SIDE.dp
+            )
         ) {
             // Avatar: the channel. Tapping it goes to the channel page, the
             // way it does on YouTube — it used to play the video, which is
@@ -543,7 +557,7 @@ internal fun VideoCard(
                     watched = finished,
                     style = cardMetaStyle(formFactor),
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(KidGeometry.META_RADIUS.dp))
                         .then(channelTap)
                         .padding(vertical = 2.dp)
                 )

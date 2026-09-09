@@ -187,6 +187,49 @@ not to try harder. Two changes in one session looked correct in review and did
 nothing on the device — which is why anything kid-facing gets verified through
 the emulator loop before it is called done.
 
+## Three faces, one product — design across them, not one at a time
+
+There are **three** faces now: the phone, the television, and the browser the
+hub serves a child on an iPad. They are one product, and a family owns more
+than one of them, so a child moves between them in an afternoon and notices
+what does not match.
+
+Before building anything a child sees, ask what the other two do with it —
+**at design time, not at review time.** The cost of not asking is not a bad
+review; it is shipping the divergence and then paying to find it. That has now
+happened twice:
+
+- The web player was built with "the page has no colours" as an explicit rule,
+  and nobody asked the same question about *shape*. It shipped with a filled
+  card where the app draws a bare poster, a 16px corner against 14dp, and a
+  progress track that was 40% white on a television and 80% black on a tablet.
+  Every guard passed: both faces were using legal tokens for colour and no
+  token at all for geometry.
+- It also shipped with four of the app's fourteen screens, because nothing
+  anywhere listed what a kid-facing product is made of.
+
+Both now have mechanisms, and the mechanisms are the point:
+
+- **`KidSurface`** (`:core`) — every screen, shelf and dialog, which faces draw
+  it, and `webReady` where one does not yet. Guard 62 reads it from both ends
+  and the gate prints `kid surfaces still to reach the browser: …` on every
+  run.
+- **`KidGeometry`** and **`KidType`** and the palette (`DesignTokens.kt`) —
+  every number both faces draw a card from, emitted into the browser's
+  stylesheet by the generator. Guard 63 refuses a bare length in either face's
+  card code.
+
+So the question to ask of a new surface is not "does this look right?" but
+**"which of the three draw this, and what do they read it from?"** If the
+answer is a number or a word written twice, it belongs in `:core` or `:crawl`
+before the second face is written, not after.
+
+Where a face genuinely differs — a remote needs focus, a browser cannot lock
+the screen, a ten-foot card is bigger — that is a decision, and it goes in the
+manifest's `why` with the reason. A difference with no reason recorded beside
+it is indistinguishable from an omission, which is the whole argument
+`SettingsSurface` already makes for the parent console.
+
 ## Conventions
 
 - Comments explain constraints and *why*, not what the line does. Match the

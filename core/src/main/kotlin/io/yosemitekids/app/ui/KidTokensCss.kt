@@ -59,6 +59,7 @@ fun kidTokensCss(): String {
     sb.append("  --yk-brand: ${Argb.css(KidBrand.TEAL)};\n")
     sb.append("  --yk-on-brand: ${Argb.css(KidBrand.ON_TEAL)};\n")
     sb.append("  --yk-watched-progress: ${Argb.css(KidBrand.WATCHED_PROGRESS)};\n")
+    sb.append("  --yk-watched-track: ${Argb.css(KidBrand.WATCHED_TRACK)};\n")
     sb.append("  --yk-sponsor-segment: ${Argb.css(KidBrand.SPONSOR_SEGMENT)};\n")
     sb.append("\n")
     sb.append("  /* The canonical signal hues, before any ground moves them. Here so\n")
@@ -75,6 +76,15 @@ fun kidTokensCss(): String {
         sb.append("  --yk-font-${t.css}-line: ${t.lineHeightSp}px;\n")
         t.weight?.let { sb.append("  --yk-font-${t.css}-weight: $it;\n") }
     }
+    sb.append("\n")
+    sb.append("  /* The geometry. Fixed in every look: a card is not a different\n")
+    sb.append("     shape in the dark. dp on Android, px here - the same identity\n")
+    sb.append("     the type scale above already relies on. */\n")
+    for ((name, value) in KidGeometry.roles()) {
+        sb.append("  --yk-$name: ${value}px;\n")
+    }
+    // Unitless on purpose: it multiplies an opacity, and "0.48px" is nothing.
+    sb.append("  --yk-watched-dim: ${KidGeometry.WATCHED_DIM_PERCENT / 100.0};\n")
     sb.append("}\n")
 
     sb.append("\n/* The light look. A kid's pick, not the operating system's, so it is\n")

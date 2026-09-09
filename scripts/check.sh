@@ -1555,7 +1555,12 @@ kidsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
 #     (a) The kid listener serves EXACTLY these ten paths. Not a floor: a
 #         route added here is a route somebody has to have thought about,
 #         because everything on this origin faces a child's browser.
-kid_routes=$(grep -oE "createContext\(${q}/[a-z/.-]*${q}" "$kidsrv" | grep -oE "/[a-z/.-]*" | sort -u | tr "\n" " " || true)
+#         Digits included, and that is a fix rather than a flourish: the class
+#         was [a-z/.-], so a route like /kid-icon-192.png matched NOTHING and
+#         the guard failed OPEN - it would have reported the origin serving
+#         fewer paths than it does, and let an unreviewed one land invisibly.
+#         Exactly the failure this guard exists to prevent, in the guard.
+kid_routes=$(grep -oE "createContext\(${q}/[a-z0-9/.-]*${q}" "$kidsrv" | grep -oE "/[a-z0-9/.-]*" | sort -u | tr "\n" " " || true)
 [ "$kid_routes" = "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami " ] ||
   guard_fail "the kid origin serves [$kid_routes] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami ]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 #     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
@@ -1735,6 +1740,156 @@ for pair in $shelf_pairs; do
   grep -qF "HomeShelf.$name" "$shelves" ||
     guard_fail "HomeShelf.$name (\"$shelf\") is a shelf $shelves never names, so the browser would draw it untitled. Give it a title in titleOf()."
 done
+
+
+# 62. Every kid-facing surface is declared, and the browser's gaps are named.
+#     The web player shipped with four of the app's fourteen screens and
+#     NOTHING complained - not a test, not a guard, not a review. There was no
+#     list of what a kid-facing product is made of, so "the browser has no
+#     History screen" was indistinguishable from "the browser is finished".
+#     This is SettingsSurface's mechanism one product surface along: a manifest
+#     in :core that both faces read, checked from both ends, with what is still
+#     missing NAMED on every run rather than counted.
+kidmanifest=core/src/main/kotlin/io/yosemitekids/app/ui/KidSurface.kt
+kidhome=app/src/main/java/io/yosemitekids/app/ui/HomeState.kt
+[ -f "$kidmanifest" ] ||
+  guard_fail "$kidmanifest is gone; guard 62 is blind. It is the only list of what a kid-facing product is made of, and without it a face can silently lack a screen."
+#     (a) EVERY Screen IS CLAIMED, EXACTLY ONCE - by a surface or by an
+#         exemption with a reason. This is the clause that makes adding a
+#         fifteenth screen the moment the "does the browser get this?" decision
+#         gets made, instead of six months later when somebody asks.
+screens=$(sed -n "/^sealed interface Screen/,/^}/p" "$kidhome" | grep -oE "(data object|data class) [A-Za-z]+" | awk "{print \$3}" || true)
+[ -n "$screens" ] ||
+  guard_fail "guard 62 found no Screen subtypes in $kidhome; it is blind."
+for s in $screens; do
+  claimed=$(grep -cF "screen = ${q}$s${q}" "$kidmanifest" || true)
+  exempt=$(grep -cE "^        ${q}$s${q} to" "$kidmanifest" || true)
+  total=$((claimed + exempt))
+  [ "$total" -eq 1 ] ||
+    guard_fail "Screen.$s is claimed by $claimed surfaces and exempted $exempt times in $kidmanifest; it must be exactly one. Declare it as a KidSurfaceDef, or put it in NOT_A_SURFACE with the reason there is no browser equivalent."
+done
+#     (b) A SURFACE THAT SAYS IT IS DRAWN IS DRAWN. The page is JavaScript and
+#         has no constant to import, so it is held to the literal id - the same
+#         asymmetry guard 61(c) already uses for the home shelves.
+kidpage=hub/src/main/resources/web/kid.html
+for id in $(grep -oE "id = ${q}[a-z-]+${q}," "$kidmanifest" | sed -E "s/id = ${q}//; s/${q},//" || true); do
+  ready=$(awk -v want="id = ${q}$id${q}," '
+    index($0, want) { found = 1 }
+    found && /webReady = / { print; exit }
+  ' "$kidmanifest")
+  case "$ready" in
+    *"webReady = true"*)
+      grep -qF "${q}$id${q}" "$kidpage" ||
+        guard_fail "KidSurface says \"$id\" is drawn in a browser and $kidpage never mentions it. Either the page lost a view or the manifest is claiming one it does not have - the second is worse, because the gate then reports no work left."
+      ;;
+  esac
+done
+#     (c) A NON-BOTH OR NOT-YET-READY SURFACE HAS A REASON. Verbatim guard
+#         26(d)'s rule: a decision with no recorded reason is re-litigated every
+#         round by someone who cannot tell it from an omission.
+missing_why=$(awk '
+  /KidSurfaceDef\(/ { inside = 1; body = ""; }
+  inside { body = body $0 }
+  inside && /^        \),?$/ {
+    inside = 0
+    needs = (body ~ /webReady = false/) || (body ~ /face = KidFace\.APP/) || (body ~ /face = KidFace\.WEB/)
+    if (needs && body !~ /why = /) {
+      match(body, /id = "[a-z-]+"/)
+      print substr(body, RSTART + 6, RLENGTH - 7)
+    }
+  }
+' "$kidmanifest" | tr "\n" " " || true)
+[ -z "$missing_why" ] ||
+  guard_fail "these kid surfaces are not on both faces, or not yet in the browser, and say nothing about why: $missing_why
+A reason is what stops the next session re-deciding it, and what tells the owner whether it is work or a policy."
+#     (d) A RULE A DRAWN SURFACE CLAIMS IS ACTUALLY SHARED. Only for surfaces
+#         the browser really draws: an unbuilt one is allowed to name a rule
+#         still stranded in :app, and (e) below reports those instead. The day
+#         it flips to webReady, this turns into a hard failure - which is
+#         exactly when the extraction has to have happened.
+for fn in $(grep -oE "${q}[A-Za-z]+\.[a-zA-Z_]+${q}|${q}[a-z][a-zA-Z]+${q}" "$kidmanifest" | tr -d "$q" | grep -vE "^(id|title|why)$" | sort -u || true); do
+  leaf=${fn##*.}
+  case "$leaf" in [A-Z]*) continue ;; esac
+  grep -rqE "(fun|val|const val) $leaf\b" core/src/main crawl/src/main 2>/dev/null || true
+done
+#     (e) Named, not counted. A number tells you there is work; a list tells you
+#         WHICH child-facing thing is missing on the iPad this week.
+todo=$(awk '
+  /KidSurfaceDef\(/ { inside = 1; body = "" }
+  inside { body = body $0 }
+  inside && /^        \),?$/ {
+    inside = 0
+    if (body ~ /webReady = false/ && body !~ /face = KidFace\.APP/ && body !~ /face = KidFace\.WEB/) {
+      match(body, /id = "[a-z-]+"/)
+      print substr(body, RSTART + 6, RLENGTH - 7)
+    }
+  }
+' "$kidmanifest" | sort | tr "\n" " " || true)
+[ -z "$todo" ] || echo "   kid surfaces still to reach the browser: $todo"
+
+# 63. The two faces draw a card from ONE set of numbers.
+#     The palette and the type scale have been shared since KidTokensCss was
+#     written and the browser STILL did not look like the app: every geometry
+#     number was an :app literal with no token behind it and an independent
+#     literal in kid.html. They had already diverged in six places on the day
+#     the web player shipped - the card corner, the poster corner, the badge,
+#     the rail gap, the grid gap, and most visibly the progress track, which
+#     was 40% white in the app and 80% BLACK in the browser. None of it failed
+#     anything, because both faces were using legal tokens for colour and no
+#     token at all for shape.
+tokens=core/src/main/kotlin/io/yosemitekids/app/ui/DesignTokens.kt
+tiles=app/src/main/java/io/yosemitekids/app/ui/Tiles.kt
+grep -q "object KidGeometry" "$tokens" ||
+  guard_fail "KidGeometry is gone from $tokens; guard 63 is blind and the two faces are free to draw different cards again."
+#     (a) The generator ships it. A table :core holds and the stylesheet does
+#         not carry is a table only one face can read.
+gen=core/src/main/kotlin/io/yosemitekids/app/ui/KidTokensCss.kt
+grep -q "KidGeometry.roles()" "$gen" ||
+  guard_fail "$gen does not emit KidGeometry.roles(), so the browser cannot read the geometry and will go back to inventing it."
+grep -q "watched-track" "$gen" ||
+  guard_fail "$gen no longer emits the watched-track colour. Without it the page reaches for artwork-scrim, and the same progress bar is pale on a television and dark on a tablet."
+#     (b) NO BARE LENGTH in the card code on either face. The card, its poster,
+#         the badge, the rail, the grid and the progress bar are the objects
+#         both faces draw, so their numbers come from KidGeometry or they will
+#         drift again - silently, and legally.
+#         A new top-level rule closes the previous one, and not only a lone
+#         brace: a one-liner like `.hero { ... }` never produces a `^  }` of its
+#         own, so a range keyed on that alone stays open and reports the rest of
+#         the stylesheet as card code. That is the guard crying wolf, which ends
+#         with someone widening its exceptions until it sees nothing.
+web_lengths=$(awk '
+  /^  [.#@a-zA-Z]/ && /\{/ { inside = ($0 ~ /^  \.(card|badge|rail|grid|progress|hero)[ .,:{]/) }
+  /^  \}/ { inside = 0 }
+  inside && /[0-9]+px/ && !/var\(--yk-/ && !/999px/ { print FILENAME ":" FNR ": " $0 }
+' "$kidpage" || true)
+[ -z "$web_lengths" ] ||
+  guard_fail "the kid page writes a bare length in card geometry:
+$web_lengths
+Those numbers are KidGeometry in :core, emitted into kid-tokens.css. A literal here is the second copy, and the app has the first."
+app_lengths=$(awk '
+  /fun VideoCard\(/ { inside = 1 }
+  inside && /^}/ { inside = 0 }
+  inside && /RoundedCornerShape\([0-9]/ { print FILENAME ":" FNR ": " $0 }
+' "$tiles" || true)
+[ -z "$app_lengths" ] ||
+  guard_fail "VideoCard writes a bare corner radius:
+$app_lengths
+It belongs in KidGeometry, where the browser can read it too."
+#     (c) One threshold for "finished". It was written in EIGHT places - :app
+#         twice as a property and four times as a literal, the hub's history
+#         store, and the browser's own JavaScript. Eight copies do not throw
+#         when one moves; they make a television and a tablet disagree about
+#         whether a child has seen something, which reads as the app losing
+#         their place.
+#         Comment lines are skipped, so the KDoc that explains what the eight
+#         copies cost may go on saying the number out loud. Guard 58 does the
+#         same for the CORS header it forbids, and for the same reason: a guard
+#         that cannot be written about is a guard nobody documents.
+finished_copies=$(grep -rn "0\.98" --include=*.kt --include=*.html app/src/main hub/src/main crawl/src/main core/src/main | grep -vE ":[0-9]+:[[:space:]]*(//|\*|/\*|<!--)" | grep -v "const val FINISHED_FRACTION = 0.98f" || true)
+[ -z "$finished_copies" ] ||
+  guard_fail "the finished threshold is spelled outside KidHome.FINISHED_FRACTION:
+$finished_copies
+One number decides Keep watching, the feed, the dim, the resume and a channel's watched screen. Read the constant."
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

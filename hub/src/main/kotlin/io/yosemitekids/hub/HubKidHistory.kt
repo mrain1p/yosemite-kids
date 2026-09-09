@@ -45,11 +45,14 @@ class HubKidHistory(dataDir: File, private val now: () -> Long = { System.curren
         const val MAX_VIDEOS_PER_KID = 300
 
         /**
-         * A position this far from the end counts as finished — the same 2%
-         * credits grace `WatchProgress.isFinished` gives, so a video the hub
-         * calls finished is one the app would too.
+         * A position this far through counts as finished.
+         *
+         * [KidHome.FINISHED_FRACTION] and not a number of its own: "the same
+         * grace the app gives" was a comment, and a comment is not a mechanism.
+         * A video the hub calls finished is one the app calls finished because
+         * both read the same constant.
          */
-        const val FINISHED_FRACTION = 0.98f
+        const val FINISHED_FRACTION = KidHome.FINISHED_FRACTION
 
         /**
          * Positions closer together than this are not written.

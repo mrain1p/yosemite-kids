@@ -741,7 +741,7 @@ fun YosemiteScreen(
                                     // Resume mid-video if one is in progress, else the next
                                     // unwatched — never a finished one (they're visible now).
                                     val next = s.videos.firstOrNull {
-                                        it.progress != null && it.progress < 0.98f
+                                        it.progress != null && !it.isFinished()
                                     }
                                         ?: s.videos.firstOrNull { it.progress == null }
                                         ?: s.videos.first()
