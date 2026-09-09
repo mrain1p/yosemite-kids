@@ -56,10 +56,27 @@ if [ -n "$dirty" ]; then
   exit 2
 fi
 
+# ONE AT A TIME, and this is not politeness.
+#
+# Two instances of this script race: one mutates a file while the other
+# restores it, so the first one's gate run sees a clean tree and reports the
+# guard as blind. That happened - guards 56 and 57 were both reported dead when
+# both were fine - and it is the worst failure this script can have, because
+# the conclusion "your guard does not work" is the one thing it exists to say
+# and the one thing nobody double-checks.
+LOCK=.git/yosemite-guard-canary.lock
+if ! (set -o noclobber; echo "$$" > "$LOCK") 2>/dev/null; then
+  echo "${RED}another guard-canary is already running${OFF} (pid $(cat "$LOCK" 2>/dev/null))." >&2
+  echo "Two instances mutate and restore the same files and report working guards as blind." >&2
+  echo "Wait for it, or remove $LOCK if you are sure it died." >&2
+  exit 2
+fi
+
 TOUCHED=""
 restore() {
   for f in $TOUCHED; do git checkout -- "$f" 2>/dev/null || true; done
   TOUCHED=""
+  rm -f "$LOCK"
 }
 trap restore EXIT INT TERM
 

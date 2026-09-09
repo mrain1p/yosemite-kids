@@ -50,7 +50,7 @@ application {
 //
 // The app reads its own from BuildConfig; a plain JVM module has none, so it
 // is generated here — the same idiom :crawl uses for ExtractorVersion.
-val hubVersion = "1.4.0"
+val hubVersion = "1.5.0"
 val generatedDir = layout.buildDirectory.dir("generated/hubVersion")
 val generateHubBuild by tasks.registering {
     inputs.property("version", hubVersion)
