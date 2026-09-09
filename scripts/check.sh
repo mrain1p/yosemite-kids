@@ -113,6 +113,31 @@ trap_lines=$(grep -nE "=\\\$\\(.*grep" "$0" | grep -v "|| true" | cut -d: -f1 | 
 if [ -n "$trap_lines" ]; then
   guard_fail "check.sh line(s) $trap_lines capture grep without '|| true'. No match exits 1 and pipefail ends the gate on the clean case."
 fi
+
+# And it must not stop early on a BROKEN PIPE, which is the same failure
+# wearing different clothes and cost three releases before anyone saw it.
+#
+# `printf "%s" "$big" | grep -q pattern` looks harmless. It is not: `grep -q`
+# exits the instant it matches, which closes the pipe, and if the string is
+# larger than the pipe buffer `printf` is still writing — so printf dies of
+# EPIPE, `pipefail` fails the whole pipeline, and the `|| guard_fail` after it
+# fires on a guard that MATCHED. The louder the evidence, the more certainly it
+# fails.
+#
+# It is data-dependent, which is why it hid: small strings fit in the 64 KB
+# buffer and printf finishes first, and MSYS on Windows does not reproduce it
+# at all. So it passed on the maintainer's machine and failed in CI, where
+# "Source invariants" is the first step — meaning no compile, no tests and no
+# guard past the offending line ran for 1.2.0, 1.3.0 or 1.4.0.
+#
+# A here-string has no second process and therefore no pipe: `grep -q p <<<"$x"`.
+# Only the -q forms, and not this file's own prose about them. `grep -c`, `-o`
+# and a bare grep all read to EOF, so printf finishes and there is no pipe to
+# break; it is the early exit that does the damage.
+pipe_lines=$(grep -nE 'printf .*\| *grep -[a-zA-Z]*q' "$0" | grep -vE "^[0-9]+: *#" | cut -d: -f1 | tr "\n" " " || true)
+if [ -n "$pipe_lines" ]; then
+  guard_fail "check.sh line(s) $pipe_lines pipe printf into grep. When grep -q matches it exits, printf gets EPIPE, and pipefail turns a PASSING guard into a failing gate — silently, and only on Linux. Use a here-string: grep -q pattern <<<\"\$var\"."
+fi
 # Shell scripts must reach a container with LF endings. A CRLF script has a
 # shebang ending in a carriage return, which the kernel cannot resolve, and
 # the error it produces is "not found" for a file that is plainly present.
@@ -573,7 +598,7 @@ device_only=$(sed -n '/val DEVICE_ONLY = setOf(/,/)$/p' "$hubsrv")
 [ -n "$device_only" ] || guard_fail "HubServer.kt declares no DEVICE_ONLY set; guard 22 is blind."
 for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z-]+' | sort -u); do
   if grep -qF "createContext(${q}$r${q})" "$hubsrv"; then continue; fi
-  printf '%s' "$device_only" | grep -qF "${q}$r${q}" ||
+  grep -qF "${q}$r${q}" <<<"$device_only" ||
     guard_fail "LanServer answers $r and the hub neither implements it nor names it in HubServer.DEVICE_ONLY — its catch-all would hand a device the admin page with a 200."
 done
 
@@ -850,7 +875,7 @@ for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/d
   [ -n "$fn" ] || guard_fail "the hub registers $r in a shape guard 29 cannot read. Keep it as createContext(${q}$r${q}) { ex -> guarded(ex) { <handler>(ex) } } so the handler can be found."
   body=$(awk -v f="    private fun $fn(ex: HttpExchange)" 'index($0, f) == 1 { inside = 1 } inside { print; if (inside && /^    }$/) exit }' "$hubsrv")
   [ -n "$body" ] || guard_fail "guard 29 cannot find $fn(ex: HttpExchange) in $hubsrv; it is blind."
-  printf "%s" "$body" | grep -q "authorised(ex)" ||
+  grep -q "authorised(ex)" <<<"$body" ||
     guard_fail "the hub answers $r in $fn() without calling authorised(ex). That route is open to every peer on the LAN — take it back to DEVICE_ONLY or gate it on an enrolled token."
 done
 
@@ -883,7 +908,7 @@ for r in $hub_routes; do
   # match on the stem. "/" is the page and the catch-all, and has a row of its
   # own saying exactly that.
   [ "$r" = "/" ] || r=${r%/}
-  printf "%s" "$hubdoc" | grep -qE "(GET|POST) $r[^a-z-]" ||
+  grep -qE "(GET|POST) $r[^a-z-]" <<<"$hubdoc" ||
     guard_fail "the hub registers $r and docs/LAN-API.md's hub section has no row for it. Add it to the route table — that table is the only place the hub's wire is written down."
 done
 # 31. The form factor is decided in exactly one place.
@@ -1085,8 +1110,8 @@ unit_count=$(printf "%s\n" "$stamp_units" | grep -c . || true)
 [ "$unit_count" -ge 10 ] || guard_fail "guard 38 read only $unit_count unit keys out of ConfigStamp.kt; it is blind."
 while read -r name ns; do
   [ -n "$name" ] || continue
-  printf "%s" "$merge_body" | grep -qE "ConfigStamp(\.|::)$name\b" ||
-    printf "%s" "$merge_body" | grep -qF "\"$ns\"" ||
+  grep -qE "ConfigStamp(\.|::)$name\b" <<<"$merge_body" ||
+    grep -qF "\"$ns\"" <<<"$merge_body" ||
     guard_fail "ConfigStamp mints the unit \"$ns\" (ConfigStamp.$name) and nothing in ConfigMerge.merge decides it, so a co-parent's edit there is dropped by the first peer that merges it. Give the namespace a loop in merge() — the grants or pinned-hero block is the shape — and prove it in core/src/test."
 done <<EOF
 $stamp_units
@@ -1133,9 +1158,9 @@ grep -q "var CACHE = PREFIX +" "$sw" ||
 sw_activate=$(awk '/addEventListener\("activate"/ { f = 1 } f { print; if (/^\}\);$/) exit }' "$sw" || true)
 [ -n "$sw_activate" ] ||
   guard_fail "guard 40 cannot find the activate handler in $sw; it is blind."
-printf "%s" "$sw_activate" | grep -q "caches.delete(" ||
+grep -q "caches.delete(" <<<"$sw_activate" ||
   guard_fail "the activate handler in $sw evicts nothing; guard 40 is blind."
-printf "%s" "$sw_activate" | grep -q "indexOf(PREFIX) === 0" ||
+grep -q "indexOf(PREFIX) === 0" <<<"$sw_activate" ||
   guard_fail "the hub's service worker deletes caches it does not own. Cache Storage is per origin — filter on PREFIX before caches.delete, or the next app served from this hub and this one wipe each other's shells for ever."
 
 # 41. Every response the hub makes carries the baseline security headers.
@@ -1554,7 +1579,7 @@ kiddoc=$(awk "/^## The kid.s routes/ { f = 1 } f && /^[|] / { print }" docs/LAN-
 [ -n "$kiddoc" ] ||
   guard_fail "docs/LAN-API.md has no \"## The kid's routes\" heading with a route table under it; guard 57 is blind."
 for r in $kid_routes; do
-  printf "%s" "$kiddoc" | grep -qE "(GET|POST) $r[^a-z-]" ||
+  grep -qE "(GET|POST) $r[^a-z-]" <<<"$kiddoc" ||
     guard_fail "the kid origin serves $r and docs/LAN-API.md's kid section has no row for it. That table is the only place this origin's wire is written down."
 done
 #     (d) The port is wired the way YOSEMITE_KIDS_PORT is: the published port
@@ -1634,7 +1659,7 @@ for fn in whoami media home channel search progress thumb; do
   body=$(awk -v f="    private fun $fn(ex: HttpExchange)" 'index($0, f) == 1 { inside = 1 } inside { print; if (inside && /^    }$/) exit }' "$kidsrv")
   [ -n "$body" ] ||
     guard_fail "guard 60 cannot find $fn(ex: HttpExchange) in $kidsrv; it is blind."
-  printf "%s" "$body" | grep -q "watching(ex)" ||
+  grep -q "watching(ex)" <<<"$body" ||
     guard_fail "$fn() in $kidsrv does not call watching(ex). Every kid route that says anything about the family resolves the claim cookie first and fails closed to the code prompt."
 done
 kid_from_query=$(grep -rnE "kidIn\(|&\)?kid=" hub/src/main --include=*.kt || true)
