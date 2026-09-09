@@ -62,7 +62,7 @@ class ChannelIndex(private val dir: File) {
         val sourceId: String
     ) {
         fun toVideo(): Video = Video(
-            url = "https://www.youtube.com/watch?v=$videoId",
+            url = Video.watchUrl(videoId),
             title = title,
             channelName = channelName,
             thumbnailUrl = thumbnailUrl,

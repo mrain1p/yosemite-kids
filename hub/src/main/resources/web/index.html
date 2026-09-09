@@ -2190,8 +2190,84 @@
     d.appendChild(dul);
     out.appendChild(d);
 
+    out.appendChild(browsersCard());
     out.appendChild(phoneOnlyNote("Devices"));
     return out;
+  }
+
+  /**
+   * Browsers that watch on the hub's kid address.
+   *
+   * A card of its own rather than a row under "Enrolled devices", because a
+   * browser is not a device: it holds no config, syncs nothing, and its whole
+   * credential is "may watch, as this child". It is also the one card on this
+   * page that names a different origin — the kid's port is a separate
+   * listener, deliberately not a path on this one, so that a page a child
+   * opens cannot spend this session's cookie against /api/config.
+   */
+  function browsersCard() {
+    var c = card(
+      "Watch in a browser",
+      "A tablet or laptop can watch on this hub's kid address. Give it a code to type in — " +
+        "it lasts ten minutes, works once, and binds that browser to one kid."
+    );
+
+    var where = el("p", "sub");
+    var kidPort = state.hub.kidPort;
+    where.textContent = kidPort
+      ? "On the tablet, open http://" + location.hostname + ":" + kidPort
+      : "This hub is not serving a kid address.";
+    c.appendChild(where);
+
+    // The code, once, here — never stored anywhere the page can fetch again.
+    // A code sitting on /api/state for ten minutes is a code every signed-in
+    // browser in the house keeps re-reading.
+    var codeLine = el("p", "name");
+
+    if (!kids().length) {
+      c.appendChild(el("p", "sub", "Add a kid first. A browser watches as one child, under that child's rules."));
+    } else {
+      var row = el("div", "line");
+      kids().forEach(function (k) {
+        row.appendChild(button(k.name, "chip", function () {
+          return api("/api/browsers", { claim: k.id }).then(function (r) {
+            codeLine.textContent = r.minted
+              ? "Type " + r.code + " on that browser within " + Math.round(r.ttlSeconds / 60) + " minutes."
+              : r.why === "TOO_MANY_CODES"
+                ? "Too many codes are already out. Wait for one to expire."
+                : "That kid is not on this hub yet.";
+            return refresh();
+          });
+        }));
+      });
+      c.appendChild(row);
+      c.appendChild(codeLine);
+    }
+
+    var bul = el("ul", "rows");
+    var claimed = state.browsers || [];
+    if (!claimed.length) {
+      bul.appendChild(emptyLi("No browser is watching yet."));
+    }
+    claimed.forEach(function (b) {
+      var kid = kidById(b.kid);
+      var li = el("li");
+      var line = el("div", "line");
+      var box = el("div", "grow");
+      box.appendChild(el("div", "name", kid ? kid.name + "'s browser" : "A browser"));
+      box.appendChild(el("div", "sub", b.lastSeenAt
+        ? "last watched " + changeAge(b.lastSeenAt)
+        : "claimed " + changeAge(b.claimedAt) + ", has not watched yet"));
+      line.appendChild(box);
+      line.appendChild(button("Remove", "quiet", function () {
+        if (!window.confirm("Stop that browser watching?")) return Promise.resolve();
+        return api("/api/browsers", { revoke: b.ref }).then(refresh);
+      }));
+      li.appendChild(line);
+      bul.appendChild(li);
+    });
+    c.appendChild(bul);
+    return c;
   }
 
   /** A device's row: who it is for, and when the hub last heard from it. */

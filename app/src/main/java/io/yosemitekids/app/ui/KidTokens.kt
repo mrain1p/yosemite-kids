@@ -55,7 +55,7 @@ private val OFFLINE = Color(KidHues.OFFLINE)
 /**
  * Push [fg] away from [bg] until the pair clears [min]:1.
  *
- * The mirror of [legible], which moves the background instead. Used here so a
+ * The mirror of [Argb.legibleGround], which moves the background instead. Used here so a
  * single canonical hue can serve both looks: coral reads at 4.85:1 on the dark
  * ground as drawn, and only 3.67:1 on paper, so on the light theme it is
  * darkened until it carries text.

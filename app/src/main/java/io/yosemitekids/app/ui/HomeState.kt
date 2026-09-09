@@ -229,41 +229,38 @@ internal fun splitWatched(
  * and capped. A kid sees every channel on the first screen instead of one
  * channel's whole page — pure, so the ViewModel's feed is unit-testable.
  */
-internal fun <T> interleave(lists: List<List<T>>, max: Int, key: (T) -> Any): List<T> {
-    val out = ArrayList<T>()
-    val seen = HashSet<Any>()
-    var depth = 0
-    while (out.size < max && lists.any { it.size > depth }) {
-        for (list in lists) {
-            if (out.size >= max) break
-            list.getOrNull(depth)?.let { if (seen.add(key(it))) out += it }
-        }
-        depth++
-    }
-    return out
-}
+internal fun <T> interleave(lists: List<List<T>>, max: Int, key: (T) -> Any): List<T> =
+    KidHome.interleave(lists, max, key)
 
 /**
- * The History shelf: every video with a watch timestamp, newest first, joined
- * to whatever metadata the caches hold (first match wins — the same video
- * can sit in two sources' caches). Anything the caches have since forgotten
- * drops out: without a title or poster there is nothing to show. Pure, so
- * the fifty-channel case is a unit test rather than a surprise.
+ * This kid's watch history in the shape the shared shelf rules read.
+ *
+ * The one place `WatchProgress` — a SharedPreferences format — becomes
+ * [KidHome.WatchPoint], a meaning. The hub's own history makes the same point
+ * from a different store, and both then run the identical rule.
+ */
+internal fun WatchProgress.watchPoint(): KidHome.WatchPoint =
+    KidHome.WatchPoint(fraction, lastWatchedAt, isFinished)
+
+internal fun Map<String, WatchProgress>.watchPoints(): Map<String, KidHome.WatchPoint> =
+    mapValues { (_, p) -> p.watchPoint() }
+
+/**
+ * The History shelf, drawn as [VideoItem]s — the rule itself is
+ * [KidHome.history], shared with the browser.
+ *
+ * A wrapper rather than a call site everywhere, so `HistoryAndLayoutTest` keeps
+ * testing the phone's actual path into the shared rule instead of testing the
+ * shared rule twice.
  */
 internal fun historyItems(
     history: Map<String, WatchProgress>,
     known: List<Video>,
     limit: Int
-): List<VideoItem> {
-    val byUrl = HashMap<String, Video>(known.size)
-    for (v in known) byUrl.putIfAbsent(v.url, v)
-    return history.entries.asSequence()
-        .filter { (url, p) -> p.lastWatchedAt > 0 && url in byUrl }
-        .sortedByDescending { it.value.lastWatchedAt }
-        .take(limit)
-        .map { (url, p) -> VideoItem(byUrl.getValue(url), p.fraction) }
-        .toList()
-}
+): List<VideoItem> =
+    KidHome.history(history.watchPoints(), known, limit) { video, fraction ->
+        VideoItem(video, fraction)
+    }
 
 /** "Popular first": by YouTube view count, unknown counts last, ties keep upload order. */
 internal fun orderByPopularity(items: List<VideoItem>): List<VideoItem> =
@@ -334,51 +331,27 @@ internal fun defaultFilterFor(channelLayout: String): String =
  */
 data class SearchScreening(val total: Int, val done: Int, val beyondWindow: Int)
 
+
 // --- Suggestions ------------------------------------------------------------
 
 /**
- * Words that carry no signal about what a video is *about*. Kept small and
- * hand-picked rather than a real stoplist: the titles here are kids' YouTube,
- * where "for kids", "episode" and "full" appear on everything and would
- * otherwise dominate every overlap score.
+ * The tokenizer behind the suggestion score — [KidHome.titleKeywords], shared
+ * with the browser, re-exported here because this is the name the phone's tests
+ * and call sites already knew.
+ *
+ * The stopword list, the three-character floor and the recency weighting all
+ * live in `:crawl` now. They moved together on purpose: a stoplist in `:app`
+ * and a scorer in the hub would agree on the day they were written and
+ * disagree on the first day somebody added "unboxing" to one of them.
  */
-private val SUGGEST_STOPWORDS = setOf(
-    "the", "and", "for", "you", "your", "with", "from", "this", "that", "what",
-    "how", "why", "who", "all", "new", "not", "but", "can", "his", "her", "its",
-    "our", "out", "one", "two", "get", "got", "are", "was", "were", "has", "had",
-    "kids", "kid", "children", "child", "video", "videos", "episode", "episodes",
-    "full", "part", "official", "watch", "more", "best", "top", "compilation",
-    "season", "vs", "ft", "feat", "live", "let", "lets", "make", "made", "day"
-)
-
-/** Anything that isn't a letter or a digit splits words — Unicode-aware, so
- *  a title in any script the family watches still tokenizes. */
-private val NON_WORD = Regex("""[^\p{L}\p{N}]+""")
+internal fun titleKeywords(title: String): Set<String> = KidHome.titleKeywords(title)
 
 /**
- * Title words worth matching on: letters and digits only, lowercased, three
- * characters or more, stopwords dropped. A set, so a title that says "dinosaur"
- * four times counts once.
- */
-internal fun titleKeywords(title: String): Set<String> =
-    title.lowercase()
-        .split(NON_WORD)
-        .filter { it.length >= 3 && it !in SUGGEST_STOPWORDS }
-        .toSet()
-
-/**
- * "More like what you watch": unwatched videos scored by how much their titles
- * overlap the titles the kid actually watched, most recent watches weighted
- * highest, plus a nudge for channels they come back to.
+ * "More like what you watch" for the phone and the television — the rule is
+ * [KidHome.suggestions], shared with the browser, and this is only the shape
+ * the app draws it in.
  *
- * Deliberately local and explainable — no model, no network, no view counts.
- * Everything it knows comes from this kid's own history on this device, which
- * is also why it is pure: the interesting cases (a kid with one watch, a kid
- * whose whole history is one channel) are unit tests rather than a guess.
- *
- * [watchedTitles] must be newest-first. [perChannelCap] stops a single
- * prolific channel from owning the row — the point is to widen what they see,
- * not to rebuild the channel page they already have.
+ * [watchedTitles] must be newest-first.
  */
 internal fun suggestionsFor(
     watchedTitles: List<String>,
@@ -386,44 +359,14 @@ internal fun suggestionsFor(
     channelAffinity: Map<String, Int>,
     limit: Int,
     perChannelCap: Int = 2
-): List<VideoItem> {
-    if (watchedTitles.isEmpty() || candidates.isEmpty()) return emptyList()
-
-    // Recency weight: the last thing they watched says more about what they
-    // want next than the fiftieth thing back, but old watches still count.
-    val watchedSets = watchedTitles.take(SUGGEST_HISTORY_DEPTH)
-        .mapIndexed { i, t -> titleKeywords(t) to 1.0 / (1.0 + i * 0.2) }
-        .filter { it.first.isNotEmpty() }
-    if (watchedSets.isEmpty()) return emptyList()
-
-    val maxAffinity = channelAffinity.values.maxOrNull()?.takeIf { it > 0 } ?: 1
-
-    val scored = candidates.mapNotNull { item ->
-        val words = titleKeywords(item.video.title)
-        if (words.isEmpty()) return@mapNotNull null
-        var score = 0.0
-        for ((watched, weight) in watchedSets) {
-            val shared = words.count { it in watched }
-            if (shared > 0) score += shared * weight
-        }
-        if (score <= 0.0) return@mapNotNull null
-        // A channel they return to is worth a thumb on the scale, but never
-        // enough to promote an unrelated video over a genuine title match.
-        val affinity = (channelAffinity[item.video.channelName] ?: 0).toDouble() / maxAffinity
-        item to score + affinity * 0.5
-    }.sortedByDescending { it.second }
-
-    val perChannel = HashMap<String, Int>()
-    val out = ArrayList<VideoItem>(limit)
-    for ((item, _) in scored) {
-        if (out.size >= limit) break
-        val seen = perChannel.getOrDefault(item.video.channelName, 0)
-        if (seen >= perChannelCap) continue
-        perChannel[item.video.channelName] = seen + 1
-        out += item
-    }
-    return out
-}
+): List<VideoItem> = KidHome.suggestions(
+    watchedTitles = watchedTitles,
+    candidates = candidates,
+    video = { it.video },
+    channelAffinity = channelAffinity,
+    limit = limit,
+    perChannelCap = perChannelCap
+)
 
 /** How far back suggestions look. Beyond this the recency weight is noise anyway. */
-internal const val SUGGEST_HISTORY_DEPTH = 40
+internal const val SUGGEST_HISTORY_DEPTH = KidHome.SUGGEST_HISTORY_DEPTH

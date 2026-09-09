@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yosemite Kids</title>
+<!--
+  THE KID PAGE.
+
+  What a child sees on a tablet, and the only page this origin serves.
+
+  Three rules it keeps, and each of them is load-bearing rather than tidy:
+
+  1. IT DECIDES NOTHING. Every shelf, its order, what is in it, what may be
+     played and what a refusal says arrives from the hub, which answers from
+     the same :core and :crawl rules the Android app runs. There is no filter,
+     no sort and no cap in this file. A rule implemented here would be a rule
+     with two implementations, and the one a child's browser runs is the one
+     nobody can inspect - see HubKidHome's KDoc, and guard 61.
+
+  2. IT HAS NO COLOURS. Every hue and every type size is a --yk-* custom
+     property: the two brand looks come from /kid-tokens.css, generated at
+     build time from :core's one table (guard 48), and the kid's own tinted
+     ground arrives per-request in /home's `theme`, computed by the same
+     kidTinted() the app themes itself with. A hex in this file would be the
+     second palette this project has already had once.
+
+  3. IT BUILDS TEXT WITH textContent, NEVER innerHTML. Titles and channel
+     names are YouTube's, not ours. They reach this page as data and they get
+     drawn as text; the one place markup is assembled from a string is the
+     empty-state copy below, which this file wrote itself.
+-->
+<link rel="stylesheet" href="/kid-tokens.css">
+<style>
+  /* Layout only. See rule 2 above: no colour and no size of its own. */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--yk-background);
+    color: var(--yk-on-background);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: var(--yk-font-body-large-size);
+    line-height: var(--yk-font-body-large-line);
+    -webkit-text-size-adjust: 100%;
+    /* The wash: the kid's colour poured in from the top and gone by halfway,
+       exactly as Modifier.kidBackdrop draws it on Android. Inert until the
+       theme sets --yk-surface-tint, which only "My colour" does. */
+    background-image:
+      radial-gradient(120% 60% at 0% 0%, var(--yk-surface-tint, transparent), transparent 60%),
+      radial-gradient(120% 60% at 100% 0%, var(--yk-surface-tint, transparent), transparent 60%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  /* Touch targets a five-year-old hits first time. 44px is the floor
+     everywhere, and the play control is deliberately much bigger. */
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; min-height: 44px; border: 0; background: none; }
+  [hidden] { display: none !important; }
+  img { display: block; }
+
+  /* --- chrome ------------------------------------------------------- */
+
+  header.bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    padding-top: max(10px, env(safe-area-inset-top));
+    border-bottom: 1px solid var(--yk-outline-variant);
+    /* Transparent over the wash, blurred so a card scrolling under it stays
+       out of the way of the child's name. A solid bar here cut the kid's
+       colour off in a hard line an inch down the page, which the app does not
+       do: its top bar sits over the same backdrop. */
+    background: transparent;
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+  }
+  /* Where the browser cannot blur, the bar goes back to being a bar. The hard
+     edge is the lesser failure: unreadable is not a trade. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    header.bar { background: var(--yk-surface-container); }
+  }
+  .avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 22px; line-height: 1;
+    background: var(--yk-secondary-container);
+    color: var(--yk-on-secondary-container);
+    flex: 0 0 auto;
+  }
+  .who {
+    font-size: var(--yk-font-title-medium-size);
+    line-height: var(--yk-font-title-medium-line);
+    font-weight: var(--yk-font-title-medium-weight, 500);
+    margin-right: auto;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: var(--yk-font-label-large-size);
+    line-height: var(--yk-font-label-large-line);
+    background: var(--yk-surface-container-highest);
+    color: var(--yk-on-surface-variant);
+    white-space: nowrap;
+  }
+  /* Under five minutes the countdown stops being information and becomes a
+     warning. The amber is the app's TIME_WARNING, never the action colour --
+     running out of time is not something to press. */
+  .pill.low { background: var(--yk-time-warning); color: var(--yk-on-action); }
+
+  .icon-btn {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 20px;
+    background: var(--yk-surface-container-highest);
+    color: var(--yk-on-surface);
+    flex: 0 0 auto;
+  }
+
+  main { padding: 0 0 40px; }
+
+  /* --- search ------------------------------------------------------- */
+
+  .searchrow { display: flex; gap: 8px; padding: 12px 16px 4px; }
+  .searchrow input {
+    flex: 1; min-width: 0;
+    padding: 12px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--yk-outline);
+    background: var(--yk-surface-container-high);
+  }
+  .searchrow input::placeholder { color: var(--yk-on-surface-variant); }
+
+  /* --- shelves ------------------------------------------------------- */
+
+  section.shelf { margin: 20px 0 0; }
+  .shelf h2 {
+    font-size: var(--yk-font-title-medium-size);
+    line-height: var(--yk-font-title-medium-line);
+    font-weight: var(--yk-font-title-medium-weight, 500);
+    margin: 0 0 10px;
+    padding: 0 16px;
+  }
+  .rail {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding: 2px 16px 6px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+  .rail > * { scroll-snap-align: start; flex: 0 0 auto; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 14px;
+    padding: 0 16px;
+  }
+
+  /* --- cards --------------------------------------------------------- */
+
+  .card {
+    display: block;
+    width: 100%;
+    padding: 0;
+    text-align: left;
+    border-radius: 16px;
+    background: var(--yk-surface-container-highest);
+    overflow: hidden;
+  }
+  .rail .card { width: 200px; }
+  .card .poster {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: var(--yk-surface-container-lowest);
+  }
+  .card .poster img { width: 100%; height: 100%; object-fit: cover; }
+  .card .label {
+    padding: 8px 10px 10px;
+    font-size: var(--yk-font-body-medium-size);
+    line-height: var(--yk-font-body-medium-line);
+  }
+  /* The clamp is on the TITLE, not on the label. Clamping the label counted
+     the channel name as one of the two lines and then cut it off half-drawn,
+     so every card in the grid ended in a sliced word. */
+  .card .title {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card .sub {
+    display: block;
+    margin-top: 2px;
+    color: var(--yk-on-surface-variant);
+    font-size: var(--yk-font-label-medium-size);
+    line-height: var(--yk-font-label-medium-line);
+  }
+  .badge {
+    position: absolute; right: 6px; bottom: 6px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--yk-artwork-scrim);
+    color: var(--yk-on-artwork);
+    font-size: var(--yk-font-label-small-size);
+    line-height: var(--yk-font-label-small-line);
+  }
+  /* Watched progress is the borrowed YouTube red, deliberately not the brand
+     teal and deliberately not the kid's colour. */
+  .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--yk-artwork-scrim); }
+  .progress > i { display: block; height: 100%; background: var(--yk-watched-progress); }
+
+  /* The hero. Two or three cards, the biggest thing on the page. */
+  .hero { display: flex; gap: 12px; overflow-x: auto; padding: 2px 16px 6px; }
+  .hero .card { width: min(78vw, 320px); flex: 0 0 auto; }
+  .hero .label { font-size: var(--yk-font-title-medium-size); line-height: var(--yk-font-title-medium-line); }
+
+  /* Channel tiles, name under.
+     Sixteen by nine and not a square: the hub indexes videos, not channel
+     avatars, so a channel wears its newest video — and a square crop of a
+     16:9 frame cuts the middle out of every one of them. */
+  .rail .card.chan { width: 168px; }
+  .chan .label { text-align: center; }
+
+  /* --- the player ---------------------------------------------------- */
+
+  #player video {
+    width: 100%;
+    max-height: 62vh;
+    /* The letterbox. The darkest ground the palette has, rather than a
+       literal black: see rule 2 at the top of this file, and guard 61. */
+    background: var(--yk-surface-container-lowest);
+    display: block;
+  }
+  #player .meta { padding: 14px 16px; }
+  #player h1 {
+    margin: 0 0 4px;
+    font-size: var(--yk-font-title-large-size);
+    line-height: var(--yk-font-title-large-line);
+    font-weight: var(--yk-font-title-large-weight, 500);
+  }
+  #player .meta .sub { color: var(--yk-on-surface-variant); }
+
+  /* The five-minute notice: a card that slides in over the video, not a
+     dialog. Nothing it says needs answering, and a modal would stop the
+     video to say so. */
+  .toast {
+    position: fixed;
+    left: 16px; right: 16px;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    z-index: 20;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: var(--yk-time-warning);
+    color: var(--yk-on-action);
+    font-size: var(--yk-font-title-medium-size);
+    line-height: var(--yk-font-title-medium-line);
+    box-shadow: 0 6px 24px var(--yk-artwork-scrim);
+  }
+
+  /* --- states -------------------------------------------------------- */
+
+  .note {
+    margin: 24px 16px;
+    padding: 18px;
+    border-radius: 16px;
+    background: var(--yk-surface-container);
+    color: var(--yk-on-surface-variant);
+  }
+  .note strong { color: var(--yk-on-surface); }
+
+  /* --- the claim screen ---------------------------------------------- */
+
+  #claim { max-width: 26rem; margin: 12vh auto 0; padding: 0 24px; text-align: center; }
+  #claim h1 {
+    font-size: var(--yk-font-headline-small-size);
+    line-height: var(--yk-font-headline-small-line);
+    margin: 0 0 8px;
+  }
+  #claim p { color: var(--yk-on-surface-variant); }
+  #claim .row { display: flex; gap: 10px; justify-content: center; margin: 20px 0 12px; }
+  #code {
+    width: 8em;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid var(--yk-outline);
+    background: var(--yk-surface-container-high);
+    text-transform: uppercase;
+    letter-spacing: .22em;
+    text-align: center;
+  }
+  .go {
+    padding: 12px 22px;
+    border-radius: 14px;
+    background: var(--yk-action);
+    color: var(--yk-on-action);
+    font-weight: 600;
+  }
+
+  /* A tablet held sideways is the common case; keep the rails from becoming
+     one enormous card each. */
+  @media (min-width: 700px) {
+    .rail .card { width: 240px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  }
+</style>
+</head>
+<body>
+
+<section id="claim" hidden>
+  <h1>Type your code</h1>
+  <p>Ask a grown-up for the code on the hub.</p>
+  <div class="row">
+    <input id="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" inputmode="latin">
+    <button class="go" id="go">Watch</button>
+  </div>
+  <p id="claimWhy"></p>
+</section>
+
+<div id="app" hidden>
+  <header class="bar">
+    <button class="icon-btn" id="back" hidden aria-label="Back">←</button>
+    <div class="avatar" id="avatar"></div>
+    <div class="who" id="who"></div>
+    <span class="pill" id="time" hidden></span>
+    <button class="icon-btn" id="look" aria-label="Change the colours"></button>
+  </header>
+
+  <div class="searchrow" id="searchrow">
+    <input id="q" type="search" placeholder="Search" enterkeyhint="search">
+  </div>
+
+  <main id="main"></main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var BEAT_MS = 20000;
+  var LOW_MINUTES = 5;
+
+  var state = { kid: null, home: null, view: "home", beat: null, warned: false, look: null };
+
+  // --- tiny DOM helpers ------------------------------------------------
+  // el() sets TEXT, never markup: see rule 3 in the comment at the top.
+
+  function el(tag, className, text) {
+    var n = document.createElement(tag);
+    if (className) n.className = className;
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    return n;
+  }
+
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  function thumbSrc(url) {
+    return url ? "/thumb?u=" + encodeURIComponent(url) : "";
+  }
+
+  function duration(seconds) {
+    if (!seconds || seconds < 1) return "";
+    var m = Math.floor(seconds / 60);
+    var s = Math.floor(seconds % 60);
+    if (m < 60) return m + ":" + (s < 10 ? "0" : "") + s;
+    var h = Math.floor(m / 60);
+    return h + ":" + ((m % 60) < 10 ? "0" : "") + (m % 60);
+  }
+
+  // --- cards -----------------------------------------------------------
+
+  function videoCard(video, big) {
+    var card = el("button", "card");
+    card.type = "button";
+    var poster = el("div", "poster");
+    if (video.thumb) {
+      var img = el("img");
+      img.src = thumbSrc(video.thumb);
+      img.alt = "";
+      img.loading = "lazy";
+      poster.appendChild(img);
+    }
+    var d = duration(video.seconds);
+    if (d) poster.appendChild(el("span", "badge", d));
+    if (video.progress > 0.02) {
+      var bar = el("div", "progress");
+      var fill = el("i");
+      fill.style.width = Math.round(Math.min(video.progress, 1) * 100) + "%";
+      bar.appendChild(fill);
+      poster.appendChild(bar);
+    }
+    card.appendChild(poster);
+    var label = el("div", "label");
+    label.appendChild(el("span", "title", video.title));
+    label.appendChild(el("span", "sub", video.channel));
+    card.appendChild(label);
+    card.onclick = function () { play(video); };
+    if (big) card.classList.add("big");
+    return card;
+  }
+
+  function channelCard(channel) {
+    var card = el("button", "card chan");
+    card.type = "button";
+    var poster = el("div", "poster");
+    if (channel.thumb) {
+      var img = el("img");
+      img.src = thumbSrc(channel.thumb);
+      img.alt = "";
+      img.loading = "lazy";
+      poster.appendChild(img);
+    }
+    card.appendChild(poster);
+    var label = el("div", "label");
+    label.appendChild(el("span", "title", channel.name));
+    card.appendChild(label);
+    card.onclick = function () { openChannel(channel.id); };
+    return card;
+  }
+
+  function pinCard(pin) {
+    var card = el("button", "card");
+    card.type = "button";
+    var poster = el("div", "poster");
+    if (pin.thumb) {
+      var img = el("img");
+      img.src = thumbSrc(pin.thumb);
+      img.alt = "";
+      poster.appendChild(img);
+    }
+    card.appendChild(poster);
+    var label = el("div", "label");
+    label.appendChild(el("span", "title", pin.name));
+    if (pin.meta) label.appendChild(el("span", "sub", pin.meta));
+    card.appendChild(label);
+    card.onclick = function () { openChannel(pin.id); };
+    return card;
+  }
+
+  function shelf(title, node) {
+    var s = el("section", "shelf");
+    if (title) s.appendChild(el("h2", null, title));
+    s.appendChild(node);
+    return s;
+  }
+
+  function rail(items, make, className) {
+    var r = el("div", className || "rail");
+    for (var i = 0; i < items.length; i++) r.appendChild(make(items[i]));
+    return r;
+  }
+
+  function grid(videos) {
+    var g = el("div", "grid");
+    for (var i = 0; i < videos.length; i++) g.appendChild(videoCard(videos[i]));
+    return g;
+  }
+
+  // --- the home --------------------------------------------------------
+
+  // The order and the enabled flags are the hub's answer, which is
+  // homeSections() in :core -- the same list the phone and the television
+  // draw. This switch is only "how is this one drawn"; adding a shelf is a
+  // change to that shared catalogue, and every face gets it.
+  function renderHome() {
+    var home = state.home;
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = true;
+    document.getElementById("searchrow").hidden = false;
+
+    var sections = home.sections || [];
+    var drew = false;
+    for (var i = 0; i < sections.length; i++) {
+      var section = sections[i];
+      if (!section.enabled) continue;
+      var node = null;
+      if (section.id === "pinned" && home.pinned.length) {
+        node = rail(home.pinned, pinCard, "hero");
+      } else if (section.id === "channels" && home.channels.length) {
+        node = rail(home.channels, channelCard);
+      } else if (section.id === "keep-watching" && home.keepWatching.length) {
+        node = rail(home.keepWatching, videoCard);
+      } else if (section.id === "suggested" && home.suggested.length) {
+        node = rail(home.suggested, videoCard);
+      } else if (section.id === "videos" && home.videos.length) {
+        node = grid(home.videos);
+      } else if (section.id === "history" && home.history.length) {
+        node = rail(home.history, videoCard);
+      }
+      if (node) {
+        main.appendChild(shelf(section.title, node));
+        drew = true;
+      }
+    }
+    if (!drew) {
+      var note = el("div", "note");
+      note.appendChild(el("strong", null, "Nothing here yet."));
+      note.appendChild(el("div", null, "Ask a grown-up to add a channel."));
+      main.appendChild(note);
+    }
+    state.view = "home";
+  }
+
+  function renderChannel(channel) {
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = false;
+    document.getElementById("searchrow").hidden = true;
+    main.appendChild(shelf(channel.name, grid(channel.videos)));
+    state.view = "channel";
+  }
+
+  function renderSearch(result) {
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = false;
+    document.getElementById("searchrow").hidden = false;
+    if (!result.videos.length) {
+      var note = el("div", "note");
+      note.appendChild(el("strong", null, "Nothing found."));
+      note.appendChild(el("div", null, "Try another word."));
+      main.appendChild(note);
+    } else {
+      main.appendChild(shelf(null, grid(result.videos)));
+    }
+    state.view = "search";
+  }
+
+  // --- the player ------------------------------------------------------
+
+  function play(video) {
+    stopBeating();
+    state.warned = false;
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = false;
+    document.getElementById("searchrow").hidden = true;
+
+    var wrap = el("div");
+    wrap.id = "player";
+    var v = document.createElement("video");
+    v.controls = true;
+    v.autoplay = true;
+    v.playsInline = true;
+    v.setAttribute("playsinline", "");
+    v.src = "/media?v=" + encodeURIComponent(video.id);
+    wrap.appendChild(v);
+
+    var meta = el("div", "meta");
+    meta.appendChild(el("h1", null, video.title));
+    meta.appendChild(el("div", "sub", video.channel));
+    var why = el("div", "sub");
+    why.id = "playWhy";
+    meta.appendChild(why);
+    wrap.appendChild(meta);
+    main.appendChild(wrap);
+    state.view = "player";
+
+    // Resume where they were. The hub knows, because the hub is this
+    // browser's device store -- see HubKidHistory.
+    if (video.progress > 0.02 && video.progress < 0.98 && video.seconds) {
+      v.currentTime = video.progress * video.seconds;
+    }
+
+    v.onplaying = function () { startBeating(v, video); };
+    v.onpause = stopBeating;
+    v.onended = function () {
+      beat(v, video);
+      stopBeating();
+    };
+    v.onerror = function () {
+      // A refusal is a normal answer here -- bedtime, a block, no budget
+      // left. <video> only ever says "it did not play", so ask the route
+      // itself for the reason, in the hub's own words.
+      fetch(v.src, { credentials: "same-origin", headers: { Range: "bytes=0-1" } })
+        .then(function (r) { return r.ok ? null : r.json().catch(function () { return null; }); })
+        .then(function (body) {
+          why.textContent = body && body.detail
+            ? body.detail
+            : "That will not play right now.";
+        });
+    };
+  }
+
+  function startBeating(video, meta) {
+    stopBeating();
+    beat(video, meta);
+    state.beat = setInterval(function () { beat(video, meta); }, BEAT_MS);
+  }
+
+  function stopBeating() {
+    if (state.beat) clearInterval(state.beat);
+    state.beat = null;
+  }
+
+  /**
+   * "Still watching, and this far in."
+   *
+   * The hub credits the time IT has seen pass, so this call is what makes a
+   * browser's minutes count against a daily budget at all -- and the answer
+   * carries the countdown back, which is why the pill is never stale.
+   */
+  function beat(video, meta) {
+    fetch("/progress", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        v: meta.id,
+        positionMs: Math.round((video.currentTime || 0) * 1000),
+        durationMs: Math.round((video.duration || meta.seconds || 0) * 1000)
+      })
+    }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (body) {
+      if (!body) return;
+      if (typeof body.budgetMinutes === "number") {
+        var left = Math.max(0, body.budgetMinutes - (body.spentMinutes || 0));
+        showTime(left);
+        if (left <= LOW_MINUTES && left > 0 && !state.warned) {
+          state.warned = true;
+          toast(left === 1 ? "1 minute left today" : left + " minutes left today");
+        }
+      }
+    }).catch(function () { /* one missed beat is not an event */ });
+  }
+
+  function toast(text) {
+    var t = el("div", "toast", text);
+    document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 6000);
+  }
+
+  function showTime(left) {
+    var pill = document.getElementById("time");
+    pill.hidden = false;
+    pill.textContent = left === 1 ? "1 minute left" : left + " minutes left";
+    pill.classList.toggle("low", left <= LOW_MINUTES);
+  }
+
+  // --- talking to the hub ----------------------------------------------
+
+  function get(path) {
+    return fetch(path, { credentials: "same-origin" }).then(function (r) {
+      if (r.status === 401) { showClaim(); return null; }
+      if (!r.ok) throw new Error(path + " " + r.status);
+      return r.json();
+    });
+  }
+
+  function openChannel(id) {
+    get("/channel?id=" + encodeURIComponent(id)).then(function (channel) {
+      if (channel) renderChannel(channel);
+    }).catch(function () { renderHome(); });
+  }
+
+  function runSearch(q) {
+    if (!q) { renderHome(); return; }
+    get("/search?q=" + encodeURIComponent(q)).then(function (result) {
+      if (result) renderSearch(result);
+    });
+  }
+
+  function loadHome() {
+    return get("/home").then(function (home) {
+      if (!home) return;
+      state.home = home;
+      applyLook(state.look || savedLook());
+      document.getElementById("avatar").textContent = (home.kid && home.kid.avatar) || "";
+      document.getElementById("who").textContent = (home.kid && home.kid.name) || "";
+      if (home.time && typeof home.time.budgetMinutes === "number") {
+        showTime(Math.max(0, home.time.budgetMinutes - (home.time.spentMinutes || 0)));
+      } else {
+        document.getElementById("time").hidden = true;
+      }
+      document.getElementById("claim").hidden = true;
+      document.getElementById("app").hidden = false;
+      renderHome();
+    });
+  }
+
+  /**
+   * The three looks, and they are the app's three.
+   *
+   * "My colour" is the properties the hub sent, each computed by kidTinted()
+   * in :core -- the same function Theme.kt themes the Android app with. Dark
+   * and Light are the brand's own, already in the generated stylesheet, so
+   * choosing them is a matter of taking the kid's properties back off: Dark is
+   * what :root says, Light is what [data-yk-theme="light"] says. There is no
+   * fourth combination, because the app has none -- My colour tints the dark
+   * ground and only the dark ground.
+   *
+   * The choice lives in this browser and nowhere else. It is a per-viewer
+   * preference on a shared tablet, not a fact about the family, and the hub
+   * cannot know it anyway: on Android the same switch is KidPrefs, which is
+   * per-device and has never synced.
+   */
+  var LOOKS = ["colour", "dark", "light"];
+  var LOOK_GLYPH = { colour: "🎨", dark: "🌙", light: "☀️" };
+
+  function applyLook(look) {
+    var root = document.documentElement;
+    var theme = (state.home && state.home.theme) || {};
+    var names = Object.keys(theme);
+    for (var i = 0; i < names.length; i++) root.style.removeProperty(names[i]);
+    root.removeAttribute("data-yk-theme");
+    if (look === "light") {
+      root.setAttribute("data-yk-theme", "light");
+    } else if (look === "colour") {
+      for (var j = 0; j < names.length; j++) {
+        root.style.setProperty(names[j], theme[names[j]]);
+      }
+    }
+    state.look = look;
+    document.getElementById("look").textContent = LOOK_GLYPH[look] || LOOK_GLYPH.colour;
+    try { localStorage.setItem("yk-look", look); } catch (e) { /* private window */ }
+  }
+
+  function savedLook() {
+    // "My colour" by default: the interface is meant to be the one the child
+    // picked for themselves, and a browser that opened grey would not be the
+    // app they already know.
+    try { return localStorage.getItem("yk-look") || "colour"; } catch (e) { return "colour"; }
+  }
+
+  function showClaim() {
+    stopBeating();
+    document.getElementById("app").hidden = true;
+    document.getElementById("claim").hidden = false;
+  }
+
+  // --- wiring ----------------------------------------------------------
+
+  document.getElementById("go").onclick = function () {
+    var code = document.getElementById("code").value.trim();
+    var why = document.getElementById("claimWhy");
+    if (!code) return;
+    why.textContent = "";
+    fetch("/claim", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code })
+    }).then(function (r) {
+      if (r.ok) return loadHome();
+      if (r.status === 429) {
+        return r.json().then(function (b) {
+          why.textContent = "Too many tries. Wait " + (b.retryAfter || 60) + " seconds.";
+        });
+      }
+      why.textContent = "That code did not work. Ask for a new one.";
+    }).catch(function () {
+      why.textContent = "The hub did not answer.";
+    });
+  };
+
+  document.getElementById("code").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") document.getElementById("go").click();
+  });
+
+  document.getElementById("look").onclick = function () {
+    var at = LOOKS.indexOf(state.look);
+    applyLook(LOOKS[(at + 1) % LOOKS.length]);
+  };
+
+  document.getElementById("back").onclick = function () {
+    stopBeating();
+    document.getElementById("q").value = "";
+    // Reloaded rather than redrawn from the copy in memory: a video just
+    // watched belongs in Keep watching, and a home screen that still says
+    // "not started" is the app looking broken to the one person who knows
+    // otherwise.
+    loadHome().catch(function () { renderHome(); });
+  };
+
+  var searchTimer = null;
+  document.getElementById("q").addEventListener("input", function (e) {
+    var q = e.target.value.trim();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { runSearch(q); }, 250);
+  });
+
+  loadHome().catch(function () {
+    showClaim();
+    document.getElementById("claimWhy").textContent = "";
+  });
+})();
+</script>
+</body>
+</html>

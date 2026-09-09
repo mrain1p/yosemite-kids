@@ -1702,3 +1702,65 @@ Still not built, and ROADMAP §J now says so: `Limits.budgetScope`, the
 confirm-with-the-number dialog, the "where the number came from" copy, the
 session-start fetch and per-minute report, and the version-skew line for a
 half-upgraded fleet.
+
+### The kid gets an origin of their own (web player, steps 2–3)
+
+Step 1 proved a NAS can carry video bytes. These two steps are about **who is
+allowed to ask for them**, and the answer starts with a second listener.
+
+- **A second port, not a path** (`HubKidServer`, `YOSEMITE_KIDS_KID_PORT`,
+  8766). This is the load-bearing decision and it was made against a specific
+  attack rather than on principle: put the kid's page at `/kid/` on the
+  console's origin and a script on it can `fetch("/api/config", {method:
+  "POST"})` and pass **every gate this hub has**. `sameOrigin()` compares
+  Origin's host to Host and they match; the parent's session cookie rides
+  along, because cookie `Path` is matched against the request URI and not
+  against the page that made the request; `SameSite=Strict` is satisfied,
+  because it genuinely is the same site; and `HttpOnly` is irrelevant, because
+  the page never reads the cookie — it only sends it. On a shared family iPad
+  with a parent signed in, that is a page a child opened rewriting the
+  family's blocks, limits and AI settings, and minting itself bonus minutes.
+  Two ports make them two origins and every one of those gates starts working
+  for the family instead of against them. **No CORS header is sent anywhere**,
+  so a reply that is not refused still cannot be read.
+- **The kid listener answers exactly five paths** — `/claim`, `/whoami`,
+  `/media`, `/`, `/kid-tokens.css` — and 404s everything else. Deliberately not
+  a catch-all: on the console an unknown path is a parent's typo and the page
+  is the kindest answer; here it is somebody looking for the console, and a
+  200 carrying a page is the answer that says keep looking.
+- **`GET /media` moved to the kid origin**, where it was always going to
+  belong, and **the `kid=` parameter is gone with the parser for it**. Whose
+  rules apply is a property of the credential now, bound when the parent
+  minted the code — a child who could name the kid could name their older
+  sibling and watch on their bedtime, their budget and their block list.
+- **Claim codes** (`HubBrowsers`, `/data/browsers.json`). A parent mints, in
+  their own session, and says which child it is for; the tablet redeems on the
+  kid origin and is handed a six-month `HttpOnly; SameSite=Strict` cookie.
+  Same two halves as `/enrol` and `/approve`, same no-vowel alphabet (one
+  copy, in `HubTokens.CODE_ALPHABET`), single use, ten minutes, five wrong
+  guesses burn every live code. The hub mints every identifier; the browser
+  mints nothing.
+- **A throttle of its own**, and this is not tidiness: on one shared counter a
+  six-year-old mistyping ten times locks their parent out of the console for
+  fifteen minutes, then thirty, then an hour — a throttle causing the exact
+  failure it exists to prevent. `HubRate`, ten a minute, no escalation, and
+  nothing on the kid origin can reach `HubSessions` at all.
+- **Revoke**, beside the device revoke: Devices → Watch in a browser →
+  Remove, effective on that browser's next request. And **deleting a kid takes
+  their browsers with them** — `limitsFor` an unknown kid is the family
+  default, so a deleted child's tablet would otherwise carry on under the
+  loosest rules in the house, with nothing thrown and nothing on screen.
+- **A placeholder page** on the kid origin: a code box, the child's name, one
+  video. No browse UI, no shelves, no styling beyond the generated stylesheet
+  — step 4 builds the real one. It exists so the whole path can be proved in a
+  browser rather than only in a test, and it was: code typed in, cookie set,
+  "Hello Ada", video playing through `/media`.
+- **Guards 57–60**, both scripts, negative-tested in both: the kid origin
+  serves exactly its five paths and nothing the console serves (bar the
+  stylesheet and each origin's own root); every kid route has a row in
+  `docs/LAN-API.md`; the compose file publishes the kid port through the same
+  variable the process reads; one code alphabet; **no `Access-Control-` header
+  anywhere in the module**; the kid throttle and the kid cookie are separate
+  objects with separate names from the admin's; and every kid route resolves
+  the claim cookie first, takes the child from it rather than from a query,
+  and carries the three security headers.

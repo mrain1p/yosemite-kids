@@ -129,7 +129,20 @@ object HubWeb {
         master: HubMaster? = null,
         crawl: HubCrawl? = null,
         /** When this process started, for the health block. 0 when nobody said. */
-        startedAt: Long = 0L
+        startedAt: Long = 0L,
+        /**
+         * The browsers claimed on the kid origin, for the card that revokes
+         * one. Null on a hub built without the kid listener at all, which the
+         * page renders as an empty list rather than as an error.
+         */
+        browsers: HubBrowsers? = null,
+        /**
+         * The port a child's browser watches on. The page needs it because it
+         * is a **different origin** and nothing in the address bar implies it;
+         * a parent who is not told the number cannot open the kid's page at
+         * all. 0 means "not serving one", which the card says plainly.
+         */
+        kidPort: Int = 0
     ): String {
         val config = runCatching { store.load() }.getOrElse { Whitelist(emptyList(), emptySet()) }
         // Keyless, and explicitly so. `config` comes off the hub's own disk,
@@ -199,6 +212,22 @@ object HubWeb {
             pending.put(JSONObject().put("code", it.code).put("name", it.name).put("createdAt", it.createdAt))
         }
 
+        // Claimed browsers, by the short reference the page revokes with —
+        // never the cookie value. A page that could read one back would be a
+        // page that could hand a child's credential to anyone looking over a
+        // parent's shoulder, and the page has no use for it: it administers,
+        // it does not watch.
+        val watchers = JSONArray()
+        browsers?.browsers()?.forEach {
+            watchers.put(
+                JSONObject()
+                    .put("ref", it.ref)
+                    .put("kid", it.kid)
+                    .put("claimedAt", it.claimedAt)
+                    .put("lastSeenAt", it.lastSeenAt)
+            )
+        }
+
         val outstanding = JSONArray()
         SettingsSurface.outstandingOnHub().forEach {
             outstanding.put(JSONObject().put("title", it.title).put("page", it.page.title))
@@ -230,6 +259,7 @@ object HubWeb {
             // "nothing here yet" rather than as an error.
             .put("review", reviewJson(screening, config))
             .put("devices", devices)
+            .put("browsers", watchers)
             .put("pending", pending)
             .put("versions", HubVersions.list(store))
             .put("index", indexJson ?: JSONObject.NULL)
@@ -253,6 +283,7 @@ object HubWeb {
                     .put("holdsKey", store.holdsKey())
                     .put("keyTail", store.keyTail())
                     .put("deviceCount", tokens.devices().size)
+                    .put("kidPort", kidPort)
                     .put("startedAt", startedAt)
                     // The one health number a NAS actually needs. A volume
                     // that fills up takes the atomic write with it — the
@@ -436,9 +467,31 @@ object HubWeb {
      * therefore a delete, and it has to be — the alternative is a control that
      * can be set and never cleared.
      */
-    fun applyPatch(store: HubStore, who: String, now: Long, patch: JSONObject): Boolean {
+    fun applyPatch(
+        store: HubStore,
+        who: String,
+        now: Long,
+        patch: JSONObject,
+        /**
+         * The claim store, so a child who is deleted takes their browsers with
+         * them. Null in tests that hold none.
+         *
+         * A browser's credential names a profile, and a profile that stops
+         * existing does not stop the browser: `limitsFor` an unknown kid is
+         * the **family default**, so a deleted child's tablet would quietly
+         * carry on watching under the loosest rules in the house. Nothing
+         * would throw and nothing on any screen would say so.
+         */
+        browsers: HubBrowsers? = null
+    ): Boolean {
         val keys = patch.keys().asSequence().filter { it in PATCHABLE }.toList()
         if (keys.isEmpty()) return false
+
+        // Read before the edit, so the comparison below is against what this
+        // patch actually removed rather than against what it sent.
+        val hadKids = if (browsers != null && "profiles" in keys) {
+            runCatching { store.load().profiles.map { it.id } }.getOrDefault(emptyList())
+        } else emptyList()
 
         store.edit(who, now) { current ->
             val doc = JSONObject(ConfigJson.toJson(current))
@@ -451,6 +504,12 @@ object HubWeb {
             // long from a build that allows four would be trimmed by an edit
             // to the AI model.
             if ("home" in keys) next.copy(pins = normalisedPins(current, next)) else next
+        }
+
+        if (hadKids.isNotEmpty()) {
+            val kept = runCatching { store.load().profiles.map { it.id } }
+                .getOrDefault(hadKids).toSet()
+            (hadKids - kept).forEach { browsers?.revokeFor(it) }
         }
         return true
     }
@@ -778,6 +837,36 @@ object HubWeb {
             )
         }
         return Assigned.OK
+    }
+
+    /** What a mint did, so the page can say something true when it did nothing. */
+    enum class Minted { OK, BAD_KID, TOO_MANY_CODES }
+
+    /** The code a parent reads onto the tablet, and why there is not one. */
+    data class Mint(val why: Minted, val code: String? = null)
+
+    /**
+     * Mint a claim code for one child, for a browser to redeem on the kid
+     * origin.
+     *
+     * The kid **must exist**, which is the one place this differs from
+     * [grant]: a grant may legitimately precede the push that introduces a
+     * child, but a credential bound to a profile nobody has ever heard of is a
+     * browser that would play under `limitsFor(null)` — the family default —
+     * for as long as it lives. Failing closed here costs a parent one re-tap
+     * after the kid syncs; failing open hands a child the loosest rules in the
+     * house.
+     *
+     * The config is read, never written. Claimed browsers live in
+     * `browsers.json` and deliberately not in the family document: they are
+     * local to this box, they are not curation, and putting them in the config
+     * would push a bearer credential to every television in the house.
+     */
+    fun mintClaim(store: HubStore, browsers: HubBrowsers, kidId: String, now: Long): Mint {
+        val config = runCatching { store.load() }.getOrNull() ?: return Mint(Minted.BAD_KID)
+        if (config.profile(kidId) == null) return Mint(Minted.BAD_KID)
+        val code = browsers.mint(kidId, now) ?: return Mint(Minted.TOO_MANY_CODES)
+        return Mint(Minted.OK, code)
     }
 
     /** Revoke by the short reference the page was given, never by a raw token. */
