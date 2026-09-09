@@ -1552,7 +1552,7 @@ hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 kidsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
 [ -f "$kidsrv" ] ||
   guard_fail "$kidsrv is gone; guard 57 is blind. The kid's origin lives there, and it is a second listener rather than a path under the console's."
-#     (a) The kid listener serves EXACTLY these ten paths. Not a floor: a
+#     (a) The kid listener serves EXACTLY these eleven paths. Not a floor: a
 #         route added here is a route somebody has to have thought about,
 #         because everything on this origin faces a child's browser.
 #         Digits included, and that is a fix rather than a flourish: the class
@@ -1561,8 +1561,8 @@ kidsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
 #         fewer paths than it does, and let an unreviewed one land invisibly.
 #         Exactly the failure this guard exists to prevent, in the guard.
 kid_routes=$(grep -oE "createContext\(${q}/[a-z0-9/.-]*${q}" "$kidsrv" | grep -oE "/[a-z0-9/.-]*" | sort -u | tr "\n" " " || true)
-[ "$kid_routes" = "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami " ] ||
-  guard_fail "the kid origin serves [$kid_routes] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami ]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+[ "$kid_routes" = "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami /you " ] ||
+  guard_fail "the kid origin serves [$kid_routes] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami /you ]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 #     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
 #         path on both origins is a path where the argument above stops being
 #         true, one route at a time. "/" is each origin's own front door (the

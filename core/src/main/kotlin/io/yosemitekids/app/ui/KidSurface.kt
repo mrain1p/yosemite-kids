@@ -108,6 +108,14 @@ data class KidSurfaceDef(
     val id: String,
     /** The words a child reads. One spelling, both faces. */
     val title: String,
+    /**
+     * The glyph beside the title, where a surface has one.
+     *
+     * An emoji rather than a vector, because it is what the app already draws
+     * and because it is the one kind of icon a Compose chip and an HTML button
+     * render the same without either side shipping an asset.
+     */
+    val icon: String = "",
     /** What an empty one says. Blank for a surface that cannot be empty. */
     val emptyText: String = "",
     val kind: SurfaceKind,
@@ -121,7 +129,18 @@ data class KidSurfaceDef(
     val caps: List<KidCap> = emptyList(),
     /** False for a [KidFace.BOTH] surface the browser does not draw yet. */
     val webReady: Boolean = false,
-    /** Required whenever [face] is not BOTH, or [webReady] is false. */
+    /**
+     * Why this surface is not simply the same on every face.
+     *
+     * **Required** when [face] is not BOTH or [webReady] is false, because a
+     * gap with no reason beside it cannot be told from an oversight.
+     *
+     * **Allowed, and encouraged, on a ready surface too** — for a deliberate
+     * difference in *how* a face draws it. Those are legitimate: a remote needs
+     * focus a finger does not, a browser cannot lock an iPad's screen, a
+     * ten-foot card is bigger. What must not happen is a difference nobody
+     * wrote down, which is indistinguishable from drift six months later.
+     */
     val why: String = ""
 )
 
@@ -135,6 +154,23 @@ object KidSurface {
 
     /** A saved list's ceiling. */
     val SAVED_MAX = KidCap("SAVED_MAX", 200, "a list a child curates by hand; past this it is a feed")
+
+    /** Rows one You-tab shelf holds once it is unfolded. */
+    val YOU_PAGE_MAX = KidCap("YOU_PAGE_MAX", 60, "a shelf unfolded in place, not a second screen")
+
+    /**
+     * The You tab's shelves, in the order it draws them.
+     *
+     * Order lives here rather than in either renderer for the same reason
+     * [HOME_SHELVES] does: the parent's shelf editor, when it lands, edits a
+     * saved list against this catalogue, and a face holding its own order would
+     * simply ignore what they saved.
+     *
+     * **Downloads is deliberately absent**, and its reason is in
+     * [NOT_A_SURFACE] rather than here — a shelf the browser must never have is
+     * not a shelf the browser is missing.
+     */
+    val YOU_SHELVES: List<String> = listOf("favorites", "watch-later", "up-next", "history")
 
     val surfaces: List<KidSurfaceDef> = listOf(
         KidSurfaceDef(
@@ -179,15 +215,20 @@ object KidSurface {
         KidSurfaceDef(
             id = "history",
             title = "History",
-            emptyText = "Nothing watched yet.",
+            icon = "🕘",
+            emptyText = "Nothing watched yet. Whatever you watch shows up here.",
             kind = SurfaceKind.SCREEN,
             screen = "History",
             rules = listOf("KidHome.history"),
-            caps = listOf(HISTORY_MAX),
-            webReady = false,
-            why = "R2. Every ingredient is already on the box - the hub calls KidHome.history " +
-                "today for the home shelf, at the shelf's smaller cap - so this is a screen and " +
-                "a cap away, with no new storage at all."
+            route = "/you",
+            caps = listOf(HISTORY_MAX, YOU_PAGE_MAX),
+            webReady = true,
+            why = "A DELIBERATE DIFFERENCE, recorded rather than hidden. On the phone this is a " +
+                "SCREEN: the You tab's See all opens Screen.History and back returns. In the " +
+                "browser it unfolds in place inside the You tab instead. Same rows, same cap, " +
+                "same order - a different navigation, because a second page for a row a child " +
+                "reached in one tap is a back button a five-year-old has to find, and a browser " +
+                "back button already means something else to them (it leaves the app)."
         ),
         KidSurfaceDef(
             id = "you",
@@ -195,15 +236,15 @@ object KidSurface {
             kind = SurfaceKind.SCREEN,
             screen = "You",
             rules = listOf("KidHome.history"),
-            caps = listOf(ROW_PREVIEW),
-            webReady = false,
-            why = "R2. Needs the shelf chrome - header rule, mono count, See all - which every " +
-                "later round then reuses."
+            route = "/you",
+            caps = listOf(ROW_PREVIEW, YOU_PAGE_MAX),
+            webReady = true
         ),
         KidSurfaceDef(
             id = "favorites",
             title = "Favorites",
-            emptyText = "Nothing here yet. Hold a video to add it.",
+            icon = "❤️",
+            emptyText = "Nothing here yet. Hold a video and pick Add to Favorites.",
             kind = SurfaceKind.SHELF,
             screen = "Watchlist",
             caps = listOf(SAVED_MAX),
@@ -215,7 +256,8 @@ object KidSurface {
         KidSurfaceDef(
             id = "watch-later",
             title = "Watch later",
-            emptyText = "Nothing saved for later.",
+            icon = "🕒",
+            emptyText = "Nothing saved for later. Hold a video and pick Add to Watch later.",
             kind = SurfaceKind.SHELF,
             screen = "WatchLater",
             caps = listOf(SAVED_MAX),
@@ -225,7 +267,8 @@ object KidSurface {
         KidSurfaceDef(
             id = "up-next",
             title = "Up next",
-            emptyText = "Nothing lined up.",
+            icon = "📚",
+            emptyText = "Nothing lined up. Hold a video and pick Add to Up next.",
             kind = SurfaceKind.SHELF,
             screen = "Queue",
             webReady = false,

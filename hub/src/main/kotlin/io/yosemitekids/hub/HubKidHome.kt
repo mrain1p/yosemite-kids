@@ -7,6 +7,7 @@ import io.yosemitekids.app.data.Video
 import io.yosemitekids.app.ui.HOME_SHELVES
 import io.yosemitekids.app.ui.HomeShelf
 import io.yosemitekids.app.ui.KID_DARK
+import io.yosemitekids.app.ui.KidSurface
 import io.yosemitekids.app.ui.PinnableSource
 import io.yosemitekids.app.ui.homeSections
 import io.yosemitekids.app.ui.kidTinted
@@ -170,6 +171,58 @@ class HubKidHome(
             )
         )
         return out
+    }
+
+    /**
+     * The You tab: this kid's own shelves, in `:core`'s order, each already
+     * capped and already filtered to what they may see.
+     *
+     * **Every shelf is declared even when it is empty**, and that is the app's
+     * shape rather than an oversight: the page has one form, and an empty row
+     * says what would fill it. A shelf that appeared only once it had something
+     * in it would leave a child with no way to learn the gesture that fills it.
+     *
+     * The words come from [KidSurface], so this hub cannot describe a shelf
+     * differently from the phone — which the two Compose screens managed to do
+     * to "Watch later" before the manifest existed.
+     */
+    fun you(kidId: String, viewer: String?): JSONObject {
+        val watched = history.pointsFor(kidId)
+        val videos = policy.catalogueFor(kidId).flatMap { it.videos }.map { it.toVideo() }
+
+        val shelves = JSONArray()
+        for (id in KidSurface.YOU_SHELVES) {
+            val surface = KidSurface.surface(id)
+            // Only History has anything behind it on this box today; the three
+            // saved lists are declared, empty, and say so. When their store
+            // lands they fill in here and nothing about the page changes.
+            val rows = when (id) {
+                "history" -> KidHome.history(
+                    watched, videos, KidSurface.YOU_PAGE_MAX.value
+                ) { v, f -> v to f }
+                else -> emptyList()
+            }
+            // Both lists, and the cap applied HERE. The page may not slice
+            // (guard 61), so "the first twelve" has to arrive already decided —
+            // which is also what keeps the browser's glance the same length as
+            // the phone's rather than whatever a stylesheet happened to fit.
+            shelves.put(
+                JSONObject()
+                    .put("id", surface.id)
+                    .put("title", surface.title)
+                    .put("icon", surface.icon)
+                    .put("emptyText", surface.emptyText)
+                    .put("count", rows.size)
+                    .put("preview", videosJson(rows.take(KidSurface.ROW_PREVIEW.value), watched))
+                    .put("videos", videosJson(rows, watched))
+            )
+        }
+
+        return JSONObject()
+            .put("kid", kidJson(kidId))
+            .put("theme", themeJson(kidId))
+            .put("time", timeJson(kidId, viewer))
+            .put("shelves", shelves)
     }
 
     /** One channel's page: its name, what the parent let through of its description, its videos. */

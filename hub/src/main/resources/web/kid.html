@@ -289,6 +289,98 @@
     box-shadow: 0 6px 24px var(--yk-artwork-scrim);
   }
 
+  /* --- shelf chrome --------------------------------------------------- */
+
+  /* The rule above a shelf. Without it the You tab is a column of headings
+     with nothing separating one shelf from the next - the same reason the
+     app draws ShelfRule between them. */
+  .shelf-rule {
+    height: 1px;
+    margin: 18px var(--yk-page-gutter) 0;
+    background: var(--yk-outline-variant);
+  }
+  .shelf-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px var(--yk-page-gutter) 4px;
+  }
+  .shelf-head h2 {
+    margin: 0;
+    font-size: var(--yk-font-title-medium-size);
+    line-height: var(--yk-font-title-medium-line);
+    font-weight: 700;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* The one mono label with no tracking: letter-spaced digits read as two
+     numbers ("3 5"), which is exactly the mistake a count must not invite.
+     The app's ShelfHeader says the same thing in the same words. */
+  .shelf-head .count {
+    color: var(--yk-on-surface-variant);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--yk-font-label-medium-size);
+    letter-spacing: 0;
+  }
+  .shelf-head .act {
+    margin-left: auto;
+    color: var(--yk-action);
+    font-weight: 700;
+    font-size: var(--yk-font-label-large-size);
+    white-space: nowrap;
+  }
+  .shelf-empty {
+    padding: 6px var(--yk-page-gutter) 2px;
+    color: var(--yk-on-surface-variant);
+    font-size: var(--yk-font-body-medium-size);
+    line-height: var(--yk-font-body-medium-line);
+  }
+
+  /* Wraps, never scrolls. A strip that scrolled sideways clipped "Up next"
+     mid-word off the right edge, which is the bug the app's FlowRow fixed. */
+  .chips {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 8px var(--yk-page-gutter) 2px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--yk-surface-container-high);
+    color: var(--yk-on-surface);
+    font-size: var(--yk-font-label-large-size);
+  }
+  .chip[aria-pressed="true"] {
+    background: var(--yk-secondary-container);
+    color: var(--yk-on-secondary-container);
+  }
+
+  /* --- the bottom tabs ------------------------------------------------- */
+
+  /* The phone's three destinations, drawn the app's way: a pill behind icon
+     AND label, not a capsule behind the icon alone. */
+  nav.tabs {
+    position: sticky; bottom: 0; z-index: 6;
+    display: flex; gap: 4px;
+    padding: 9px 8px max(14px, env(safe-area-inset-bottom));
+    background: var(--yk-surface-container);
+    /* The one rule the bar needs: without it the strip and the page behind it
+       are two flat blocks of near-identical grey. */
+    border-top: 1px solid var(--yk-outline-variant);
+  }
+  nav.tabs button {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 6px 0;
+    border-radius: 12px;
+    color: var(--yk-on-surface-variant);
+    font-size: var(--yk-font-label-medium-size);
+  }
+  nav.tabs button[aria-selected="true"] {
+    background: var(--yk-surface-container-high);
+    color: var(--yk-action);
+  }
+  nav.tabs .glyph { font-size: 20px; line-height: 1; }
+
   /* --- states -------------------------------------------------------- */
 
   .note {
@@ -362,6 +454,11 @@
   </div>
 
   <main id="main"></main>
+
+  <nav class="tabs" id="tabs" hidden>
+    <button id="tab-home" aria-selected="true"><span class="glyph">🏠</span>Home</button>
+    <button id="tab-you" aria-selected="false"><span class="glyph">🙂</span>You</button>
+  </nav>
 </div>
 
 <script>
@@ -371,7 +468,12 @@
   var BEAT_MS = 20000;
   var LOW_MINUTES = 5;
 
-  var state = { kid: null, home: null, view: "home", beat: null, warned: false, look: null };
+  var state = {
+    kid: null, home: null, view: "home", beat: null, warned: false, look: null,
+    // Which You-tab shelf is unfolded, by KidSurface id. Null is all folded.
+    openShelf: null,
+    tab: "home"
+  };
 
   // --- tiny DOM helpers ------------------------------------------------
   // el() sets TEXT, never markup: see rule 3 in the comment at the top.
@@ -485,6 +587,29 @@
     return s;
   }
 
+  /**
+   * A shelf's header: the rule above it, the title, the count, and the action
+   * on the right. The app's ShelfHeader, in HTML.
+   *
+   * The count is drawn only when there is one, and never when it is zero -- an
+   * empty shelf says what would fill it instead, in the words the hub sent.
+   */
+  function shelfHead(title, count, action, onAction) {
+    var wrap = el("div");
+    wrap.appendChild(el("div", "shelf-rule"));
+    var head = el("div", "shelf-head");
+    head.appendChild(el("h2", null, title));
+    if (count > 0) head.appendChild(el("span", "count", count));
+    if (action && onAction) {
+      var a = el("button", "act", action);
+      a.type = "button";
+      a.onclick = onAction;
+      head.appendChild(a);
+    }
+    wrap.appendChild(head);
+    return wrap;
+  }
+
   function rail(items, make, className) {
     var r = el("div", className || "rail");
     for (var i = 0; i < items.length; i++) r.appendChild(make(items[i]));
@@ -543,6 +668,74 @@
     // one vocabulary and guard 62 can check the page draws what it claims.
     }
     state.view = "home";
+  }
+
+  /**
+   * The You tab: the kid's own shelves, in the hub's order, with the hub's
+   * words.
+   *
+   * Every shelf is drawn even when it is empty. That is the app's shape and
+   * not an oversight -- the page has one form, and an empty row tells a child
+   * the gesture that would fill it. A shelf that appeared only once it had
+   * something in it would leave them no way to learn.
+   *
+   * "See all" unfolds a shelf in place rather than opening a screen: the app
+   * does the same, and a second screen for a row of twelve is a back button a
+   * five-year-old has to find.
+   */
+  function renderYou(you) {
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = true;
+    document.getElementById("searchrow").hidden = true;
+
+    var shelves = you.shelves || [];
+
+    // The chip strip: one per shelf, jumping to it. Wraps, never scrolls.
+    var chips = el("div", "chips");
+    for (var c = 0; c < shelves.length; c++) {
+      (function (s) {
+        var chip = el("button", "chip");
+        chip.type = "button";
+        chip.setAttribute("aria-pressed", state.openShelf === s.id ? "true" : "false");
+        if (s.icon) chip.appendChild(el("span", null, s.icon));
+        chip.appendChild(el("span", null, s.title));
+        chip.onclick = function () {
+          state.openShelf = state.openShelf === s.id ? null : s.id;
+          renderYou(you);
+          var head = document.getElementById("shelf-" + s.id);
+          if (head) head.scrollIntoView({ block: "start", behavior: "smooth" });
+        };
+        chips.appendChild(chip);
+      })(shelves[c]);
+    }
+    main.appendChild(chips);
+
+    for (var i = 0; i < shelves.length; i++) {
+      (function (s) {
+        var open = state.openShelf === s.id && s.count > 0;
+        var section = el("section", "shelf");
+        section.id = "shelf-" + s.id;
+        section.appendChild(shelfHead(
+          s.title,
+          s.count,
+          s.count > 0 ? (open ? "Show less" : "See all") : null,
+          function () {
+            state.openShelf = open ? null : s.id;
+            renderYou(you);
+          }
+        ));
+        if (!s.count) {
+          section.appendChild(el("div", "shelf-empty", s.emptyText));
+        } else if (open) {
+          section.appendChild(grid(s.videos));
+        } else {
+          section.appendChild(rail(s.preview, videoCard));
+        }
+        main.appendChild(section);
+      })(shelves[i]);
+    }
+    state.view = "you";
   }
 
   function renderChannel(channel) {
@@ -719,6 +912,7 @@
       }
       document.getElementById("claim").hidden = true;
       document.getElementById("app").hidden = false;
+      document.getElementById("tabs").hidden = false;
       renderHome();
     });
   }
@@ -801,6 +995,24 @@
   document.getElementById("code").addEventListener("keydown", function (e) {
     if (e.key === "Enter") document.getElementById("go").click();
   });
+
+  function showTab(name) {
+    state.tab = name;
+    document.getElementById("tab-home").setAttribute("aria-selected", name === "home" ? "true" : "false");
+    document.getElementById("tab-you").setAttribute("aria-selected", name === "you" ? "true" : "false");
+    if (name === "you") {
+      // Fetched on every visit rather than cached: a video watched a minute ago
+      // belongs at the top of History, and a You tab still showing the state
+      // from breakfast is the app looking broken to the one person who knows
+      // it is not.
+      get("/you").then(function (you) { if (you) renderYou(you); });
+    } else {
+      loadHome();
+    }
+  }
+
+  document.getElementById("tab-home").onclick = function () { showTab("home"); };
+  document.getElementById("tab-you").onclick = function () { showTab("you"); };
 
   document.getElementById("look").onclick = function () {
     var at = LOOKS.indexOf(state.look);

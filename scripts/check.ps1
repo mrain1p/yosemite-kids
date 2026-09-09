@@ -1807,7 +1807,7 @@ if (-not (Test-Path $kidSrv)) {
 }
 $kidText = Get-Content $kidSrv -Raw
 $hubText = Get-Content $hubSrv -Raw
-#     (a) The kid listener serves EXACTLY these ten paths. Not a floor: a
+#     (a) The kid listener serves EXACTLY these eleven paths. Not a floor: a
 #         route added here is a route somebody has to have thought about,
 #         because everything on this origin faces a child's browser.
 $kidRoutes = @(Get-Content $kidSrv |
@@ -1818,8 +1818,8 @@ $kidRoutes = @(Get-Content $kidSrv |
     Select-String -Pattern 'createContext\("(/[a-z0-9/.-]*)"' -AllMatches |
     ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } |
     Sort-Object -Unique)
-if (($kidRoutes -join " ") -ne "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami") {
-    Fail-Guard "the kid origin serves [$($kidRoutes -join ' ')] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+if (($kidRoutes -join " ") -ne "/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami /you") {
+    Fail-Guard "the kid origin serves [$($kidRoutes -join ' ')] and guard 57 expects [/ /channel /claim /home /kid-tokens.css /media /progress /search /thumb /whoami /you]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 }
 #     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
 #         path on both origins is a path where the argument above stops being
