@@ -107,6 +107,16 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             "A parent paused screen time for today. See you tomorrow 💛"
 
         /**
+         * Where a window pass ends after another grant of [minutes]. Grants
+         * stack: a second 15 during bedtime buys 30, matching the daily bonus
+         * (a plain sum in [bonusMs]) and what the parent's stats then report.
+         * A lapsed pass counts from now, not from when it ended — nothing is
+         * owed for the time in between.
+         */
+        fun extendPass(existingUntil: Long, now: Long, minutes: Int): Long =
+            maxOf(existingUntil, now) + minutes * 60_000L
+
+        /**
          * The day's allowance in ms: sittings × length, plus [bonusMs]. Null
          * when no limit is set. Pure, so a JVM test can hold a config-carried
          * grant against the budget without a Context.
@@ -362,7 +372,8 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
      * sitting starts, and every blocked window is waived for that long. The
      * pass runs from now, not from the tap — a TV that wakes ten minutes
      * after "20 more minutes" still gives the kid twenty, which is what the
-     * parent meant.
+     * parent meant — and a second grant inside the window stacks onto the
+     * first rather than overlapping it (see [extendPass]).
      */
     private fun lift(minutes: Int) {
         val now = System.currentTimeMillis()
@@ -371,7 +382,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             .putLong("sittingWatchedMs", 0)
             .putLong(
                 "windowPassUntil",
-                maxOf(prefs.getLong("windowPassUntil", 0), now + minutes * 60_000L)
+                extendPass(prefs.getLong("windowPassUntil", 0), now, minutes)
             )
             .apply()
     }
