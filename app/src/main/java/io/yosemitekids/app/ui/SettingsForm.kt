@@ -65,6 +65,11 @@ internal data class SettingsForm(
             ai.childAge != baseline.ai.childAge ||
             ai.model != baseline.ai.model ||
             ai.baseUrl != baseline.ai.baseUrl ||
+            // Flipping the hold changes what an unfinishable check leaves
+            // behind, so the verdicts stored under the old answer have to go:
+            // without the bump, videos held while it was on stay held after a
+            // parent turns it off, and only a tap in the queue frees each one.
+            ai.reviewIncompleteChecks != baseline.ai.reviewIncompleteChecks ||
             screeningJudgmentChanged(baseline.profiles, profiles)
         val finalAi = if (judgingChanged) ai.copy(rulesVersion = baseline.ai.rulesVersion + 1) else ai
         // A removed kid must not linger: entries owned only by them fall back

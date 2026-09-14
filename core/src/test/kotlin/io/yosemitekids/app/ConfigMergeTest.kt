@@ -473,6 +473,23 @@ class ConfigMergeTest {
     }
 
     @Test
+    fun disagreeingAboutHeldIncompleteChecksMovesTheRulesVersionToo() {
+        // The two sides store different things for a video neither could
+        // check, and they hand each other verdicts by this number — so it has
+        // to move, exactly as a rules edit does.
+        val a = doc(
+            ai = AiConfig(model = "m", rules = "same", rulesVersion = 4),
+            at = mapOf(ConfigStamp.AI to T)
+        )
+        val b = doc(
+            ai = AiConfig(model = "m", rules = "same", rulesVersion = 4, reviewIncompleteChecks = true),
+            at = mapOf(ConfigStamp.AI to T + 1)
+        )
+        assertEquals(5, settle(a, b).ai.rulesVersion)
+        assertTrue(settle(a, b).ai.reviewIncompleteChecks)
+    }
+
+    @Test
     fun anUnchangedAiBlockDoesNotBumpTheRulesVersion() {
         val ai = AiConfig(model = "m", rules = "same", rulesVersion = 4)
         val a = doc(ai = ai, at = mapOf(ConfigStamp.AI to T))

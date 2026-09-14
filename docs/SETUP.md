@@ -122,6 +122,13 @@ Do these in order; each pushes to the TV automatically when you press
    your OK under *Waiting for your OK*; anything it blocks is listed under
    *Blocked videos*, where Allow overrules it.
 
+   A deep check can't always finish — a video with no description or no
+   English subtitles, a provider that's down, an answer that takes too long.
+   By default the video plays that once and nothing is remembered, so an
+   outage doesn't punish the kid. Turn on **Hold videos the check couldn't
+   finish** to park those under *Waiting for your OK* instead. Flipping it
+   re-screens the catalogue, the same way editing the rules does.
+
    Need different rules for one channel? Tap 📝 next to it under *Channels &
    playlists* and write them there ("only the engineering builds — no prank
    videos"). They apply to that channel only, on top of the family rules.
