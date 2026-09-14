@@ -46,7 +46,7 @@ import java.util.concurrent.RejectedExecutionException
  *
  * ### What it serves
  *
- * Exactly eleven paths, listed in [start] and pinned by guard 57. There is no
+ * Exactly thirteen paths, listed in [start] and pinned by guard 57. There is no
  * catch-all page: `/` answers the kid page and every other path is a JSON 404,
  * where the admin listener deliberately answers an unclaimed path with the
  * console. That asymmetry is the point — on this origin an unknown path is
@@ -182,6 +182,13 @@ class HubKidServer(
         // single path both origins answer, because it carries no family data
         // and a stylesheet is not a route about anybody.
         s.createContext("/kid-tokens.css") { ex -> guarded(ex) { asset(ex) } }
+        // What makes this installable on an iPad: an icon on the home screen,
+        // full screen, no address bar. Unauthenticated on purpose — a browser
+        // fetches these while installing, often without credentials, and they
+        // say nothing about the family. See [manifest] for the service worker
+        // this deliberately does not have.
+        s.createContext("/kid-manifest.webmanifest") { ex -> guarded(ex) { manifest(ex) } }
+        s.createContext("/kid-icon") { ex -> guarded(ex) { kidIcon(ex) } }
         // Video bytes. Handed to another pool, so this thread goes straight
         // back to answering the rest of the origin. See [dispatchMedia].
         val media = Executors.newFixedThreadPool(MAX_CONCURRENT_STREAMS) { r ->
@@ -662,6 +669,112 @@ class HubKidServer(
     }
 
     /** The generated stylesheet, straight from the jar. */
+    /**
+     * `GET /kid-manifest.webmanifest` — what makes this installable.
+     *
+     * ### Why a kid manifest at all
+     *
+     * On an iPad this page IS the app. Added to the home screen with a
+     * manifest it opens full-screen with its own icon and no address bar;
+     * without one it is a Safari tab with a URL a child can edit. The console
+     * has had a manifest since it was written, for a parent; this is the same
+     * argument for the person who actually uses the product.
+     *
+     * ### Built here rather than generated into a file
+     *
+     * `kid-tokens.css` is generated at build time because it is a hundred
+     * derived colours and nobody should be able to hand-edit it. This is
+     * fifteen lines of JSON whose only two colours come from [KID_DARK], so
+     * building it in Kotlin keeps `:core` the single source without a Gradle
+     * task, a generated resource and a guard to police the pair. The values are
+     * still read from the one table — which is the property that mattered.
+     *
+     * ### Deliberately NO service worker
+     *
+     * A PWA usually comes with one, and this one must not. `Cache Storage`
+     * outlives the claim cookie, so a cached shell keeps a **revoked or blocked
+     * child looking at a working app** — precisely the failure `/media`'s
+     * per-chunk `mayPlay` gate and its `no-store` exist to prevent. An
+     * installed icon that opens a page which then asks the hub for everything
+     * is the whole win here; offline is not a feature this product wants.
+     */
+    private fun manifest(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val ground = io.yosemitekids.app.ui.Argb.css(io.yosemitekids.app.ui.KID_DARK.background)
+        val body = JSONObject()
+            .put("name", "Yosemite Kids")
+            // What fits under a home-screen icon. The long name is the one a
+            // child never reads.
+            .put("short_name", "Yosemite")
+            .put("start_url", "/")
+            .put("scope", "/")
+            .put("display", "standalone")
+            .put("orientation", "any")
+            .put("background_color", ground)
+            .put("theme_color", ground)
+            .put(
+                "icons",
+                org.json.JSONArray()
+                    .put(icon("192", "192x192", "any"))
+                    .put(icon("512", "512x512", "any"))
+                    .put(icon("maskable", "512x512", "maskable"))
+            )
+            .toString()
+        val bytes = body.toByteArray(Charsets.UTF_8)
+        ex.responseHeaders.add("Content-Type", "application/manifest+json; charset=utf-8")
+        ex.responseHeaders.add("Cache-Control", "no-cache")
+        securityHeaders(ex)
+        ex.sendResponseHeaders(200, bytes.size.toLong())
+        ex.responseBody.use { it.write(bytes) }
+    }
+
+    private fun icon(size: String, sizes: String, purpose: String) = JSONObject()
+        .put("src", "/kid-icon?s=$size")
+        .put("sizes", sizes)
+        .put("type", "image/png")
+        .put("purpose", purpose)
+
+    /**
+     * `GET /kid-icon?s=192|512|maskable|apple` — the home-screen icon.
+     *
+     * One route with a parameter rather than four paths, because guard 57 pins
+     * this origin's route list and four near-identical entries on it is four
+     * things to read past when asking the question that list exists for: *what
+     * can a child's browser reach?*
+     *
+     * **The same artwork the console uses**, from the same files in the jar.
+     * It is one product and one mark; a second icon set would be a second
+     * thing to redraw when the mark changes, which is the drift this project
+     * keeps finding in colours and lengths. The *paths* differ so the two
+     * origins still share no route but `/` and the stylesheet (guard 57).
+     *
+     * Unauthenticated, and it has to be: a browser fetches a manifest's icons
+     * while installing, often without credentials, and an icon that 401s is an
+     * app that installs with a grey square. It says nothing about the family —
+     * it is the same picture for every household running this build.
+     */
+    private fun kidIcon(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val file = when (param(ex, "s")) {
+            "512" -> "icon-512.png"
+            "maskable" -> "icon-maskable-512.png"
+            "apple" -> "apple-touch-icon.png"
+            // 192 and anything unrecognised. A manifest that asked for a size
+            // this build does not have should still install.
+            else -> "icon-192.png"
+        }
+        val bytes = javaClass.getResourceAsStream("/web/$file")?.readBytes()
+            ?: return respond(ex, 404, "missing from this build")
+        ex.responseHeaders.add("Content-Type", "image/png")
+        // A mark that changes about once a year, against a home-screen icon
+        // that is refetched on every install. Unlike the stylesheet there is no
+        // per-release drift to worry about here.
+        ex.responseHeaders.add("Cache-Control", "public, max-age=604800")
+        securityHeaders(ex)
+        ex.sendResponseHeaders(200, bytes.size.toLong())
+        ex.responseBody.use { it.write(bytes) }
+    }
+
     private fun asset(ex: HttpExchange) {
         if (ex.requestMethod != "GET") return respond(ex, 405, "no")
         val bytes = javaClass.getResourceAsStream("/web/kid-tokens.css")?.readBytes()

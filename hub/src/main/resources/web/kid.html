@@ -30,6 +30,32 @@
      drawn as text; the one place markup is assembled from a string is the
      empty-state copy below, which this file wrote itself.
 -->
+<!--
+  INSTALLED, this is the app on an iPad: its own icon, full screen, no address
+  bar and no tab strip. Added without these it is a Safari tab with a URL a
+  child can edit.
+
+  iOS still needs its own three tags beside the manifest — Safari has honoured
+  `apple-mobile-web-app-*` for a decade and reads the manifest for less than
+  Chrome does, and this product's whole audience for the browser IS an iPad.
+
+  `black-translucent` puts the page under the status bar, which is why the
+  header already pads by `env(safe-area-inset-top)`.
+
+  The theme-color starts EMPTY and is filled by the script from the live
+  --yk-background, then refilled whenever the look changes. Two reasons, and
+  the first is a rule: a hex here would be a colour written into this file,
+  which is the one thing it may not have (guard 61). The second is that it
+  would be the wrong colour anyway — on "My colour" the brand dark would draw
+  a hard band above a page that is not dark at all.
+-->
+<link rel="manifest" href="/kid-manifest.webmanifest">
+<link rel="apple-touch-icon" href="/kid-icon?s=apple">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Yosemite">
+<meta name="theme-color" id="themeColor" content="">
 <link rel="stylesheet" href="/kid-tokens.css">
 <style>
   /* Layout only. See rule 2 above: no colour and no size of its own. */
@@ -952,6 +978,26 @@
     state.look = look;
     document.getElementById("look").textContent = LOOK_GLYPH[look] || LOOK_GLYPH.colour;
     try { localStorage.setItem("yk-look", look); } catch (e) { /* private window */ }
+    paintStatusBar();
+  }
+
+  /**
+   * Match the iOS status bar to the page.
+   *
+   * Installed, the page runs under a translucent status bar, and `theme-color`
+   * is what that strip is tinted with. Read from the live custom property
+   * rather than written anywhere: that is the only way it can follow a kid's
+   * own ground, and the only way this file stays free of colours (guard 61).
+   *
+   * After applyLook, never before — on "My colour" the ground is a per-request
+   * value that only exists once /home has answered.
+   */
+  function paintStatusBar() {
+    var meta = document.getElementById("themeColor");
+    if (!meta) return;
+    var ground = getComputedStyle(document.documentElement)
+      .getPropertyValue("--yk-background").trim();
+    if (ground) meta.setAttribute("content", ground);
   }
 
   function savedLook() {
@@ -1082,6 +1128,14 @@
   // the ordinary load — races them: the load wins, paints the code box, and is
   // then replaced a moment later, which reads as the page flickering rather
   // than as it working.
+  // The look, before anything is fetched. applyLook used to run only once
+  // /home had answered, which meant the CODE BOX — the first screen anyone
+  // installing this ever sees — had no theme-color at all, so an installed
+  // iPad drew its status bar in the browser's default grey above a dark page.
+  // "My colour" still needs /home for the kid's own ground and repaints then;
+  // this is the brand look arriving immediately rather than a frame late.
+  applyLook(savedLook());
+
   var scanned = codeFromUrl();
   if (scanned) {
     redeem(scanned);
