@@ -883,11 +883,31 @@ class HubServer(
                         // no such child" and "five codes are already out" send
                         // a parent to different places, and a bare 400 says
                         // neither.
+                        // The QR, built here rather than in the page. The
+                        // television has drawn one for pairing since the
+                        // beginning (SettingsDevices.QrImage) and a code read
+                        // off one screen and typed on another is a code that
+                        // gets mistyped — by a parent holding an iPad, which
+                        // is the whole audience for this route.
+                        //
+                        // The HOST comes from the parent's own request, not
+                        // from anything this box thinks it is called. A hub
+                        // does not reliably know its LAN address — it may have
+                        // several — but the browser that just asked reached it
+                        // somehow, and that route is the one the tablet on the
+                        // same network can use too.
+                        val host = ex.requestHeaders.getFirst("Host")
+                            ?.substringBefore(':')
+                            ?.takeIf { it.isNotBlank() }
+                        val kidUrl = outcome.code
+                            ?.let { code -> host?.let { "http://$it:${kid.boundPort()}/?c=$code" } }
                         JSONObject()
                             .put("minted", outcome.why == HubWeb.Minted.OK)
                             .put("code", outcome.code.orEmpty())
                             .put("why", outcome.why.name)
                             .put("ttlSeconds", HubBrowsers.CODE_TTL_MS / 1000)
+                            .put("url", kidUrl.orEmpty())
+                            .put("qr", kidUrl?.let { HubQr.svg(it) }.orEmpty())
                     }
                     body.has("revoke") -> JSONObject()
                         .put("revoked", browsers.revoke(body.getString("revoke")))
