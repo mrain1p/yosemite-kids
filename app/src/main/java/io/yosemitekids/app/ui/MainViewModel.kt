@@ -2002,7 +2002,7 @@ class MainViewModel(
      */
     private fun pruneFinishedQueue() {
         queueStore.entries()
-            .filter { it.finishedSinceQueued(history.progress(it.video.url)) }
+            .filter { it.finishedSinceQueued(history.progress(it.video.url)?.watchPoint()) }
             .forEach { queueStore.remove(it.video.url) }
     }
 

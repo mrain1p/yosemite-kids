@@ -46,7 +46,7 @@ import java.util.concurrent.RejectedExecutionException
  *
  * ### What it serves
  *
- * Exactly thirteen paths, listed in [start] and pinned by guard 57. There is no
+ * Exactly fourteen paths, listed in [start] and pinned by guard 57. There is no
  * catch-all page: `/` answers the kid page and every other path is a JSON 404,
  * where the admin listener deliberately answers an unclaimed path with the
  * console. That asymmetry is the point — on this origin an unknown path is
@@ -79,6 +79,11 @@ class HubKidServer(
      * [HubKidHistory] for why the box keeps it and the phone does not.
      */
     private val history: HubKidHistory,
+    /**
+     * Favorites, Watch later and Up next for this browser — the same `:crawl`
+     * stores the phone uses, never a hub-shaped copy. See [HubSavedLists].
+     */
+    private val lists: HubSavedLists,
     /** Passed in so tests need no clock, like every other class here. */
     private val now: () -> Long = { System.currentTimeMillis() }
 ) {
@@ -87,7 +92,7 @@ class HubKidServer(
      * What the page is shown. Shape only: every rule it draws on is the app's,
      * in `:core` or `:crawl`. See [HubKidHome].
      */
-    private val browse = HubKidHome(policy, store, history)
+    private val browse = HubKidHome(policy, store, history, lists)
 
     /**
      * Resolving a video to one playable URL, and carrying its bytes. Built
@@ -169,6 +174,10 @@ class HubKidServer(
         // it is empty - the page has one shape and an empty row says what would
         // fill it.
         s.createContext("/you") { ex -> guarded(ex) { you(ex) } }
+        // Put a video in one of the kid's own lists, or take it out. The only
+        // route on this origin that writes anything a child chose — see [list]
+        // for the four things it checks before it does.
+        s.createContext("/list") { ex -> guarded(ex) { list(ex) } }
         // One channel's videos.
         s.createContext("/channel") { ex -> guarded(ex) { channel(ex) } }
         // Search within what this kid may see, ranked by the shared SearchRank.
@@ -315,6 +324,66 @@ class HubKidServer(
         if (ex.requestMethod != "GET") return respond(ex, 405, "no")
         val browser = watching(ex) ?: return
         respond(ex, 200, browse.home(browser.kid, meter.ledgerId(browser.token)).toString())
+    }
+
+    /**
+     * `POST /list {list, v, on}` — a child hearts something, or unhearts it.
+     *
+     * **The only route on this origin that stores something a child chose**,
+     * so it is the one worth reading slowly. Four things are checked, in this
+     * order, and none is optional:
+     *
+     * 1. **POST and same-origin.** A GET that writes is a link a sibling can
+     *    send; a cross-site POST is the console's own page reaching in.
+     * 2. **The credential, and the kid from it.** Never from the body — a
+     *    child who could name the kid could fill their sibling's Up next.
+     *    Same rule as `/media`, same reason, and guard 60 keeps it.
+     * 3. **The video must be one this child may actually see.** Not merely a
+     *    valid id: `HubPolicy.mayPlay`'s catalogue half, so a blocked video, a
+     *    sibling's channel, or something never indexed cannot be *saved* even
+     *    though it could never be played. Without this the store becomes a
+     *    place to smuggle a row onto a shelf.
+     * 4. **The answer is read back from the store.** The queue is capped and
+     *    an add at the cap is refused, so a page that flipped its own heart on
+     *    the tap would show a video as queued that is not.
+     *
+     * The video's title and poster come from the family's own index rather
+     * than from the request, which is what keeps a saved row from being a
+     * place to write arbitrary text a child then reads.
+     */
+    private fun list(ex: HttpExchange) {
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        val browser = watching(ex) ?: return
+        val body = readBody(ex) ?: return respond(ex, 413, "too large")
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return respond(ex, 400, JSONObject().put("error", "bad body").toString())
+
+        val which = HubSavedLists.Which.of(json.optString("list"))
+            ?: return respond(ex, 400, JSONObject().put("error", "no such list").toString())
+        val videoId = json.optString("v").takeIf { HubMedia.looksLikeVideoId(it) }
+            ?: return respond(ex, 400, JSONObject().put("error", "bad video").toString())
+        val on = json.optBoolean("on", true)
+
+        // The row as the family's own index holds it. Also the check that this
+        // child may see it at all: browse.rowFor consults the same catalogue
+        // HubPolicy.mayPlay does, so a blocked or not-for-this-kid video cannot
+        // be saved any more than it could be played.
+        val video = browse.rowFor(browser.kid, videoId)
+            ?: return respond(ex, 403, JSONObject().put("error", "not-for-this-kid").toString())
+
+        val nowOn = lists.set(browser.kid, which, video, on)
+        respond(
+            ex, 200,
+            JSONObject()
+                .put("list", which.wire)
+                .put("v", videoId)
+                // What the STORE says, not what was asked for. The queue can
+                // refuse at its cap and the page must follow the store.
+                .put("on", nowOn)
+                .put("count", lists.urls(browser.kid, which).size)
+                .toString()
+        )
     }
 
     /** `GET /you` — the kid's own shelves. Behind the credential like everything else. */

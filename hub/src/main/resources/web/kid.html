@@ -380,6 +380,41 @@
     color: var(--yk-on-secondary-container);
   }
 
+  /* --- the hold menu --------------------------------------------------- */
+
+  /* Square-cornered and full-width at the bottom: a sheet, not a dialog. It is
+     reached by holding a card, so it has to arrive under the thumb that is
+     already down rather than in the middle of the screen. */
+  dialog.sheet {
+    border: 0;
+    padding: 0;
+    width: 100%;
+    max-width: 100%;
+    margin: auto auto 0;
+    background: var(--yk-surface-container-high);
+    color: var(--yk-on-surface);
+    border-radius: 18px 18px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  dialog.sheet::backdrop { background: var(--yk-artwork-scrim); }
+  .sheet h3 {
+    margin: 0;
+    padding: 16px var(--yk-page-gutter) 8px;
+    font-size: var(--yk-font-title-medium-size);
+    line-height: var(--yk-font-title-medium-line);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sheet button {
+    display: flex; align-items: center; gap: 14px;
+    width: 100%;
+    padding: 14px var(--yk-page-gutter);
+    text-align: left;
+    font-size: var(--yk-font-body-large-size);
+    color: var(--yk-on-surface);
+  }
+  .sheet button .glyph { font-size: 22px; line-height: 1; width: 26px; text-align: center; }
+  .sheet .close { color: var(--yk-on-surface-variant); }
+
   /* --- the bottom tabs ------------------------------------------------- */
 
   /* The phone's three destinations, drawn the app's way: a pill behind icon
@@ -481,6 +516,15 @@
 
   <main id="main"></main>
 
+  <!-- The hold menu. Rows are built in JS from KidSurface's words, which the
+       hub sends: the phone and this page must not describe the same action
+       differently. -->
+  <dialog class="sheet" id="hold-menu">
+    <h3 id="holdTitle"></h3>
+    <div id="holdRows"></div>
+    <button class="close" id="holdClose"><span class="glyph">✕</span>Close</button>
+  </dialog>
+
   <nav class="tabs" id="tabs" hidden>
     <button id="tab-home" aria-selected="true"><span class="glyph">🏠</span>Home</button>
     <button id="tab-you" aria-selected="false"><span class="glyph">🙂</span>You</button>
@@ -528,9 +572,104 @@
 
   // --- cards -----------------------------------------------------------
 
+  // --- the hold menu ---------------------------------------------------
+
+  var HOLD_MS = 500;
+
+  /**
+   * Make a card open the hold menu when it is pressed and held.
+   *
+   * Four things have to be handled and each one is a way iOS otherwise ruins
+   * this, so none of them is defensive clutter:
+   *
+   *  - **`-webkit-touch-callout: none`** on the card, or Safari's own
+   *    "Open Link / Copy" callout arrives on top of ours.
+   *  - **`contextmenu` prevented**, which is the same thing with a mouse.
+   *  - **Movement cancels.** A finger that travels is a scroll, and a shelf
+   *    that opened a menu every time a child flicked it would be unusable.
+   *  - **The click after a hold is swallowed.** `pointerup` fires a click, so
+   *    without this the menu opens and the video starts playing behind it.
+   */
+  function holdable(card, video) {
+    card.style.webkitTouchCallout = "none";
+    var timer = null, startX = 0, startY = 0, fired = false;
+
+    function cancel() {
+      if (timer) { clearTimeout(timer); timer = null; }
+    }
+
+    card.addEventListener("pointerdown", function (e) {
+      fired = false;
+      startX = e.clientX; startY = e.clientY;
+      cancel();
+      timer = setTimeout(function () {
+        fired = true;
+        timer = null;
+        openHold(video);
+      }, HOLD_MS);
+    });
+    card.addEventListener("pointermove", function (e) {
+      if (!timer) return;
+      // Ten pixels of slack: a finger resting on a card is never perfectly
+      // still, and a menu that refused to open for that would feel broken.
+      if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) cancel();
+    });
+    card.addEventListener("pointerup", cancel);
+    card.addEventListener("pointercancel", cancel);
+    card.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+    // Capture, so it runs before the card's own play handler.
+    card.addEventListener("click", function (e) {
+      if (!fired) return;
+      fired = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
+  }
+
+  /**
+   * The sheet itself: the three lists, worded by whether the video is already
+   * in each.
+   *
+   * The membership comes from the payload (`fav`, `later`, `queued`), and the
+   * answer to a tap comes back from the STORE — the queue is capped and can
+   * refuse, so the row follows what the hub says rather than what was asked.
+   */
+  function openHold(video) {
+    var dlg = document.getElementById("hold-menu");
+    document.getElementById("holdTitle").textContent = video.title || "";
+    var rows = document.getElementById("holdRows");
+    clear(rows);
+
+    [
+      { list: "favorites", on: video.fav, glyph: "❤️", add: "Add to Favorites", off: "Remove from Favorites" },
+      { list: "watch-later", on: video.later, glyph: "🕒", add: "Add to Watch later", off: "Remove from Watch later" },
+      { list: "up-next", on: video.queued, glyph: "📚", add: "Add to Up next", off: "Remove from Up next" }
+    ].forEach(function (row) {
+      var b = el("button");
+      b.type = "button";
+      b.appendChild(el("span", "glyph", row.glyph));
+      b.appendChild(el("span", null, row.on ? row.off : row.add));
+      b.onclick = function () {
+        post("/list", { list: row.list, v: video.id, on: !row.on }).then(function (r) {
+          if (r) {
+            // Follow the store, not the tap.
+            if (row.list === "favorites") video.fav = r.on;
+            else if (row.list === "watch-later") video.later = r.on;
+            else video.queued = r.on;
+          }
+          dlg.close();
+        });
+      };
+      rows.appendChild(b);
+    });
+
+    if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+  }
+
   function videoCard(video, big) {
     var card = el("button", "card");
     card.type = "button";
+    holdable(card, video);
     var poster = el("div", "poster");
     if (video.thumb) {
       var img = el("img");
@@ -911,6 +1050,24 @@
     });
   }
 
+  /**
+   * The write half of [get]. Same failure handling: a 401 is a revoked or
+   * expired claim and falls back to the code box rather than to a silent
+   * nothing, and anything else resolves null so a caller can shrug.
+   */
+  function post(path, body) {
+    return fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (r.status === 401) { showClaim(); return null; }
+      if (!r.ok) return null;
+      return r.json();
+    }).catch(function () { return null; });
+  }
+
   function openChannel(id) {
     get("/channel?id=" + encodeURIComponent(id)).then(function (channel) {
       if (channel) renderChannel(channel);
@@ -1097,6 +1254,10 @@
       loadHome();
     }
   }
+
+  document.getElementById("holdClose").onclick = function () {
+    document.getElementById("hold-menu").close();
+  };
 
   document.getElementById("tab-home").onclick = function () { showTab("home"); };
   document.getElementById("tab-you").onclick = function () { showTab("you"); };

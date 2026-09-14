@@ -5,7 +5,7 @@ import io.yosemitekids.app.data.QueuedVideo
 import io.yosemitekids.app.data.Source
 import io.yosemitekids.app.data.SourceKind
 import io.yosemitekids.app.data.Video
-import io.yosemitekids.app.data.WatchProgress
+import io.yosemitekids.app.data.KidHome
 import io.yosemitekids.app.data.finishedSinceQueued
 import io.yosemitekids.app.data.queuePercents
 import org.junit.Assert.assertEquals
@@ -24,6 +24,17 @@ import java.io.File
  * queue from billing every video at the first channel's rate.
  */
 class QueueStoreTest {
+
+    /**
+     * A watch point in the shape the shared rules read, from the numbers this
+     * test used to write as a `WatchProgress`. That class is a SharedPreferences
+     * format and stayed on the phone; the meaning moved with the store.
+     */
+    private fun point(posMs: Long, durMs: Long, at: Long) = KidHome.WatchPoint(
+        fraction = posMs.toFloat() / durMs,
+        lastWatchedAt = at,
+        isFinished = posMs.toFloat() / durMs >= KidHome.FINISHED_FRACTION
+    )
 
     @get:Rule
     val tmp = TemporaryFolder()
@@ -122,18 +133,18 @@ class QueueStoreTest {
         val entry = QueueStore(storeFile()).entries().single()
         assertEquals("Old", entry.video.title)
         assertEquals(0L, entry.addedAt)
-        assertTrue(entry.finishedSinceQueued(WatchProgress(60_000, 60_000, 5_000L)))
+        assertTrue(entry.finishedSinceQueued(point(60_000L, 60_000L, 5_000L)))
     }
 
     @Test
     fun `a video watched before it was queued stays in the lineup`() {
         val entry = QueuedVideo(video(1), addedAt = 10_000L)
         // Finished last week, queued tonight: a deliberate rewatch.
-        assertFalse(entry.finishedSinceQueued(WatchProgress(60_000, 60_000, 9_000L)))
+        assertFalse(entry.finishedSinceQueued(point(60_000L, 60_000L, 9_000L)))
         // Finished during this sitting: drain it.
-        assertTrue(entry.finishedSinceQueued(WatchProgress(60_000, 60_000, 11_000L)))
+        assertTrue(entry.finishedSinceQueued(point(60_000L, 60_000L, 11_000L)))
         // Part-watched since queuing, and never watched at all: both stay.
-        assertFalse(entry.finishedSinceQueued(WatchProgress(30_000, 60_000, 11_000L)))
+        assertFalse(entry.finishedSinceQueued(point(30_000L, 60_000L, 11_000L)))
         assertFalse(entry.finishedSinceQueued(null))
     }
 

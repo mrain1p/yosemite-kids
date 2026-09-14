@@ -141,6 +141,9 @@ class HubServer(
      */
     private val kidHistory = HubKidHistory(store.dataDir, now)
 
+    /** A browser's Favorites, Watch later and Up next. See [HubSavedLists]. */
+    private val kidLists = HubSavedLists(store.dataDir)
+
     /**
      * The kid's own origin.
      *
@@ -152,7 +155,7 @@ class HubServer(
      * sets (guard 57), and nothing about the admin session reaches it (guard
      * 59).
      */
-    private val kid = HubKidServer(kidPort, browsers, store, policy, meter, kidHistory, now)
+    private val kid = HubKidServer(kidPort, browsers, store, policy, meter, kidHistory, kidLists, now)
 
     /** The verdict engine and the browser meter, for tests and a future route. */
     fun policy(): HubPolicy = policy
