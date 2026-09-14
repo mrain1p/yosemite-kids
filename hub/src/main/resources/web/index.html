@@ -124,6 +124,27 @@
   .line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .grow { flex: 1; min-width: 0; }
   .name { font-weight: 540; overflow-wrap: anywhere; }
+  /* A claim code a parent reads off this screen and types on a tablet across
+     the room. Big, spaced, and selectable in one tap — user-select:all rather
+     than a Copy button, because navigator.clipboard needs a secure context and
+     this hub is plain HTTP on a LAN, so the button would be there and silently
+     do nothing. Monospace so O and 0 cannot be confused; the code alphabet
+     drops both, but the reader does not know that. */
+  /* The claim QR. Capped rather than full width — a parent holds a tablet up
+     to a laptop screen, and a QR the size of the card is harder to frame, not
+     easier. White ground is in the SVG itself; see HubQr for why it is not
+     themed. */
+  .qr { width: 200px; max-width: 60%; margin: 8px 0 4px; }
+  .qr svg { display: block; width: 100%; height: auto; border-radius: 6px; }
+  .claimcode {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    margin: 6px 0 2px;
+    user-select: all;
+    -webkit-user-select: all;
+  }
   .tag { font-size: 11.5px; color: var(--dim); border: 1px solid var(--line);
     border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
   .empty { color: var(--dim); font-size: 13.5px; padding: 6px 0; }
@@ -263,6 +284,25 @@
   var revealThen = null;
   // What the password card should say when it is next built. See cardPassword.
   var passwordNote = null;
+
+  // The claim code a parent just minted, held until it expires.
+  //
+  // It has to live out here, and that is the whole bug it fixes. The code used
+  // to be written straight into a <p> inside the card — and the same click
+  // then called refresh(), which rebuilds the card and replaces that <p> with
+  // an empty one. The code appeared for about half a second and vanished
+  // before a parent could read it, let alone walk to the tablet with it.
+  //
+  // Unlike passwordNote this is NOT cleared on read: it is a thing a parent is
+  // still holding, for the ten minutes it lasts, across every repaint the
+  // state poll causes. It is cleared when it expires, when another is minted,
+  // or when the browser it was for turns up claimed.
+  //
+  // Still never fetched from the hub: minting is the only time this page ever
+  // sees a code, exactly as the card's own comment says. This is a variable in
+  // one tab, not a field on /api/state that every signed-in browser in the
+  // house would keep re-reading.
+  var mintedClaim = null;
 
   function $(id) { return document.getElementById(id); }
 
@@ -2221,8 +2261,9 @@
 
     // The code, once, here — never stored anywhere the page can fetch again.
     // A code sitting on /api/state for ten minutes is a code every signed-in
-    // browser in the house keeps re-reading.
-    var codeLine = el("p", "name");
+    // browser in the house keeps re-reading. It survives this card being
+    // rebuilt because it lives in mintedClaim; see the note there.
+    var codeLine = el("p", "sub");
 
     if (!kids().length) {
       c.appendChild(el("p", "sub", "Add a kid first. A browser watches as one child, under that child's rules."));
@@ -2231,16 +2272,61 @@
       kids().forEach(function (k) {
         row.appendChild(button(k.name, "chip", function () {
           return api("/api/browsers", { claim: k.id }).then(function (r) {
-            codeLine.textContent = r.minted
-              ? "Type " + r.code + " on that browser within " + Math.round(r.ttlSeconds / 60) + " minutes."
-              : r.why === "TOO_MANY_CODES"
+            if (r.minted) {
+              mintedClaim = {
+                code: r.code,
+                kid: k.name,
+                url: r.url || "",
+                qr: r.qr || "",
+                until: Date.now() + (r.ttlSeconds * 1000)
+              };
+            } else {
+              mintedClaim = null;
+              codeLine.textContent = r.why === "TOO_MANY_CODES"
                 ? "Too many codes are already out. Wait for one to expire."
                 : "That kid is not on this hub yet.";
+            }
             return refresh();
           });
         }));
       });
       c.appendChild(row);
+
+      if (mintedClaim && mintedClaim.until <= Date.now()) mintedClaim = null;
+      if (mintedClaim) {
+        var left = Math.max(1, Math.round((mintedClaim.until - Date.now()) / 60000));
+
+        // The QR first, because it is the way this is meant to be used: point
+        // the tablet's camera and it lands on the kid page already claimed.
+        // The typed code below it is the fallback for a device with no camera,
+        // or a parent who would rather type — the television offers the same
+        // pair for pairing, and for the same reason.
+        //
+        // innerHTML, and the ONE place this page uses it: the SVG is built by
+        // HubQr on this box from a code this box minted, so there is no
+        // outside string in it. Everything else here is textContent, because
+        // everything else came from YouTube or from a parent's typing.
+        if (mintedClaim.qr) {
+          var qrBox = el("div", "qr");
+          qrBox.innerHTML = mintedClaim.qr;
+          c.appendChild(qrBox);
+          c.appendChild(el("p", "sub", "Point " + mintedClaim.kid + "'s tablet at this, or type the code."));
+        } else {
+          c.appendChild(el("p", "sub", "Type this on " + mintedClaim.kid + "'s tablet:"));
+        }
+        // user-select:all, so one tap or click selects the whole code.
+        // Deliberately not a Copy button: navigator.clipboard needs a secure
+        // context and this hub is plain HTTP on a home LAN, so the button
+        // would be there and do nothing — which is worse than no button.
+        var big = el("p", "claimcode", mintedClaim.code);
+        c.appendChild(big);
+        c.appendChild(el(
+          "p", "sub",
+          left === 1
+            ? "It works once and expires in about a minute."
+            : "It works once and expires in about " + left + " minutes."
+        ));
+      }
       c.appendChild(codeLine);
     }
 

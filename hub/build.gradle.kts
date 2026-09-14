@@ -116,6 +116,11 @@ dependencies {
     // used to build alone (docs/PLAN-crawl.md).
     implementation(project(":crawl"))
     // Android supplies org.json in the platform; here it has to be brought.
+    // The pairing QR the television has always drawn, now on the console too.
+    // Plain Java — zxing's `core` needs nothing from Android — so BOTH faces
+    // encode with one library at one version, and only the surface differs: a
+    // Bitmap for Compose there, SVG for a page here. See HubQr.
+    implementation(libs.zxing.core)
     implementation(libs.json)
 
     testImplementation(libs.json)
