@@ -2,7 +2,12 @@ package io.yosemitekids.hub
 
 import io.yosemitekids.app.data.ChannelIndex
 import io.yosemitekids.app.data.KidHome
+import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA
+import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA_DESC
+import io.yosemitekids.app.data.CHANNEL_ORDER_RANDOM
 import io.yosemitekids.app.data.SearchRank
+import io.yosemitekids.app.data.Source
+import io.yosemitekids.app.data.SourceKind
 import io.yosemitekids.app.data.Video
 import io.yosemitekids.app.ui.HOME_SHELVES
 import io.yosemitekids.app.ui.HomeShelf
@@ -10,6 +15,8 @@ import io.yosemitekids.app.ui.KID_DARK
 import io.yosemitekids.app.ui.KidSurface
 import io.yosemitekids.app.ui.PinnableSource
 import io.yosemitekids.app.ui.homeSections
+import io.yosemitekids.app.ui.orderChannels
+import io.yosemitekids.app.ui.surpriseMix
 import io.yosemitekids.app.ui.kidTinted
 import io.yosemitekids.app.ui.kidTokenRoles
 import io.yosemitekids.app.ui.resolvePins
@@ -302,6 +309,88 @@ class HubKidHome(
             .filter { it.url in maySee }
             .take(KidSurface.YOU_PAGE_MAX.value)
             .map { it to (watched[it.url]?.fraction ?: 0f) }
+
+    /**
+     * Every channel this kid may see, in the order they asked for.
+     *
+     * The order is [orderChannels] from `:crawl` — the app's own function, so
+     * "A to Z" means the same thing on a television and a tablet, and Random
+     * is the *same* random when both are given the same seed.
+     *
+     * Three of the app's six sorts are honestly absent, and `KidSurface`
+     * records why rather than drawing controls that do nothing: Most watched
+     * needs per-channel open counts the hub does not keep, and Latest video
+     * and Just added both need `publishedAt`, which `ChannelIndex` throws away
+     * (roadmap §2M). `SearchOrder` already refused to ship a control that
+     * sorts by an all-equal key; this follows it.
+     */
+    fun channels(kidId: String, sort: String?, seed: Long): JSONObject {
+        val catalogue = policy.catalogueFor(kidId)
+        val sources = catalogue.map { source ->
+            Source(
+                id = source.entry.id,
+                url = source.entry.url,
+                name = nameOf(source),
+                avatarUrl = null,
+                kind = source.entry.kind
+            )
+        }
+        val ordered = orderChannels(
+            channels = sources,
+            sort = sort.orEmpty(),
+            // Not kept on this box. Passing zero makes the default sort a
+            // stable no-op rather than an arbitrary one.
+            opens = { 0 },
+            latestUpload = { null },
+            seed = seed
+        )
+        val byId = catalogue.associateBy { it.entry.id }
+        val arr = JSONArray()
+        for (source in ordered) {
+            val row = byId[source.id] ?: continue
+            arr.put(
+                JSONObject()
+                    .put("id", source.id)
+                    .put("name", source.name)
+                    .put("count", row.videos.size)
+                    .put("thumb", row.videos.firstOrNull()?.thumbnailUrl.orEmpty())
+            )
+        }
+        return JSONObject()
+            .put("sort", sort.orEmpty())
+            .put("seed", seed)
+            .put("channels", arr)
+            .put("sorts", JSONArray().put(sortJson(CHANNEL_ORDER_ALPHA, "A to Z"))
+                .put(sortJson(CHANNEL_ORDER_ALPHA_DESC, "Z to A"))
+                .put(sortJson(CHANNEL_ORDER_RANDOM, "Random")))
+    }
+
+    private fun sortJson(id: String, label: String) =
+        JSONObject().put("id", id).put("label", label)
+
+    /**
+     * A random mix across every channel this kid may see — [surpriseMix].
+     *
+     * Seeded, which is the whole reason that function exists: the phone called
+     * a bare `shuffled()`, and a shuffle with no seed is the one ordering two
+     * faces cannot agree on. The page sends the seed back on a reload so a
+     * child's mix holds still for the sitting.
+     */
+    fun surprise(kidId: String, seed: Long): JSONObject {
+        val watched = history.pointsFor(kidId)
+        val saved = savedFor(kidId)
+        val pool = policy.catalogueFor(kidId)
+            .filter { it.entry.kind == SourceKind.CHANNEL }
+            .flatMap { it.videos }
+            .map { it.toVideo() }
+        val mix = surpriseMix(pool, seed)
+            // A finished video leaves a Surprise for the same reason it leaves
+            // the feed: the point is something new.
+            .filter { watched[it.url]?.isFinished != true }
+        return JSONObject()
+            .put("seed", seed)
+            .put("videos", videosJson(mix.map { it to (watched[it.url]?.fraction ?: 0f) }, watched, saved))
+    }
 
     /** One channel's page: its name, what the parent let through of its description, its videos. */
     fun channel(kidId: String, sourceId: String): JSONObject? {

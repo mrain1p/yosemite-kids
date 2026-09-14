@@ -46,7 +46,7 @@ import java.util.concurrent.RejectedExecutionException
  *
  * ### What it serves
  *
- * Exactly fourteen paths, listed in [start] and pinned by guard 57. There is no
+ * Exactly sixteen paths, listed in [start] and pinned by guard 57. There is no
  * catch-all page: `/` answers the kid page and every other path is a JSON 404,
  * where the admin listener deliberately answers an unclaimed path with the
  * console. That asymmetry is the point — on this origin an unknown path is
@@ -178,6 +178,12 @@ class HubKidServer(
         // route on this origin that writes anything a child chose — see [list]
         // for the four things it checks before it does.
         s.createContext("/list") { ex -> guarded(ex) { list(ex) } }
+        // Every channel, in the order the kid picked — orderChannels from
+        // :crawl, so "A to Z" means the same thing here as on the television.
+        s.createContext("/channels") { ex -> guarded(ex) { channels(ex) } }
+        // A seeded mix across every channel. The seed is the whole point: an
+        // unseeded shuffle is the one ordering two faces cannot agree on.
+        s.createContext("/surprise") { ex -> guarded(ex) { surprise(ex) } }
         // One channel's videos.
         s.createContext("/channel") { ex -> guarded(ex) { channel(ex) } }
         // Search within what this kid may see, ranked by the shared SearchRank.
@@ -392,6 +398,31 @@ class HubKidServer(
         val browser = watching(ex) ?: return
         respond(ex, 200, browse.you(browser.kid, meter.ledgerId(browser.token)).toString())
     }
+
+    /** `GET /channels?sort=&seed=` — every channel this kid may see, ordered. */
+    private fun channels(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val browser = watching(ex) ?: return
+        respond(ex, 200, browse.channels(browser.kid, param(ex, "sort"), seedFrom(ex)).toString())
+    }
+
+    /** `GET /surprise?seed=` — a seeded mix across every channel. */
+    private fun surprise(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val browser = watching(ex) ?: return
+        respond(ex, 200, browse.surprise(browser.kid, seedFrom(ex)).toString())
+    }
+
+    /**
+     * The seed a shuffle is drawn with, from the request or freshly minted.
+     *
+     * The page sends back the seed it was given, so a reload does not reshuffle
+     * under a child's thumb — the same promise `orderChannels` makes on the
+     * phone. A first visit has none and gets one, which is why this cannot
+     * simply default to a constant: every family would get the same "random".
+     */
+    private fun seedFrom(ex: HttpExchange): Long =
+        param(ex, "seed")?.toLongOrNull() ?: java.security.SecureRandom().nextLong()
 
     /** `GET /channel?id=<source>` — one channel's page, or a 404 if this kid may not see it. */
     private fun channel(ex: HttpExchange) {

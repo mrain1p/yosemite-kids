@@ -298,9 +298,9 @@ object KidSurface {
             kind = SurfaceKind.SCREEN,
             screen = "Channels",
             rules = listOf("orderChannels"),
-            webReady = false,
-            why = "R5. Blocked on orderChannels moving to :crawl; the browser draws the home rail " +
-                "today, which is the glance, but not the grid behind it."
+            route = "/channels",
+            webReady = true,
+            why = "Three of the app's six sorts are absent and that is deliberate: Most watched needs open counts the hub does not keep, and Latest video and Just added need publishedAt, which ChannelIndex throws away (roadmap 2M). SearchOrder set the precedent - a chip that sorts by an all-equal key is worse than no chip."
         ),
         KidSurfaceDef(
             id = "search-page",
@@ -316,9 +316,10 @@ object KidSurface {
             title = "Surprise me",
             kind = SurfaceKind.SCREEN,
             screen = "Surprise",
-            webReady = false,
-            why = "R5. Blocked on the mix being seeded - :app calls bare shuffled(), which cannot " +
-                "be reproduced on another face by definition."
+            route = "/surprise",
+            rules = listOf("surpriseMix"),
+            webReady = true,
+            why = "Seeded on both faces now. :app called a bare shuffled(), which cannot agree between two faces by construction."
         ),
         KidSurfaceDef(
             id = "playlists",

@@ -368,6 +368,9 @@ class MainViewModel(
     private var shuffleSeed = kotlin.random.Random.nextLong()
     /** Seeds for the two video lists' Random chip; each moves when its list is reopened or re-mixed. */
     private var homeShuffleSeed = kotlin.random.Random.nextLong()
+
+    /** This sitting's Surprise. New on each open, held across redraws within one. */
+    private var surpriseSeed = kotlin.random.Random.nextLong()
     private var channelShuffleSeed = kotlin.random.Random.nextLong()
 
     /** From the family config; most-watched until the first refresh reads it. */
@@ -1768,6 +1771,11 @@ class MainViewModel(
      */
     fun surpriseMe(from: Source? = null) = viewModelScope.launch {
         surpriseParent = from
+        // A new mix each time the kid ASKS for one, and the same mix for the
+        // whole of that sitting: a Surprise that reshuffled under a redraw would
+        // be a row moving under their thumb, which is the bug orderChannels'
+        // seed already exists to prevent.
+        surpriseSeed = kotlin.random.Random.nextLong()
         _state.value = _state.value.copy(screen = Screen.Surprise, loading = true, videos = emptyList(), held = 0, error = null)
         feedHandle = null
         uploadsNextPage = null
@@ -1778,7 +1786,10 @@ class MainViewModel(
         // Instant pool from the per-channel disk caches; fall back to a live fetch.
         val diskPool = withContext(Dispatchers.IO) { channels.flatMap { videoCache.load(it.id) } }
         if (diskPool.isNotEmpty()) {
-            rawVideos = diskPool.shuffled()
+            // Seeded, so this sitting's mix holds still across a redraw and is
+            // the same mix the browser would produce from the same seed. A bare
+            // shuffled() is the one ordering that cannot be shared by construction.
+            rawVideos = surpriseMix(diskPool, surpriseSeed)
             _state.value = _state.value.copy(loading = false, videos = annotated(includeFinished = false), held = heldByScreening())
             kickScreening(rawVideos)
             return@launch
@@ -1794,7 +1805,7 @@ class MainViewModel(
         }
             .onSuccess { pool ->
                 if (_state.value.screen != Screen.Surprise) return@onSuccess
-                rawVideos = pool.shuffled()
+                rawVideos = surpriseMix(pool, surpriseSeed)
                 _state.value = _state.value.copy(loading = false, videos = annotated(includeFinished = false), held = heldByScreening())
                 kickScreening(rawVideos)
             }

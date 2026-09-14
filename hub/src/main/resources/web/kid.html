@@ -527,6 +527,7 @@
 
   <nav class="tabs" id="tabs" hidden>
     <button id="tab-home" aria-selected="true"><span class="glyph">🏠</span>Home</button>
+    <button id="tab-channels" aria-selected="false"><span class="glyph">📺</span>Channels</button>
     <button id="tab-you" aria-selected="false"><span class="glyph">🙂</span>You</button>
   </nav>
 </div>
@@ -903,6 +904,71 @@
     state.view = "you";
   }
 
+  /**
+   * The Channels tab: every channel as a grid, with the sorts the hub offers.
+   *
+   * The chips come from the payload rather than being listed here, which is
+   * the same rule as everything else on this page: the hub offers three
+   * ("A to Z", "Z to A", "Random") and is honest about the three it does not,
+   * because Most watched needs open counts it has no record of and the two
+   * date sorts need an upload date the index throws away. A chip that sorted
+   * by an all-equal key would be a control that appears to work.
+   */
+  function renderChannels(payload) {
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = true;
+    document.getElementById("searchrow").hidden = true;
+
+    var chips = el("div", "chips");
+    (payload.sorts || []).forEach(function (s) {
+      var chip = el("button", "chip");
+      chip.type = "button";
+      chip.setAttribute("aria-pressed", payload.sort === s.id ? "true" : "false");
+      chip.appendChild(el("span", null, s.label));
+      chip.onclick = function () {
+        // The seed travels, so pressing Random twice genuinely reshuffles
+        // while a reload of the same view does not.
+        loadChannels(s.id, s.id === payload.sort ? null : payload.seed);
+      };
+      chips.appendChild(chip);
+    });
+    main.appendChild(chips);
+
+    var g = el("div", "grid");
+    (payload.channels || []).forEach(function (c) { g.appendChild(channelCard(c)); });
+    main.appendChild(g);
+    state.view = "channels";
+  }
+
+  function loadChannels(sort, seed) {
+    var q = "/channels";
+    var parts = [];
+    if (sort) parts.push("sort=" + encodeURIComponent(sort));
+    if (seed) parts.push("seed=" + encodeURIComponent(seed));
+    if (parts.length) q += "?" + parts.join("&");
+    return get(q).then(function (p) { if (p) renderChannels(p); });
+  }
+
+  /** A seeded mix across every channel — the browser's "Surprise me". */
+  function renderSurprise(payload) {
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = false;
+    document.getElementById("searchrow").hidden = true;
+    main.appendChild(shelfHead("Surprise", (payload.videos || []).length, "Shuffle", function () {
+      // No seed: the hub mints a fresh one, which is what "shuffle again" means.
+      loadSurprise(null);
+    }));
+    main.appendChild(grid(payload.videos || []));
+    state.view = "surprise";
+  }
+
+  function loadSurprise(seed) {
+    return get("/surprise" + (seed ? "?seed=" + encodeURIComponent(seed) : ""))
+      .then(function (p) { if (p) renderSurprise(p); });
+  }
+
   function renderChannel(channel) {
     var main = document.getElementById("main");
     clear(main);
@@ -1242,9 +1308,12 @@
 
   function showTab(name) {
     state.tab = name;
-    document.getElementById("tab-home").setAttribute("aria-selected", name === "home" ? "true" : "false");
-    document.getElementById("tab-you").setAttribute("aria-selected", name === "you" ? "true" : "false");
-    if (name === "you") {
+    ["home", "channels", "you"].forEach(function (t) {
+      document.getElementById("tab-" + t).setAttribute("aria-selected", name === t ? "true" : "false");
+    });
+    if (name === "channels") {
+      loadChannels(null, null);
+    } else if (name === "you") {
       // Fetched on every visit rather than cached: a video watched a minute ago
       // belongs at the top of History, and a You tab still showing the state
       // from breakfast is the app looking broken to the one person who knows
@@ -1260,6 +1329,7 @@
   };
 
   document.getElementById("tab-home").onclick = function () { showTab("home"); };
+  document.getElementById("tab-channels").onclick = function () { showTab("channels"); };
   document.getElementById("tab-you").onclick = function () { showTab("you"); };
 
   document.getElementById("look").onclick = function () {
