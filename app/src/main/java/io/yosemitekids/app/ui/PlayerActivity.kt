@@ -1959,10 +1959,11 @@ class PlayerActivity : ComponentActivity() {
      * Whether the pre-play deep check refuses this video for the launching kid.
      * One AI call per video per rules version, cached in [screeningStore] like
      * a batch verdict (with the deep flag, so the cheap title pass never
-     * overwrites it) — after that, this answers from disk. Fail-open on
-     * purpose: an unreachable or erroring provider plays the video unchecked
-     * this once and caches nothing, so the next press tries again — the kid is
-     * not punished for an outage.
+     * overwrites it) — after that, this answers from disk. What an incomplete
+     * check means is the parent's choice: fail-open by default, so an
+     * unreachable or erroring provider plays the video unchecked this once and
+     * caches nothing — the kid is not punished for an outage — or held for
+     * review, if they turned that on.
      */
     private suspend fun deepCheckBlocks(
         pageUrl: String,
@@ -1994,7 +1995,7 @@ class PlayerActivity : ComponentActivity() {
         deepChecking.value = true
         val entry = try {
             // Bounded overall: past ~20s the kid is staring at a spinner and an
-            // answer that slow is treated like an outage (play this once).
+            // answer that slow is an incomplete check like any other.
             io.yosemitekids.app.data.DeepCheck.runAndStore(
                 ai, cfg.profiles, screeningStore, id, pb.title, currentChannel,
                 pb, timeoutMs = 20_000, channelNote = note
@@ -2002,7 +2003,8 @@ class PlayerActivity : ComponentActivity() {
         } finally {
             deepChecking.value = false
         }
-        // Null = failure/timeout: play unchecked this once, nothing cached.
+        // Null = an incomplete check under the default policy: play unchecked
+        // this once, nothing cached. The hold returns a stored REVIEW instead.
         entry != null && entry.verdictFor(gateProfileId) != AiScreener.Verdict.ALLOW
     }
 

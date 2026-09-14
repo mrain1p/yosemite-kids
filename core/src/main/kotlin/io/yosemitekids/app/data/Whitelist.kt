@@ -247,7 +247,19 @@ data class AiConfig(
     val rules: String = "",
     val childAge: Int? = null,
     /** Bumped when rules/age/model change — cached verdicts for older versions are re-screened. */
-    val rulesVersion: Int = 0
+    val rulesVersion: Int = 0,
+    /**
+     * What a pre-play check that could not finish means. Off (the default, and
+     * what every family had before this field existed): the attempt plays
+     * unchecked and nothing is cached, so an outage does not punish the kid.
+     * On: the video is held as REVIEW and waits for the parent.
+     *
+     * A judging input, counted alongside the rules and the model: it decides
+     * what verdict a device *stores*, and devices hand each other verdicts by
+     * rules version — so two devices under different answers here are not
+     * interchangeable sources for the same number.
+     */
+    val reviewIncompleteChecks: Boolean = false
 )
 
 data class Whitelist(

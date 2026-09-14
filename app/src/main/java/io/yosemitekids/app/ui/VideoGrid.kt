@@ -246,21 +246,57 @@ internal fun VideoGrid(
         )
     }
     val gridState = rememberLazyGridState()
+
+    /**
+     * Has the child moved this grid themselves?
+     *
+     * **The whole fix for the page jumping under their thumb.** A channel's
+     * playlist rows arrive a second or two after the page paints, and both the
+     * ViewModel's `scrollTo = 0` and the header snap below then yank the grid
+     * back to the top — so a kid who started scrolling is thrown back to the
+     * header, with no chip pressed and nothing to blame. It was reported twice.
+     *
+     * `DragInteraction.Start` and not the scroll position, because that is the
+     * only signal that separates *the child moved this* from *we moved it*: a
+     * programmatic `scrollToItem` changes the position and emits no drag, so a
+     * position-watcher would set this flag on the very snap it is meant to
+     * suppress.
+     *
+     * Keyed to [gridState], so it resets when the screen does. That is what
+     * keeps the DELIBERATE jumps working — opening a channel, and landing back
+     * on the tile you left through — while stopping the involuntary ones.
+     */
+    var childScrolled by remember(gridState) { mutableStateOf(false) }
+    LaunchedEffect(gridState) {
+        gridState.interactionSource.interactions.collect {
+            if (it is androidx.compose.foundation.interaction.DragInteraction.Start) {
+                childScrolled = true
+            }
+        }
+    }
+
     // Instant, never animated: the kid didn't ask for the trip, they asked to
     // be somewhere. Runs after the new list is in place, so the index means
     // what the caller intended.
+    //
+    // Skipped once the child has scrolled — but still ACKNOWLEDGED, because
+    // scrollTo is a one-shot the ViewModel clears on report. Dropping the
+    // report instead of the scroll would leave it set, and the next list that
+    // arrived would obey a jump the kid had already overruled.
     LaunchedEffect(scrollTo) {
         if (scrollTo != null) {
-            runCatching { gridState.scrollToItem(scrollTo) }
+            if (!childScrolled) runCatching { gridState.scrollToItem(scrollTo) }
             onScrolled?.invoke()
         }
     }
     // The header rows arrive after the grid is on screen, and a lazy grid
     // keeps its anchor on the item that was first — so they would land just
-    // above the fold, invisible. Snap to the top the moment they appear.
+    // above the fold, invisible. Snap to the top the moment they appear, unless
+    // the child is already reading somewhere else: an invisible row is a
+    // smaller problem than a page that moves while they are looking at it.
     val hasHeader = header != null
     LaunchedEffect(hasHeader) {
-        if (hasHeader) runCatching { gridState.scrollToItem(0) }
+        if (hasHeader && !childScrolled) runCatching { gridState.scrollToItem(0) }
     }
     if (onNearEnd != null) {
         // Fire on every scroll-position change, not on a boolean edge: if one page

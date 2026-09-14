@@ -1185,7 +1185,12 @@ object ConfigMerge {
     private fun judgingInputs(ai: JSONObject): String = JSONArray(
         listOf(
             ai.optString("rules"), ai.optString("model"),
-            ai.optString("baseUrl"), ai.optString("childAge")
+            ai.optString("baseUrl"), ai.optString("childAge"),
+            // Not what the AI is asked, but what a device *stores* when it
+            // cannot ask at all: under the hold, an unfinishable check becomes
+            // a cached REVIEW. Devices trade verdicts by rules version, so two
+            // sides answering this differently must not share a number.
+            ai.optBoolean("reviewIncompleteChecks", false).toString()
         )
     ).toString()
 
