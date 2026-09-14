@@ -14,7 +14,7 @@ import java.io.File
  * unaffected by watch traffic: a minute of viewing is not a parent's decision,
  * it must not move `syncHash`, it must not nudge every enrolled device, and it
  * must not push a family's change history out of a thirty-line log. Guard 44
- * in `scripts/check.*` holds the two apart. See `docs/PLAN-hub-parity.md` D1
+ * in `scripts/check.*` holds the two apart. See `docs/archive/PLAN-hub-parity.md` D1
  * and prohibition 12 in the sync skill.
  *
  * The hub is a relay here exactly as it is for the config: it stores, joins

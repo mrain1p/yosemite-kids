@@ -38,7 +38,7 @@ const SKIP_PATHS = [
   'docs/design/parent-settings',   // third-party design reference for the old name
   'docs/UPSTREAM-LOG.md',          // a log OF Pickwick
   'docs/.upstream-seen',
-  'docs/RENAME.md',                // the plan itself names both
+  'docs/archive/RENAME.md',                // the plan itself names both
   'scripts/rename.js',             // this script: its regexes spell the old name
   'version.json',                  // upstream's; replaced by the release repo (roadmap §1)
   'LICENSE',

@@ -413,7 +413,7 @@ data class Whitelist(
      * by a screen — it exists so two parents' edits can be merged instead of
      * one silently overwriting the other, and so "why did the TV change?" is
      * answerable. Deliberately last, and deliberately excluded from
-     * [ConfigJson.fingerprint]; see `docs/PLAN-sync.md`.
+     * [ConfigJson.fingerprint]; see `docs/archive/PLAN-sync.md`.
      */
     val sync: SyncMeta = SyncMeta.EMPTY
 ) {

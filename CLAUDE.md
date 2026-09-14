@@ -8,8 +8,11 @@ HTTP server (`data/Pairing.kt`). Sideloaded only — never shipped to a store.
 ## This fork — start here
 
 - **What to do next:** `docs/ROADMAP.md` — the only forward-looking doc.
-  `FORK-NOTES.md` is a changelog and the `PLAN-*.md` files are finished
-  history; when they disagree with the roadmap, check the code.
+  `FORK-NOTES.md` is a changelog and `docs/archive/` is finished history;
+  when they disagree with the roadmap, check the code.
+- **Read cheaply:** the `yosemite-kids-map` skill says which file to open for
+  each kind of change and which files never to read end to end; `docs/GUARDS.md`
+  is the index of every source guard (number, rule, files it reads).
 - **Map first:** `docs/ARCHITECTURE.md` (what lives where, data flow, "where
   to change what"), `docs/LAN-API.md` (every LAN route), `docs/HUB.md`
   (deploying the Docker hub, and the volume-permission trap that will
@@ -31,7 +34,7 @@ HTTP server (`data/Pairing.kt`). Sideloaded only — never shipped to a store.
   `local.properties` carries `sdk.dir` and the release-keystore properties,
   so release builds work here. Python is not installed; use PowerShell/bash
   for scripts.
-- **Skills:** `.claude/skills/yosemite-kids-{check,emulator,lan-api,release}`.
+- **Skills:** `.claude/skills/yosemite-kids-{map,check,emulator,lan-api,release,sync,upstream}`.
 - Pure logic goes in companions / `internal fun`s so JVM unit tests can reach
   it without a `Context` (see `PairingStore.prunePending`, `Backup.parse`).
 
@@ -148,87 +151,45 @@ can't take the slot with a no-preflight cross-site POST.
 
 ## A change that creates a rule ships the thing that enforces it
 
-Before calling structural work done, ask: **what is now true that was not true
-before, and what would catch it becoming false?** Then build that, in the same
-commit.
+Every *never*, *always*, *must* or *only ever* in a comment or a commit
+message is an invariant, and prose enforces nothing. Before calling a change
+done, ask what is now true that was not before, and what would catch it
+becoming false — then build that, in the same commit. A refactor that passes
+its tests feels finished, but the tests were written for the old shape; the
+new shape's rules are precisely the ones with no coverage. In order of
+preference:
 
-This is the one rule most easily skipped, because a refactor that passes its
-tests feels finished — but the tests were written for the *old* shape. The new
-shape's rules are precisely the ones with no coverage, and they break later,
-far from the edit, in someone else's build. Extracting `:core` created "must
-stay Android-free" and shipped nothing to check it; the gap was found by being
-asked, not by the gate.
-
-**The transferable version, not specific to any one change:** every time you
-write *never*, *always*, *must*, *only ever* or *deliberately not* in a comment
-or a commit message, you have just stated an invariant — and prose enforces
-nothing. Someone who never reads that comment will violate it. So treat those
-words as a prompt: can this be a test? a grep? if neither, does it at least
-belong in a skill where the next session will actually meet it?
-
-This applies far beyond module boundaries. A new dependency, a security
-boundary, a file format, a threading rule, a thing that must happen before
-release — each is the same shape: a rule created by a change, with nothing
-watching it.
-
-In order of preference:
-
-1. **A test**, when the property is about values. Put it where the property
-   has to hold — a merge test in `:app` proves the merge works on Android and
-   proves nothing about the hub running the same code.
+1. **A test**, when the property is about values, placed where it has to
+   hold (a merge test in `:app` proves nothing about the hub).
 2. **A source guard** in step 0 of `scripts/check.ps1` *and* `scripts/check.sh`
-   (both, they are mirrored), when the property is about code *shape* and no
-   assertion can state it. Fail with a message saying what to do instead.
-3. **A skill**, when the property is a judgement a future session has to make
-   rather than a check a script can run. See `.claude/skills/yosemite-kids-sync`.
+   (mirrored; guard 10 checks), when the property is about code shape. Every
+   guard is one row in `docs/GUARDS.md` (generated, guard 67) and has a case
+   in `scripts/guard-canary.sh` that proves it can fail (guard 65).
+3. **A skill**, when the property is a judgement a future session has to
+   make rather than a check a script can run.
 
-The same applies to a mistake made twice: that is the signal to build a check,
-not to try harder. Two changes in one session looked correct in review and did
-nothing on the device — which is why anything kid-facing gets verified through
-the emulator loop before it is called done.
+A mistake made twice is the signal to build a check, not to try harder.
 
-## Three faces, one product — design across them, not one at a time
+## Three faces, one product
 
-There are **three** faces now: the phone, the television, and the browser the
-hub serves a child on an iPad. They are one product, and a family owns more
-than one of them, so a child moves between them in an afternoon and notices
-what does not match.
+Phone, television and the browser the hub serves are one product, and a
+child moves between them in an afternoon. Before building anything a child
+sees, ask which faces draw it and what they read it from — **at design time,
+not at review time**. Anything two faces both draw or both decide belongs in
+`:core` or `:crawl` before the second face is written:
 
-Before building anything a child sees, ask what the other two do with it —
-**at design time, not at review time.** The cost of not asking is not a bad
-review; it is shipping the divergence and then paying to find it. That has now
-happened twice:
+- **`KidSurface`** declares every screen, shelf and dialog, which faces draw
+  it, and `webReady` where one does not yet (guard 62; the gate prints
+  `kid surfaces still to reach the browser: …` on every run).
+- **`DesignTokens`**, `KidGeometry` and `KidType` hold every colour and
+  number a card is drawn from; the browser's stylesheet is generated from
+  them (guards 48, 63).
+- **`SettingsSurface`** does the same for the parent console.
 
-- The web player was built with "the page has no colours" as an explicit rule,
-  and nobody asked the same question about *shape*. It shipped with a filled
-  card where the app draws a bare poster, a 16px corner against 14dp, and a
-  progress track that was 40% white on a television and 80% black on a tablet.
-  Every guard passed: both faces were using legal tokens for colour and no
-  token at all for geometry.
-- It also shipped with four of the app's fourteen screens, because nothing
-  anywhere listed what a kid-facing product is made of.
-
-Both now have mechanisms, and the mechanisms are the point:
-
-- **`KidSurface`** (`:core`) — every screen, shelf and dialog, which faces draw
-  it, and `webReady` where one does not yet. Guard 62 reads it from both ends
-  and the gate prints `kid surfaces still to reach the browser: …` on every
-  run.
-- **`KidGeometry`** and **`KidType`** and the palette (`DesignTokens.kt`) —
-  every number both faces draw a card from, emitted into the browser's
-  stylesheet by the generator. Guard 63 refuses a bare length in either face's
-  card code.
-
-So the question to ask of a new surface is not "does this look right?" but
-**"which of the three draw this, and what do they read it from?"** If the
-answer is a number or a word written twice, it belongs in `:core` or `:crawl`
-before the second face is written, not after.
-
-Where a face genuinely differs — a remote needs focus, a browser cannot lock
-the screen, a ten-foot card is bigger — that is a decision, and it goes in the
-manifest's `why` with the reason. A difference with no reason recorded beside
-it is indistinguishable from an omission, which is the whole argument
-`SettingsSurface` already makes for the parent console.
+A difference between faces is a decision and goes in the manifest's `why`
+with the reason; a difference with no reason recorded is indistinguishable
+from an omission. The television keeps its QR-only settings screen and its
+rail: consistent and adapted, never forked.
 
 ## Conventions
 

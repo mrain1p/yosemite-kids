@@ -6,7 +6,7 @@ plugins {
 //
 // NewPipeExtractor, the HTTP layer it needs, the per-channel search index and
 // the crawl loop live here so the hub can build the index the phone used to
-// build alone (docs/PLAN-crawl.md). Plain JVM like :core, and guarded the
+// build alone (docs/archive/PLAN-crawl.md). Plain JVM like :core, and guarded the
 // same way: the moment this module imports Android the hub cannot build it.
 //
 // Not part of :core on purpose. :core's contract is "no disk, no clock" and

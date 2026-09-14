@@ -1,6 +1,6 @@
 # The hub as the parent app — password, parity per control, and one budget per child
 
-Design record for the round that answers the owner's five asks. Written against the working tree at `efb060e` (1.0.6); every claim below was read out of the files named. Shape follows `docs/PLAN-crawl.md`: what is true today, numbered decisions with the alternative each beat, steps that each end green, risks with the mitigation named. **Re-read the code before acting on any line.**
+Design record for the round that answers the owner's five asks. Written against the working tree at `efb060e` (1.0.6); every claim below was read out of the files named. Shape follows `docs/archive/PLAN-crawl.md`: what is true today, numbered decisions with the alternative each beat, steps that each end green, risks with the mitigation named. **Re-read the code before acting on any line.**
 
 The five asks, in the owner's words:
 

@@ -23,7 +23,7 @@ import kotlinx.coroutines.withContext
  *   is empty for every household on the default scope, and every entry point
  *   returns on it. A shared budget costs traffic and a file write per sweep;
  *   a family that does not use one pays neither.
- * - **Enforcement stays local and immediate** (`docs/PLAN-hub-parity.md` D4).
+ * - **Enforcement stays local and immediate** (`docs/archive/PLAN-hub-parity.md` D4).
  *   Nothing here is on the path of a kid pressing play. The number a player
  *   stops on is `SessionGuard`'s own prefs mirror, refreshed here when a
  *   ledger happens to arrive; a device out of touch with its peers falls back
@@ -119,7 +119,7 @@ object UsageSync {
      * Both directions device-initiated (D5): this device pushes what only it
      * knows and pulls what it needs, so no peer — the hub least of all — ever
      * holds a credential on anything. It runs at the end of a config sweep,
-     * which `docs/PLAN-hub-parity.md` D7 is explicit about being a *backstop*
+     * which `docs/archive/PLAN-hub-parity.md` D7 is explicit about being a *backstop*
      * rather than the mechanism: fifteen minutes is WorkManager's floor, not a
      * number anyone chose, and the moment a stale total actually matters is a
      * kid pressing play. What makes the backstop tolerable is the direction of

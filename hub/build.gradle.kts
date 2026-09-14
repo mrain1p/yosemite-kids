@@ -113,7 +113,7 @@ dependencies {
     // there is one implementation of the rules rather than two that drift.
     implementation(project(":core"))
     // The crawler and the search index: the hub builds the index the phone
-    // used to build alone (docs/PLAN-crawl.md).
+    // used to build alone (docs/archive/PLAN-crawl.md).
     implementation(project(":crawl"))
     // Android supplies org.json in the platform; here it has to be brought.
     // The pairing QR the television has always drawn, now on the console too.

@@ -65,7 +65,7 @@ class WatchLedgerStore(context: Context) {
      * `max(localDay, seenDay)` propagated through a merge would make the day
      * boundary a contagious ratchet — one television with a wrong clock walks
      * the whole household forward and hands out a budget no parent action
-     * reverses. See `docs/PLAN-hub-parity.md` D3.
+     * reverses. See `docs/archive/PLAN-hub-parity.md` D3.
      */
     fun recordOwn(kidId: String?, day: String, minutes: Int, at: Long = System.currentTimeMillis()) {
         synchronized(FILE_LOCK) {

@@ -128,7 +128,7 @@ physically find a parent. Needs a LAN route, a durable queue surviving both
 devices sleeping, and a notification channel. *Large.*
 
 **H. The crawl in the container — done** (2026-09-05, 1.0.5; design record
-`docs/PLAN-crawl.md`, changelog entry "The hub builds the search index" in
+`docs/archive/PLAN-crawl.md`, changelog entry "The hub builds the search index" in
 `FORK-NOTES.md`). Still owed from the plan's own list: the first full crawl
 measured with `docker stats` on the NAS and the number written into
 `HUB.md`, and a fleet-scale run of the handover (phone master → hub) watched
@@ -143,7 +143,7 @@ form. Still owed: a run through the emulator loop with two phones' worth of
 edits under one open form, which this round could not do.
 
 **J. One watch-time budget per child, across every device — the foundation
-has landed; the switch has not.** Design record: `docs/PLAN-hub-parity.md`.
+has landed; the switch has not.** Design record: `docs/archive/PLAN-hub-parity.md`.
 Today a child with a television and a tablet still gets the daily budget on
 each: the rules and the grants are per child already, and the running tally
 (`dailyWatchedMs` in `SessionGuard`) is still per device. The owner asked for
@@ -795,16 +795,21 @@ be. Every one of those is a judgement rather than a value, so by this project's
 own ordering it belongs in a **skill**, not a guard. Write it once the parity
 rounds settle and there is a full product to describe.
 
-**`scripts/guard-canary.sh` is the answer to "who checks the checkers", and it is unfinished.**
-59 guards, and until now nothing had ever verified that any of them could still
-fail — each was negative-tested once, by hand, by its author, and then never
-again. Three had since gone blind. The canary breaks the tree on purpose, one
-mutation at a time, and asserts the gate notices.
+**`scripts/guard-canary.sh` is the answer to "who checks the checkers".**
+Sixty-odd guards, and until it existed nothing had ever verified that any of
+them could still fail — each was negative-tested once, by hand, by its author,
+and then never again. Three had since gone blind. The canary breaks the tree
+on purpose, one mutation at a time, and asserts the gate notices.
 
-**Still to do, and it has never had a clean full run.** Only guards 56–64 have
-cases. It needs extending backwards over 1–55, and the meta-check that a new
-guard cannot land without one — which is the clause that would make
-negative-testing enforced rather than a convention nobody is left to keep.
+**Wired in on 2026-09-14 (the housekeeping round).** Guard 65 is the
+meta-check: every guard from 56 upward must have a case, so a new guard
+cannot land without one. CI runs the canary after the guards on every push —
+on Linux, where the bash gate takes seconds; on a Windows bash it is five
+minutes a run, which is why the canary never had a clean full run by hand.
+The same round generated `docs/GUARDS.md` from the headings (guard 67 keeps it
+current) and moved the finished `PLAN-*.md` records to `docs/archive/` (guard
+66 keeps them there). **Still open:** cases for guards 1–55, which the
+meta-check deliberately does not demand yet.
 
 Two harness bugs are fixed already and are worth not re-learning:
 

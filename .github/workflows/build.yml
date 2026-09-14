@@ -40,6 +40,15 @@ jobs:
       - name: Source invariants
         run: bash scripts/check.sh --guards
 
+      # Then prove those guards can still fail. The canary breaks the tree one
+      # mutation at a time and asserts the gate notices; guard 65 makes a case
+      # there mandatory for every guard from 56 upward. It runs here rather
+      # than by hand because the bash gate is seconds on Linux and five
+      # minutes a run on a Windows checkout, which is why it never had a
+      # clean full run before it was wired in.
+      - name: Guard canary
+        run: bash scripts/guard-canary.sh
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

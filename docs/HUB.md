@@ -39,7 +39,7 @@ Fixing it needs a foreground service, which is `docs/ROADMAP.md` §2A.
 
 The hub enrols as an ordinary `PairedDevice` named `Yosemite Kids hub`, and
 every sync path that already worked with a TV works with it unchanged — that
-is still the design and `docs/PLAN-hub.md` is why. What has changed since that
+is still the design and `docs/archive/PLAN-hub.md` is why. What has changed since that
 sentence read "nothing in the app's main source set knows the hub exists" is
 that seven files now do: `HubEnrolment` joins one, `SettingsHub` is the screen
 that does it, and `PairedDevice.isHub` decides four things a hub must be

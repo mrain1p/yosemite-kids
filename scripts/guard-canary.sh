@@ -2,8 +2,8 @@
 #
 # Who checks the checkers.
 #
-# scripts/check.sh holds 59 guards and nothing has ever verified that any of
-# them can still fail. Each was negative-tested once, by hand, by whoever wrote
+# scripts/check.sh holds sixty-odd guards, and until this file nothing had ever
+# verified that any of them can still fail. Each was negative-tested once, by hand, by whoever wrote
 # it, and then never again — so a guard that quietly stops covering anything
 # looks exactly like a guard that is happy.
 #
@@ -23,9 +23,11 @@
 # CI's FIRST step for three releases, so no compile and no test ran either.
 #
 # The rule this file makes real: **a guard is not finished until something
-# other than its author can prove it fails.** Guard 64 in check.sh requires
+# other than its author can prove it fails.** Guard 65 in check.sh requires
 # every guard from 56 upward to have a case here, so a new guard cannot land
-# without one.
+# without one - and CI runs this file after the guards, on Linux, where the
+# gate takes seconds (it is five minutes a run on a Windows bash, which is
+# why this never had a clean full run by hand).
 #
 #   bash scripts/guard-canary.sh          # every case
 #   bash scripts/guard-canary.sh 61 63    # only these
@@ -73,9 +75,12 @@ if ! (set -o noclobber; echo "$$" > "$LOCK") 2>/dev/null; then
 fi
 
 TOUCHED=""
+CREATED=""
 restore() {
   for f in $TOUCHED; do git checkout -- "$f" 2>/dev/null || true; done
+  for f in $CREATED; do rm -f "$f"; done
   TOUCHED=""
+  CREATED=""
   rm -f "$LOCK"
 }
 trap restore EXIT INT TERM
@@ -96,6 +101,12 @@ expect_guard() {
   rc=$?
   git checkout -- "$file" 2>/dev/null || true
   TOUCHED=""
+  judge "$num" "$note" "$expect" "$out" "$rc"
+}
+
+# The verdict, shared by the edit-a-file and the create-a-file cases.
+judge() {
+  local num="$1" note="$2" expect="$3" out="$4" rc="$5"
   if [ "$rc" -eq 0 ]; then
     echo "${RED}FAIL${OFF} guard $num did not fire — $note"
     echo "${DIM}      the mutation was applied and the gate stayed green, so this guard"
@@ -118,6 +129,30 @@ expect_guard() {
   fi
   echo "${GREEN} ok ${OFF} guard $num fires — $note"
   passed=$((passed + 1))
+}
+
+# A case that CREATES a file rather than editing one. `git checkout --`
+# cannot undo a new file, so this removes it itself, and "did the mutation
+# land" is simply "does the file exist now".
+canary_new() {
+  local num="$1" file="$2" note="$3" expect="$4" content="$5"
+  if [ -n "$WANT" ]; then
+    case " $WANT " in *" $num "*) ;; *) skipped=$((skipped + 1)); return ;; esac
+  fi
+  if [ -e "$file" ]; then
+    echo "${RED}FAIL${OFF} guard $num — $file already exists, so creating it proves nothing"
+    failed=$((failed + 1))
+    return
+  fi
+  CREATED="$file"
+  printf "%s
+" "$content" > "$file"
+  local out rc
+  out=$(bash scripts/check.sh --guards 2>&1)
+  rc=$?
+  rm -f "$file"
+  CREATED=""
+  judge "$num" "$note" "$expect" "$out" "$rc"
 }
 
 # One case. `mutate` breaks $file; `expect` is a fragment of the message the
@@ -154,6 +189,12 @@ KIDPAGE=hub/src/main/resources/web/kid.html
 HOMESTATE=app/src/main/java/io/yosemitekids/app/ui/HomeState.kt
 TILES=app/src/main/java/io/yosemitekids/app/ui/Tiles.kt
 CHUNKER=crawl/src/main/kotlin/io/yosemitekids/app/data/StreamChunker.kt
+GRID=app/src/main/java/io/yosemitekids/app/ui/VideoGrid.kt
+INDEX=docs/GUARDS.md
+CANARY=scripts/guard-canary.sh
+# Built from parts so the doc-path guard in check.sh does not look for a plan
+# file that exists only for the length of one canary run.
+PLANFILE=docs/PLAN-canary
 
 echo "== breaking things on purpose, one at a time"
 
@@ -219,6 +260,29 @@ canary 63 "$TILES" \
   "the app drawing a card corner the browser cannot read" \
   "VideoCard writes a bare corner radius" \
   'sed -i "s/RoundedCornerShape(KidGeometry.CARD_RADIUS.dp)/RoundedCornerShape(11.dp)/" "$TILES"'
+
+canary 64 "$GRID" \
+  "the grid forgetting whether the child scrolled" \
+  "VideoGrid lost childScrolled" \
+  'sed -i "s/childScrolled/childScrolledCanary/g" "$GRID"'
+
+# Editing this very file while it runs is safe on purpose: sed -i writes a
+# new file and renames it over the old one, and the bash that is running
+# keeps reading the inode it opened. git checkout restores the same way.
+canary 65 "$CANARY" \
+  "a guard with no canary case" \
+  "has no case in scripts/guard-canary.sh" \
+  'sed -i "s/^canary 64 /canary 640 /" "$CANARY"'
+
+canary_new 66 "$PLANFILE.md" \
+  "a finished plan left beside the live docs" \
+  "sits in docs/ beside the live documents" \
+  "# canary"
+
+canary 67 "$INDEX" \
+  "the guard index falling behind the guards" \
+  "is behind the guards" \
+  'printf "| 999 | canary | - | - |\n" >> "$INDEX"'
 
 echo
 if [ "$failed" -gt 0 ]; then

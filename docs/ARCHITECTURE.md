@@ -213,9 +213,9 @@ Other top-level directories:
 | `worker/` | Cloudflare Worker: suggestion form → PR, contact form → issue/discussion, app whole-list submission. `worker/test/` is `node --test`. |
 | `site/` | pickwick.tv static site + `site/directory/*.json` (the community directory the app reads). |
 | `whitelists/` | Importable themed channel lists. |
-| `scripts/` | Developer harness: `check.ps1`/`check.sh` (build + tests), `emu.ps1` (emulator loop). |
-| `.claude/skills/` | Claude Code skills for this repo (build/test, emulator, LAN API, release). |
-| `docs/` | This file, `LAN-API.md`, `DEV.md`, `FORK-NOTES.md`, `SETUP.md` (end-user). |
+| `scripts/` | Developer harness: `check.ps1`/`check.sh` (the gate: source guards, build, tests), `guard-canary.sh` (proves each guard can fail; CI runs it), `guard-index.sh` (writes `docs/GUARDS.md`), `emu.ps1` (emulator loop), `upstream.*` (what upstream shipped). |
+| `.claude/skills/` | Claude Code skills for this repo: `map` (where to start reading), `check`, `emulator`, `lan-api`, `release`, `sync` (config-field invariants), `upstream`. |
+| `docs/` | This file, `ROADMAP.md` (the only forward-looking doc), `GUARDS.md` (generated guard index), `LAN-API.md`, `HUB.md`, `DEV.md`, `FORK-NOTES.md` (changelog), `SETUP.md` (end-user), `SCREENS.md`. `docs/archive/` is finished history (never updated; guard 66 keeps plans out of the top level); `docs/design/` the design handoffs for the parent settings and the kid player. |
 
 ## The two roles
 
@@ -449,7 +449,7 @@ What fails if you do half of it:
 Two parents used to lose each other's edits: a device receiving a push replaced
 its whole config, so whoever pushed second discarded everything the other had
 changed, silently and unattributably. The fix is a **sectioned merge**, peer to
-peer, needing no server. `docs/PLAN-sync.md` has the design;
+peer, needing no server. `docs/archive/PLAN-sync.md` has the design;
 `.claude/skills/yosemite-kids-sync` has the invariants to obey before touching any
 of it.
 

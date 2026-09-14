@@ -18,7 +18,7 @@ fi
 
 # --- 0/4 invariants a test cannot state ------------------------------------
 # Each is a property that holds across a whole file, so no assertion can pin
-# it. See docs/PLAN-sync.md.
+# it. See docs/archive/PLAN-sync.md.
 echo "== 0/6 source invariants"
 guard_fail() { echo "guard FAILED: $1" >&2; exit 1; }
 
@@ -1928,6 +1928,45 @@ grep -q "childScrolled" "$grid" ||
 snap_guarded=$(awk '/LaunchedEffect\(hasHeader\)/ { f = 1 } f { print } f && /^    }$/ { exit }' "$grid")
 grep -q "childScrolled" <<<"$snap_guarded" ||
   guard_fail "the header snap in VideoGrid does not check childScrolled. It is the SECOND path to the same jump: fixing only the ViewModel's scrollTo leaves this one behind."
+
+# 65. A guard is not finished until something proves it can fail.
+#     Each guard was negative-tested once, by hand, by its author, and then
+#     never again - and three had gone blind before anyone looked (a route
+#     regex with no digits, an awk range that never closed, a catalogue read
+#     that missed every You-tab shelf). scripts/guard-canary.sh breaks the
+#     tree on purpose, one mutation at a time, and asserts the gate notices.
+#     This is the clause that makes a case there mandatory rather than a
+#     convention: from 56 upward, every guard has one, and CI runs them.
+canary_script=scripts/guard-canary.sh
+[ -f "$canary_script" ] ||
+  guard_fail "scripts/guard-canary.sh is gone. It is the only thing that proves a guard can still fail; put it back before adding to the gate."
+for n in $(grep -oE "^# [0-9]+[.]" scripts/check.sh | tr -d " #."); do
+  [ "$n" -ge 56 ] || continue
+  grep -qE "^canary(_new)? $n " "$canary_script" ||
+    guard_fail "guard $n has no case in scripts/guard-canary.sh. A guard nobody has watched fail is indistinguishable from one that cannot fail; add a mutation there that makes it fire (from 56 upward, every guard has one)."
+done
+# 66. Finished plans live in docs/archive, and docs/ holds only what is live.
+#     Eight PLAN-*.md files - a third of the documentation by weight - sat
+#     beside the live documents long after CLAUDE.md called them finished
+#     history, and every session that listed docs/ paid for them. A plan that
+#     has shipped is a record and moves to docs/archive/; a plan that has not
+#     shipped is a section of docs/ROADMAP.md, the one forward-looking file,
+#     and never a file of its own.
+stale_plans=$(ls docs/PLAN-*.md 2>/dev/null || true)
+[ -z "$stale_plans" ] ||
+  guard_fail "$stale_plans sits in docs/ beside the live documents. A plan that shipped moves to docs/archive/; one that has not is a section of docs/ROADMAP.md, the only forward-looking document."
+# 67. The guard index is generated, and it is current.
+#     docs/GUARDS.md is one table - number, rule, the files each guard reads,
+#     whether the canary covers it - so "which guard covers X?" costs one page
+#     instead of these two scripts. A hand-kept index would be the first thing
+#     here to rot, so scripts/guard-index.sh writes it from the headings, and
+#     this compares the checked-in copy against a fresh run.
+guard_index=docs/GUARDS.md
+[ -f "$guard_index" ] ||
+  guard_fail "docs/GUARDS.md is missing. Generate it: bash scripts/guard-index.sh > docs/GUARDS.md"
+if ! diff -q <(bash scripts/guard-index.sh) <(tr -d "\r" < "$guard_index") >/dev/null 2>&1; then
+  guard_fail "docs/GUARDS.md is behind the guards. Regenerate it: bash scripts/guard-index.sh > docs/GUARDS.md"
+fi
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

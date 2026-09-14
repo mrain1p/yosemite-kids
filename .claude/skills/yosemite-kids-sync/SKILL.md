@@ -7,7 +7,7 @@ description: Rules and invariants for Yosemite Kids' sectioned config merge — 
 
 Read this before touching `ConfigStore`, `ConfigMerge`, `ConfigStamp`,
 `Whitelist`, or the `/config` and `/status` routes. The design and the
-reasoning behind each rule are in `docs/PLAN-sync.md`.
+reasoning behind each rule are in `docs/archive/PLAN-sync.md`.
 
 ## 0. Where this code lives, and why that matters
 
@@ -139,7 +139,7 @@ it. A phone out of a drawer claims to be brand new.
     per cell by `max`, outside `ConfigStore.fingerprint` and outside
     `syncHash`, in `files/usage.json` on a device (`WatchLedgerStore`) and
     `/data/usage.json` on the hub (`HubUsage`), each with its own lock, carried
-    by `GET|POST /usage` on both faces. `docs/PLAN-hub-parity.md` §4 is the
+    by `GET|POST /usage` on both faces. `docs/archive/PLAN-hub-parity.md` §4 is the
     design; `docs/ROADMAP.md` item J is what is still parked (the
     `budgetScope` switch and the UX that explains it — the ledger and the day
     landed without them).

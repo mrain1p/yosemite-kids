@@ -34,7 +34,7 @@ import java.net.URL
  * backup a parent takes off the box — checked at every depth rather than
  * trusted from the layer below.
  *
- * The second half is the failure D19 of `docs/PLAN-hub-parity.md` calls the
+ * The second half is the failure D19 of `docs/archive/PLAN-hub-parity.md` calls the
  * quietest one available. A key is resolved by the `ai` unit's stamp, and the
  * hub's disk copy is always keyless — so without `localApiKey` the hub's side
  * of that comparison is permanently blank, the incoming key always wins, and a

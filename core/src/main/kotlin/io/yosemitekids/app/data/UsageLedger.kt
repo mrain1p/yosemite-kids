@@ -17,7 +17,7 @@ import org.json.JSONObject
  * device, once a minute, for as long as anyone in the house is watching — and
  * `SyncMeta.MAX_LOG` is 30 lines, so a usage line a minute would wipe a
  * family's change history in half an hour. See prohibition 12 in
- * `.claude/skills/yosemite-kids-sync/SKILL.md` and `docs/PLAN-hub-parity.md`
+ * `.claude/skills/yosemite-kids-sync/SKILL.md` and `docs/archive/PLAN-hub-parity.md`
  * D1.
  *
  * So: its own document, its own file, its own lock, outside

@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
  * would have meant a second spelling of the enum on the two sides of a module
  * boundary. Nothing in :hub calls it: the hub arms Http.HUB_HOSTS at startup,
  * so an AI call from that box would be refused before DNS. Hub-side screening
- * is a separate decision with its own record (docs/PLAN-hub-parity.md §8).
+ * is a separate decision with its own record (docs/archive/PLAN-hub-parity.md §8).
  */
 object AiScreener {
 

@@ -1,7 +1,7 @@
 # Reported from real use
 
 Things the family hit while actually using the app, newest batch first. These
-are ahead of anything in `docs/PLAN-sync.md` past the milestone in flight —
+are ahead of anything in `docs/archive/PLAN-sync.md` past the milestone in flight —
 they are all real-use bugs or gaps, not speculative work.
 
 ## 2026-09-03

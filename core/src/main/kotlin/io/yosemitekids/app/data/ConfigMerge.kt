@@ -8,7 +8,7 @@ import org.json.JSONObject
  *
  * Everything here is pure — no `Context`, no disk, no clock — so the awkward
  * cases are JVM unit tests rather than something a parent discovers on a
- * Tuesday. See `docs/PLAN-sync.md` for the full design; this file currently
+ * Tuesday. See `docs/archive/PLAN-sync.md` for the full design; this file currently
  * carries only [describe], the structural diff that answers "what am I about
  * to overwrite?" before a Pull.
  */
@@ -410,7 +410,7 @@ object ConfigMerge {
     // Two configs in, one out. Unit by unit, so two parents who changed two
     // different things both keep their change — which whole-file
     // last-writer-wins cannot do, and which is the entire reason any of this
-    // exists. See `docs/PLAN-sync.md` for the rules and why each is shaped
+    // exists. See `docs/archive/PLAN-sync.md` for the rules and why each is shaped
     // the way it is.
     //
     // Deliberately at the JSON level and never through `Whitelist`. `saveRaw`
@@ -1535,7 +1535,7 @@ object ConfigMerge {
  * A *unit* is the smallest thing two parents can edit independently: one
  * channel (`src|<id>`), one kid's rules (`kid.rules|<id>`), one blocked video
  * (`blk|<id>`), the loose app settings as a group (`settings`). The key space
- * is the whole design — see `docs/PLAN-sync.md`.
+ * is the whole design — see `docs/archive/PLAN-sync.md`.
  *
  * None of it is ever enforced or shown as a rule. It exists so a merge can
  * tell "Dad added this" from "Mum removed it", which whole-file

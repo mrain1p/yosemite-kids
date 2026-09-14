@@ -135,7 +135,8 @@ open backlog.
 
 ## Claude Code skills
 
-`.claude/skills/` carries repeatable workflows: `yosemite-kids-check` (build+test),
+`.claude/skills/` carries repeatable workflows: `yosemite-kids-map` (where to start reading, and what never to read whole),
+`yosemite-kids-check` (build+test),
 `yosemite-kids-emulator` (boot/install/drive/screenshot), `yosemite-kids-lan-api`
 (protocol reference, safe probing), `yosemite-kids-release` (version bump, APK,
 version.json). Invoke with `/yosemite-kids-check` etc.

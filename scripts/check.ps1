@@ -17,7 +17,7 @@ if (-not $Guards -and -not (Test-Path "local.properties")) {
 
 # --- 0/4 invariants a test cannot state ------------------------------------
 # Each of these is a property that has to hold across a whole file, so no
-# assertion can pin it. See docs/PLAN-sync.md.
+# assertion can pin it. See docs/archive/PLAN-sync.md.
 Write-Host "== 0/6 source invariants" -ForegroundColor Cyan
 
 function Fail-Guard($message) {
@@ -2238,6 +2238,55 @@ if ($gridText -notmatch 'childScrolled') {
 $snap = [regex]::Match($gridText, "(?ms)LaunchedEffect\(hasHeader\).*?^    \}")
 if ($snap.Success -and ($snap.Value -notmatch 'childScrolled')) {
     Fail-Guard "the header snap in VideoGrid does not check childScrolled. It is the SECOND path to the same jump: fixing only the ViewModel's scrollTo leaves this one behind."
+}
+
+# 65. A guard is not finished until something proves it can fail.
+#     Each guard was negative-tested once, by hand, by its author, and then
+#     never again - and three had gone blind before anyone looked. The canary
+#     (scripts/guard-canary.sh) breaks the tree on purpose and asserts the
+#     gate notices; this clause makes a case there mandatory from 56 upward.
+$canaryScript = "scripts/guard-canary.sh"
+if (-not (Test-Path $canaryScript)) {
+    Fail-Guard "scripts/guard-canary.sh is gone. It is the only thing that proves a guard can still fail; put it back before adding to the gate."
+}
+$canaryText = Get-Content $canaryScript
+$declared = (Get-Content "scripts/check.sh" | Where-Object { $_ -match '^# (\d+)\.' } | ForEach-Object { [int]$Matches[1] }) | Sort-Object -Unique
+foreach ($n in $declared) {
+    if ($n -lt 56) { continue }
+    if (-not ($canaryText | Where-Object { $_ -match "^canary(_new)? $n " })) {
+        Fail-Guard "guard $n has no case in scripts/guard-canary.sh. A guard nobody has watched fail is indistinguishable from one that cannot fail; add a mutation there that makes it fire (from 56 upward, every guard has one)."
+    }
+}
+# 66. Finished plans live in docs/archive, and docs/ holds only what is live.
+#     A plan that has shipped is a record and moves to docs/archive/; a plan
+#     that has not shipped is a section of docs/ROADMAP.md, never a file.
+$stalePlans = @(Get-ChildItem -Path "docs" -Filter "PLAN-*.md" -File -ErrorAction SilentlyContinue | ForEach-Object { "docs/$($_.Name)" })
+if ($stalePlans.Count -gt 0) {
+    Fail-Guard "$($stalePlans -join ' ') sits in docs/ beside the live documents. A plan that shipped moves to docs/archive/; one that has not is a section of docs/ROADMAP.md, the only forward-looking document."
+}
+# 67. The guard index is generated, and it is current.
+#     docs/GUARDS.md is written by scripts/guard-index.sh from check.sh's
+#     headings. The bash gate diffs the whole file; this mirror holds the
+#     rows to the headings and the canary column to the canary script, which
+#     is what can go stale without a regeneration.
+$guardIndex = "docs/GUARDS.md"
+if (-not (Test-Path $guardIndex)) {
+    Fail-Guard "docs/GUARDS.md is missing. Generate it: bash scripts/guard-index.sh > docs/GUARDS.md"
+}
+$indexRows = @{}
+foreach ($line in Get-Content $guardIndex) {
+    if ($line -match '^\| (\d+) \| .* \| (yes|-) \|$') { $indexRows[[int]$Matches[1]] = $Matches[2] }
+}
+$indexNums = ($indexRows.Keys | Sort-Object) -join ","
+$declaredNums = ($declared) -join ","
+if ($indexNums -ne $declaredNums) {
+    Fail-Guard "docs/GUARDS.md is behind the guards. Regenerate it: bash scripts/guard-index.sh > docs/GUARDS.md"
+}
+foreach ($n in $declared) {
+    $has = if ($canaryText | Where-Object { $_ -match "^canary(_new)? $n " }) { "yes" } else { "-" }
+    if ($indexRows[$n] -ne $has) {
+        Fail-Guard "docs/GUARDS.md is behind the guards. Regenerate it: bash scripts/guard-index.sh > docs/GUARDS.md"
+    }
 }
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }

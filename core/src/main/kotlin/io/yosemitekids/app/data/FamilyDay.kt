@@ -107,7 +107,7 @@ object FamilyDay {
      * Only this device's *own* day ratchets. Nothing here adopts a peer's —
      * `max(localDay, seenDay)` propagated through a merge would let one
      * television with a wrong clock walk the whole household's day forward,
-     * irreversibly, which is exactly the design `docs/PLAN-hub-parity.md` D1
+     * irreversibly, which is exactly the design `docs/archive/PLAN-hub-parity.md` D1
      * rejects.
      *
      * Both arguments must be in the same spelling; see this object's KDoc.

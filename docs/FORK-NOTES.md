@@ -309,7 +309,7 @@ from such a TV silently resets `autoplay` / `channelLayout` /
 
 ### Round four: portrait player and the mini-player (phones)
 
-The plan is `docs/PLAN-round4.md`; everything in it is built. Version
+The plan is `docs/archive/PLAN-round4.md`; everything in it is built. Version
 **0.8.3-fork (32)**. The TV is untouched by all of this.
 
 - **Portrait player.** The player no longer forces landscape. Held upright
@@ -381,7 +381,7 @@ unattended runs.
 
 ### Round five: settings hub, the kid's corner, sort and filter chips, playlist rows
 
-Plan and decisions: `docs/PLAN-round5.md`. Version **0.9.0-fork (33)**.
+Plan and decisions: `docs/archive/PLAN-round5.md`. Version **0.9.0-fork (33)**.
 
 - **Upstream `1ae4cf1` adopted whole** (cherry-pick; `docs/UPSTREAM-LOG.md`):
   the parent settings are a six-row hub with a page per row and a page per
@@ -739,7 +739,7 @@ included — those are what a later reader would otherwise re-investigate.
   image and container, versionCode reset to 1. The text pass is
   `scripts/rename.js`; the placement map and everything the pass could not
   reach (banner PNGs, resource names, thread and cookie names, the
-  suggestion-worker host it must not touch) are in `docs/RENAME.md`.
+  suggestion-worker host it must not touch) are in `docs/archive/RENAME.md`.
   Backups written by the old build still restore (`kind: pickwick-backup`
   is accepted forever), because moving a family over *is* a restore.
 - **A launch crash that predates the rename.** The emulator check of the
@@ -1011,7 +1011,7 @@ its whole config, so whoever pushed second discarded everything the other had
 done — with nothing to look at afterwards and no way to tell it had happened.
 
 The fix is a sectioned merge, peer to peer, with no server involved. Design and
-reasoning in `docs/PLAN-sync.md`, invariants in `.claude/skills/yosemite-kids-sync`,
+reasoning in `docs/archive/PLAN-sync.md`, invariants in `.claude/skills/yosemite-kids-sync`,
 routes in `docs/LAN-API.md`. What is worth knowing here is what the work
 turned up.
 
@@ -1154,7 +1154,7 @@ way: every route `LanServer` answers must have a row in `docs/LAN-API.md` —
 
 ### The hub builds the search index (roadmap 2H, 1.0.5)
 
-Design record: `docs/PLAN-crawl.md`. Eight commits, "Crawl step 1" to
+Design record: `docs/archive/PLAN-crawl.md`. Eight commits, "Crawl step 1" to
 "Crawl step 8".
 
 - **A fourth module, `:crawl`.** Http, the YouTube repository, the search
@@ -1238,7 +1238,7 @@ The owner's ask, in five parts: the hub should have the phone's parent
 settings, it should feel like an app rather than a form, it should take a
 password instead of a token, the AI key should live on the NAS, and adding a
 setting to one face should make it hard *not* to add it to the other. The
-design record is `docs/PLAN-hub-parity.md`; the shared watch-time budget it
+design record is `docs/archive/PLAN-hub-parity.md`; the shared watch-time budget it
 also designs was tabled by the owner before any of it was built (roadmap J),
 so nothing here counts a minute.
 
