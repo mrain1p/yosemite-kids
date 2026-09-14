@@ -80,6 +80,24 @@ class HubKidHome(
             .firstOrNull { it.videoId == videoId }
             ?.toVideo()
 
+    /**
+     * The head of this kid's Up next, as a row the page can play — or null.
+     *
+     * Intersected with the catalogue like every other shelf: a video queued
+     * last night and blocked by a parent this morning is not what plays next.
+     * The queue is in **play order**, so "the head" is genuinely the next one
+     * rather than the newest.
+     */
+    fun nextInQueue(kidId: String): JSONObject? {
+        val maySee = policy.catalogueFor(kidId).flatMap { it.videos }.map { it.toVideo() }
+            .associateBy { it.url }
+        val head = lists.videos(kidId, HubSavedLists.Which.QUEUE)
+            .firstOrNull { it.url in maySee } ?: return null
+        val watched = history.pointsFor(kidId)
+        return videosJson(listOf(head to (watched[head.url]?.fraction ?: 0f)), watched, savedFor(kidId))
+            .optJSONObject(0)
+    }
+
     /** A whitelist entry in the shape [resolvePins] joins against. */
     private data class PinnableEntry(override val id: String) : PinnableSource
 
@@ -532,10 +550,19 @@ class HubKidHome(
         val verdict = policy.timeFor(kidId, viewer)
         val budget = verdict.budgetMinutes ?: return JSONObject.NULL
         val spent = verdict.spentMinutes ?: 0
+        val left = (budget - spent).coerceAtLeast(0)
         return JSONObject()
             .put("budgetMinutes", budget)
             .put("spentMinutes", spent)
-            .put("leftMinutes", (budget - spent).coerceAtLeast(0))
+            .put("leftMinutes", left)
+            // The sentence, from :core, so the tablet and the television count
+            // down in the same words. Minutes rather than seconds, and that is
+            // honest rather than lazy: UsageLedger counts in whole minutes, so
+            // a seconds countdown here would be this page inventing precision
+            // the box does not have. Making it real means interpolating from
+            // HubWatchMeter's accrual — roadmap, not a one-line fudge.
+            .put("say", io.yosemitekids.app.ui.KidWords.timeLeft(left * 60L))
+            .put("low", left * 60L <= io.yosemitekids.app.ui.KidWords.LOW_SECONDS)
             .put("allowed", verdict.allowed)
             .put("reason", verdict.reason)
     }

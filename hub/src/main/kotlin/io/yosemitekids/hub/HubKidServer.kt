@@ -388,9 +388,27 @@ class HubKidServer(
                 // refuse at its cap and the page must follow the store.
                 .put("on", nowOn)
                 .put("count", lists.urls(browser.kid, which).size)
+                // What is at the head of the queue now.
+                //
+                // Here so the page never has to hunt for it. The end of a
+                // video asks "take this one out, what is next?", and that is
+                // one question with one answer — a page that fetched the whole
+                // You payload and picked a shelf out of it would be deciding
+                // something (guard 61), and would be three round trips deep at
+                // the exact moment a child is waiting for the next story.
+                .put("next", nextInQueue(browser.kid))
                 .toString()
         )
     }
+
+    /**
+     * The head of this kid's queue as a playable row, or `null`.
+     *
+     * Filtered through the catalogue like every other shelf, so a video queued
+     * last night and blocked by a parent this morning is not what plays next.
+     */
+    private fun nextInQueue(kid: String): Any =
+        browse.nextInQueue(kid) ?: JSONObject.NULL
 
     /** `GET /you` — the kid's own shelves. Behind the credential like everything else. */
     private fun you(ex: HttpExchange) {
@@ -498,6 +516,17 @@ class HubKidServer(
                 .apply {
                     time.spentMinutes?.let { put("spentMinutes", it) }
                     time.budgetMinutes?.let { put("budgetMinutes", it) }
+                    // The same three fields /home sends, so the pill reads
+                    // identically whether it was painted on load or on a beat.
+                    // Two shapes for one pill is how a countdown comes to say
+                    // different things on the same screen a minute apart.
+                    val budget = time.budgetMinutes
+                    if (budget != null) {
+                        val left = (budget - (time.spentMinutes ?: 0)).coerceAtLeast(0)
+                        put("leftMinutes", left)
+                        put("say", io.yosemitekids.app.ui.KidWords.timeLeft(left * 60L))
+                        put("low", left * 60L <= io.yosemitekids.app.ui.KidWords.LOW_SECONDS)
+                    }
                 }
                 .toString()
         )
@@ -729,6 +758,11 @@ class HubKidServer(
         JSONObject()
             .put("error", verdict.reason)
             .put("detail", verdict.detail)
+            // What a CHILD reads. `detail` is written for a parent's log and
+            // says so in its own KDoc; the page was putting it in front of a
+            // five-year-old. One vocabulary in :core, so the television and the
+            // tablet refuse in the same words.
+            .put("say", io.yosemitekids.app.ui.KidWords.refusal(verdict.reason))
             .apply {
                 verdict.spentMinutes?.let { put("spentMinutes", it) }
                 verdict.budgetMinutes?.let { put("budgetMinutes", it) }
