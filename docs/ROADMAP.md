@@ -582,14 +582,14 @@ other three declared and empty, saying what would fill them. The rule, the bold
 title, the mono count and See-all-in-place are the furniture R3 and R5 land
 into.
 
-**R3 — writes: the hold menu and the saved lists.** The extraction that
+**R3 — writes: the hold menu and the saved lists. DONE.** The extraction that
 matters: `SavedListStore`'s pure half and `QueueStore` into `:crawl`, **with the
 prune-then-merge convergence test they have never had** — prove it fails against
 the unfixed code first (`.claude/skills/yosemite-kids-sync`). Then
 `HubSavedLists` keyed by the credential, `POST /list`, and the long-press
 dialog. Flips favorites / watch-later / up-next to `webReady`.
 
-**R4 — it becomes an app on the iPad.** A kid manifest generated from `:core`
+**R4 — it becomes an app on the iPad. DONE.** A kid manifest generated from `:core`
 beside `kid-tokens.css`, four icons from one generator, the
 `apple-mobile-web-app` meta tags, and `theme-color` refilled from the live
 tokens when the look changes. **Deliberately no content-caching service
@@ -597,14 +597,14 @@ worker**: Cache Storage outlives the claim cookie, so a cached page keeps a
 revoked or blocked child looking at a working app — the exact failure
 `/media`'s per-chunk gate exists to prevent.
 
-**R5 — the ordering surfaces.** `orderChannels`, `filterVideos`,
+**R5 — the ordering surfaces. DONE (channels, sorts, seeded Surprise).** `orderChannels`, `filterVideos`,
 `orderByPopularity`, `orderByWatched`, `defaultFilterFor` and `VideoItem` to
 `:crawl` (they are typed on `Source` and `Video`, which live there). A seeded
 mix beside `SearchOrder.order` — `:app` calls bare `shuffled()` today, which by
 definition cannot be reproduced on another face. Query parameters, never new
 routes. Channels grid, Surprise, playlists, watched-videos.
 
-**R6 — the player.** Own controls over `v.controls = false`; `PlayerDismiss`
+**R6 — the player. PARTLY DONE** — Back, kid-facing refusals, Up next hand-off and one countdown vocabulary all shipped. The custom scrubber, the double-tap seek and the second-precision countdown did NOT: the first two need a real finger on a real iPad, and the third needs HubWatchMeter to interpolate because UsageLedger counts whole minutes. Original note follows. Own controls over `v.controls = false`; `PlayerDismiss`
 and the countdown's pure half to `:core`. `HubPolicy.clock` stops collapsing to
 whole minutes so the amber ring stops being a lie in the last sixty seconds.
 

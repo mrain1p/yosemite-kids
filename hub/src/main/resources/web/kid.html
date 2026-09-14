@@ -380,6 +380,41 @@
     color: var(--yk-on-secondary-container);
   }
 
+  /* --- the hold menu --------------------------------------------------- */
+
+  /* Square-cornered and full-width at the bottom: a sheet, not a dialog. It is
+     reached by holding a card, so it has to arrive under the thumb that is
+     already down rather than in the middle of the screen. */
+  dialog.sheet {
+    border: 0;
+    padding: 0;
+    width: 100%;
+    max-width: 100%;
+    margin: auto auto 0;
+    background: var(--yk-surface-container-high);
+    color: var(--yk-on-surface);
+    border-radius: 18px 18px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  dialog.sheet::backdrop { background: var(--yk-artwork-scrim); }
+  .sheet h3 {
+    margin: 0;
+    padding: 16px var(--yk-page-gutter) 8px;
+    font-size: var(--yk-font-title-medium-size);
+    line-height: var(--yk-font-title-medium-line);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sheet button {
+    display: flex; align-items: center; gap: 14px;
+    width: 100%;
+    padding: 14px var(--yk-page-gutter);
+    text-align: left;
+    font-size: var(--yk-font-body-large-size);
+    color: var(--yk-on-surface);
+  }
+  .sheet button .glyph { font-size: 22px; line-height: 1; width: 26px; text-align: center; }
+  .sheet .close { color: var(--yk-on-surface-variant); }
+
   /* --- the bottom tabs ------------------------------------------------- */
 
   /* The phone's three destinations, drawn the app's way: a pill behind icon
@@ -481,8 +516,18 @@
 
   <main id="main"></main>
 
+  <!-- The hold menu. Rows are built in JS from KidSurface's words, which the
+       hub sends: the phone and this page must not describe the same action
+       differently. -->
+  <dialog class="sheet" id="hold-menu">
+    <h3 id="holdTitle"></h3>
+    <div id="holdRows"></div>
+    <button class="close" id="holdClose"><span class="glyph">✕</span>Close</button>
+  </dialog>
+
   <nav class="tabs" id="tabs" hidden>
     <button id="tab-home" aria-selected="true"><span class="glyph">🏠</span>Home</button>
+    <button id="tab-channels" aria-selected="false"><span class="glyph">📺</span>Channels</button>
     <button id="tab-you" aria-selected="false"><span class="glyph">🙂</span>You</button>
   </nav>
 </div>
@@ -492,7 +537,9 @@
   "use strict";
 
   var BEAT_MS = 20000;
-  var LOW_MINUTES = 5;
+  // "When does the countdown turn amber" used to be a 5 here, beside a
+  // LOW_SECONDS in :core that the phone reads. Two copies of one promise. The
+  // hub sends `low` with every time payload now, so there is one answer.
 
   var state = {
     kid: null, home: null, view: "home", beat: null, warned: false, look: null,
@@ -528,9 +575,104 @@
 
   // --- cards -----------------------------------------------------------
 
+  // --- the hold menu ---------------------------------------------------
+
+  var HOLD_MS = 500;
+
+  /**
+   * Make a card open the hold menu when it is pressed and held.
+   *
+   * Four things have to be handled and each one is a way iOS otherwise ruins
+   * this, so none of them is defensive clutter:
+   *
+   *  - **`-webkit-touch-callout: none`** on the card, or Safari's own
+   *    "Open Link / Copy" callout arrives on top of ours.
+   *  - **`contextmenu` prevented**, which is the same thing with a mouse.
+   *  - **Movement cancels.** A finger that travels is a scroll, and a shelf
+   *    that opened a menu every time a child flicked it would be unusable.
+   *  - **The click after a hold is swallowed.** `pointerup` fires a click, so
+   *    without this the menu opens and the video starts playing behind it.
+   */
+  function holdable(card, video) {
+    card.style.webkitTouchCallout = "none";
+    var timer = null, startX = 0, startY = 0, fired = false;
+
+    function cancel() {
+      if (timer) { clearTimeout(timer); timer = null; }
+    }
+
+    card.addEventListener("pointerdown", function (e) {
+      fired = false;
+      startX = e.clientX; startY = e.clientY;
+      cancel();
+      timer = setTimeout(function () {
+        fired = true;
+        timer = null;
+        openHold(video);
+      }, HOLD_MS);
+    });
+    card.addEventListener("pointermove", function (e) {
+      if (!timer) return;
+      // Ten pixels of slack: a finger resting on a card is never perfectly
+      // still, and a menu that refused to open for that would feel broken.
+      if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) cancel();
+    });
+    card.addEventListener("pointerup", cancel);
+    card.addEventListener("pointercancel", cancel);
+    card.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+    // Capture, so it runs before the card's own play handler.
+    card.addEventListener("click", function (e) {
+      if (!fired) return;
+      fired = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
+  }
+
+  /**
+   * The sheet itself: the three lists, worded by whether the video is already
+   * in each.
+   *
+   * The membership comes from the payload (`fav`, `later`, `queued`), and the
+   * answer to a tap comes back from the STORE — the queue is capped and can
+   * refuse, so the row follows what the hub says rather than what was asked.
+   */
+  function openHold(video) {
+    var dlg = document.getElementById("hold-menu");
+    document.getElementById("holdTitle").textContent = video.title || "";
+    var rows = document.getElementById("holdRows");
+    clear(rows);
+
+    [
+      { list: "favorites", on: video.fav, glyph: "❤️", add: "Add to Favorites", off: "Remove from Favorites" },
+      { list: "watch-later", on: video.later, glyph: "🕒", add: "Add to Watch later", off: "Remove from Watch later" },
+      { list: "up-next", on: video.queued, glyph: "📚", add: "Add to Up next", off: "Remove from Up next" }
+    ].forEach(function (row) {
+      var b = el("button");
+      b.type = "button";
+      b.appendChild(el("span", "glyph", row.glyph));
+      b.appendChild(el("span", null, row.on ? row.off : row.add));
+      b.onclick = function () {
+        post("/list", { list: row.list, v: video.id, on: !row.on }).then(function (r) {
+          if (r) {
+            // Follow the store, not the tap.
+            if (row.list === "favorites") video.fav = r.on;
+            else if (row.list === "watch-later") video.later = r.on;
+            else video.queued = r.on;
+          }
+          dlg.close();
+        });
+      };
+      rows.appendChild(b);
+    });
+
+    if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+  }
+
   function videoCard(video, big) {
     var card = el("button", "card");
     card.type = "button";
+    holdable(card, video);
     var poster = el("div", "poster");
     if (video.thumb) {
       var img = el("img");
@@ -764,6 +906,71 @@
     state.view = "you";
   }
 
+  /**
+   * The Channels tab: every channel as a grid, with the sorts the hub offers.
+   *
+   * The chips come from the payload rather than being listed here, which is
+   * the same rule as everything else on this page: the hub offers three
+   * ("A to Z", "Z to A", "Random") and is honest about the three it does not,
+   * because Most watched needs open counts it has no record of and the two
+   * date sorts need an upload date the index throws away. A chip that sorted
+   * by an all-equal key would be a control that appears to work.
+   */
+  function renderChannels(payload) {
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = true;
+    document.getElementById("searchrow").hidden = true;
+
+    var chips = el("div", "chips");
+    (payload.sorts || []).forEach(function (s) {
+      var chip = el("button", "chip");
+      chip.type = "button";
+      chip.setAttribute("aria-pressed", payload.sort === s.id ? "true" : "false");
+      chip.appendChild(el("span", null, s.label));
+      chip.onclick = function () {
+        // The seed travels, so pressing Random twice genuinely reshuffles
+        // while a reload of the same view does not.
+        loadChannels(s.id, s.id === payload.sort ? null : payload.seed);
+      };
+      chips.appendChild(chip);
+    });
+    main.appendChild(chips);
+
+    var g = el("div", "grid");
+    (payload.channels || []).forEach(function (c) { g.appendChild(channelCard(c)); });
+    main.appendChild(g);
+    state.view = "channels";
+  }
+
+  function loadChannels(sort, seed) {
+    var q = "/channels";
+    var parts = [];
+    if (sort) parts.push("sort=" + encodeURIComponent(sort));
+    if (seed) parts.push("seed=" + encodeURIComponent(seed));
+    if (parts.length) q += "?" + parts.join("&");
+    return get(q).then(function (p) { if (p) renderChannels(p); });
+  }
+
+  /** A seeded mix across every channel — the browser's "Surprise me". */
+  function renderSurprise(payload) {
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = false;
+    document.getElementById("searchrow").hidden = true;
+    main.appendChild(shelfHead("Surprise", (payload.videos || []).length, "Shuffle", function () {
+      // No seed: the hub mints a fresh one, which is what "shuffle again" means.
+      loadSurprise(null);
+    }));
+    main.appendChild(grid(payload.videos || []));
+    state.view = "surprise";
+  }
+
+  function loadSurprise(seed) {
+    return get("/surprise" + (seed ? "?seed=" + encodeURIComponent(seed) : ""))
+      .then(function (p) { if (p) goInto(function () { renderSurprise(p); }); });
+  }
+
   function renderChannel(channel) {
     var main = document.getElementById("main");
     clear(main);
@@ -791,9 +998,37 @@
 
   // --- the player ------------------------------------------------------
 
+  /**
+   * When a video ends, play the next thing the child lined up.
+   *
+   * Up next is a queue for one sitting — bedtime stories, in order — so a
+   * finished video should hand over to the next rather than stop dead. The
+   * queue is **self-draining**: the video that just ended is taken out, which
+   * is what makes "play the first one" mean "play the next one" without this
+   * page tracking a position it would get wrong after a reload.
+   *
+   * Only when the queue actually holds something. Autoplaying out of a
+   * child's queue into a suggestion would be the app deciding they should keep
+   * watching, which is the opposite of what a queue is for.
+   */
+  function playNextFromQueue(finished) {
+    // One round trip: take this one out, and tell me what is next. The hub
+    // answers both, because "which video is next" is a decision and this page
+    // does not make those -- it would also be three fetches deep at the exact
+    // moment a child is waiting for the next story.
+    post("/list", { list: "up-next", v: finished.id, on: false }).then(function (r) {
+      if (r && r.next) play(r.next);
+    });
+  }
+
   function play(video) {
     stopBeating();
     state.warned = false;
+    // Opening a video is going INTO something, so Back comes out of it rather
+    // than out of the app. See goInto.
+    if (window.history && history.pushState && state.view !== "player") {
+      history.pushState({ yk: true }, "");
+    }
     var main = document.getElementById("main");
     clear(main);
     document.getElementById("back").hidden = false;
@@ -830,6 +1065,7 @@
     v.onended = function () {
       beat(v, video);
       stopBeating();
+      playNextFromQueue(video);
     };
     v.onerror = function () {
       // A refusal is a normal answer here -- bedtime, a block, no budget
@@ -838,9 +1074,12 @@
       fetch(v.src, { credentials: "same-origin", headers: { Range: "bytes=0-1" } })
         .then(function (r) { return r.ok ? null : r.json().catch(function () { return null; }); })
         .then(function (body) {
-          why.textContent = body && body.detail
-            ? body.detail
-            : "That will not play right now.";
+          // `say`, never `detail`. The latter is written for a parent's log —
+          // "this kid has a bedtime or a daily budget and nobody has set the
+          // family's home timezone" — and this page was showing it to a
+          // five-year-old. KidWords in :core holds the child's half, so a
+          // refusal reads the same on the television and on the tablet.
+          why.textContent = (body && body.say) || "That will not play right now.";
         });
     };
   }
@@ -878,11 +1117,13 @@
     }).then(function (body) {
       if (!body) return;
       if (typeof body.budgetMinutes === "number") {
-        var left = Math.max(0, body.budgetMinutes - (body.spentMinutes || 0));
-        showTime(left);
-        if (left <= LOW_MINUTES && left > 0 && !state.warned) {
+        showTime(body);
+        // The one warning, once a sitting. `low` and the sentence both come
+        // from the hub, so "when does amber start" is answered in one place
+        // rather than by a threshold spelled here and another on the phone.
+        if (body.low && body.leftMinutes > 0 && !state.warned) {
           state.warned = true;
-          toast(left === 1 ? "1 minute left today" : left + " minutes left today");
+          toast(body.say + " today");
         }
       }
     }).catch(function () { /* one missed beat is not an event */ });
@@ -894,11 +1135,20 @@
     setTimeout(function () { t.remove(); }, 6000);
   }
 
-  function showTime(left) {
+  /**
+   * The countdown pill.
+   *
+   * The words come from the hub (KidWords in :core), so a child is told the
+   * same thing here and on the television — and what counts as LOW comes with
+   * them, because the amber is a promise about when a warning starts and two
+   * faces disagreeing about that is two different products.
+   */
+  function showTime(time) {
     var pill = document.getElementById("time");
+    if (!time || typeof time.leftMinutes !== "number") { pill.hidden = true; return; }
     pill.hidden = false;
-    pill.textContent = left === 1 ? "1 minute left" : left + " minutes left";
-    pill.classList.toggle("low", left <= LOW_MINUTES);
+    pill.textContent = time.say || (time.leftMinutes + " minutes left");
+    pill.classList.toggle("low", !!time.low);
   }
 
   // --- talking to the hub ----------------------------------------------
@@ -911,16 +1161,34 @@
     });
   }
 
+  /**
+   * The write half of [get]. Same failure handling: a 401 is a revoked or
+   * expired claim and falls back to the code box rather than to a silent
+   * nothing, and anything else resolves null so a caller can shrug.
+   */
+  function post(path, body) {
+    return fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (r.status === 401) { showClaim(); return null; }
+      if (!r.ok) return null;
+      return r.json();
+    }).catch(function () { return null; });
+  }
+
   function openChannel(id) {
     get("/channel?id=" + encodeURIComponent(id)).then(function (channel) {
-      if (channel) renderChannel(channel);
+      if (channel) goInto(function () { renderChannel(channel); });
     }).catch(function () { renderHome(); });
   }
 
   function runSearch(q) {
     if (!q) { renderHome(); return; }
     get("/search?q=" + encodeURIComponent(q)).then(function (result) {
-      if (result) renderSearch(result);
+      if (result) goInto(function () { renderSearch(result); });
     });
   }
 
@@ -931,11 +1199,7 @@
       applyLook(state.look || savedLook());
       document.getElementById("avatar").textContent = (home.kid && home.kid.avatar) || "";
       document.getElementById("who").textContent = (home.kid && home.kid.name) || "";
-      if (home.time && typeof home.time.budgetMinutes === "number") {
-        showTime(Math.max(0, home.time.budgetMinutes - (home.time.spentMinutes || 0)));
-      } else {
-        document.getElementById("time").hidden = true;
-      }
+      showTime(home.time);
       document.getElementById("claim").hidden = true;
       document.getElementById("app").hidden = false;
       document.getElementById("tabs").hidden = false;
@@ -1085,9 +1349,12 @@
 
   function showTab(name) {
     state.tab = name;
-    document.getElementById("tab-home").setAttribute("aria-selected", name === "home" ? "true" : "false");
-    document.getElementById("tab-you").setAttribute("aria-selected", name === "you" ? "true" : "false");
-    if (name === "you") {
+    ["home", "channels", "you"].forEach(function (t) {
+      document.getElementById("tab-" + t).setAttribute("aria-selected", name === t ? "true" : "false");
+    });
+    if (name === "channels") {
+      loadChannels(null, null);
+    } else if (name === "you") {
       // Fetched on every visit rather than cached: a video watched a minute ago
       // belongs at the top of History, and a You tab still showing the state
       // from breakfast is the app looking broken to the one person who knows
@@ -1098,7 +1365,43 @@
     }
   }
 
+  document.getElementById("holdClose").onclick = function () {
+    document.getElementById("hold-menu").close();
+  };
+
+  /**
+   * The tablet's Back gesture, which used to leave the app entirely.
+   *
+   * This page never touched the History API, so on an iPad a swipe from the
+   * left edge — the gesture for "go back one screen" everywhere else on the
+   * device — navigated away from the site. Installed to the home screen that
+   * is worse still: there is no address bar to get back with, so a child who
+   * swiped had to be rescued by an adult.
+   *
+   * One entry is pushed when the child goes INTO something (a channel, a
+   * search, a video, a tab) and popstate returns them. Deliberately shallow:
+   * every "in" leads back to the home rather than unwinding a long chain,
+   * because a five-year-old's model of Back is "out of this", not "the
+   * previous thing I did".
+   */
+  function goInto(render) {
+    if (window.history && history.pushState) {
+      history.pushState({ yk: true }, "");
+    }
+    render();
+  }
+
+  window.addEventListener("popstate", function () {
+    var dlg = document.getElementById("hold-menu");
+    // A sheet is the first thing Back should close — it is on top.
+    if (dlg && dlg.open) { dlg.close(); return; }
+    stopBeating();
+    document.getElementById("q").value = "";
+    showTab("home");
+  });
+
   document.getElementById("tab-home").onclick = function () { showTab("home"); };
+  document.getElementById("tab-channels").onclick = function () { showTab("channels"); };
   document.getElementById("tab-you").onclick = function () { showTab("you"); };
 
   document.getElementById("look").onclick = function () {
