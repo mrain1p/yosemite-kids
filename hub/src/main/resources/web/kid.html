@@ -969,18 +969,30 @@
 
   // --- wiring ----------------------------------------------------------
 
-  document.getElementById("go").onclick = function () {
-    var code = document.getElementById("code").value.trim();
+  /**
+   * Trade a code for the cookie.
+   *
+   * Shared by the Watch button and by the QR arrival below, so a scanned code
+   * and a typed one take exactly the same path — including the refusals. A
+   * second, quieter route for the scanned case is how "the QR works but says
+   * nothing when the code has expired" happens.
+   */
+  function redeem(code) {
     var why = document.getElementById("claimWhy");
-    if (!code) return;
+    if (!code) return Promise.resolve();
     why.textContent = "";
-    fetch("/claim", {
+    return fetch("/claim", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code: code })
     }).then(function (r) {
       if (r.ok) return loadHome();
+      // Every refusal lands on the code box, and it has to be shown
+      // explicitly: both panels start hidden, so a scanned code that has
+      // expired would otherwise leave a child looking at a blank white page
+      // with the reason written on something invisible.
+      showClaim();
       if (r.status === 429) {
         return r.json().then(function (b) {
           why.textContent = "Too many tries. Wait " + (b.retryAfter || 60) + " seconds.";
@@ -988,13 +1000,42 @@
       }
       why.textContent = "That code did not work. Ask for a new one.";
     }).catch(function () {
+      showClaim();
       why.textContent = "The hub did not answer.";
     });
+  }
+
+  document.getElementById("go").onclick = function () {
+    redeem(document.getElementById("code").value.trim());
   };
 
   document.getElementById("code").addEventListener("keydown", function (e) {
     if (e.key === "Enter") document.getElementById("go").click();
   });
+
+  /**
+   * A code that arrived in the address bar, from the console's QR.
+   *
+   * The whole point of the QR: a parent points the tablet's camera at the
+   * console and the child never types anything. The console builds the URL
+   * (see HubServer's /api/browsers) and this redeems it on arrival.
+   *
+   * **The code is removed from the address bar either way**, before the claim
+   * is even attempted. It is single-use and expires in ten minutes, so what is
+   * left in a tablet's history is already spent — but a spent code sitting in
+   * the address bar is also a code a child can see, screenshot, and hand to a
+   * sibling to try, and the tidier answer costs one line. replaceState rather
+   * than pushState, so the back gesture does not walk them into a claim that
+   * has already been redeemed.
+   */
+  function codeFromUrl() {
+    var m = /[?&]c=([A-Za-z0-9]{1,16})/.exec(location.search);
+    if (!m) return null;
+    if (window.history && history.replaceState) {
+      history.replaceState(null, "", location.pathname);
+    }
+    return m[1];
+  }
 
   function showTab(name) {
     state.tab = name;
@@ -1036,10 +1077,20 @@
     searchTimer = setTimeout(function () { runSearch(q); }, 250);
   });
 
-  loadHome().catch(function () {
-    showClaim();
-    document.getElementById("claimWhy").textContent = "";
-  });
+  // A code in the address bar is a QR that was just scanned, so redeem it
+  // FIRST and let its own success load the home. Starting both — the claim and
+  // the ordinary load — races them: the load wins, paints the code box, and is
+  // then replaced a moment later, which reads as the page flickering rather
+  // than as it working.
+  var scanned = codeFromUrl();
+  if (scanned) {
+    redeem(scanned);
+  } else {
+    loadHome().catch(function () {
+      showClaim();
+      document.getElementById("claimWhy").textContent = "";
+    });
+  }
 })();
 </script>
 </body>
