@@ -1,6 +1,5 @@
 package io.yosemitekids.app.data
 
-import android.content.Context
 import java.io.File
 
 /**
@@ -18,8 +17,6 @@ data class QueuedVideo(val video: Video, val addedAt: Long)
 
 class QueueStore(private val file: File) {
 
-    constructor(context: Context, profileSuffix: String = "") :
-        this(File(context.filesDir, "queue$profileSuffix.tsv"))
 
     /** Rows with their line-up timestamps — what [pruning][QueuedVideo.addedAt]
      *  needs; screens that only draw the lineup want [load]. */
@@ -88,6 +85,18 @@ class QueueStore(private val file: File) {
          *  one of the two. */
         private val LOCK = Any()
 
+        /**
+         * The file a queue lives in, given the folder it belongs in.
+         *
+         * A `File` and not a `Context`, because this class moved to `:crawl`
+         * so the hub can line up a browser's Up next with the same code the
+         * phone uses — and `:crawl` has no Android in it. `:app` keeps a
+         * same-named factory taking a `Context` (`data/AndroidStores.kt`), so
+         * every call site on the phone reads exactly as it did.
+         */
+        fun fileIn(dir: File, profileSuffix: String = "") =
+            File(dir, "queue$profileSuffix.tsv")
+
         /** Reorder by one step, clamped at the ends; unknown url is a no-op. */
         fun <T> moved(
             list: List<T>,
@@ -112,7 +121,7 @@ class QueueStore(private val file: File) {
  * timestamp (0, pre-timestamp or merged from an old device) therefore never
  * drains a freshly queued item.
  */
-fun QueuedVideo.finishedSinceQueued(progress: WatchProgress?): Boolean =
+fun QueuedVideo.finishedSinceQueued(progress: KidHome.WatchPoint?): Boolean =
     progress != null && progress.isFinished && progress.lastWatchedAt > addedAt
 
 /**

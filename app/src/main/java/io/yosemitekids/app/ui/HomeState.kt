@@ -38,7 +38,6 @@ sealed interface Screen {
 }
 
 /** A video plus its local watch progress (0..1), null if never watched. */
-data class VideoItem(val video: Video, val progress: Float?)
 
 /** One row of the You tab: which shelf it previews, and its first few videos. */
 data class YouShelf(val screen: Screen, val emoji: String, val title: String, val items: List<VideoItem>)
@@ -262,67 +261,12 @@ internal fun historyItems(
         VideoItem(video, fraction)
     }
 
-/** "Popular first": by YouTube view count, unknown counts last, ties keep upload order. */
-internal fun orderByPopularity(items: List<VideoItem>): List<VideoItem> =
-    items.sortedByDescending { it.video.viewCount ?: -1L }
-
-/** Watched videos newest-watched first, for the History tile and shelf. */
-internal fun orderByWatched(items: List<VideoItem>, watchedAt: (String) -> Long): List<VideoItem> =
-    items.sortedByDescending { watchedAt(it.video.url) }
-
-/**
- * The channel row / Channels tab in the order the kid (or, by default, the
- * parent) asked for. Most watched = most opened here; A to Z and the same
- * alphabet backwards; a shuffle that holds still for the whole visit ([seed]
- * — a row that reorders under the kid's thumb is a bug, not a surprise);
- * latest video = the channel whose newest upload is newest, channels with no
- * dated upload last; just added = newest arrival first, by [addedAt]. Every
- * sort is stable, so ties keep the whitelist order — which is also insertion
- * order, so channels this device has always known (all [addedAt] 0) fall back
- * to the order the parent's list is in rather than to nothing.
- *
- * [addedAt] is keyed by **URL** where the other two are keyed by id, and that
- * asymmetry is the whole trap. `opens` and `latestUpload` are written under
- * the *resolved* id, so an id join is right for them. What a source was
- * called when it entered the whitelist is not: resolution canonicalizes
- * `/user/`, `/c/` and `@handle` entries to `UC…` form, so a store filled from
- * `WhitelistEntry.id` and read back by `Source.id` misses every entry a
- * parent pasted as a handle — which is most of them. It does not throw and it
- * does not log; the sort simply comes back in list order and looks like it
- * was never wired up. `MainViewModel.refresh` says the same thing about its
- * own joins, and this was still got wrong once.
+/*
+ * The sorts behind every chip a kid can press moved to :crawl (ui/KidOrder.kt),
+ * because the browser draws the same chips - and a shuffle only agrees between
+ * two faces if both are given the same seed. Same package, so nothing here had
+ * to change an import; see that file for why it is :crawl and not :core.
  */
-internal fun orderChannels(
-    channels: List<Source>,
-    sort: String,
-    opens: (String) -> Int,
-    latestUpload: (String) -> Long?,
-    seed: Long,
-    addedAt: (String) -> Long = { 0L }
-): List<Source> = when (sort) {
-    CHANNEL_ORDER_ALPHA -> channels.sortedBy { it.name.lowercase() }
-    CHANNEL_ORDER_ALPHA_DESC -> channels.sortedByDescending { it.name.lowercase() }
-    CHANNEL_ORDER_RANDOM -> channels.shuffled(kotlin.random.Random(seed))
-    CHANNEL_ORDER_LATEST -> channels.sortedByDescending { latestUpload(it.id) ?: Long.MIN_VALUE }
-    CHANNEL_ORDER_ADDED -> channels.sortedByDescending { addedAt(it.url) }
-    else -> channels.sortedByDescending { opens(it.id) }
-}
-
-/**
- * A video list in the order the kid's chip asks for: newest keeps the list's
- * own order (feeds arrive newest-first), random is a seeded shuffle that
- * holds until the next refresh, popular is [orderByPopularity].
- */
-internal fun filterVideos(items: List<VideoItem>, filter: String?, seed: Long): List<VideoItem> =
-    when (filter) {
-        VIDEO_FILTER_RANDOM -> items.shuffled(kotlin.random.Random(seed))
-        VIDEO_FILTER_POPULAR -> orderByPopularity(items)
-        else -> items
-    }
-
-/** The parent's channel page layout as the kid's default filter (the playlist layout keeps newest). */
-internal fun defaultFilterFor(channelLayout: String): String =
-    if (channelLayout == CHANNEL_LAYOUT_POPULAR) VIDEO_FILTER_POPULAR else VIDEO_FILTER_NEW
 
 /**
  * Search hits handed to the AI screener in the current window. [done]/[total]

@@ -46,7 +46,7 @@ import java.util.concurrent.RejectedExecutionException
  *
  * ### What it serves
  *
- * Exactly thirteen paths, listed in [start] and pinned by guard 57. There is no
+ * Exactly sixteen paths, listed in [start] and pinned by guard 57. There is no
  * catch-all page: `/` answers the kid page and every other path is a JSON 404,
  * where the admin listener deliberately answers an unclaimed path with the
  * console. That asymmetry is the point — on this origin an unknown path is
@@ -79,6 +79,11 @@ class HubKidServer(
      * [HubKidHistory] for why the box keeps it and the phone does not.
      */
     private val history: HubKidHistory,
+    /**
+     * Favorites, Watch later and Up next for this browser — the same `:crawl`
+     * stores the phone uses, never a hub-shaped copy. See [HubSavedLists].
+     */
+    private val lists: HubSavedLists,
     /** Passed in so tests need no clock, like every other class here. */
     private val now: () -> Long = { System.currentTimeMillis() }
 ) {
@@ -87,7 +92,7 @@ class HubKidServer(
      * What the page is shown. Shape only: every rule it draws on is the app's,
      * in `:core` or `:crawl`. See [HubKidHome].
      */
-    private val browse = HubKidHome(policy, store, history)
+    private val browse = HubKidHome(policy, store, history, lists)
 
     /**
      * Resolving a video to one playable URL, and carrying its bytes. Built
@@ -169,6 +174,16 @@ class HubKidServer(
         // it is empty - the page has one shape and an empty row says what would
         // fill it.
         s.createContext("/you") { ex -> guarded(ex) { you(ex) } }
+        // Put a video in one of the kid's own lists, or take it out. The only
+        // route on this origin that writes anything a child chose — see [list]
+        // for the four things it checks before it does.
+        s.createContext("/list") { ex -> guarded(ex) { list(ex) } }
+        // Every channel, in the order the kid picked — orderChannels from
+        // :crawl, so "A to Z" means the same thing here as on the television.
+        s.createContext("/channels") { ex -> guarded(ex) { channels(ex) } }
+        // A seeded mix across every channel. The seed is the whole point: an
+        // unseeded shuffle is the one ordering two faces cannot agree on.
+        s.createContext("/surprise") { ex -> guarded(ex) { surprise(ex) } }
         // One channel's videos.
         s.createContext("/channel") { ex -> guarded(ex) { channel(ex) } }
         // Search within what this kid may see, ranked by the shared SearchRank.
@@ -317,12 +332,115 @@ class HubKidServer(
         respond(ex, 200, browse.home(browser.kid, meter.ledgerId(browser.token)).toString())
     }
 
+    /**
+     * `POST /list {list, v, on}` — a child hearts something, or unhearts it.
+     *
+     * **The only route on this origin that stores something a child chose**,
+     * so it is the one worth reading slowly. Four things are checked, in this
+     * order, and none is optional:
+     *
+     * 1. **POST and same-origin.** A GET that writes is a link a sibling can
+     *    send; a cross-site POST is the console's own page reaching in.
+     * 2. **The credential, and the kid from it.** Never from the body — a
+     *    child who could name the kid could fill their sibling's Up next.
+     *    Same rule as `/media`, same reason, and guard 60 keeps it.
+     * 3. **The video must be one this child may actually see.** Not merely a
+     *    valid id: `HubPolicy.mayPlay`'s catalogue half, so a blocked video, a
+     *    sibling's channel, or something never indexed cannot be *saved* even
+     *    though it could never be played. Without this the store becomes a
+     *    place to smuggle a row onto a shelf.
+     * 4. **The answer is read back from the store.** The queue is capped and
+     *    an add at the cap is refused, so a page that flipped its own heart on
+     *    the tap would show a video as queued that is not.
+     *
+     * The video's title and poster come from the family's own index rather
+     * than from the request, which is what keeps a saved row from being a
+     * place to write arbitrary text a child then reads.
+     */
+    private fun list(ex: HttpExchange) {
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        val browser = watching(ex) ?: return
+        val body = readBody(ex) ?: return respond(ex, 413, "too large")
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return respond(ex, 400, JSONObject().put("error", "bad body").toString())
+
+        val which = HubSavedLists.Which.of(json.optString("list"))
+            ?: return respond(ex, 400, JSONObject().put("error", "no such list").toString())
+        val videoId = json.optString("v").takeIf { HubMedia.looksLikeVideoId(it) }
+            ?: return respond(ex, 400, JSONObject().put("error", "bad video").toString())
+        val on = json.optBoolean("on", true)
+
+        // The row as the family's own index holds it. Also the check that this
+        // child may see it at all: browse.rowFor consults the same catalogue
+        // HubPolicy.mayPlay does, so a blocked or not-for-this-kid video cannot
+        // be saved any more than it could be played.
+        val video = browse.rowFor(browser.kid, videoId)
+            ?: return respond(ex, 403, JSONObject().put("error", "not-for-this-kid").toString())
+
+        val nowOn = lists.set(browser.kid, which, video, on)
+        respond(
+            ex, 200,
+            JSONObject()
+                .put("list", which.wire)
+                .put("v", videoId)
+                // What the STORE says, not what was asked for. The queue can
+                // refuse at its cap and the page must follow the store.
+                .put("on", nowOn)
+                .put("count", lists.urls(browser.kid, which).size)
+                // What is at the head of the queue now.
+                //
+                // Here so the page never has to hunt for it. The end of a
+                // video asks "take this one out, what is next?", and that is
+                // one question with one answer — a page that fetched the whole
+                // You payload and picked a shelf out of it would be deciding
+                // something (guard 61), and would be three round trips deep at
+                // the exact moment a child is waiting for the next story.
+                .put("next", nextInQueue(browser.kid))
+                .toString()
+        )
+    }
+
+    /**
+     * The head of this kid's queue as a playable row, or `null`.
+     *
+     * Filtered through the catalogue like every other shelf, so a video queued
+     * last night and blocked by a parent this morning is not what plays next.
+     */
+    private fun nextInQueue(kid: String): Any =
+        browse.nextInQueue(kid) ?: JSONObject.NULL
+
     /** `GET /you` — the kid's own shelves. Behind the credential like everything else. */
     private fun you(ex: HttpExchange) {
         if (ex.requestMethod != "GET") return respond(ex, 405, "no")
         val browser = watching(ex) ?: return
         respond(ex, 200, browse.you(browser.kid, meter.ledgerId(browser.token)).toString())
     }
+
+    /** `GET /channels?sort=&seed=` — every channel this kid may see, ordered. */
+    private fun channels(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val browser = watching(ex) ?: return
+        respond(ex, 200, browse.channels(browser.kid, param(ex, "sort"), seedFrom(ex)).toString())
+    }
+
+    /** `GET /surprise?seed=` — a seeded mix across every channel. */
+    private fun surprise(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val browser = watching(ex) ?: return
+        respond(ex, 200, browse.surprise(browser.kid, seedFrom(ex)).toString())
+    }
+
+    /**
+     * The seed a shuffle is drawn with, from the request or freshly minted.
+     *
+     * The page sends back the seed it was given, so a reload does not reshuffle
+     * under a child's thumb — the same promise `orderChannels` makes on the
+     * phone. A first visit has none and gets one, which is why this cannot
+     * simply default to a constant: every family would get the same "random".
+     */
+    private fun seedFrom(ex: HttpExchange): Long =
+        param(ex, "seed")?.toLongOrNull() ?: java.security.SecureRandom().nextLong()
 
     /** `GET /channel?id=<source>` — one channel's page, or a 404 if this kid may not see it. */
     private fun channel(ex: HttpExchange) {
@@ -398,6 +516,17 @@ class HubKidServer(
                 .apply {
                     time.spentMinutes?.let { put("spentMinutes", it) }
                     time.budgetMinutes?.let { put("budgetMinutes", it) }
+                    // The same three fields /home sends, so the pill reads
+                    // identically whether it was painted on load or on a beat.
+                    // Two shapes for one pill is how a countdown comes to say
+                    // different things on the same screen a minute apart.
+                    val budget = time.budgetMinutes
+                    if (budget != null) {
+                        val left = (budget - (time.spentMinutes ?: 0)).coerceAtLeast(0)
+                        put("leftMinutes", left)
+                        put("say", io.yosemitekids.app.ui.KidWords.timeLeft(left * 60L))
+                        put("low", left * 60L <= io.yosemitekids.app.ui.KidWords.LOW_SECONDS)
+                    }
                 }
                 .toString()
         )
@@ -629,6 +758,11 @@ class HubKidServer(
         JSONObject()
             .put("error", verdict.reason)
             .put("detail", verdict.detail)
+            // What a CHILD reads. `detail` is written for a parent's log and
+            // says so in its own KDoc; the page was putting it in front of a
+            // five-year-old. One vocabulary in :core, so the television and the
+            // tablet refuse in the same words.
+            .put("say", io.yosemitekids.app.ui.KidWords.refusal(verdict.reason))
             .apply {
                 verdict.spentMinutes?.let { put("spentMinutes", it) }
                 verdict.budgetMinutes?.let { put("budgetMinutes", it) }

@@ -2,7 +2,12 @@ package io.yosemitekids.hub
 
 import io.yosemitekids.app.data.ChannelIndex
 import io.yosemitekids.app.data.KidHome
+import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA
+import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA_DESC
+import io.yosemitekids.app.data.CHANNEL_ORDER_RANDOM
 import io.yosemitekids.app.data.SearchRank
+import io.yosemitekids.app.data.Source
+import io.yosemitekids.app.data.SourceKind
 import io.yosemitekids.app.data.Video
 import io.yosemitekids.app.ui.HOME_SHELVES
 import io.yosemitekids.app.ui.HomeShelf
@@ -10,6 +15,8 @@ import io.yosemitekids.app.ui.KID_DARK
 import io.yosemitekids.app.ui.KidSurface
 import io.yosemitekids.app.ui.PinnableSource
 import io.yosemitekids.app.ui.homeSections
+import io.yosemitekids.app.ui.orderChannels
+import io.yosemitekids.app.ui.surpriseMix
 import io.yosemitekids.app.ui.kidTinted
 import io.yosemitekids.app.ui.kidTokenRoles
 import io.yosemitekids.app.ui.resolvePins
@@ -51,11 +58,73 @@ import org.json.JSONObject
 class HubKidHome(
     private val policy: HubPolicy,
     private val store: HubStore,
-    private val history: HubKidHistory
+    private val history: HubKidHistory,
+    private val lists: HubSavedLists
 ) {
+
+    /**
+     * One video as the family's own index holds it, **if this child may see
+     * it** — null otherwise.
+     *
+     * The gate `/list` writes behind. It walks the same catalogue
+     * `HubPolicy.mayPlay` does, so "may be saved" and "may be played" answer
+     * the same question: a blocked video, a sibling's channel, or a video this
+     * hub has never indexed is refused either way. The row comes from the
+     * index rather than from the request, which is what stops a saved shelf
+     * becoming a place to write text a child then reads.
+     */
+    fun rowFor(kidId: String, videoId: String): Video? =
+        policy.catalogueFor(kidId)
+            .asSequence()
+            .flatMap { it.videos.asSequence() }
+            .firstOrNull { it.videoId == videoId }
+            ?.toVideo()
+
+    /**
+     * The head of this kid's Up next, as a row the page can play — or null.
+     *
+     * Intersected with the catalogue like every other shelf: a video queued
+     * last night and blocked by a parent this morning is not what plays next.
+     * The queue is in **play order**, so "the head" is genuinely the next one
+     * rather than the newest.
+     */
+    fun nextInQueue(kidId: String): JSONObject? {
+        val maySee = policy.catalogueFor(kidId).flatMap { it.videos }.map { it.toVideo() }
+            .associateBy { it.url }
+        val head = lists.videos(kidId, HubSavedLists.Which.QUEUE)
+            .firstOrNull { it.url in maySee } ?: return null
+        val watched = history.pointsFor(kidId)
+        return videosJson(listOf(head to (watched[head.url]?.fraction ?: 0f)), watched, savedFor(kidId))
+            .optJSONObject(0)
+    }
 
     /** A whitelist entry in the shape [resolvePins] joins against. */
     private data class PinnableEntry(override val id: String) : PinnableSource
+
+    /**
+     * Which of a kid's lists hold which urls — read **once** per payload.
+     *
+     * A home screen is about a hundred cards and three lists. Asking the store
+     * per card would be three hundred file reads to answer a question three
+     * reads can: on a NAS that is the difference between a page that paints
+     * and a page that thinks about it.
+     */
+    private data class Saved(
+        val favorites: Set<String>,
+        val watchLater: Set<String>,
+        val queue: Set<String>
+    ) {
+        companion object {
+            /** For payloads that draw no hold menu, so no card claims membership. */
+            val NONE = Saved(emptySet(), emptySet(), emptySet())
+        }
+    }
+
+    private fun savedFor(kidId: String) = Saved(
+        favorites = lists.urls(kidId, HubSavedLists.Which.FAVORITES),
+        watchLater = lists.urls(kidId, HubSavedLists.Which.WATCH_LATER),
+        queue = lists.urls(kidId, HubSavedLists.Which.QUEUE)
+    )
 
     /**
      * The whole home screen for one kid.
@@ -67,6 +136,7 @@ class HubKidHome(
         val config = runCatching { store.load() }.getOrNull()
         val catalogue = policy.catalogueFor(kidId)
         val watched = history.pointsFor(kidId)
+        val saved = savedFor(kidId)
 
         // Every video this kid may see, once, newest-first within a channel —
         // the list every shelf below is a view of.
@@ -126,7 +196,7 @@ class HubKidHome(
         // --- the shelves ------------------------------------------------
         out.put(
             "keepWatching",
-            videosJson(KidHome.keepWatching(videos, { watched[it] }) { v, f -> v to f }, watched)
+            videosJson(KidHome.keepWatching(videos, { watched[it] }) { v, f -> v to f }, watched, saved)
         )
 
         out.put(
@@ -142,7 +212,8 @@ class HubKidHome(
                         val point = watched[v.url]
                         if (point?.isFinished == true) null else v to (point?.fraction ?: 0f)
                     },
-                watched
+                watched,
+                saved
             )
         )
 
@@ -159,7 +230,8 @@ class HubKidHome(
                         .groupingBy { it }.eachCount(),
                     limit = KidHome.SUGGEST_ROW_MAX
                 ).map { it to 0f },
-                watched
+                watched,
+                saved
             )
         )
 
@@ -167,7 +239,8 @@ class HubKidHome(
             "history",
             videosJson(
                 KidHome.history(watched, videos, KidHome.HISTORY_ROW_MAX) { v, f -> v to f },
-                watched
+                watched,
+                saved
             )
         )
         return out
@@ -188,18 +261,26 @@ class HubKidHome(
      */
     fun you(kidId: String, viewer: String?): JSONObject {
         val watched = history.pointsFor(kidId)
+        val saved = savedFor(kidId)
         val videos = policy.catalogueFor(kidId).flatMap { it.videos }.map { it.toVideo() }
 
         val shelves = JSONArray()
         for (id in KidSurface.YOU_SHELVES) {
             val surface = KidSurface.surface(id)
-            // Only History has anything behind it on this box today; the three
-            // saved lists are declared, empty, and say so. When their store
-            // lands they fill in here and nothing about the page changes.
+            // Each shelf from its own store, and every one of them intersected
+            // with what this kid may see RIGHT NOW. A video hearted last month
+            // and blocked by a parent yesterday must not still be on her
+            // Favorites shelf: the catalogue is re-consulted on every read, so
+            // a block takes a shelf away the moment it is set rather than the
+            // next time something is written.
+            val maySee = videos.mapTo(HashSet()) { it.url }
             val rows = when (id) {
                 "history" -> KidHome.history(
                     watched, videos, KidSurface.YOU_PAGE_MAX.value
                 ) { v, f -> v to f }
+                "favorites" -> savedRows(kidId, HubSavedLists.Which.FAVORITES, maySee, watched)
+                "watch-later" -> savedRows(kidId, HubSavedLists.Which.WATCH_LATER, maySee, watched)
+                "up-next" -> savedRows(kidId, HubSavedLists.Which.QUEUE, maySee, watched)
                 else -> emptyList()
             }
             // Both lists, and the cap applied HERE. The page may not slice
@@ -213,8 +294,8 @@ class HubKidHome(
                     .put("icon", surface.icon)
                     .put("emptyText", surface.emptyText)
                     .put("count", rows.size)
-                    .put("preview", videosJson(rows.take(KidSurface.ROW_PREVIEW.value), watched))
-                    .put("videos", videosJson(rows, watched))
+                    .put("preview", videosJson(rows.take(KidSurface.ROW_PREVIEW.value), watched, saved))
+                    .put("videos", videosJson(rows, watched, saved))
             )
         }
 
@@ -225,17 +306,122 @@ class HubKidHome(
             .put("shelves", shelves)
     }
 
+    /**
+     * One saved list, filtered to what this kid may see and capped by the
+     * shared rule.
+     *
+     * The [maySee] intersection is the load-bearing line. A saved list is the
+     * one surface whose contents a *child* chose, so it is the one that can
+     * still be holding a video a parent has since blocked, a channel they have
+     * since taken off her list, or a row screening has since pulled. Filtering
+     * on read rather than on write means a parent's block empties the shelf
+     * immediately, instead of the next time she happens to heart something.
+     */
+    private fun savedRows(
+        kidId: String,
+        which: HubSavedLists.Which,
+        maySee: Set<String>,
+        watched: Map<String, KidHome.WatchPoint>
+    ): List<Pair<Video, Float>> =
+        lists.videos(kidId, which)
+            .filter { it.url in maySee }
+            .take(KidSurface.YOU_PAGE_MAX.value)
+            .map { it to (watched[it.url]?.fraction ?: 0f) }
+
+    /**
+     * Every channel this kid may see, in the order they asked for.
+     *
+     * The order is [orderChannels] from `:crawl` — the app's own function, so
+     * "A to Z" means the same thing on a television and a tablet, and Random
+     * is the *same* random when both are given the same seed.
+     *
+     * Three of the app's six sorts are honestly absent, and `KidSurface`
+     * records why rather than drawing controls that do nothing: Most watched
+     * needs per-channel open counts the hub does not keep, and Latest video
+     * and Just added both need `publishedAt`, which `ChannelIndex` throws away
+     * (roadmap §2M). `SearchOrder` already refused to ship a control that
+     * sorts by an all-equal key; this follows it.
+     */
+    fun channels(kidId: String, sort: String?, seed: Long): JSONObject {
+        val catalogue = policy.catalogueFor(kidId)
+        val sources = catalogue.map { source ->
+            Source(
+                id = source.entry.id,
+                url = source.entry.url,
+                name = nameOf(source),
+                avatarUrl = null,
+                kind = source.entry.kind
+            )
+        }
+        val ordered = orderChannels(
+            channels = sources,
+            sort = sort.orEmpty(),
+            // Not kept on this box. Passing zero makes the default sort a
+            // stable no-op rather than an arbitrary one.
+            opens = { 0 },
+            latestUpload = { null },
+            seed = seed
+        )
+        val byId = catalogue.associateBy { it.entry.id }
+        val arr = JSONArray()
+        for (source in ordered) {
+            val row = byId[source.id] ?: continue
+            arr.put(
+                JSONObject()
+                    .put("id", source.id)
+                    .put("name", source.name)
+                    .put("count", row.videos.size)
+                    .put("thumb", row.videos.firstOrNull()?.thumbnailUrl.orEmpty())
+            )
+        }
+        return JSONObject()
+            .put("sort", sort.orEmpty())
+            .put("seed", seed)
+            .put("channels", arr)
+            .put("sorts", JSONArray().put(sortJson(CHANNEL_ORDER_ALPHA, "A to Z"))
+                .put(sortJson(CHANNEL_ORDER_ALPHA_DESC, "Z to A"))
+                .put(sortJson(CHANNEL_ORDER_RANDOM, "Random")))
+    }
+
+    private fun sortJson(id: String, label: String) =
+        JSONObject().put("id", id).put("label", label)
+
+    /**
+     * A random mix across every channel this kid may see — [surpriseMix].
+     *
+     * Seeded, which is the whole reason that function exists: the phone called
+     * a bare `shuffled()`, and a shuffle with no seed is the one ordering two
+     * faces cannot agree on. The page sends the seed back on a reload so a
+     * child's mix holds still for the sitting.
+     */
+    fun surprise(kidId: String, seed: Long): JSONObject {
+        val watched = history.pointsFor(kidId)
+        val saved = savedFor(kidId)
+        val pool = policy.catalogueFor(kidId)
+            .filter { it.entry.kind == SourceKind.CHANNEL }
+            .flatMap { it.videos }
+            .map { it.toVideo() }
+        val mix = surpriseMix(pool, seed)
+            // A finished video leaves a Surprise for the same reason it leaves
+            // the feed: the point is something new.
+            .filter { watched[it.url]?.isFinished != true }
+        return JSONObject()
+            .put("seed", seed)
+            .put("videos", videosJson(mix.map { it to (watched[it.url]?.fraction ?: 0f) }, watched, saved))
+    }
+
     /** One channel's page: its name, what the parent let through of its description, its videos. */
     fun channel(kidId: String, sourceId: String): JSONObject? {
         val source = policy.catalogueFor(kidId).firstOrNull { it.entry.id == sourceId } ?: return null
         val watched = history.pointsFor(kidId)
+        val saved = savedFor(kidId)
         return JSONObject()
             .put("id", source.entry.id)
             .put("name", nameOf(source))
             .put("count", source.videos.size)
             .put(
                 "videos",
-                videosJson(source.videos.map { it.toVideo() }.map { it to (watched[it.url]?.fraction ?: 0f) }, watched)
+                videosJson(source.videos.map { it.toVideo() }.map { it to (watched[it.url]?.fraction ?: 0f) }, watched, saved)
             )
     }
 
@@ -249,6 +435,7 @@ class HubKidHome(
         val terms = SearchRank.terms(query)
         val catalogue = policy.catalogueFor(kidId)
         val watched = history.pointsFor(kidId)
+        val saved = savedFor(kidId)
         val videos = catalogue.flatMap { it.videos }.map { it.toVideo() }.distinctBy { it.url }
         val hits = if (terms.isEmpty()) emptyList() else videos.filter { v ->
             val hay = (v.title + " " + v.channelName).lowercase()
@@ -265,7 +452,7 @@ class HubKidHome(
         }
         return JSONObject()
             .put("query", query)
-            .put("videos", videosJson(ranked.map { it to (watched[it.url]?.fraction ?: 0f) }, watched))
+            .put("videos", videosJson(ranked.map { it to (watched[it.url]?.fraction ?: 0f) }, watched, saved))
     }
 
     // --- shape ----------------------------------------------------------
@@ -284,7 +471,11 @@ class HubKidHome(
      * ([KidHome.FINISHED_FRACTION], guard 61). It used to spell 0.98 and 0.02
      * itself, which made it the eighth and ninth copy of a threshold.
      */
-    private fun videosJson(items: List<Pair<Video, Float>>, watched: Map<String, KidHome.WatchPoint>): JSONArray {
+    private fun videosJson(
+        items: List<Pair<Video, Float>>,
+        watched: Map<String, KidHome.WatchPoint>,
+        saved: Saved = Saved.NONE
+    ): JSONArray {
         val arr = JSONArray()
         for ((video, progress) in items) {
             val point = watched[video.url]
@@ -305,6 +496,13 @@ class HubKidHome(
                         if (point == null || point.isFinished) 0L
                         else (point.fraction.toDouble() * video.durationSeconds * 1000).toLong()
                     )
+                    // Which of the kid's lists this row is already in, so the
+                    // hold menu can offer "Remove from Favorites" rather than
+                    // adding a second copy. Computed once per payload from
+                    // three sets, not once per card from three file reads.
+                    .put("fav", video.url in saved.favorites)
+                    .put("later", video.url in saved.watchLater)
+                    .put("queued", video.url in saved.queue)
             )
         }
         return arr
@@ -352,10 +550,19 @@ class HubKidHome(
         val verdict = policy.timeFor(kidId, viewer)
         val budget = verdict.budgetMinutes ?: return JSONObject.NULL
         val spent = verdict.spentMinutes ?: 0
+        val left = (budget - spent).coerceAtLeast(0)
         return JSONObject()
             .put("budgetMinutes", budget)
             .put("spentMinutes", spent)
-            .put("leftMinutes", (budget - spent).coerceAtLeast(0))
+            .put("leftMinutes", left)
+            // The sentence, from :core, so the tablet and the television count
+            // down in the same words. Minutes rather than seconds, and that is
+            // honest rather than lazy: UsageLedger counts in whole minutes, so
+            // a seconds countdown here would be this page inventing precision
+            // the box does not have. Making it real means interpolating from
+            // HubWatchMeter's accrual — roadmap, not a one-line fudge.
+            .put("say", io.yosemitekids.app.ui.KidWords.timeLeft(left * 60L))
+            .put("low", left * 60L <= io.yosemitekids.app.ui.KidWords.LOW_SECONDS)
             .put("allowed", verdict.allowed)
             .put("reason", verdict.reason)
     }

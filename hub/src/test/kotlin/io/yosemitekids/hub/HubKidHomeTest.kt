@@ -104,7 +104,7 @@ class HubKidHomeTest {
             ScreeningStore(File(dir, "screening.json")),
             index
         ) { at }
-        return HubKidHome(policy, store, history)
+        return HubKidHome(policy, store, history, HubSavedLists(dir))
     }
 
     private fun video(id: String, channel: String, seconds: Long, title: String) =

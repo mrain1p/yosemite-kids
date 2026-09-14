@@ -247,11 +247,17 @@ object KidSurface {
             emptyText = "Nothing here yet. Hold a video and pick Add to Favorites.",
             kind = SurfaceKind.SHELF,
             screen = "Watchlist",
+            rules = listOf("SavedListStore.merge"),
+            route = "/list",
             caps = listOf(SAVED_MAX),
-            webReady = false,
-            why = "R3. Blocked on SavedListStore moving to :crawl - it is Android-only today, and " +
-                "copying its merge into the hub would be two implementations of tombstone " +
-                "causality, which is the failure the sync skill exists to warn about."
+            webReady = true,
+            why = "A DIVERGENCE, recorded rather than hidden. A phone's favourites reach the " +
+                "television because both run WatchSync; a browser's are hub-local, like its " +
+                "history, because the browser has no such worker and the hub will not pretend " +
+                "it does. Families expect favourites to follow the child, so this is a real gap " +
+                "and not a design. Closing it means moving /watchstate off HubServer.DEVICE_ONLY " +
+                "so the hub implements it with guard 22 watching - NOT a bespoke kid-origin " +
+                "write, which would satisfy every existing guard while quietly creating the split."
         ),
         KidSurfaceDef(
             id = "watch-later",
@@ -260,9 +266,11 @@ object KidSurface {
             emptyText = "Nothing saved for later. Hold a video and pick Add to Watch later.",
             kind = SurfaceKind.SHELF,
             screen = "WatchLater",
+            rules = listOf("SavedListStore.merge"),
+            route = "/list",
             caps = listOf(SAVED_MAX),
-            webReady = false,
-            why = "R3. Same store as favorites, same extraction."
+            webReady = true,
+            why = "Hub-local like favorites, and for the same reason — see that entry."
         ),
         KidSurfaceDef(
             id = "up-next",
@@ -271,16 +279,18 @@ object KidSurface {
             emptyText = "Nothing lined up. Hold a video and pick Add to Up next.",
             kind = SurfaceKind.SHELF,
             screen = "Queue",
-            webReady = false,
-            why = "R3. Blocked on QueueStore moving to :crawl."
+            rules = listOf("QueueStore.moved"),
+            route = "/list",
+            webReady = true,
+            why = "Device-local on BOTH faces, and here that is a design rather than a gap: a " +
+                "queue is tonight, on this screen. The phone has never synced it either."
         ),
         KidSurfaceDef(
             id = "hold-menu",
             title = "What would you like to do?",
             kind = SurfaceKind.DIALOG,
-            webReady = false,
-            why = "R3. The entry point for all three saved lists - without it they can be shown " +
-                "and never filled, which is worse than their absence."
+            route = "/list",
+            webReady = true
         ),
         KidSurfaceDef(
             id = "channels",
@@ -288,9 +298,9 @@ object KidSurface {
             kind = SurfaceKind.SCREEN,
             screen = "Channels",
             rules = listOf("orderChannels"),
-            webReady = false,
-            why = "R5. Blocked on orderChannels moving to :crawl; the browser draws the home rail " +
-                "today, which is the glance, but not the grid behind it."
+            route = "/channels",
+            webReady = true,
+            why = "Three of the app's six sorts are absent and that is deliberate: Most watched needs open counts the hub does not keep, and Latest video and Just added need publishedAt, which ChannelIndex throws away (roadmap 2M). SearchOrder set the precedent - a chip that sorts by an all-equal key is worse than no chip."
         ),
         KidSurfaceDef(
             id = "search-page",
@@ -306,9 +316,10 @@ object KidSurface {
             title = "Surprise me",
             kind = SurfaceKind.SCREEN,
             screen = "Surprise",
-            webReady = false,
-            why = "R5. Blocked on the mix being seeded - :app calls bare shuffled(), which cannot " +
-                "be reproduced on another face by definition."
+            route = "/surprise",
+            rules = listOf("surpriseMix"),
+            webReady = true,
+            why = "Seeded on both faces now. :app called a bare shuffled(), which cannot agree between two faces by construction."
         ),
         KidSurfaceDef(
             id = "playlists",
