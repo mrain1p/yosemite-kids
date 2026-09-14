@@ -58,3 +58,37 @@ untouched, the `sync` key is additive and ignorable, and `POST /config` still
 answers 400 on an unreadable body. An upstream device and a fork device remain
 interoperable in both directions, with the one documented gap that deletes do
 not cross a legacy hop.
+
+## 2026-09-14 — upstream/main 9cee4fd, 5 new commit(s)
+
+Upstream version.json: `{ "versionCode": 30, "versionName": "0.8.1", "apkUrl": "https://github.com/itcon-pty-au/pickwick/releases/download/v0.8.1/pickwick.apk"}`
+
+Upstream extractor: `newpipeextractor = "v0.26.4"
+newpipeextractor = { group = "com.github.TeamNewPipe", name = "NewPipeExtractor", version.ref = "newpipeextractor" }`
+
+| Commit | Subject | Files | Touches fork files | Action |
+| --- | --- | --- | --- | --- |
+| `e0ffd7a` | Let repeated grants stack the bedtime pass | 2 | ⚠️ app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt  | ported by hand (a6aeea0, 2026-09-14) — same bug here; `extendPass` in the companion plus `WindowPassTest` |
+| `4e0d328` | Let a parent take bonus minutes back, and show today's bar on the kid page | 10 | ⚠️ app/src/main/java/io/yosemitekids/app/data/KidNotices.kt app/src/main/java/io/yosemitekids/app/data/Pairing.kt app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt app/src/main/java/io/yosemitekids/app/data/Stats.kt app/src/main/java/io/yosemitekids/app/ui/MainActivity.kt app/src/main/java/io/yosemitekids/app/ui/SettingsScreenTime.kt app/src/main/java/io/yosemitekids/app/ui/StatsScreen.kt app/src/main/java/io/yosemitekids/app/ui/Theme.kt  | deferred, shape written down (ROADMAP §8E) — the `GET /stats?profile=` half is already in the fork; the take-back half does not port, see below |
+| `ef1d8fc` | Say when today's numbers can't be fetched instead of showing nothing | 1 | ⚠️ app/src/main/java/io/yosemitekids/app/ui/SettingsScreenTime.kt  | deferred with `4e0d328` — it is the empty state of that commit's bar, and the fork has no bar to say it about |
+| `69f59d6` | Release v0.8.1 with parent control over incomplete screening | 11 | ⚠️ app/build.gradle.kts app/src/main/java/io/yosemitekids/app/data/ConfigStore.kt app/src/main/java/io/yosemitekids/app/data/DeepCheck.kt app/src/main/java/io/yosemitekids/app/ui/PlayerActivity.kt app/src/main/java/io/yosemitekids/app/ui/Settings.kt app/src/main/java/io/yosemitekids/app/ui/SettingsAi.kt app/src/test/java/io/yosemitekids/app/DeepCheckTest.kt docs/SETUP.md  | ported by hand (6aae46e, 2026-09-14) — the feature, not the release chore; three fork-shaped differences recorded in FORK-NOTES |
+| `9cee4fd` | Point in-app updates at v0.8.1 | 1 | ⚠️ version.json  | skip — upstream release chore; the fork's `version.json` points at its own releases and its versionCode is far above 30 |
+
+**The extractor is not the reason to hurry this round:** upstream is on
+`v0.26.4` and so is the fork. Nothing here is a playback fix.
+
+**Why `4e0d328` is deferred rather than ported.** Upstream's take-back
+subtracts minutes over a new `POST /takeback`, which reaches only the devices
+that are awake. The fork moved grants into the config in 1.0.x precisely
+because a television asleep at the tap must still find the minutes when it
+wakes — so a LAN-only undo would be a hole in the one property the fork
+rebuilt that path to have. The fork's undo is the removal of a `grant|<id>`
+unit, which the merge already understands; what it needs first is four
+decisions (which grant a "take back 15" removes, whether partial take-backs
+exist, what the hub console offers, and the kid's notice), and those are the
+owner's, not a scheduled task's. Written down in ROADMAP §8E with the shape.
+
+The `GET /stats?profile=` half of that commit is already in the fork:
+`LanServer` has taken a `profileId` on `/stats` and passed it to
+`statsProvider` since the profiles work, so a shared TV showing a sibling
+already answers for the kid asked about.
