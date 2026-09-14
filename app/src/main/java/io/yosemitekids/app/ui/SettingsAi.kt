@@ -341,6 +341,37 @@ internal fun AiScreeningSection(
         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 19.sp),
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+    // The one question a parent has to answer about a check that could not
+    // finish. Its own row rather than a paragraph: the default plays the video,
+    // which is the answer a family would want to have been asked about.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(vertical = 10.dp)
+    ) {
+        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(ctl("ai-review-incomplete").label, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                ctl("ai-review-incomplete").sub,
+                style = MaterialTheme.typography.bodySmall
+                    .copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            modifier = Modifier.tvFocusHighlight(),
+            checked = ai.reviewIncompleteChecks,
+            onCheckedChange = { onChanged(ai.copy(reviewIncompleteChecks = it)) },
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                uncheckedTrackColor = SettingsStrongBorder,
+                uncheckedThumbColor = SettingsTextTertiary,
+                uncheckedBorderColor = androidx.compose.ui.graphics.Color.Transparent
+            )
+        )
+    }
     if (profiles.isEmpty()) {
         StepperRow(
             label = ctl("ai-child-age").label,

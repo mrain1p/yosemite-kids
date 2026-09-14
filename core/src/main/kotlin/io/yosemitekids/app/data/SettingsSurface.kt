@@ -379,6 +379,16 @@ object SettingsSurface {
                     "ai-child-age", "Child age",
                     sub = "What the AI screens against when there are no kid profiles.",
                     kind = ControlKind.NUMBER, writes = "ai.childAge", min = 2, max = 16
+                ),
+                // A toggle rather than the pair of radio buttons upstream drew:
+                // it is one question with two answers, the hub's generic
+                // renderer already draws a TOGGLE, and a CHIPS pair would put
+                // the same sentence on the page twice.
+                SettingsControl(
+                    "ai-review-incomplete", "Hold videos the check couldn't finish",
+                    sub = "When the description or English subtitles are missing, or the " +
+                        "check fails or times out: wait for your OK instead of playing.",
+                    kind = ControlKind.TOGGLE, writes = "ai.reviewIncompleteChecks"
                 )
             )),
         SettingsSection("ai-review", "Waiting for your OK", Page.SCREENING, "AiReviewSection",

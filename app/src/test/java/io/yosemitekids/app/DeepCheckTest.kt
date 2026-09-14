@@ -176,4 +176,40 @@ class DeepCheckTest {
         assertEquals(0, store.importJson(shallowPeer.exportJson(1), 1))
         assertEquals(AiScreener.Verdict.BLOCK, store.get("vid")?.verdict)
     }
+
+    // --- what an unfinishable check means -------------------------------------
+
+    @Test
+    fun `the default policy allows the attempt and caches nothing`() {
+        assertEquals(
+            null,
+            io.yosemitekids.app.data.DeepCheck.incompleteResult(
+                io.yosemitekids.app.data.AiConfig(), "vid", "Check failed"
+            )
+        )
+    }
+
+    @Test
+    fun `a held check reaches the parent queue as an ordinary REVIEW`() {
+        val ai = io.yosemitekids.app.data.AiConfig(reviewIncompleteChecks = true)
+        val held = io.yosemitekids.app.data.DeepCheck.incompleteResult(
+            ai, "vid", "English subtitles unavailable; parent review required"
+        )!!
+        assertEquals(AiScreener.Verdict.REVIEW, held.verdict)
+
+        // Nothing downstream needs teaching: it stores, exports, imports and
+        // queues exactly like a verdict the model returned.
+        val device = ScreeningStore(File(tmp.root, "device.json"))
+        device.putAll(
+            mapOf("vid" to entry(deep = true, verdict = held.verdict).copy(reason = held.reason))
+        )
+        val parent = ScreeningStore(File(tmp.root, "parent.json"))
+        parent.importJson(device.exportJson(1), 1)
+        assertEquals("vid", parent.flagged(1).single().first)
+        assertEquals(AiScreener.Verdict.REVIEW, parent.get("vid")!!.verdictFor("kid"))
+
+        // And it is a verdict of its rules version like any other: flipping the
+        // policy bumps that version, which is what frees a held video again.
+        assertEquals(null, io.yosemitekids.app.data.DeepCheck.cached(parent, "vid", 2, 0))
+    }
 }

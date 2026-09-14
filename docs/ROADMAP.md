@@ -719,6 +719,27 @@ puts every television in a silent reinstall loop that reports success.
   tablet held close is a smaller problem than a tablet that cannot go Back.
 - **Kid → parent requests.** Worth building; a new cross-device store and a new
   kid-writable LAN route.
+- **Take back a grant** (upstream 4e0d328, 2026-09-14 sync). A tap too many on
+  Grant still has no undo, and upstream's shape does not port: it subtracts
+  minutes over `POST /takeback`, which by construction misses the television
+  that was asleep when the parent tapped — the exact failure config-carried
+  grants exist to prevent. The fork's undo is *removing the grant unit*:
+  tombstone `grant|<id>` (the merge already deletes those — `ConfigStamp`
+  tombstones expired ones on every save), fast-path the awake devices, and give
+  `SessionGuard` the reverse of `applyGrants` — drop the id from its prefs copy
+  and shrink `windowPassUntil` by the same minutes, never below now. Four
+  decisions to make first, which is why this is deferred rather than ported:
+  which grant "take back 15" removes when the day holds a 5 and a 15; whether a
+  partial take-back exists at all; what the hub's console offers beside its own
+  grant editor; and the kid's notice, which is parent-attributed like the pause
+  (`KidNotices.takeBack`) or the countdown just shrinks and reads as the device
+  miscounting.
+- **Today's screen time as one bar** (upstream 4e0d328, same sync). Base
+  minutes, bonus, watched and what is left, on the parent's kid page and in
+  Stats. The fork's kid page already carries a Today section and "N of M min"
+  in words, so this is a legibility upgrade, not a missing feature — and it is
+  a drawing a child may also meet, so it needs a `KidSurface` row and its
+  numbers out of `KidGeometry` before either face draws it, not after.
 
 ### 8F. A house style, and who checks the checkers
 

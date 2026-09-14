@@ -56,6 +56,21 @@ class ConfigStoreJsonTest {
     }
 
     @Test
+    fun `the incomplete-check hold is off by default, carried when on, and hashed`() {
+        val plain = Whitelist(emptyList(), emptySet())
+        // A config written before the field existed has no key at all, and a
+        // family that never turns it on keeps the hash it already had.
+        assertFalse(ConfigJson.toJson(plain).contains("reviewIncompleteChecks"))
+        assertFalse(ConfigJson.fromJson(ConfigJson.toJson(plain)).ai.reviewIncompleteChecks)
+
+        val held = plain.copy(ai = plain.ai.copy(reviewIncompleteChecks = true))
+        assertTrue(ConfigJson.fromJson(ConfigJson.toJson(held)).ai.reviewIncompleteChecks)
+        // It decides what a device stores for a video it could not check, so
+        // two households differing on it must not read as in sync.
+        assertNotEquals(ConfigJson.fingerprint(plain), ConfigJson.fingerprint(held))
+    }
+
+    @Test
     fun `parent pause survives a JSON round-trip and clears back to null`() {
         val until = 1_785_800_000_000L
         val paused = Whitelist(

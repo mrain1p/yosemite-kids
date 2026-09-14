@@ -1764,3 +1764,35 @@ allowed to ask for them**, and the answer starts with a second listener.
   objects with separate names from the admin's; and every kid route resolves
   the claim cookie first, takes the child from it rather than from a query,
   and carries the three security headers.
+
+### What an unfinished pre-play check means is the parent's to say (from upstream 69f59d6)
+
+Upstream's v0.8.1 made the deep check's fail-open behaviour a setting, and
+the fork adopts it: `ai.reviewIncompleteChecks`, off by default, so nothing
+changes for a family that never opens it. Turned on, a check that cannot
+finish — no description, no English subtitles, a provider that errors, an
+answer past the 20 s bound — stores a plain `REVIEW` instead of allowing the
+attempt, and the video waits in *Waiting for your OK*.
+
+A plain `REVIEW` and not a verdict kind of its own, which is the whole reason
+the port is small: the parent queue, the per-kid rulings, the LAN
+verdict-sharing and the hub's `/verdicts` all already know what to do with
+one.
+
+Three places the fork does it differently from upstream, each for a reason
+the fork already had:
+
+- **One toggle, not two radio buttons.** The manifest (`SettingsSurface`)
+  owns the words, the hub's generic renderer draws a `TOGGLE` with no hub
+  code at all, and guard 26 then holds both faces to it. Upstream's radio
+  pair would have been a `CUSTOM` control and hand-written twice.
+- **The field is a judging input** — added to `SettingsForm.toConfig`'s
+  `judgingChanged` (as upstream does) *and* to `ConfigMerge.judgingInputs`
+  (which upstream has no counterpart for). Devices trade verdicts keyed on
+  `rulesVersion`, so two devices answering this differently must not share a
+  number; and without the bump, videos held while it was on stay held after
+  a parent turns it off, one queue tap at a time.
+- **Append-only-when-set** in both the JSON and the fingerprint
+  (`;AI_HOLD_INCOMPLETE:true`), the discipline every field added after a
+  family's config already existed follows here, so a household that never
+  turns it on keeps a byte-identical `ai` object and the hash it had.

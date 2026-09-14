@@ -2195,6 +2195,51 @@ $(($finishedCopies | ForEach-Object { "$($_.Path):$($_.LineNumber)" }) -join "`n
 One number decides Keep watching, the feed, the dim, the resume and a channel's watched screen. Read the constant."
 }
 
+
+# 64. The page does not move under the child's thumb.
+#     Reported twice by the family, and fixed twice in different places, which
+#     is the signal to stop relying on whoever edits next remembering why.
+#
+#     Two ways a kid's channel page used to jump. A sort chip set scrollTo = 0,
+#     so the chips moved out from under the finger that had just tapped them -
+#     survivable when the header was a line of text, most of a screen once the
+#     page grew a block, a rail and a pill. And the playlist rows arrive a
+#     second AFTER the page paints, so both the ViewModel's scrollTo and the
+#     grid's own header snap yanked a child who had started scrolling back to
+#     the top, with no chip pressed and nothing to blame.
+$viewModel = "app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt"
+$videoGrid = "app/src/main/java/io/yosemitekids/app/ui/VideoGrid.kt"
+if (-not (Test-Path $viewModel) -or -not (Test-Path $videoGrid)) {
+    Fail-Guard "MainViewModel.kt or VideoGrid.kt is gone; guard 64 is blind."
+}
+$vmText = Get-Content $viewModel -Raw
+$gridText = Get-Content $videoGrid -Raw
+#     (a) THE CHIPS DO NOT SCROLL. setChannelFilter, setSearchOrder and
+#         setChannelSort change an order, never a position. The comments saying
+#         so have been there since the first fix and enforced nothing.
+foreach ($fn in @("setChannelFilter", "setSearchOrder", "setHomeFilter")) {
+    $m = [regex]::Match($vmText, "(?ms)fun $fn\(.*?^    \}")
+    if (-not $m.Success) { continue }
+    if ($m.Value -match 'scrollTo = 0') {
+        Fail-Guard "$fn sets scrollTo = 0. A sort applies to the list BELOW the chips, so the chips must not move out from under the finger that just tapped them - that is the bug the family reported, twice."
+    }
+}
+#     (b) A LATE ROW DOES NOT YANK A SCROLLED CHILD. The grid must hold the
+#         drag flag and both jump paths must consult it. Keyed on
+#         DragInteraction and not on the scroll position, because a
+#         programmatic scrollToItem moves the position and emits no drag - a
+#         position-watcher would set the flag on the very snap it suppresses.
+if ($gridText -notmatch 'DragInteraction\.Start') {
+    Fail-Guard "VideoGrid no longer watches DragInteraction.Start, so it cannot tell the child scrolling from its own snap. Without that a playlist row arriving late throws a reading child back to the header."
+}
+if ($gridText -notmatch 'childScrolled') {
+    Fail-Guard "VideoGrid lost childScrolled. Both jump paths - UiState.scrollTo and the header snap - have to consult it or the page moves under the kid again."
+}
+$snap = [regex]::Match($gridText, "(?ms)LaunchedEffect\(hasHeader\).*?^    \}")
+if ($snap.Success -and ($snap.Value -notmatch 'childScrolled')) {
+    Fail-Guard "the header snap in VideoGrid does not check childScrolled. It is the SECOND path to the same jump: fixing only the ViewModel's scrollTo leaves this one behind."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 
