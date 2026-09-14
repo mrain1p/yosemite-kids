@@ -563,7 +563,7 @@ shared budget (§J), which the owner tabled, so nobody owns the push today. The
   the fork exists to escape. Both are pinned at v0.26.4 today; nothing outstanding.
 
 ---
-## 7. Web/app parity — the six rounds (in flight, 2026-09-09)
+## 7. Web/app parity — the six rounds (R1-R5 done, R6 partly; 1.7.0)
 
 The browser is a third face and must reach feature and look parity with the
 app: *"it can essentially function as the app for ios so should feel like it
@@ -616,65 +616,90 @@ blocked on §2M's upload date rather than on the browser.
 
 ---
 
-## 8. Everything else — the 2026-09-09 survey
+## 8. Everything else — the 2026-09-09 survey, revised 2026-09-14
 
 116 agents read the roadmap and the docs against the actual code, and every
 candidate was then handed to a skeptic who tried to prove it was already done.
-**109 items stood; 4 were struck as finished.** What follows is what is NOT in
-the parity rounds above. **Review this list once R1–R6 are through.**
+**109 items stood; 4 were struck as finished.**
+
+**Revised after 1.7.0 shipped.** Items this document described as pending and
+which have since landed are struck below rather than left standing — a roadmap
+entry outliving its work is the failure that made this survey necessary, and it
+would be a poor joke to let the survey's own output rot the same way.
 
 ### 8A. The biggest risk, and it is not code
 
-**The release keystore exists on exactly one disk.**
+**The release keystore still exists on exactly one disk.**
 `~/.pickwick/pickwick-fork-release.keystore` (2708 bytes) and its
 `.password.txt` (24 bytes), both dated 2026-09-02. That key is the sole trust
 anchor for self-update and there is deliberately no debug fallback. If the disk
 dies, every installed family must uninstall to take another build, and
 uninstalling wipes their curation — channels, kids, rules, history, resume
-points. No recovery, no re-signing, no remote fix. It is also the cheapest fix
-on this whole list: copy two small files somewhere else, password stored apart
-from the keystore, never in the repo and never in the OneDrive-synced tree.
+points. No recovery, no re-signing, no remote fix.
 
-The runner-up: publishing `version.json` **before** the GitHub release exists
-points the fleet at the previous asset through `releases/latest/download` and
-puts every television in a silent reinstall loop that reports success.
+**1.7.0 raised the stakes rather than lowering them.** It is the first build
+since 1.3.0 that devices are actually offered, so the fleet is now upgrading
+in place against that signature. Every family that takes it is one more
+household that must wipe and start again if the key is lost. It remains the
+cheapest fix on this whole list: copy two small files somewhere else, password
+stored apart from the keystore, never in the repo and never in the
+OneDrive-synced tree.
+
+~~The runner-up: publishing `version.json` before the GitHub release exists.~~
+**Survived contact.** 1.7.0 was cut release-first, with
+`releases/latest/download/yosemite-kids.apk` checked to resolve before
+`version.json` moved. The trap is real and the order is now proven; it belongs
+in the release skill, not on a risk list.
 
 ### 8B. Owner-only, not code
 
 | Do | Why |
 | --- | --- |
-| Copy the keystore and its password off this machine | §8A. Today. |
-| Publish the v1.4.0 GitHub release | The release skill reserves it. `-R mrain1p/yosemite-kids` on every `gh` call. |
-| Add the `8766` mapping to the Talk-Wave stack on the NAS, pull 1.4.0 | The NAS does not deploy from `hub/docker-compose.yml`, so the repo's ports block never reaches it. Check nothing already holds 8766. |
-| `gh repo set-default mrain1p/yosemite-kids` | Removes a trap the release skill documents in prose. Then note that upstream queries need an explicit `-R`. |
+| **Copy the keystore and its password off this machine** | §8A. The one item here that cannot be undone. |
 | Decide about "Submit list to directory" | That row posts the family's whole channel list to **upstream's** worker and opens a public PR on `itcon-pty-au/pickwick`, while the consent copy calls it "the shared Yosemite Kids directory". |
+| `gh repo set-default mrain1p/yosemite-kids` | Removes a trap the release skill documents in prose. Then note that upstream queries need an explicit `-R`. |
 | When the Streamer is to hand: `wm size`, `wm density`, three `am start -S -W` | The ×0.75 `tvUnits` factor and CLAUDE.md's cold-start table are inherited numbers nobody has taken on this hardware. |
+| **Ten minutes with the iPad** | The browser work is verified on desktop Chrome at a phone viewport. The layout, claim, lists, sorts and hand-off are proven; the hold gesture, the install and the Back swipe are iOS behaviours reasoned about rather than watched. |
 
-### 8C. Ship next, after the parity rounds
+~~Publish the GitHub release~~ — done at 1.7.0, and `version.json` with it.
+~~Add the 8766 mapping on the NAS~~ — done; the kid origin is on **8767**,
+because `curatorr-analyzer` holds 8766 (`0.0.0.0:8766->8765`). Both sides of
+that mapping are 8767 deliberately: the console prints the port the process
+binds *inside* the container, so an asymmetric publish would tell a parent the
+wrong number.
 
-1. **The channel page still jumps.** `loadPlaylistRow` sets `scrollTo = 0` at
-   `MainViewModel.kt:1647` and `:1706` when playlists land a second after the
-   page paints — so a child who started scrolling is thrown back to the header
-   with no chip pressed. The sort-chip jump was fixed; this is a second one on
-   the same page the owner complained about. Do **not** just delete the line:
-   the comment beside it guards a real failure (rows inserted above a grid's
-   anchor land below the fold). Make it conditional on the child not having
-   scrolled. `VideoGrid.kt:261-264` is a second path to the same jump. Ship the
-   guard the fix owes — both "deliberately no scrollTo" comments enforce
-   nothing today.
-2. **"Something is missing" on a channel page.** `YosemiteScreen.kt:900` draws
-   New-for-you only `if (fresh.size >= 3)` and `:906` draws Playlists only when
-   non-empty, so a channel with two unwatched videos renders as
-   block-then-Videos and looks half-built. Same page, same emulator session as
-   (1).
-3. **Cache resolved streams on the app/TV path.** Every play, replay and quality
-   change pays a full `StreamInfo` extraction — the request bot detection
-   watches, and a multi-second wait in front of a child. `HubStream` solved this
-   for the browser in 1.4.0 (20-minute TTL, 64 entries) and the app never got
-   it. Key on `(videoPageUrl, maxHeight)`, not the id alone, or the quality
-   picker silently becomes a no-op. Evict on playback failure, or a stale URL
-   becomes a video that cannot play and `onPlaybackFailed` walks it through the
-   queue. Downloads must bypass it.
+### 8C. Ship next
+
+1. ~~The channel page still jumps.~~ **Done in 1.7.0**, both paths, with guard
+   64 — the sort-chip half was already fixed, and the second half was the
+   playlist rows arriving after the paint. Gated on `DragInteraction.Start`,
+   which is the only signal separating the child scrolling from the app
+   scrolling.
+2. **"Something is missing" on a channel page.** The other half of the same
+   week-one report and still open. `YosemiteScreen.kt:900` draws New-for-you
+   only `if (fresh.size >= 3)` and `:906` draws Playlists only when non-empty,
+   so a channel with two unwatched videos renders as block-then-Videos and
+   looks half-built. A rail that is sometimes there reads as breakage. Any
+   placeholder must occupy the slot and keys the real row will take, or it
+   changes item count mid-scroll — the same failure class guard 64 just fixed.
+3. **Cache resolved streams on the app/TV path.** Every play, replay and
+   quality change pays a full `StreamInfo` extraction — the request bot
+   detection watches, and a multi-second wait in front of a child. `HubStream`
+   solved it for the browser in 1.4.0 (20-minute TTL, 64 entries) and the app
+   never got it. Key on `(videoPageUrl, maxHeight)`, not the id alone, or the
+   quality picker silently becomes a no-op. Evict on playback failure, or a
+   stale URL becomes a video that cannot play and `onPlaybackFailed` walks it
+   through the queue. Downloads must bypass it.
+4. **The three kid surfaces the gate still names.** It prints them on every
+   run: `playlists search-page watched-videos`.
+   - `watched-videos` — a channel's finished videos. The hub already knows
+     `finished` per row; this is a `watched[]` on `/channel` and a view.
+   - `search-page` — the page *before* a query: recent searches and the
+     control row. The browser searches as you type and has never had one.
+   - `playlists` — **genuinely blocked**, not merely undone. `ChannelIndex`
+     does not index playlists, so there is nothing for `/channel` to carry.
+     The same shape as the three dead sort chips waiting on `publishedAt`:
+     crawler work first, surface second.
 
 ### 8D. Then
 
@@ -689,11 +714,25 @@ puts every television in a silent reinstall loop that reports success.
 - **The crawl stands aside while a child is watching** (roadmap K.2). Finishing
   the index hours later is worth nothing next to a video that will not start.
   The hub already knows, via `HubWatchMeter.beat`.
-- **The browser player's three honesty bugs.** The page never touches the
-  History API, so a tablet's Back gesture leaves the site instead of going back
-  a screen; a failed `/home` shows the claim screen to a child who is already
-  claimed; and `HubPolicy.Decision.detail` is written for a parent's log and is
-  being shown to a five-year-old.
+- ~~**The browser player's three honesty bugs.**~~ Two done in 1.6.0: Back now
+  means back (the page pushes one history entry per navigation *into*
+  something, and comes out of it), and `KidWords` in `:core` gives a child
+  their own sentence where `HubPolicy.Decision.detail` — written for a parent's
+  log — was being shown to them verbatim. **Still open:** a failed `/home`
+  shows the claim screen to a child who is already claimed, which reads as
+  being logged out rather than as the hub being briefly unreachable.
+- **The three R6 player pieces deliberately not built, and why.**
+  - *The custom scrubber and the double-tap seek.* These are pure feel, and
+    getting them right needs a real finger on a real iPad. Building them from a
+    desktop browser would be guessing at the one part of the player that cannot
+    be reasoned about.
+  - *The second-precision countdown.* `UsageLedger` counts **whole minutes**,
+    so seconds in the page would be inventing precision the box does not have —
+    a child told "1 minute left" watches it say that for sixty seconds and then
+    stop mid-sentence. Making it real means interpolating from
+    `HubWatchMeter`'s accrual and returning `Remaining[{ms, kind}]` from
+    `HubPolicy.clock` on both `/home.time` and `/progress`. Real work, and
+    worth it — a fake seconds countdown would be worse than honest minutes.
 - **Keep the LAN server alive while the app is closed** — form-factor-gated
   foreground service, televisions only. `LanServer` is built in `MainActivity`
   and dies with the process, so a sleeping TV answers nothing.
@@ -756,13 +795,29 @@ be. Every one of those is a judgement rather than a value, so by this project's
 own ordering it belongs in a **skill**, not a guard. Write it once the parity
 rounds settle and there is a full product to describe.
 
-**`scripts/guard-canary.sh` (new) is the answer to "who checks the checkers".**
+**`scripts/guard-canary.sh` is the answer to "who checks the checkers", and it is unfinished.**
 59 guards, and until now nothing had ever verified that any of them could still
 fail — each was negative-tested once, by hand, by its author, and then never
 again. Three had since gone blind. The canary breaks the tree on purpose, one
-mutation at a time, and asserts the gate notices. Still to do: extend it
-backwards over guards 1–55, and add the check that a new guard cannot land
-without a case.
+mutation at a time, and asserts the gate notices.
+
+**Still to do, and it has never had a clean full run.** Only guards 56–64 have
+cases. It needs extending backwards over 1–55, and the meta-check that a new
+guard cannot land without one — which is the clause that would make
+negative-testing enforced rather than a convention nobody is left to keep.
+
+Two harness bugs are fixed already and are worth not re-learning:
+
+- **It must assert its own MUTATION landed.** A pattern that silently matched
+  nothing — a CRLF working tree defeating a `\n` in a slurped regex — reads
+  exactly like a blind guard, which is the one conclusion this script exists to
+  draw correctly. A canary that cannot tell a blind guard from a missed edit
+  will one day retire a working guard.
+- **It takes a lock.** Two instances mutate and restore the same files, so one
+  instance's gate run sees a tree the other just cleaned and reports a working
+  guard as dead. That happened to guards 56 and 57, and it is the worst failure
+  this script can have: "your guard does not work" is the sentence nobody
+  double-checks.
 
 ---
 
