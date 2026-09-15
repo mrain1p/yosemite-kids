@@ -28,6 +28,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** The channel orders this box can produce: no open counts, no upload dates, so these three. */
+/** Playlists on a channel page before "See all"; the page for all of them has no cap. */
+private const val STRIP_MAX = 12
+
 private val WEB_SORTS = setOf(
     CHANNEL_ORDER_ALPHA, CHANNEL_ORDER_ALPHA_DESC, CHANNEL_ORDER_RANDOM,
     io.yosemitekids.app.data.CHANNEL_ORDER_LATEST
@@ -460,10 +463,15 @@ class HubKidHome(
      * manifest says the browser honours.
      */
     fun channel(kidId: String, sourceId: String, from: Int = 0, onlyWatched: Boolean = false): JSONObject? {
-        val source = policy.catalogueFor(kidId).firstOrNull { it.entry.id == sourceId } ?: return null
+        val catalogue = policy.catalogueFor(kidId)
+        val source = catalogue.firstOrNull { it.entry.id == sourceId } ?: return null
         val watched = history.pointsFor(kidId)
         val saved = savedFor(kidId)
         val layout = runCatching { store.load().channelLayout }.getOrDefault("")
+        // The strip: the channel's playlists the crawl has indexed, each with
+        // how many of its videos THIS kid may see - the same rows the grid is
+        // drawn from, so a chip never opens onto less than it promised.
+        val playlists = playlistsFor(catalogue, sourceId)
         val items = source.videos.map { it.toVideo() }.map { VideoItem(it, watched[it.url]?.fraction) }
         // The channel's finished videos - the phone's Watched screen, its only
         // two-level one - newest-watched first through the phone's own
@@ -485,6 +493,79 @@ class HubKidHome(
             .put("more", more)
             .put("watched", onlyWatched)
             .put("watchedCount", finished.size)
+            .put("playlistCount", playlists.size)
+            .put("playlists", playlistsJson(playlists.take(STRIP_MAX)))
+            .put("videos", videosJson(slice, watched, saved))
+    }
+
+    /** A playlist with the rows of it this kid may see, in playlist order. */
+    private class VisiblePlaylist(val playlist: ChannelIndex.IndexedPlaylist, val rows: List<ChannelIndex.IndexedVideo>)
+
+    /**
+     * The channel's indexed playlists that hold at least one video this kid
+     * may see, in the channel's own order. Videos are matched across the
+     * whole catalogue, not just this channel: a playlist may hold a sibling
+     * channel's video, and the rule is the same as everywhere else - if it is
+     * on a shelf the kid can browse, it is in the playlist too.
+     */
+    private fun playlistsFor(catalogue: List<HubPolicy.VisibleSource>, sourceId: String): List<VisiblePlaylist> {
+        val listing = policy.index.loadPlaylists(sourceId) ?: return emptyList()
+        val rowsById = catalogue.flatMap { it.videos }.associateBy { it.videoId }
+        return listing.playlists.mapNotNull { p ->
+            val rows = p.videoIds?.mapNotNull { rowsById[it] } ?: return@mapNotNull null
+            if (rows.isEmpty()) null else VisiblePlaylist(p, rows)
+        }
+    }
+
+    private fun playlistsJson(playlists: List<VisiblePlaylist>): JSONArray {
+        val arr = JSONArray()
+        playlists.forEach { v ->
+            arr.put(
+                JSONObject()
+                    .put("id", v.playlist.id)
+                    .put("name", v.playlist.name)
+                    .put("thumb", v.playlist.thumbnailUrl ?: v.rows.first().thumbnailUrl.orEmpty())
+                    .put("count", v.rows.size)
+            )
+        }
+        return arr
+    }
+
+    /** Every playlist of one channel, for the See-all page; null when the channel is not this kid's. */
+    fun playlists(kidId: String, sourceId: String): JSONObject? {
+        val catalogue = policy.catalogueFor(kidId)
+        val source = catalogue.firstOrNull { it.entry.id == sourceId } ?: return null
+        val playlists = playlistsFor(catalogue, sourceId)
+        return JSONObject()
+            .put("id", source.entry.id)
+            .put("name", nameOf(source))
+            .put("count", playlists.size)
+            .put("playlists", playlistsJson(playlists))
+    }
+
+    /**
+     * One playlist as a page: its videos this kid may see, in playlist order,
+     * paged like a channel. Found by walking the kid's own channels, so a
+     * playlist of a channel they may not see is the same 404 as one that does
+     * not exist - the rule every kid route keeps.
+     */
+    fun playlist(kidId: String, playlistId: String, from: Int = 0): JSONObject? {
+        val catalogue = policy.catalogueFor(kidId)
+        val (source, found) = catalogue.firstNotNullOfOrNull { src ->
+            playlistsFor(catalogue, src.entry.id).firstOrNull { it.playlist.id == playlistId }?.let { src to it }
+        } ?: return null
+        val watched = history.pointsFor(kidId)
+        val saved = savedFor(kidId)
+        val ordered = found.rows.map { it.toVideo() }.map { it to (watched[it.url]?.fraction ?: 0f) }
+        val (slice, more, total) = page(ordered, from)
+        return JSONObject()
+            .put("id", found.playlist.id)
+            .put("name", found.playlist.name)
+            .put("channel", nameOf(source))
+            .put("channelId", source.entry.id)
+            .put("count", total)
+            .put("from", from.coerceIn(0, total))
+            .put("more", more)
             .put("videos", videosJson(slice, watched, saved))
     }
 

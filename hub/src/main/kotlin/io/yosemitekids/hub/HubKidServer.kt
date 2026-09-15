@@ -211,6 +211,11 @@ class HubKidServer(
         s.createContext("/kid/surprise") { ex -> guarded(ex) { surprise(ex) } }
         // One channel's videos.
         s.createContext("/kid/channel") { ex -> guarded(ex) { channel(ex) } }
+        // A channel's playlists (the See-all page) and one playlist as a page:
+        // both from the index the crawl filled (PlaylistCrawlRun), both showing
+        // a kid exactly the rows the channel page would.
+        s.createContext("/kid/playlists") { ex -> guarded(ex) { playlists(ex) } }
+        s.createContext("/kid/playlist") { ex -> guarded(ex) { playlist(ex) } }
         // Search within what this kid may see, ranked by the shared SearchRank.
         s.createContext("/kid/search") { ex -> guarded(ex) { search(ex) } }
         // "Still watching, and this far in." The one route that writes: it
@@ -568,6 +573,28 @@ class HubKidServer(
     }
 
     /** `GET /search?q=` — ranked with the same [io.yosemitekids.app.data.SearchRank] the app uses. */
+    private fun playlists(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val browser = watching(ex) ?: return
+        val id = param(ex, "id")
+            ?: return respond(ex, 400, JSONObject().put("error", "no channel").toString())
+        val body = browse.playlists(browser.kid, id)
+            ?: return respond(ex, 404, JSONObject().put("error", "not here").toString())
+        respond(ex, 200, body.toString())
+    }
+
+    private fun playlist(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val browser = watching(ex) ?: return
+        val id = param(ex, "id")
+            ?: return respond(ex, 400, JSONObject().put("error", "no playlist").toString())
+        // A playlist of a channel this kid may not see and one that does not
+        // exist are the same 404, like a channel (guard 60).
+        val body = browse.playlist(browser.kid, id, from = pageFrom(ex))
+            ?: return respond(ex, 404, JSONObject().put("error", "not here").toString())
+        respond(ex, 200, body.toString())
+    }
+
     private fun search(ex: HttpExchange) {
         val browser = watching(ex) ?: return
         if (ex.requestMethod == "POST") {

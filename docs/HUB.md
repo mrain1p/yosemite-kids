@@ -543,7 +543,11 @@ row (*Not on YouTube*) in YouTube's own words. The videos already listed stay
 until you remove it. (Before 1.9.0 one dead channel failed every run and
 backed the whole crawl off for hours.) The Devices page of the admin GUI
 shows who builds the index, how far it is, the last crawl, any channel that
-is gone, and whether any device is pulling.
+is gone, and whether any device is pulling. After a run that did not fail,
+the same thread indexes **playlists** for the browser (`PlaylistCrawlRun`):
+each channel's first twenty, the first page of each, refreshed once a day,
+twelve fetches a run at the same four-second pacing, so a family's channels
+are covered over a few runs. Its line is appended to the crawl's in the log.
 
 The container reaches exactly two things on the network: YouTube, through a
 client whose host allow-list is armed at startup, and the devices' `/sync-now`.

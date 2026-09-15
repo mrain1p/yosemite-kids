@@ -1030,6 +1030,68 @@
     state.view = "watched-videos";
   }
 
+  /** A playlist as a card: its cover, its name, and how many of its videos this kid may see. */
+  function playlistCard(p) {
+    var card = el("button", "card chan");
+    card.type = "button";
+    var poster = el("div", "poster");
+    if (p.thumb) {
+      var img = el("img");
+      img.src = thumbSrc(p.thumb);
+      img.alt = "";
+      img.loading = "lazy";
+      poster.appendChild(img);
+    }
+    poster.appendChild(el("span", "badge", p.count + " videos"));
+    card.appendChild(poster);
+    var label = el("div", "label");
+    label.appendChild(el("span", "title", p.name));
+    card.appendChild(label);
+    card.onclick = function () { openPlaylist(p.id); };
+    return card;
+  }
+
+  /** Every playlist of one channel - the phone's Playlists page, "See all" from the strip. */
+  function renderPlaylists(payload) {
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = false;
+    document.getElementById("searchrow").hidden = true;
+    main.appendChild(shelfHead("Playlists · " + payload.name, payload.count));
+    var pg = el("div", "grid");
+    (payload.playlists || []).forEach(function (p) { pg.appendChild(playlistCard(p)); });
+    main.appendChild(pg);
+    state.view = "playlists";
+  }
+
+  function openPlaylists(id) {
+    get("/kid/playlists?id=" + encodeURIComponent(id)).then(function (p) {
+      if (p) goInto(function () { renderPlaylists(p); });
+    });
+  }
+
+  /** One playlist as its own page: the hub's rows in playlist order, paged like a channel. */
+  function renderPlaylist(pl) {
+    var main = document.getElementById("main");
+    clear(main);
+    document.getElementById("back").hidden = false;
+    document.getElementById("searchrow").hidden = true;
+    var g = grid(pl.videos);
+    main.appendChild(shelfHead(pl.name, pl.count));
+    main.appendChild(el("div", "note", pl.channel));
+    main.appendChild(g);
+    moreButton(main, pl, function (from) {
+      return get("/kid/playlist?id=" + encodeURIComponent(pl.id) + "&from=" + from);
+    }, g);
+    state.view = "playlist";
+  }
+
+  function openPlaylist(id) {
+    get("/kid/playlist?id=" + encodeURIComponent(id)).then(function (pl) {
+      if (pl) goInto(function () { renderPlaylist(pl); });
+    });
+  }
+
   function openChannelWatched(id) {
     get("/kid/channel?id=" + encodeURIComponent(id) + "&watched=1").then(function (channel) {
       if (channel) goInto(function () { renderWatched(channel); });

@@ -364,8 +364,15 @@ object KidSurface {
             title = "Playlists",
             kind = SurfaceKind.SCREEN,
             screen = "Playlists",
-            webReady = false,
-            why = "R5. Needs playlists[] on /channel, which the hub does not index yet."
+            route = "/playlists",
+            rules = listOf("PlaylistCrawlRun"),
+            webReady = true,
+            why = "The phone lists a channel's playlists live when its page opens; the hub carries no " +
+                "live extraction on the kid's path, so the crawl indexes them (PlaylistCrawlRun: the " +
+                "first twenty, the first page of each, refreshed daily) and the strip, See all and a " +
+                "playlist's page draw from the index. A kid sees exactly the rows the channel page " +
+                "would. Parent-picked playlists as rows above the grid (playlistShelves) stay the " +
+                "phone's for now."
         ),
         KidSurfaceDef(
             id = "watched-videos",

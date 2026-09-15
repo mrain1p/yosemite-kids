@@ -94,6 +94,73 @@ class ChannelIndex(private val dir: File) {
         )
     }
 
+    /**
+     * One of a channel's own playlists as the crawl found it: the ids of its
+     * first page, in playlist order, or null while the crawl has listed the
+     * playlist but not yet fetched it. Every id YouTube gave is kept; which a
+     * kid may see is decided where the page is answered, against the rows the
+     * channel page is drawn from, so a playlist never shows more than the
+     * channel would.
+     */
+    data class IndexedPlaylist(
+        val id: String,
+        val url: String,
+        val name: String,
+        val thumbnailUrl: String?,
+        /** YouTube's count, for the strip; the page counts what the kid may see. */
+        val videoCount: Long,
+        val videoIds: List<String>?
+    )
+
+    /** A channel's playlists, [complete] once every one has its videos, stamped when the listing was taken. */
+    data class PlaylistListing(val at: Long, val complete: Boolean, val playlists: List<IndexedPlaylist>)
+
+    private val playlistsDir = File(dir, "playlists")
+
+    private fun playlistsFile(sourceId: String) =
+        File(playlistsDir, sourceId.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".json")
+
+    fun loadPlaylists(sourceId: String): PlaylistListing? {
+        val f = playlistsFile(sourceId)
+        if (!f.exists()) return null
+        return runCatching {
+            val o = JSONObject(f.readText())
+            val arr = o.getJSONArray("playlists")
+            PlaylistListing(
+                at = o.optLong("at", 0L),
+                complete = o.optBoolean("complete", false),
+                playlists = (0 until arr.length()).map { i ->
+                    val p = arr.getJSONObject(i)
+                    IndexedPlaylist(
+                        id = p.getString("id"),
+                        url = p.optString("url"),
+                        name = p.optString("name"),
+                        thumbnailUrl = p.optString("th").ifEmpty { null },
+                        videoCount = p.optLong("n", 0L),
+                        videoIds = p.optJSONArray("v")?.let { v -> (0 until v.length()).map { v.getString(it) } }
+                    )
+                }
+            )
+        }.getOrNull()
+    }
+
+    fun savePlaylists(sourceId: String, listing: PlaylistListing) {
+        playlistsDir.mkdirs()
+        val o = JSONObject().put("at", listing.at).put("complete", listing.complete)
+        val arr = JSONArray()
+        listing.playlists.forEach { p ->
+            arr.put(JSONObject().apply {
+                put("id", p.id)
+                put("url", p.url)
+                put("name", p.name)
+                p.thumbnailUrl?.let { put("th", it) }
+                put("n", p.videoCount)
+                p.videoIds?.let { put("v", JSONArray(it)) }
+            })
+        }
+        playlistsFile(sourceId).writeText(o.put("playlists", arr).toString())
+    }
+
     // ---- query -----------------------------------------------------------
 
     /**
@@ -145,6 +212,7 @@ class ChannelIndex(private val dir: File) {
     /** Whitelist edit removed a source — its index and crawl cursor go with it. */
     fun dropSource(sourceId: String) {
         sourceFile(sourceId).delete()
+        playlistsFile(sourceId).delete()
         dropCursor(sourceId)
         dropProbeCount(sourceId)
         states = states - sourceId

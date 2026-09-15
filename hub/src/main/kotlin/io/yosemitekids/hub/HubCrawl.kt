@@ -5,6 +5,7 @@ import io.yosemitekids.app.data.Http
 import io.yosemitekids.app.data.IndexCrawlRun
 import io.yosemitekids.app.data.IndexCrawler
 import io.yosemitekids.app.data.Source
+import io.yosemitekids.app.data.SourceKind
 import io.yosemitekids.app.data.YouTubeRepository
 import kotlinx.coroutines.runBlocking
 import okhttp3.Request
@@ -32,6 +33,9 @@ class HubCrawl(
     private val crawlOnce: suspend (Source) -> Boolean,
     private val dropSource: (String) -> Unit,
     private val pacingMs: Long = IndexCrawler.CRAWL_DELAY_MS,
+    /** A channel's playlists and one playlist's first page, for PlaylistCrawlRun; null runs no playlist pass (tests). */
+    private val listPlaylists: (suspend (Source) -> List<io.yosemitekids.app.data.PlaylistRef>)? = null,
+    private val playlistVideos: (suspend (io.yosemitekids.app.data.PlaylistRef) -> List<io.yosemitekids.app.data.Video>)? = null,
     private val now: () -> Long = { System.currentTimeMillis() }
 ) {
     companion object {
@@ -54,8 +58,22 @@ class HubCrawl(
 
         /** The real thing: IndexCrawler over the shared repository. */
         fun real(store: HubStore, index: ChannelIndex, me: String): HubCrawl {
-            val crawler = IndexCrawler(YouTubeRepository(), index)
-            return HubCrawl(store, index, me, crawlOnce = { crawler.crawlOnce(it) }, dropSource = crawler::dropSource)
+            val yt = YouTubeRepository()
+            val crawler = IndexCrawler(yt, index)
+            return HubCrawl(
+                store, index, me,
+                crawlOnce = { crawler.crawlOnce(it) },
+                dropSource = crawler::dropSource,
+                listPlaylists = { yt.channelPlaylists(it) },
+                // The first page of the playlist, on the background lane like the
+                // crawl itself; the page a kid opens is drawn from what this kept.
+                playlistVideos = { ref ->
+                    yt.uploadsPage(
+                        Source(ref.id, ref.url, ref.name, ref.thumbnailUrl, SourceKind.PLAYLIST),
+                        background = true
+                    ).videos
+                }
+            )
         }
     }
 
@@ -113,6 +131,21 @@ class HubCrawl(
             backoffMs = 0L
             notBefore = 0L
             last = outcome.summary
+            // The playlist pass rides after a run that did not fail: the same
+            // lane, the same pacing, its own small budget, and never while the
+            // index crawl is backing off - a bot wall is a bot wall.
+            val lp = listPlaylists
+            val pv = playlistVideos
+            if (lp != null && pv != null) {
+                val pl = runBlocking {
+                    io.yosemitekids.app.data.PlaylistCrawlRun.run(
+                        index, sources, lp, pv,
+                        onFailure = { System.err.println("playlist crawl failed: ${it.message}") },
+                        delayMs = pacingMs, now = now
+                    )
+                }
+                if (pl.fetches > 0) last = "$last; ${pl.summary}"
+            }
         }
         println(last)
         return outcome

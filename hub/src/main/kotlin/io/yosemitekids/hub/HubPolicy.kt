@@ -56,7 +56,8 @@ class HubPolicy(
     private val store: HubStore,
     private val usage: HubUsage,
     private val screening: ScreeningStore,
-    private val index: ChannelIndex,
+    /** Public for the kid routes that read the index beside the catalogue (a channel's playlists); the rules stay here. */
+    val index: ChannelIndex,
     private val now: () -> Long = { System.currentTimeMillis() }
 ) {
 

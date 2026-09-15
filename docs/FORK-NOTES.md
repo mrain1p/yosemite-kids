@@ -1970,8 +1970,21 @@ round is what it unlocked or what the same week's NAS log turned up.
   · Newest · Shortest · Mix it up — through `SearchOrder` with one set of
   words (`SearchOrder.label`) on every face. A search-as-you-type page must
   not remember every prefix, so a search joins the recents only when Enter
-  or a chip says the child meant it (`remember=1`). The gate prints
-  `playlists` alone now; that one waits on the crawler indexing playlists.
+  or a chip says the child meant it (`remember=1`).
+- **Playlists in the browser, and the crawl that makes them possible.** The
+  phone lists a channel's playlists live when its page opens; the hub carries
+  no live extraction on the kid's path and the page may not decide anything,
+  so the surface waited on the crawler. `PlaylistCrawlRun` in `:crawl` now
+  indexes each channel's playlists — the first twenty, the first page of
+  each, refreshed once a day, paced like the index crawl with its own budget
+  of twelve fetches a run, carried across runs when it runs out mid-channel,
+  never while the index crawl is backing off, and never for a channel
+  YouTube says is gone. The kid page draws the strip on a channel, "See all",
+  and a playlist's own page from `/kid/playlists` and `/kid/playlist`; a
+  playlist shows a kid exactly the rows the channel page would, matched
+  across their whole catalogue, so it is never a way around a block. The
+  gate names no kid surface the browser lacks any more. Parent-picked
+  playlists as rows above the grid stay the phone's.
 - **The phone's Who's watching? accepts the kid's browser password.** Beside
   the four-press PIN, never instead of it: the PIN is the phone's lock and a
   kid with a password and no PIN opens with a tap as before. *Use the
@@ -1989,7 +2002,8 @@ round is what it unlocked or what the same week's NAS log turned up.
 
 Verified: the JVM suites in `:core`, `:crawl`, `:hub` and `:app` (new:
 `ChannelIndexDateTest`, `PlaybackCacheTest`, `HubKidSearchTest`,
-`RecentSearchesTest`, `PlaybackBreakerTest`, `PickerGateTest`, and the
+`RecentSearchesTest`, `PlaybackBreakerTest`, `PickerGateTest`,
+`PlaylistCrawlRunTest`, `HubKidPlaylistTest`, and the
 gone-source and Newest cases in `IndexCrawlRunTest` and `SearchOrderTest`);
 both gates; the canary in CI. The channel-page rails, the breaker's card and
 the password screen are Compose and were compiled, not driven: they want a
