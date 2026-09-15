@@ -70,6 +70,7 @@ class HubKidHome(
     private val store: HubStore,
     private val history: HubKidHistory,
     private val lists: HubSavedLists,
+    private val searches: HubKidSearches? = null,
     private val now: () -> Long = System::currentTimeMillis
 ) {
 
@@ -458,16 +459,23 @@ class HubKidHome(
      * here and on search; guard 69 holds this file to reading what the
      * manifest says the browser honours.
      */
-    fun channel(kidId: String, sourceId: String, from: Int = 0): JSONObject? {
+    fun channel(kidId: String, sourceId: String, from: Int = 0, onlyWatched: Boolean = false): JSONObject? {
         val source = policy.catalogueFor(kidId).firstOrNull { it.entry.id == sourceId } ?: return null
         val watched = history.pointsFor(kidId)
         val saved = savedFor(kidId)
         val layout = runCatching { store.load().channelLayout }.getOrDefault("")
         val items = source.videos.map { it.toVideo() }.map { VideoItem(it, watched[it.url]?.fraction) }
+        // The channel's finished videos - the phone's Watched screen, its only
+        // two-level one - newest-watched first through the phone's own
+        // orderByWatched. "Finished" is the hub's verdict per row, never the
+        // page's (guard 61).
+        val finished = items.filter { watched[it.video.url]?.isFinished == true }
         // Seeded from the channel, so "random" would hold still for a sitting;
         // the two layouts a parent can pick never reach that branch.
-        val ordered = filterVideos(items, defaultFilterFor(layout), sourceId.hashCode().toLong())
-            .map { it.video to (it.progress ?: 0f) }
+        val ordered = (
+            if (onlyWatched) io.yosemitekids.app.ui.orderByWatched(finished) { url -> watched[url]?.lastWatchedAt ?: 0L }
+            else filterVideos(items, defaultFilterFor(layout), sourceId.hashCode().toLong())
+        ).map { it.video to (it.progress ?: 0f) }
         val (slice, more, total) = page(ordered, from)
         return JSONObject()
             .put("id", source.entry.id)
@@ -475,6 +483,8 @@ class HubKidHome(
             .put("count", total)
             .put("from", from.coerceIn(0, total))
             .put("more", more)
+            .put("watched", onlyWatched)
+            .put("watchedCount", finished.size)
             .put("videos", videosJson(slice, watched, saved))
     }
 
@@ -484,8 +494,17 @@ class HubKidHome(
      * for Mario should not have to scroll past seventy videos of everything
      * else to find one.
      */
-    fun search(kidId: String, query: String, from: Int = 0): JSONObject {
+    fun search(
+        kidId: String,
+        query: String,
+        from: Int = 0,
+        order: String = io.yosemitekids.app.data.SearchOrder.BEST,
+        remember: Boolean = false
+    ): JSONObject {
         val terms = SearchRank.terms(query)
+        // Remembered only when the page says the child meant it (Enter, a chip),
+        // never on the keystrokes a search-as-you-type page sends.
+        if (remember && terms.isNotEmpty() && from == 0) searches?.add(kidId, query)
         val catalogue = policy.catalogueFor(kidId)
         val watched = history.pointsFor(kidId)
         val saved = savedFor(kidId)
@@ -503,16 +522,33 @@ class HubKidHome(
         val ranked = SearchRank.rank(hits, terms, query, signals) {
             SearchRank.Key(it.title, it.channelName, it.url)
         }
+        // The kid's chip, through the phone's own SearchOrder. Seeded from the
+        // query so "Mix it up" holds still from one page to the next.
+        val effective = order.takeIf { it in io.yosemitekids.app.data.SearchOrder.ALL }
+            ?: io.yosemitekids.app.data.SearchOrder.BEST
+        val arranged = io.yosemitekids.app.data.SearchOrder.order(
+            ranked, effective, query.lowercase().hashCode().toLong(), publishedAt = { it.publishedAt }
+        ) { it.durationSeconds }
         // Paged like a channel: the same "Videos before Show more" the phone's
         // grid honours on its search results.
-        val (slice, more, total) = page(ranked.map { it to (watched[it.url]?.fraction ?: 0f) }, from)
+        val (slice, more, total) = page(arranged.map { it to (watched[it.url]?.fraction ?: 0f) }, from)
         return JSONObject()
             .put("query", query)
             .put("count", total)
             .put("from", from.coerceIn(0, total))
             .put("more", more)
+            .put("order", effective)
+            .put("orders", JSONArray().also { arr ->
+                io.yosemitekids.app.data.SearchOrder.ALL.forEach { arr.put(sortJson(it, io.yosemitekids.app.data.SearchOrder.label(it))) }
+            })
+            .put("recent", JSONArray(searches?.recent(kidId) ?: emptyList<String>()))
             .put("videos", videosJson(slice, watched, saved))
     }
+
+    /** The × on a recent-search chip: one term gone, the list that is left. */
+    fun forgetSearch(kidId: String, query: String): List<String> = searches?.remove(kidId, query) ?: emptyList()
+
+    fun clearSearches(kidId: String): List<String> = searches?.clear(kidId) ?: emptyList()
 
     // --- shape ----------------------------------------------------------
 

@@ -46,6 +46,19 @@ object SearchOrder {
     val ALL = listOf(BEST, RECENT, SHORT, MIX)
 
     /**
+     * The chip's words, one spelling for the phone, the television and the
+     * hub's reply to the browser. An order nobody has heard of gets its id
+     * back rather than a blank chip.
+     */
+    fun label(order: String): String = when (order) {
+        BEST -> "Best match"
+        RECENT -> "Newest"
+        SHORT -> "Shortest"
+        MIX -> "Mix it up"
+        else -> order
+    }
+
+    /**
      * [items] must already be in relevance order — this reorders what is on
      * screen and never what is queued for screening, so [BEST] is the identity.
      * Both sorts are stable, so ties (and every undated row) keep that order.

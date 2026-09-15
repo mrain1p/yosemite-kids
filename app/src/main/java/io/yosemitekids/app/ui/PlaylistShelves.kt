@@ -30,8 +30,8 @@ import io.yosemitekids.app.data.PlaylistRef
 
 /**
  * The "By playlist" channel layout: the channel's playlists as a row of
- * chips at the top of its page — the same idea as the channel bar on the
- * home screen, one level down — then "All videos" and the grid. A chip opens
+ * chips at the top of its page â the same idea as the channel bar on the
+ * home screen, one level down â then "All videos" and the grid. A chip opens
  * the playlist as its own page; Back returns to the channel. The row goes
  * into the channel grid as full-span items so the page scrolls as one.
  */
@@ -40,7 +40,7 @@ internal fun LazyGridScope.playlistRow(
     isTv: Boolean,
     onOpenPlaylist: (PlaylistRef) -> Unit,
     channelName: String = "",
-    /** "See all" → every playlist with its video count. */
+    /** "See all" â every playlist with its video count. */
     onSeeAll: (() -> Unit)? = null
 ) {
     if (playlists.isEmpty()) return
@@ -63,7 +63,7 @@ internal fun LazyGridScope.playlistRow(
 
 /**
  * Every playlist a channel has, one row each with its cover and how many
- * videos are in it — the strip's "See all". A row opens the playlist.
+ * videos are in it â the strip's "See all". A row opens the playlist.
  */
 @Composable
 internal fun PlaylistsPage(
@@ -136,13 +136,13 @@ internal fun PlaylistsPage(
 }
 
 /**
- * "The World of Insects | SciShow Kids" → "The World of Insects": channels
+ * "The World of Insects | SciShow Kids" â "The World of Insects": channels
  * stamp their own name on every playlist title, and on the channel's own
- * page that stamp is just noise. Separators seen in the wild: | · - – — •
+ * page that stamp is just noise. Separators seen in the wild: | Â· - â â â¢
  */
 internal fun cleanPlaylistName(name: String, channelName: String): String {
     if (channelName.isBlank()) return name.trim()
-    val sep = "[|·•\\-–—:]"
+    val sep = "[|Â·â¢\\-ââ:]"
     val tail = Regex("\\s*$sep\\s*${Regex.escape(channelName)}\\s*$", RegexOption.IGNORE_CASE)
     val head = Regex("^\\s*${Regex.escape(channelName)}\\s*$sep\\s*", RegexOption.IGNORE_CASE)
     val cleaned = name.replace(tail, "").replace(head, "").trim()
@@ -154,7 +154,7 @@ internal fun cleanPlaylistName(name: String, channelName: String): String {
  * name with "See all" (the playlist as its own page), then its first videos
  * as shelf tiles. Above the grid, before the "By playlist" chip row if the
  * parent chose that layout too. Rows the channel has picked but whose
- * videos haven't loaded yet are simply not there — never an empty row.
+ * videos haven't loaded yet are simply not there â never an empty row.
  */
 internal fun LazyGridScope.playlistShelves(
     shelves: List<PlaylistShelf>,
@@ -180,23 +180,76 @@ internal fun LazyGridScope.playlistShelves(
     }
 }
 
-/** "New for you" on a channel page: the newest videos the kid hasn't started, as a row above the grid. */
+/**
+ * "New for you" on a channel page: the newest videos the kid hasn't started, as
+ * a row above the grid.
+ *
+ * **The slot is always there.** It used to appear only with three or more new
+ * videos, so a channel with two rendered as block-then-Videos and looked
+ * half-built - a rail that is sometimes there reads as breakage (roadmap
+ * 8C.2). Now two new videos are a short row, none is a line saying so, and
+ * "still loading" is a skeleton - all in the same two keys, so nothing below
+ * moves when the real row lands. Guard 71 holds the keys.
+ */
 internal fun LazyGridScope.newForYouRow(
     items: List<VideoItem>,
     isTv: Boolean,
     avatarFor: (String) -> String?,
     onPlay: (VideoItem) -> Unit,
+    loading: Boolean = false,
     onOpenMenu: ((VideoItem) -> Unit)?
 ) {
-    if (items.isEmpty()) return
     // "New for you" and not the handoff's "New videos": the words in this app
     // are its own, the same call [FeedControlRow] makes about its chips.
     item(key = "nfy:title", span = { GridItemSpan(maxLineSpan) }) {
         ShelfHeader("New for you", count = items.size)
     }
     item(key = "nfy:row", span = { GridItemSpan(maxLineSpan) }) {
-        VideoShelfRow(items, isTv, avatarFor, onPlay, onOpenMenu)
+        when {
+            loading -> RowSkeleton(count = 3, width = if (isTv) 236.dp else 200.dp, isTv = isTv)
+            items.isEmpty() -> QuietRowNote("Nothing new here yet — you've seen them all ✓")
+            else -> VideoShelfRow(items, isTv, avatarFor, onPlay, onOpenMenu)
+        }
     }
+}
+
+/**
+ * The playlist strip's slot while the listing is still on its way: the same
+ * heading and the same two keys as [playlistRow], with grey chips where the
+ * real ones will sit. The strip arrives a second after the page paints, and
+ * before this it pushed the grid down under a child who had started reading.
+ */
+internal fun LazyGridScope.playlistRowPending(isTv: Boolean) {
+    item(key = "pl:title", span = { GridItemSpan(maxLineSpan) }) {
+        ShelfHeader("Playlists")
+    }
+    item(key = "pl:row", span = { GridItemSpan(maxLineSpan) }) {
+        RowSkeleton(count = 4, width = if (isTv) 200.dp else 132.dp, isTv = isTv)
+    }
+}
+
+/** A row of breathing placeholders the size of the cards or chips that will replace them. */
+@Composable
+private fun RowSkeleton(count: Int, width: androidx.compose.ui.unit.Dp, isTv: Boolean) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(if (isTv) 14.dp else 10.dp),
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
+    ) {
+        repeat(count) {
+            SkeletonCard(Modifier.width(width))
+        }
+    }
+}
+
+/** One quiet line where a row would be: the slot kept, the absence said. */
+@Composable
+private fun QuietRowNote(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp)
+    )
 }
 
 
@@ -261,7 +314,7 @@ private fun PlaylistsRow(
 
 /**
  * One playlist in the row: its cover, rounded, with the video count in the
- * corner and the name underneath — a channel chip's shape, but 16:9 because
+ * corner and the name underneath â a channel chip's shape, but 16:9 because
  * a playlist's cover is a video frame, not a face.
  */
 @Composable
@@ -311,7 +364,7 @@ private fun PlaylistChip(playlist: PlaylistRef, width: Dp, onClick: () -> Unit) 
 }
 
 /**
- * One video in a horizontal shelf — the TV home rows. Rounded 16:9 poster
+ * One video in a horizontal shelf â the TV home rows. Rounded 16:9 poster
  * with the duration and the red watched bar, then the channel's face beside
  * the title and channel name. Finished videos dim the poster, as in the
  * grids. OK plays; a held OK (or a touch hold) opens the same menu the
@@ -327,8 +380,8 @@ internal fun ShelfVideoTile(
     modifier: Modifier = Modifier,
     width: Dp = 236.dp,
     /**
-     * Replaces the "channel · today" line. The Downloads shelf says
-     * "channel · 142 MB" instead: on that row what matters about a video is
+     * Replaces the "channel Â· today" line. The Downloads shelf says
+     * "channel Â· 142 MB" instead: on that row what matters about a video is
      * that it is here and what it cost, not when it went up.
      */
     metaOverride: String? = null,

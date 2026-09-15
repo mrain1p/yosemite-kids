@@ -705,12 +705,13 @@ mapping and its environment line come out of the NAS compose file.
    quality picker silently becomes a no-op. Evict on playback failure, or a
    stale URL becomes a video that cannot play and `onPlaybackFailed` walks it
    through the queue. Downloads must bypass it.
-4. **The three kid surfaces the gate still names.** It prints them on every
-   run: `playlists search-page watched-videos`.
-   - `watched-videos` — a channel's finished videos. The hub already knows
-     `finished` per row; this is a `watched[]` on `/channel` and a view.
-   - `search-page` — the page *before* a query: recent searches and the
-     control row. The browser searches as you type and has never had one.
+4. **The kid surfaces the gate still names.** Two of the three reached the
+   browser in 1.9.0; it prints `playlists` now.
+   - ~~`watched-videos`~~ — done: `/channel?watched=1`, the hub's finished rows
+     in the phone's `orderByWatched`, and a "Watched · N" link on the page.
+   - ~~`search-page`~~ — done: recents per kid on the hub (`HubKidSearches`,
+     rules in `RecentSearches` in `:core`), remembered only on Enter or a
+     chip, and the order chips through `SearchOrder` with one set of words.
    - `playlists` — **genuinely blocked**, not merely undone. `ChannelIndex`
      does not index playlists, so there is nothing for `/channel` to carry.
      The same shape as the three dead sort chips waiting on `publishedAt`:

@@ -338,9 +338,14 @@ object KidSurface {
             title = "Search",
             kind = SurfaceKind.SCREEN,
             screen = "Search",
-            webReady = false,
-            why = "R5. The page BEFORE a query - recent searches and the control row. The browser " +
-                "searches as you type and so has never had one.",
+            route = "/search",
+            rules = listOf("RecentSearches", "SearchOrder"),
+            webReady = true,
+            why = "The page BEFORE a query: recent searches and the order chips. The phone keeps a " +
+                "kid's recents on the device (SearchHistoryStore) and the browser's live on the " +
+                "hub per kid (HubKidSearches), both through RecentSearches in :core; the chips are " +
+                "SearchOrder.label on every face. The browser searches as you type, so a search " +
+                "joins the recents only when Enter or a chip says the child meant it.",
             tvWhy = "A rail stop with the system's on-screen keyboard; the phone has the mic. Same " +
                 "recents, same SearchOrder."
         ),
@@ -367,9 +372,12 @@ object KidSurface {
             title = "Watched",
             kind = SurfaceKind.SCREEN,
             screen = "WatchedVideos",
-            rules = listOf("KidHome.FINISHED_FRACTION"),
-            webReady = false,
-            why = "R5. A channel's finished videos - the app's only two-level screen."
+            rules = listOf("KidHome.FINISHED_FRACTION", "orderByWatched"),
+            route = "/channel",
+            webReady = true,
+            why = "A channel's finished videos - the app's only two-level screen. The browser asks " +
+                "/channel?watched=1 and the hub answers with the phone's own orderByWatched; what " +
+                "counts as finished is the hub's verdict per row, never the page's."
         )
     )
 

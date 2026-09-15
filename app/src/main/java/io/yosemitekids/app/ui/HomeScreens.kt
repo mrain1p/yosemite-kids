@@ -211,11 +211,13 @@ internal fun VideoFilterChips(selected: String, onSelect: (String) -> Unit) {
 
 /** Label and icon for a search order. */
 internal fun searchOrderLabel(order: String): Pair<String, androidx.compose.ui.graphics.vector.ImageVector> =
-    when (order) {
-        SearchOrder.RECENT -> "Newest" to YosemiteIcons.NewRelease
-        SearchOrder.SHORT -> "Shortest" to YosemiteIcons.Timer
-        SearchOrder.MIX -> "Mix it up" to YosemiteIcons.Shuffle
-        else -> "Best match" to Icons.Filled.Star
+    // The words are SearchOrder.label - the hub sends the same ones to the
+    // browser - and only the icon is this face's own.
+    SearchOrder.label(order) to when (order) {
+        SearchOrder.RECENT -> YosemiteIcons.NewRelease
+        SearchOrder.SHORT -> YosemiteIcons.Timer
+        SearchOrder.MIX -> YosemiteIcons.Shuffle
+        else -> Icons.Filled.Star
     }
 
 /**

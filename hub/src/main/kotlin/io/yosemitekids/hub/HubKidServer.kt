@@ -2,6 +2,7 @@ package io.yosemitekids.hub
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -92,6 +93,7 @@ class HubKidServer(
     private val lists: HubSavedLists,
     /** Where a browser's page errors go: the console's Devices page and the container log. See [HubReports]. */
     private val reports: HubReports,
+    private val searches: HubKidSearches,
     /** Passed in so tests need no clock, like every other class here. */
     private val now: () -> Long = { System.currentTimeMillis() }
 ) {
@@ -100,7 +102,7 @@ class HubKidServer(
      * What the page is shown. Shape only: every rule it draws on is the app's,
      * in `:core` or `:crawl`. See [HubKidHome].
      */
-    private val browse = HubKidHome(policy, store, history, lists)
+    private val browse = HubKidHome(policy, store, history, lists, searches, now)
 
     /**
      * Resolving a video to one playable URL, and carrying its bytes. Built
@@ -558,20 +560,44 @@ class HubKidServer(
         // `from` is where the page's "Show more" continues from. The cap is
         // the parent's pageSize, applied HERE (guard 61 forbids the page
         // slicing), and `more` in the reply says whether to draw the button.
-        val body = browse.channel(browser.kid, id, from = pageFrom(ex))
+        // `watched=1` is the channel's finished videos, the phone's Watched
+        // screen; the hub decides what counts as finished and in what order.
+        val body = browse.channel(browser.kid, id, from = pageFrom(ex), onlyWatched = param(ex, "watched") == "1")
             ?: return respond(ex, 404, JSONObject().put("error", "not here").toString())
         respond(ex, 200, body.toString())
     }
 
     /** `GET /search?q=` — ranked with the same [io.yosemitekids.app.data.SearchRank] the app uses. */
     private fun search(ex: HttpExchange) {
-        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
         val browser = watching(ex) ?: return
+        if (ex.requestMethod == "POST") {
+            // The × on a recent-search chip, or Clear all: the one thing a kid
+            // may delete on their own. Same-origin like every other write here.
+            if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+            val body = readBody(ex) ?: return respond(ex, 413, "too large")
+            val json = runCatching { JSONObject(body) }.getOrNull()
+                ?: return respond(ex, 400, JSONObject().put("error", "bad body").toString())
+            val left = when {
+                json.optBoolean("clear") -> browse.clearSearches(browser.kid)
+                json.optString("forget").isNotBlank() -> browse.forgetSearch(browser.kid, json.optString("forget").take(MAX_QUERY_CHARS))
+                else -> return respond(ex, 400, JSONObject().put("error", "nothing to do").toString())
+            }
+            return respond(ex, 200, JSONObject().put("recent", JSONArray(left)).toString())
+        }
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
         val q = param(ex, "q").orEmpty()
         if (q.length > MAX_QUERY_CHARS) {
             return respond(ex, 400, JSONObject().put("error", "too long").toString())
         }
-        respond(ex, 200, browse.search(browser.kid, q, from = pageFrom(ex)).toString())
+        // `order` is the kid's chip (SearchOrder, validated in the hub);
+        // `remember=1` says the child meant this search, so it joins their
+        // recents - a search-as-you-type page must not remember every prefix.
+        val reply = browse.search(
+            browser.kid, q, from = pageFrom(ex),
+            order = param(ex, "order").orEmpty().take(16),
+            remember = param(ex, "remember") == "1"
+        )
+        respond(ex, 200, reply.toString())
     }
 
     /** `from=` on a paged route: a non-negative offset, bounded, or zero. */

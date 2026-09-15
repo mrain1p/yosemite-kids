@@ -133,6 +133,7 @@ class HubServer(
 
     /** A browser's Favorites, Watch later and Up next. See [HubSavedLists]. */
     private val kidLists = HubSavedLists(store.dataDir)
+    private val kidSearches = HubKidSearches(store.dataDir)
 
     /**
      * What the clients have said went wrong. In memory and printed to
@@ -151,7 +152,7 @@ class HubServer(
      * only to the kid cookie, which this class never reads, and the parent
      * session is a header no kid route ever looks at (guards 57, 59).
      */
-    private val kid = HubKidServer(browsers, store, policy, meter, kidHistory, kidLists, reports, now)
+    private val kid = HubKidServer(browsers, store, policy, meter, kidHistory, kidLists, reports, kidSearches, now)
 
     /** The verdict engine and the browser meter, for tests and a future route. */
     fun policy(): HubPolicy = policy

@@ -19,10 +19,11 @@ class SearchHistoryStore(context: Context, profileSuffix: String = "") {
     }.getOrDefault(emptyList())
 
     fun add(query: String) {
-        val q = query.trim()
-        if (q.isEmpty()) return
-        val next = listOf(q) + recent().filterNot { it.equals(q, ignoreCase = true) }
-        prefs.edit().putString("recent", JSONArray(next.take(MAX)).toString()).apply()
+        // The rules are RecentSearches in :core, shared with the hub's per-kid
+        // list for the browser; this store only holds what comes back.
+        val next = RecentSearches.add(recent(), query)
+        if (next == recent()) return
+        prefs.edit().putString("recent", JSONArray(next).toString()).apply()
     }
 
     /**
@@ -31,7 +32,7 @@ class SearchHistoryStore(context: Context, profileSuffix: String = "") {
      * per-chip × has to be real, not a Clear-all in disguise.
      */
     fun remove(query: String) {
-        val next = recent().filterNot { it.equals(query.trim(), ignoreCase = true) }
+        val next = RecentSearches.remove(recent(), query)
         prefs.edit().putString("recent", JSONArray(next).toString()).apply()
     }
 
@@ -40,6 +41,6 @@ class SearchHistoryStore(context: Context, profileSuffix: String = "") {
     }
 
     companion object {
-        const val MAX = 8
+        const val MAX = RecentSearches.MAX
     }
 }

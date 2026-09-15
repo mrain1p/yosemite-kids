@@ -82,22 +82,22 @@ fun ProfileAvatar(profile: Profile, size: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/** Emoji → bundled Fluent Emoji 3D drawable (res/drawable-nodpi/avatar_*.png). */
+/** Emoji â bundled Fluent Emoji 3D drawable (res/drawable-nodpi/avatar_*.png). */
 val FLUENT_AVATARS: Map<String, String> = mapOf(
-    "🦊" to "avatar_fox", "🐼" to "avatar_panda", "🦁" to "avatar_lion",
-    "🐸" to "avatar_frog", "🐰" to "avatar_rabbit", "🦄" to "avatar_unicorn",
-    "🐙" to "avatar_octopus", "🦖" to "avatar_trex",
-    "🚗" to "avatar_car", "🚀" to "avatar_rocket", "🚂" to "avatar_train",
-    "🚜" to "avatar_tractor", "🚁" to "avatar_helicopter", "⛵" to "avatar_sailboat",
-    "🤖" to "avatar_robot", "👻" to "avatar_ghost", "🌟" to "avatar_star",
-    "🌈" to "avatar_rainbow", "🍉" to "avatar_watermelon", "⚽" to "avatar_soccer",
-    "🎸" to "avatar_guitar", "🧁" to "avatar_cupcake"
+    "ð¦" to "avatar_fox", "ð¼" to "avatar_panda", "ð¦" to "avatar_lion",
+    "ð¸" to "avatar_frog", "ð°" to "avatar_rabbit", "ð¦" to "avatar_unicorn",
+    "ð" to "avatar_octopus", "ð¦" to "avatar_trex",
+    "ð" to "avatar_car", "ð" to "avatar_rocket", "ð" to "avatar_train",
+    "ð" to "avatar_tractor", "ð" to "avatar_helicopter", "âµ" to "avatar_sailboat",
+    "ð¤" to "avatar_robot", "ð»" to "avatar_ghost", "ð" to "avatar_star",
+    "ð" to "avatar_rainbow", "ð" to "avatar_watermelon", "â½" to "avatar_soccer",
+    "ð¸" to "avatar_guitar", "ð§" to "avatar_cupcake"
 )
 
 /**
- * Full-screen "Who's watching?" — one row of big tiles, D-pad and touch alike.
+ * Full-screen "Who's watching?" â one row of big tiles, D-pad and touch alike.
  * Picking a protected profile detours through the blind direction-PIN entry.
- * [remainingMinutes] (profile id → minutes left today) makes budget-stealing
+ * [remainingMinutes] (profile id â minutes left today) makes budget-stealing
  * visible on the tile itself; null entries show no number.
  */
 @Composable
@@ -108,6 +108,25 @@ fun WhosWatchingScreen(
     onPicked: (Profile) -> Unit
 ) {
     var pinFor by remember { mutableStateOf<Profile?>(null) }
+    // The kid's own password - the one the browser takes - as a second way
+    // past the lock, typed. Offered beside the PIN, never instead of it:
+    // pickerGate says when. Verified with the same KidPassword the hub uses.
+    var passwordFor by remember { mutableStateOf<Profile?>(null) }
+
+    passwordFor?.let { profile ->
+        KidPasswordScreen(
+            title = "${profile.name}'s password",
+            onCancel = { passwordFor = null },
+            onEntered = { entered ->
+                if (io.yosemitekids.app.data.KidPassword.verify(profile.webPassword, entered)) {
+                    passwordFor = null
+                    onPicked(profile)
+                    true
+                } else false
+            }
+        )
+        return
+    }
 
     pinFor?.let { profile ->
         DirectionPinScreen(
@@ -119,7 +138,9 @@ fun WhosWatchingScreen(
                     onPicked(profile)
                     true
                 } else false
-            }
+            },
+            alternative = if (pickerGate(profile).passwordOffered) "Use the password instead" else null,
+            onAlternative = { pinFor = null; passwordFor = profile }
         )
         return
     }
@@ -159,7 +180,7 @@ fun WhosWatchingScreen(
                         Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (profile.pin != null) {
-                                Text("🔒 ", style = MaterialTheme.typography.bodySmall)
+                                Text("ð ", style = MaterialTheme.typography.bodySmall)
                             }
                             Text(
                                 profile.name,
@@ -178,7 +199,7 @@ fun WhosWatchingScreen(
                 }
             }
             Spacer(Modifier.height(40.dp))
-            // Still gated by the parent check inside — this is a doorway, not a hole.
+            // Still gated by the parent check inside â this is a doorway, not a hole.
             TextButton(
                 onClick = onOpenSettings,
                 modifier = Modifier.tvFocusHighlight()
@@ -195,7 +216,7 @@ fun WhosWatchingScreen(
 
 /**
  * Blind PIN entry, Google-TV style: the code is four D-pad presses
- * (↑ ↓ ◀ ▶ and the OK button) and the screen shows only dots filling up —
+ * (â â â â¶ and the OK button) and the screen shows only dots filling up â
  * a sibling on the couch sees nothing worth memorizing. Touch devices get
  * the same five buttons, so one code works everywhere.
  *
@@ -205,7 +226,10 @@ fun WhosWatchingScreen(
 fun DirectionPinScreen(
     title: String,
     onCancel: () -> Unit,
-    onEntered: (String) -> Boolean
+    onEntered: (String) -> Boolean,
+    /** A second way in, offered under the pad when there is one ("Use the password instead"). */
+    alternative: String? = null,
+    onAlternative: (() -> Unit)? = null
 ) {
     var entered by remember { mutableStateOf("") }
     var wrong by remember { mutableStateOf(false) }
@@ -252,7 +276,7 @@ fun DirectionPinScreen(
             )
             if (wrong) {
                 Spacer(Modifier.height(8.dp))
-                Text("That wasn't it — try again", color = MaterialTheme.colorScheme.error)
+                Text("That wasn't it â try again", color = MaterialTheme.colorScheme.error)
             }
             Spacer(Modifier.height(28.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -270,15 +294,92 @@ fun DirectionPinScreen(
             }
             Spacer(Modifier.height(32.dp))
             // Touch path: same four arrows as buttons. On TV these are never
-            // reached — the key handler above consumes D-pad presses first.
+            // reached â the key handler above consumes D-pad presses first.
             DirectionArrowPad(onPress = ::press)
             Spacer(Modifier.height(20.dp))
+            if (alternative != null && onAlternative != null) {
+                TextButton(onClick = onAlternative, modifier = Modifier.tvFocusHighlight()) { Text(alternative) }
+            }
             TextButton(onClick = onCancel) { Text("Go back") }
         }
     }
 }
 
-/** The D-pad diamond (↑ ↓ ← → around OK) for entering and setting codes. */
+/**
+ * The typed way in: the kid's own password, the one the browser takes, so a
+ * child who knows it is not stuck at the four presses on a phone. Verified
+ * against the same PBKDF2 record the hub verifies against (KidPassword);
+ * nothing here compares text.
+ */
+@Composable
+fun KidPasswordScreen(
+    title: String,
+    onCancel: () -> Unit,
+    onEntered: (String) -> Boolean
+) {
+    var entered by remember { mutableStateOf("") }
+    var wrong by remember { mutableStateOf(false) }
+    fun submit() {
+        if (entered.isEmpty()) return
+        wrong = !onEntered(entered)
+        if (wrong) entered = ""
+    }
+    Surface(Modifier.fillMaxSize()) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize().padding(24.dp)
+        ) {
+            Text(title, style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "The same password you use in the browser",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(20.dp))
+            androidx.compose.material3.OutlinedTextField(
+                value = entered,
+                onValueChange = { entered = it; wrong = false },
+                singleLine = true,
+                isError = wrong,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { submit() }),
+                modifier = Modifier.tvFocusHighlight()
+            )
+            if (wrong) {
+                Spacer(Modifier.height(8.dp))
+                Text("That wasn't it — try again", color = MaterialTheme.colorScheme.error)
+            }
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(onClick = onCancel, modifier = Modifier.tvFocusHighlight()) { Text("Go back") }
+                androidx.compose.material3.Button(onClick = { submit() }, modifier = Modifier.tvFocusHighlight()) { Text("Unlock") }
+            }
+        }
+    }
+}
+
+/** What stands between a tile and the profile, and whether a typed password may stand in for it. */
+data class PickerGate(val askPin: Boolean, val passwordOffered: Boolean)
+
+/**
+ * The PIN is the phone's lock and stays the only thing that locks it: a kid
+ * with a browser password and no PIN opens with a tap, as before 1.9.0. The
+ * password is offered only beside a PIN and only when one is set, so "Use the
+ * password instead" never leads to a screen that cannot unlock anything.
+ * `PickerGateTest` holds the four cases.
+ */
+internal fun pickerGate(profile: Profile): PickerGate = PickerGate(
+    askPin = profile.pin != null,
+    passwordOffered = profile.pin != null && profile.webPassword != null
+)
+
+/** The D-pad diamond (â â â â around OK) for entering and setting codes. */
 @Composable
 fun DirectionArrowPad(onPress: (Char) -> Unit) {
     @Composable
@@ -301,13 +402,13 @@ fun DirectionArrowPad(onPress: (Char) -> Unit) {
         }
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        key("↑", 'U')
+        key("â", 'U')
         Row(verticalAlignment = Alignment.CenterVertically) {
-            key("←", 'L')
+            key("â", 'L')
             key("OK", 'C', emphasized = true)
-            key("→", 'R')
+            key("â", 'R')
         }
-        key("↓", 'D')
+        key("â", 'D')
     }
 }
 
@@ -316,6 +417,6 @@ fun directionPinArrows(pin: String): String =
     if (!isValidDirectionPin(pin)) pin
     else pin.map {
         when (it) {
-            'U' -> "↑"; 'D' -> "↓"; 'L' -> "←"; 'R' -> "→"; else -> "OK"
+            'U' -> "â"; 'D' -> "â"; 'L' -> "â"; 'R' -> "â"; else -> "OK"
         }
     }.joinToString(" ")
