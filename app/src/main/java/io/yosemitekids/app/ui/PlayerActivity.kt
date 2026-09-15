@@ -349,6 +349,10 @@ class PlayerActivity : ComponentActivity() {
     private val indexState = mutableIntStateOf(0)
     private val playbackState = mutableStateOf<YouTubeRepository.Playback?>(null)
     private val errorState = mutableStateOf<String?>(null)
+    /** The card's second face - not this video, YouTube. See PlaybackBreaker. */
+    private val errorStalled = mutableStateOf(false)
+    /** Failures since the last video that played; PlaybackBreaker reads it. */
+    private var consecutiveFailures = 0
     /** Kid the deep check judges for — see [EXTRA_PROFILE_ID]. */
     private var gateProfileId: String? = null
     /** Family config for the gate (AI settings, overrides, kids), loaded off-main once. */
@@ -998,7 +1002,9 @@ class PlayerActivity : ComponentActivity() {
                 error != null -> ErrorCard(
                     isTv = isTv,
                     cursor = errorCursor.intValue,
-                    onRetry = { playIndex(indexState.intValue) },
+                    stalled = errorStalled.value,
+                    // A person chose to try: the count starts over.
+                    onRetry = { consecutiveFailures = 0; playIndex(indexState.intValue) },
                     onBack = { finish() }
                 )
                 // Sound only, by the parent's window: no video view at
@@ -1825,8 +1831,22 @@ class PlayerActivity : ComponentActivity() {
         // The detail is for whoever reads logcat; the kid gets the friendly
         // card with a way forward (see ErrorCard).
         Diag.w("playback failed for $currentPageUrl: $message")
+        // Whatever was cached for this video is what just failed: a retry must
+        // reach YouTube, not be handed the same URLs again.
+        currentPageUrl?.let { repo.forgetPlayback(it) }
+        consecutiveFailures++
+        if (io.yosemitekids.app.data.PlaybackBreaker.trips(consecutiveFailures)) {
+            // Two in a row is not this video. Stop walking the queue - each step
+            // is another refused extraction at full speed - and wait for a finger.
+            Diag.w("playback stalled: $consecutiveFailures failures in a row, not walking the queue")
+            errorStalled.value = true
+            errorCursor.intValue = 0
+            errorState.value = message
+            return
+        }
         if (indexState.intValue < queue.lastIndex) playIndex(indexState.intValue + 1)
         else {
+            errorStalled.value = false
             errorCursor.intValue = 0
             errorState.value = message
         }
@@ -1942,6 +1962,9 @@ class PlayerActivity : ComponentActivity() {
             }
             currentTitle = pb.title
             currentPlayback = pb
+            // A video played: whatever went wrong before was that video's.
+            consecutiveFailures = 0
+            errorStalled.value = false
             ListenService.title = pb.title
             ListenService.channelName = currentChannel
             playbackState.value = pb
@@ -3007,7 +3030,7 @@ internal fun BlockedCard(message: String, isTv: Boolean, onOk: () -> Unit) {
 
 /** Playback failed on the video the kid actually pressed: a way forward, not a stack trace. */
 @Composable
-private fun ErrorCard(isTv: Boolean, cursor: Int, onRetry: () -> Unit, onBack: () -> Unit) {
+private fun ErrorCard(isTv: Boolean, cursor: Int, stalled: Boolean, onRetry: () -> Unit, onBack: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.padding(32.dp)
@@ -3017,15 +3040,18 @@ private fun ErrorCard(isTv: Boolean, cursor: Int, onRetry: () -> Unit, onBack: (
             fontSize = androidx.compose.ui.unit.TextUnit(72f, androidx.compose.ui.unit.TextUnitType.Sp)
         )
         Spacer(Modifier.height(16.dp))
+        // Two sentences for two situations: one video that will not play, or
+        // YouTube not answering at all (PlaybackBreaker). A child told the
+        // second is the first picks another video and gets the same card.
         Text(
-            "Hmm, this video won't play right now.",
+            if (stalled) "YouTube isn't answering right now." else "Hmm, this video won't play right now.",
             color = kidTokens.onArtwork,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Try again, or pick a different one.",
+            if (stalled) "Wait a minute, then try again." else "Try again, or pick a different one.",
             color = kidTokens.onArtwork.copy(alpha = 0.7f),
             style = MaterialTheme.typography.bodyLarge
         )

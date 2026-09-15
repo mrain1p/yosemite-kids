@@ -201,8 +201,8 @@ Already in place, and worth not rebuilding:
   needs updating, NOT a ban — and the two look identical from here.
 
 Not built, and what this item is for:
-1. **Cache resolved streams.** A media address stays valid for hours, so a
-   replay should cost no new extraction. Nothing caches them today.
+1. ~~**Cache resolved streams.**~~ **Done in 1.9.0** (`PlaybackCache` in `:crawl`,
+   in front of `resolvePlayback`; §8C.3 has the shape).
 2. **The crawl stands aside while a child is watching.** Finishing the index
    a few hours later is worth nothing next to a video that will not start.
 3. **A switch to stop crawling**, so a parent who suspects trouble can
@@ -691,8 +691,11 @@ mapping and its environment line come out of the NAS compose file.
    looks half-built. A rail that is sometimes there reads as breakage. Any
    placeholder must occupy the slot and keys the real row will take, or it
    changes item count mid-scroll — the same failure class guard 64 just fixed.
-3. **Cache resolved streams on the app/TV path.** Every play, replay and
-   quality change pays a full `StreamInfo` extraction — the request bot
+3. ~~**Cache resolved streams on the app/TV path.**~~ **Done in 1.9.0**, exactly
+   this shape: `PlaybackCache` in `:crawl` (20 minutes, 64 entries, keyed on
+   page URL and ceiling, forgotten whole on a playback failure, bypassed by
+   downloads; `PlaybackCacheTest`). As written: every play, replay and
+   quality change paid a full `StreamInfo` extraction — the request bot
    detection watches, and a multi-second wait in front of a child. `HubStream`
    solved it for the browser in 1.4.0 (20-minute TTL, 64 entries) and the app
    never got it. Key on `(videoPageUrl, maxHeight)`, not the id alone, or the
@@ -712,10 +715,12 @@ mapping and its environment line come out of the NAS compose file.
 
 ### 8D. Then
 
-- **A circuit breaker on extraction refusals.** The sharpest unmitigated ban
-  exposure, and it was not on the roadmap. `PlayerActivity.kt:1823` skips to the
-  next video when a resolve fails — which resolves again. The moment YouTube
-  starts refusing, the player sprints through the whole queue at full speed.
+- ~~**A circuit breaker on extraction refusals.**~~ **Done in 1.9.0**:
+  `PlaybackBreaker` — one failure is the video's and is skipped as before; the
+  second in a row stops the walk and the card says "YouTube isn't answering
+  right now" until a finger presses Try again. Was: `PlayerActivity` skipped to
+  the next video when a resolve failed — which resolved again — so the moment
+  YouTube started refusing, the player sprinted through the whole queue.
 - **Guard the crawl pacing constants.** `CRAWL_DELAY_MS = 4s` and
   `PAGES_PER_RUN = 60` *are* the anti-ban mitigation and both are prose that
   enforces nothing. `HubCrawlTest` passes `pacingMs = 0`, so it would still pass

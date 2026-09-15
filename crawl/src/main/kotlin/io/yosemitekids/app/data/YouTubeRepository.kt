@@ -113,6 +113,9 @@ class YouTubeRepository {
         /** Per-key locks so concurrent callers join one in-flight fetch, not duplicate it. */
         private val fetchLocks = ConcurrentHashMap<String, Mutex>()
 
+        /** Resolved streams, shared like the caches above so the player and the checker reuse one. */
+        private val playbackCache = PlaybackCache()
+
         /**
          * Delay before each retry, chosen by failure class; empty = permanent, fail fast.
          * ContentNotAvailable covers geo-blocked, paid, private, age-restricted and
@@ -475,8 +478,25 @@ class YouTubeRepository {
      * video-only stream up to that height plus the best audio (merged at playback —
      * this is how 720p+ is reached; muxed streams cap around 360p). Falls back to
      * muxed when separation isn't available. Age-restricted videos are refused.
+     *
+     * Answered from [PlaybackCache] while a resolve for the same page and
+     * ceiling is fresh (twenty minutes): a replay, "Up next" back to a video
+     * just watched, or a quality step back to a ceiling already resolved
+     * costs no extraction. [cached] = false bypasses it both ways: a download
+     * wants the freshest URLs it can get and must not seed a cache it never
+     * reads. A failed playback calls [forgetPlayback].
      */
-    suspend fun resolvePlayback(videoPageUrl: String, maxHeight: Int?): Playback =
+    suspend fun resolvePlayback(videoPageUrl: String, maxHeight: Int?, cached: Boolean = true): Playback {
+        if (cached) playbackCache.get(videoPageUrl, maxHeight, System.currentTimeMillis())?.let { return it }
+        val playback = extractPlayback(videoPageUrl, maxHeight)
+        if (cached) playbackCache.put(videoPageUrl, maxHeight, playback, System.currentTimeMillis())
+        return playback
+    }
+
+    /** The video's streams are bad (playback failed on them): resolve afresh next time, at any ceiling. */
+    fun forgetPlayback(videoPageUrl: String) = playbackCache.forget(videoPageUrl)
+
+    private suspend fun extractPlayback(videoPageUrl: String, maxHeight: Int?): Playback =
         withContext(Dispatchers.IO) {
             val info = interactiveFetches.withPermit {
                 retrying("stream $videoPageUrl") { StreamInfo.getInfo(youtube, videoPageUrl) }

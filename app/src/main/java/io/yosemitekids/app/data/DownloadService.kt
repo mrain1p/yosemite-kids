@@ -135,7 +135,9 @@ class DownloadService : Service() {
     }
 
     private suspend fun downloadStreams(entry: DownloadStore.Entry, videoId: String) {
-        val playback = repo.resolvePlayback(entry.video.url, store.maxHeight)
+        // Fresh, and never through the cache: a download wants the newest URLs
+        // and must not seed the player's cache with a resolve it never plays.
+        val playback = repo.resolvePlayback(entry.video.url, store.maxHeight, cached = false)
         val dir = store.dirFor(videoId).apply { mkdirs() }
         val videoFile = File(dir, "video.mp4")
         val audioFile = File(dir, "audio.m4a")

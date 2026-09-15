@@ -64,7 +64,7 @@ object DownloadChecker {
                             // The StreamInfo fetch (description/tags/captions);
                             // its failure — private video, no network — is the
                             // same "couldn't check" as an AI outage.
-                            val pb = runCatching { yt.resolvePlayback(video.url, null) }
+                            val pb = runCatching { yt.resolvePlayback(video.url, null, cached = false) }
                                 .getOrNull()
                             pb?.let {
                                 DeepCheck.runAndStore(
