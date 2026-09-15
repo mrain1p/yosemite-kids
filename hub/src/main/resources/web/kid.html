@@ -725,7 +725,9 @@
     card.appendChild(poster);
     var label = el("div", "label");
     label.appendChild(el("span", "title", video.title));
-    label.appendChild(el("span", "sub", video.channel));
+    // The hub composes the line ("Channel · 3 days ago", or the channel alone
+    // when the parent's switch is off); older payloads carried only the name.
+    label.appendChild(el("span", "sub", video.meta || video.channel));
     card.appendChild(label);
     card.onclick = function () { play(video); };
     if (big) card.classList.add("big");

@@ -212,21 +212,21 @@ internal fun VideoFilterChips(selected: String, onSelect: (String) -> Unit) {
 /** Label and icon for a search order. */
 internal fun searchOrderLabel(order: String): Pair<String, androidx.compose.ui.graphics.vector.ImageVector> =
     when (order) {
+        SearchOrder.RECENT -> "Newest" to YosemiteIcons.NewRelease
         SearchOrder.SHORT -> "Shortest" to YosemiteIcons.Timer
         SearchOrder.MIX -> "Mix it up" to YosemiteIcons.Shuffle
         else -> "Best match" to Icons.Filled.Star
     }
 
 /**
- * Best match · Shortest · Mix it up — the kid's order for a page of search
- * results.
+ * Best match · Newest · Shortest · Mix it up — the kid's order for a page of
+ * search results.
  *
- * Three chips and not five: the two the family actually asked for by name,
- * "most recent" and anything popularity-shaped, cannot be answered from the
- * search index, which stores neither an upload date nor a view count. A chip
- * that draws and does nothing is worse than a missing chip, so they are
- * missing. [SearchOrder] carries the whole reasoning and `docs/ROADMAP.md`
- * §2L carries what it would take to close it.
+ * Four chips and not five: "Newest" arrived with 1.9.0, when the search index
+ * started keeping the upload date it had always computed (roadmap §2M).
+ * Anything popularity-shaped is still missing on purpose — a search ranked by
+ * views is the popularity contest this app leaves out. [SearchOrder] carries
+ * the whole reasoning, chip by chip.
  */
 @Composable
 internal fun SearchOrderChips(selected: String, onSelect: (String) -> Unit) {

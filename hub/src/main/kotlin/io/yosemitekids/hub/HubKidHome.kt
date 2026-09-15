@@ -28,7 +28,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** The channel orders this box can produce: no open counts, no upload dates, so these three. */
-private val WEB_SORTS = setOf(CHANNEL_ORDER_ALPHA, CHANNEL_ORDER_ALPHA_DESC, CHANNEL_ORDER_RANDOM)
+private val WEB_SORTS = setOf(
+    CHANNEL_ORDER_ALPHA, CHANNEL_ORDER_ALPHA_DESC, CHANNEL_ORDER_RANDOM,
+    io.yosemitekids.app.data.CHANNEL_ORDER_LATEST
+)
 
 /**
  * What a child's browser is shown — assembled here, decided everywhere else.
@@ -66,7 +69,8 @@ class HubKidHome(
     private val policy: HubPolicy,
     private val store: HubStore,
     private val history: HubKidHistory,
-    private val lists: HubSavedLists
+    private val lists: HubSavedLists,
+    private val now: () -> Long = System::currentTimeMillis
 ) {
 
     /**
@@ -342,20 +346,20 @@ class HubKidHome(
      * "A to Z" means the same thing on a television and a tablet, and Random
      * is the *same* random when both are given the same seed.
      *
-     * Three of the app's six sorts are honestly absent, and `KidSurface`
+     * Two of the app's six sorts are honestly absent, and `KidSurface`
      * records why rather than drawing controls that do nothing: Most watched
-     * needs per-channel open counts the hub does not keep, and Latest video
-     * and Just added both need `publishedAt`, which `ChannelIndex` throws away
-     * (roadmap §2M). `SearchOrder` already refused to ship a control that
-     * sorts by an all-equal key; this follows it.
+     * needs per-channel open counts the hub does not keep, and Just added
+     * needs the phone's first-seen ledger. Latest video arrived with 1.9.0,
+     * when the index started keeping `publishedAt` (roadmap §2M) - read here
+     * the way the phone reads its cache, the newest ten rows of each channel.
      */
     fun channels(kidId: String, sort: String?, seed: Long): JSONObject {
         val catalogue = policy.catalogueFor(kidId)
         // No sort asked for is the parent's "Channel row order" - the same
         // family default the phone and the television open on (honouredBy in
         // SettingsSurface). Where the parent chose an order this box cannot
-        // produce - Most watched needs open counts, Latest video needs
-        // publishedAt - A to Z is the honest fallback, and the reply says
+        // produce - Most watched needs open counts - A to Z is the honest
+        // fallback, and the reply says
         // which order it actually used so the chips agree with the grid.
         val familyOrder = runCatching { store.load().channelOrder }.getOrDefault("")
         val effective = sort?.takeIf { it.isNotBlank() }
@@ -370,16 +374,16 @@ class HubKidHome(
                 kind = source.entry.kind
             )
         }
+        val byId = catalogue.associateBy { it.entry.id }
         val ordered = orderChannels(
             channels = sources,
             sort = effective,
-            // Not kept on this box. Passing zero makes the default sort a
-            // stable no-op rather than an arbitrary one.
+            // Open counts are not kept on this box, so Most watched is not
+            // offered here; zero makes it a stable no-op if asked for anyway.
             opens = { 0 },
-            latestUpload = { null },
+            latestUpload = { id -> byId[id]?.videos?.take(10)?.mapNotNull { it.publishedAt }?.maxOrNull() },
             seed = seed
         )
-        val byId = catalogue.associateBy { it.entry.id }
         val arr = JSONArray()
         for (source in ordered) {
             val row = byId[source.id] ?: continue
@@ -397,7 +401,8 @@ class HubKidHome(
             .put("channels", arr)
             .put("sorts", JSONArray().put(sortJson(CHANNEL_ORDER_ALPHA, "A to Z"))
                 .put(sortJson(CHANNEL_ORDER_ALPHA_DESC, "Z to A"))
-                .put(sortJson(CHANNEL_ORDER_RANDOM, "Random")))
+                .put(sortJson(CHANNEL_ORDER_RANDOM, "Random"))
+                .put(sortJson(io.yosemitekids.app.data.CHANNEL_ORDER_LATEST, "Latest video")))
     }
 
     private fun sortJson(id: String, label: String) =
@@ -447,12 +452,11 @@ class HubKidHome(
      * layout" asks for, one `pageSize` at a time.
      *
      * The order is [defaultFilterFor] over [filterVideos], the same two
-     * functions the phone's channel page opens with — and, honestly, only
-     * half honoured: the index keeps no view counts, so "Popular first" comes
-     * out as index order here until it does (`SettingsSurface` says so in
-     * the control's honourWhy, rather than claiming the browser obeys it).
-     * The page size IS honoured, here and on search; guard 69 holds this
-     * file to reading what the manifest says the browser honours.
+     * functions the phone's channel page opens with, so "Popular first" is
+     * the television's order to the row: the index keeps the view count
+     * since 1.9.0 (roadmap §2M). The page size is honoured the same way,
+     * here and on search; guard 69 holds this file to reading what the
+     * manifest says the browser honours.
      */
     fun channel(kidId: String, sourceId: String, from: Int = 0): JSONObject? {
         val source = policy.catalogueFor(kidId).firstOrNull { it.entry.id == sourceId } ?: return null
@@ -532,6 +536,10 @@ class HubKidHome(
         saved: Saved = Saved.NONE
     ): JSONArray {
         val arr = JSONArray()
+        // "Channel · 3 days ago" is composed HERE, with the phone's own metaLine
+        // and relativeAge from :core, so the page draws it verbatim (guard 61)
+        // and the parent's switch is read once per payload, not once per card.
+        val showAge = runCatching { store.load().showVideoAge }.getOrDefault(false)
         for ((video, progress) in items) {
             val point = watched[video.url]
             arr.put(
@@ -539,6 +547,13 @@ class HubKidHome(
                     .put("id", video.videoId.orEmpty())
                     .put("title", video.title)
                     .put("channel", video.channelName)
+                    .put(
+                        "meta",
+                        io.yosemitekids.app.ui.metaLine(
+                            video.channelName,
+                            if (showAge) io.yosemitekids.app.ui.relativeAge(video.publishedAt, now()) else null
+                        )
+                    )
                     .put("thumb", video.thumbnailUrl.orEmpty())
                     .put("seconds", video.durationSeconds)
                     .put("progress", progress)

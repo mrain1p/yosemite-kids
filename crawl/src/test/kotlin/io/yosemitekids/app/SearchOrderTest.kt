@@ -7,7 +7,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** The search screen's chips, and the two orders they deliberately do not offer. */
+/** The search screen's chips, and the one order they deliberately do not offer. */
 class SearchOrderTest {
 
     private fun v(id: String, seconds: Long) =
@@ -28,6 +28,23 @@ class SearchOrderTest {
         assertEquals(
             listOf("ccccccccccc", "aaaaaaaaaaa", "bbbbbbbbbbb"),
             SearchOrder.order(hits, SearchOrder.SHORT, 1L) { it.durationSeconds }.map { it.title }
+        )
+    }
+
+    @Test
+    fun newestPutsUndatedRowsLastInTheirRelevanceOrder() {
+        // An index row from before 1.9.0 has no date. It sorts last, still in
+        // relevance order, and is never dropped: not knowing when a video came
+        // out is no reason to keep it from a child.
+        val dated = mapOf("aaaaaaaaaaa" to 100L, "ccccccccccc" to 300L)
+        assertEquals(
+            listOf("ccccccccccc", "aaaaaaaaaaa", "bbbbbbbbbbb"),
+            SearchOrder.order(hits, SearchOrder.RECENT, 1L, publishedAt = { dated[it.title] }) { it.durationSeconds }.map { it.title }
+        )
+        // Two undated rows keep the order they arrived in.
+        assertEquals(
+            listOf("aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"),
+            SearchOrder.order(hits, SearchOrder.RECENT, 1L, publishedAt = { null }) { it.durationSeconds }.map { it.title }
         )
     }
 

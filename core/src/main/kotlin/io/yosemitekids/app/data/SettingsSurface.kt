@@ -329,11 +329,9 @@ object SettingsSurface {
                     "listing-video-age", "Show when a video came out",
                     sub = "“3 days ago” beside the channel name",
                     kind = ControlKind.TOGGLE, writes = "showVideoAge",
-                    honouredBy = listOf(FACE_PHONE, FACE_TV),
-                    honourWhy = "The browser draws its cards from the hub's search index, and " +
-                        "ChannelIndex throws publishedAt away (roadmap 2M) - there is no date " +
-                        "to show. The day the index keeps one, the hub carries it and this " +
-                        "moves to every face; a card that guessed would be worse than none."
+                    // Every face since 1.9.0: the index keeps publishedAt (roadmap 2M) and
+                    // the hub composes the same metaLine the phone draws.
+                    honouredBy = KID_FACES
                 ),
                 SettingsControl(
                     "listing-page-size", "Videos before “Show more”",
@@ -344,12 +342,9 @@ object SettingsSurface {
                 SettingsControl(
                     "listing-channel-layout", "Channel page layout",
                     kind = ControlKind.CHIPS, writes = "channelLayout",
-                    honouredBy = listOf(FACE_PHONE, FACE_TV),
-                    honourWhy = "The hub orders a channel page with the phone's own defaultFilterFor " +
-                        "and filterVideos, but ChannelIndex keeps no view counts, so \"Popular first\" " +
-                        "is the same order as \"Newest first\" there - the same gap as the upload " +
-                        "date (roadmap 2M). Declared unhonoured rather than honoured by accident; " +
-                        "it moves to every face the day the index carries counts.",
+                    // Every face since 1.9.0: the index keeps the view count, so the hub's
+                    // filterVideos puts "Popular first" in the order the television does.
+                    honouredBy = KID_FACES,
                     // The two the phone offers. CHANNEL_LAYOUTS carries a third
                     // the settings screen has never shown; a face that offered
                     // it would be offering something the other cannot.

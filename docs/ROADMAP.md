@@ -313,14 +313,11 @@ are regressions from the revamp and outrank the rest.**
   static list and I have to scroll down past 70 to find the ones she likes."
   Relevance shipped in 1.2.0 (`SearchRank` in `:crawl`) and is the default;
   the chips shipped with `SearchOrder`: best match, shortest, mix it up.
-  **The gap, and why:** "most recent" and anything popularity-shaped are *not*
+  ~~**The gap, and why:** "most recent" and anything popularity-shaped are *not*
   offered, because `ChannelIndex.IndexedVideo` stores neither an upload date
-  nor a view count — `toVideo()` hands back nulls for both, so either chip
-  would draw and do nothing, which is worse than a missing chip. Closing it is
-  a crawl change: add `publishedAt` (and, if wanted, `viewCount`) to the
-  indexed row, write them in `IndexCrawler`, and re-crawl to backfill.
-  `SearchOrderTest` asserts both fields are still absent, so the day they
-  arrive is the day the test says to add the chips.
+  nor a view count.~~ **Closed in 1.9.0** (§2M): the index keeps both, "Newest"
+  is a chip (`SearchOrder.RECENT`, undated rows last), and the one order still
+  not offered is a search ranked by views — deliberately, not for lack of data.
 
 **Channels and the channel page.**
 
@@ -347,7 +344,19 @@ are regressions from the revamp and outrank the rest.**
   YouTube does. PiP already exists and the button is on the overlay; this is
   the gesture, not the feature.
 
-### 2M. The search index throws the upload date away
+### ~~2M. The search index throws the upload date away~~ — done in 1.9.0
+
+**Done 2026-09-15, 1.9.0**, exactly as written below and one step further:
+the index keeps the **view count** as well as the date (`IndexedVideo.viewCount`
+and `publishedAt`, keys `v` and `p`, absent on an old row), a known row
+*learns* both from the next crawl of its page rather than waiting for a
+re-crawl (`ChannelIndex.addVideos`; `ChannelIndexDateTest` is the gate), and
+the browser now honours **Show when a video came out** (the hub composes the
+phone's own `metaLine`), **Channel page layout** ("Popular first"), and
+**Latest video** on the Channels grid. "Newest" is a search chip on the
+phone (`SearchOrder.RECENT`); undated rows sort last and are never hidden,
+as recommended below. What is still off the table is a search *ranked* by
+views — a popularity contest, on purpose.
 
 Asked for directly (2026-09-07) after "most recent" turned out to be
 unofferable on the search screen. It is a smaller job than it sounds, because

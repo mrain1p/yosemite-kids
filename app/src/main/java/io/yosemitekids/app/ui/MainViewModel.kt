@@ -509,10 +509,12 @@ class MainViewModel(
      */
     private fun searchItems(): List<VideoItem> =
         io.yosemitekids.app.data.SearchOrder.order(
-            annotated(includeFinished = true), searchOrder, searchShuffleSeed
-        ) { it.video.durationSeconds }
+            annotated(includeFinished = true), searchOrder, searchShuffleSeed,
+            seconds = { it.video.durationSeconds },
+            publishedAt = { it.video.publishedAt }
+        )
 
-    /** The search screen's Best match · Shortest · Mix chip. */
+    /** The search screen's Best match · Newest · Shortest · Mix chip. */
     fun setSearchOrder(order: String) {
         if (order == io.yosemitekids.app.data.SearchOrder.MIX) {
             searchShuffleSeed = kotlin.random.Random.nextLong()

@@ -3,6 +3,7 @@ package io.yosemitekids.hub
 import io.yosemitekids.app.data.CHANNEL_LAYOUT_POPULAR
 import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA
 import io.yosemitekids.app.data.CHANNEL_ORDER_ALPHA_DESC
+import io.yosemitekids.app.data.CHANNEL_ORDER_LATEST
 import io.yosemitekids.app.data.CHANNEL_ORDER_WATCHED
 import io.yosemitekids.app.data.ChannelIndex
 import io.yosemitekids.app.data.Profile
@@ -33,6 +34,7 @@ class HubKidListingTest {
     val tmp = TemporaryFolder()
 
     private val T = 1_788_771_600_000L
+    private val DAY = 86_400_000L
     private val leo = "aaaa1111"
     private val apples = WhitelistEntry("UC1", "https://youtube.com/channel/UC1", "Apples", SourceKind.CHANNEL)
     private val zebras = WhitelistEntry("UC2", "https://youtube.com/channel/UC2", "Zebras", SourceKind.CHANNEL)
@@ -56,18 +58,26 @@ class HubKidListingTest {
         }
         index.addVideos(
             "UC1",
-            (1..12).map { i -> ChannelIndex.IndexedVideo("apple%05d".format(i), "Apple $i", "Apples", "", 600, "UC1") },
+            // Every third apple was indexed by a build that kept no count and no
+            // date: what an older index looks like the week after the upgrade.
+            (1..12).map { i ->
+                ChannelIndex.IndexedVideo(
+                    "apple%05d".format(i), "Apple $i", "Apples", "", 600, "UC1",
+                    viewCount = if (i % 3 == 0) null else i * 100L,
+                    publishedAt = if (i % 3 == 0) null else T - i * DAY
+                )
+            },
             complete = true
         )
         index.addVideos("UC2", listOf(ChannelIndex.IndexedVideo("zebra000001", "Zebra 1", "Zebras", "", 600, "UC2")), complete = true)
-        index.addVideos("UC3", listOf(ChannelIndex.IndexedVideo("mango000001", "Mango 1", "Mangoes", "", 600, "UC3")), complete = true)
+        index.addVideos("UC3", listOf(ChannelIndex.IndexedVideo("mango000001", "Mango 1", "Mangoes", "", 600, "UC3", publishedAt = T)), complete = true)
         val policy = HubPolicy(
             store,
             HubUsage(dir, homeZone = { "Pacific/Auckland" }, now = { T }),
             ScreeningStore(File(dir, "screening.json")),
             index
         ) { T }
-        return HubKidHome(policy, store, HubKidHistory(dir) { T }, HubSavedLists(dir))
+        return HubKidHome(policy, store, HubKidHistory(dir) { T }, HubSavedLists(dir)) { T }
     }
 
     private fun names(arr: JSONArray): List<String> = (0 until arr.length()).map { arr.getJSONObject(it).getString("name") }
@@ -90,16 +100,47 @@ class HubKidListingTest {
     }
 
     @Test
-    fun `a channel page goes through the phone's layout functions, and says honestly what it cannot order by`() {
+    fun `a channel page goes through the phone's layout functions, Popular first included`() {
         val newest = home().channel(leo, "UC1")!!
         assertEquals("index order is newest first", (1..12).map { "Apple $it" }, titles(newest.getJSONArray("videos")))
 
-        // The index keeps no view counts, so "Popular first" is the same order
-        // here - and SettingsSurface says so (honourWhy) rather than claiming
-        // the browser honours it. This pins the honest half: nothing breaks,
-        // nothing is invented.
+        // The index keeps the view count since 1.9.0, so "Popular first" is
+        // orderByPopularity from :crawl - the television's order - with the
+        // rows an older build wrote (no count) last, in the order they were.
         val popular = home { it.copy(channelLayout = CHANNEL_LAYOUT_POPULAR) }.channel(leo, "UC1")!!
-        assertEquals((1..12).map { "Apple $it" }, titles(popular.getJSONArray("videos")))
+        assertEquals(
+            listOf(11, 10, 8, 7, 5, 4, 2, 1, 3, 6, 9, 12).map { "Apple $it" },
+            titles(popular.getJSONArray("videos"))
+        )
+    }
+
+    @Test
+    fun `the meta line carries the age only when the parent's switch is on, in the phone's words`() {
+        val off = home().channel(leo, "UC1")!!.getJSONArray("videos").getJSONObject(0)
+        assertEquals("the switch defaults to off: the channel alone", "Apples", off.getString("meta"))
+        val on = home { it.copy(showVideoAge = true) }.channel(leo, "UC1")!!.getJSONArray("videos")
+        assertEquals("Apples · yesterday", on.getJSONObject(0).getString("meta"))
+        assertEquals("Apple 3 was indexed without a date: the channel alone, never a guess", "Apples", on.getJSONObject(2).getString("meta"))
+        assertEquals("Apples · 4 days ago", on.getJSONObject(3).getString("meta"))
+        // Search rows are the same rows.
+        val hit = home { it.copy(showVideoAge = true) }.search(leo, "Apple 1").getJSONArray("videos").getJSONObject(0)
+        assertEquals("Apple 1", hit.getString("title"))
+        assertEquals("Apples · yesterday", hit.getString("meta"))
+    }
+
+    @Test
+    fun `the channels grid offers Latest video, read from the index's dates`() {
+        // Mangoes' one video is from today, Apples' newest from yesterday, and
+        // Zebras' row carries no date at all, so it goes last.
+        val latest = home().channels(leo, sort = CHANNEL_ORDER_LATEST, seed = 1L)
+        assertEquals(CHANNEL_ORDER_LATEST, latest.getString("sort"))
+        assertEquals(listOf("Mangoes", "Apples", "Zebras"), names(latest.getJSONArray("channels")))
+        // Offered as a chip, and honoured as the family default too - it used
+        // to fall back to A to Z here.
+        val chips = latest.getJSONArray("sorts").let { arr -> (0 until arr.length()).map { arr.getJSONObject(it).getString("id") } }
+        assertTrue(CHANNEL_ORDER_LATEST in chips)
+        val family = home { it.copy(channelOrder = CHANNEL_ORDER_LATEST) }.channels(leo, sort = null, seed = 1L)
+        assertEquals(CHANNEL_ORDER_LATEST, family.getString("sort"))
     }
 
     @Test

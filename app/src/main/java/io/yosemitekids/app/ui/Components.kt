@@ -287,23 +287,8 @@ internal fun NewPill(modifier: Modifier = Modifier) {
     )
 }
 
-/**
- * "Channel · 3 days ago" — the quiet line under a title.
- *
- * It degrades to whichever halves it has. The design puts a release date on
- * nearly every card, but `showVideoAge` is a parent switch that defaults to
- * off, so the common case here is the channel alone — and the separator has
- * to go with the part it separates. A blank channel name (a cache row from an
- * older build) drops out the same way, rather than leaving the line opening
- * on a dangling "·".
- *
- * `MetaLineTest` holds this: no leading, trailing or doubled separator, for
- * any combination of empty, blank and null.
- */
-internal fun metaLine(channel: String, age: String?): String =
-    listOf(channel, age)
-        .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
-        .joinToString(" · ")
+// `metaLine` and `relativeAge` live in :core (VideoMeta.kt) since 1.9.0: the hub
+// composes the same line for the browser, and three faces need one spelling.
 
 /**
  * The parent's "show when a video came out" switch, read wherever a tile

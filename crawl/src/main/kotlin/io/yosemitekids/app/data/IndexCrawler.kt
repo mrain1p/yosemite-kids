@@ -200,7 +200,9 @@ class IndexCrawler(
         channelName = channelName,
         thumbnailUrl = thumbnailUrl,
         durationSeconds = durationSeconds,
-        sourceId = sourceId
+        sourceId = sourceId,
+        viewCount = viewCount,
+        publishedAt = publishedAt
     )
 
     companion object {

@@ -328,7 +328,7 @@ object KidSurface {
             rules = listOf("orderChannels"),
             route = "/channels",
             webReady = true,
-            why = "Three of the app's six sorts are absent and that is deliberate: Most watched needs open counts the hub does not keep, and Latest video and Just added need publishedAt, which ChannelIndex throws away (roadmap 2M). SearchOrder set the precedent - a chip that sorts by an all-equal key is worse than no chip.",
+            why = "Two of the app's six sorts are absent and that is deliberate: Most watched needs open counts the hub does not keep, and Just added needs the phone's first-seen ledger. Latest video arrived with 1.9.0, when the index started keeping publishedAt (roadmap 2M). SearchOrder set the precedent - a chip that sorts by an all-equal key is worse than no chip.",
             tvWhy = "A rail stop rather than a bottom tab, and a grid of large tiles for ten feet " +
                 "(TvChannelsGrid) where the phone lists rounded tiles with shelves " +
                 "(PhoneChannelsList). Same channels, same orderChannels."

@@ -267,24 +267,6 @@ val YosemiteTypography = androidx.compose.material3.Typography(
     labelSmall = KidType.labelSmall.textStyle()
 )
 
-/**
- * "today", "3 days ago", "2 weeks ago" — the age of an upload for the meta
- * line under a title, the way every video app says it. Null when the cache
- * row predates the date column (nothing is shown rather than a guess).
- */
-fun relativeAge(publishedAt: Long?, now: Long = System.currentTimeMillis()): String? {
-    publishedAt ?: return null
-    val days = ((now - publishedAt) / 86_400_000L).toInt()
-    return when {
-        days < 0 -> null
-        days == 0 -> "today"
-        days == 1 -> "yesterday"
-        days < 7 -> "$days days ago"
-        days < 30 -> "${days / 7} week${if (days / 7 == 1) "" else "s"} ago"
-        days < 365 -> "${days / 30} month${if (days / 30 == 1) "" else "s"} ago"
-        else -> "${days / 365} year${if (days / 365 == 1) "" else "s"} ago"
-    }
-}
 
 /**
  * Watched/played progress. Deliberately not the brand teal: kids read this bar

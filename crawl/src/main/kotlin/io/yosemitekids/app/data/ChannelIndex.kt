@@ -59,14 +59,26 @@ class ChannelIndex(private val dir: File) {
         val thumbnailUrl: String?,
         val durationSeconds: Long,
         /** The whitelisted source this came from (drives profile visibility). */
-        val sourceId: String
+        val sourceId: String,
+        /**
+         * YouTube's view count and upload time, when the crawl had them. Both
+         * were computed on every crawl and dropped on the way to disk until
+         * 1.9.0 (roadmap 2M), which is why the browser could not say "3 days
+         * ago" or put "Popular first" in the order the television did. Null
+         * for a row an older build wrote, until its source is crawled again;
+         * null keeps the feed's own order and shows no age, never a guess.
+         */
+        val viewCount: Long? = null,
+        val publishedAt: Long? = null
     ) {
         fun toVideo(): Video = Video(
             url = Video.watchUrl(videoId),
             title = title,
             channelName = channelName,
             thumbnailUrl = thumbnailUrl,
-            durationSeconds = durationSeconds
+            durationSeconds = durationSeconds,
+            viewCount = viewCount,
+            publishedAt = publishedAt
         )
     }
 
@@ -111,6 +123,8 @@ class ChannelIndex(private val dir: File) {
                 put("c", v.channelName)
                 v.thumbnailUrl?.let { put("th", it) }
                 put("d", v.durationSeconds)
+                v.viewCount?.let { put("v", it) }
+                v.publishedAt?.let { put("p", it) }
             })
         }
         sourceFile(sourceId).writeText(arr.toString())
@@ -141,8 +155,25 @@ class ChannelIndex(private val dir: File) {
         val existing = loadSource(sourceId)
         val known = existing.mapTo(HashSet()) { it.videoId }
         val fresh = videos.filter { it.videoId !in known }
-        if (fresh.isEmpty() && complete == null) return
-        val merged = if (append) existing + fresh else fresh + existing
+        // A known row learns what this crawl knows about it: the count moves
+        // with every crawl (popularity is not fixed) and the date fills in
+        // once. This is how rows written before the index kept either catch
+        // up - page 1 is re-read on every delta crawl, so the newest videos
+        // date themselves within a day and the back catalogue as the harvest
+        // walks it, with no re-crawl ordered for it.
+        val incoming = videos.associateBy { it.videoId }
+        var learned = false
+        val refreshed = existing.map { row ->
+            val seen = incoming[row.videoId] ?: return@map row
+            val next = row.copy(
+                viewCount = seen.viewCount ?: row.viewCount,
+                publishedAt = row.publishedAt ?: seen.publishedAt
+            )
+            if (next != row) learned = true
+            next
+        }
+        if (fresh.isEmpty() && complete == null && !learned) return
+        val merged = if (append) refreshed + fresh else fresh + refreshed
         saveSource(sourceId, merged)
         val prev = states[sourceId]
         // A harvest append (complete unset — the crawler always passes it
@@ -327,7 +358,9 @@ class ChannelIndex(private val dir: File) {
                     channelName = o.optString("c"),
                     thumbnailUrl = o.optString("th").ifEmpty { null },
                     durationSeconds = o.optLong("d", 0),
-                    sourceId = sourceId
+                    sourceId = sourceId,
+                    viewCount = if (o.has("v")) o.getLong("v") else null,
+                    publishedAt = if (o.has("p")) o.getLong("p") else null
                 )
             }
         }.getOrDefault(emptyList())
