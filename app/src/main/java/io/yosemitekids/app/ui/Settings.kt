@@ -58,7 +58,7 @@ object LanServerHolder {
 
 /**
  * Parent-gated admin: biometrics on phones, PIN pad on TVs, then a form-based
- * editor â channel search, screen-time steppers, grants, pairing, updates.
+ * editor — channel search, screen-time steppers, grants, pairing, updates.
  */
 @Composable
 fun SettingsFlow(
@@ -87,7 +87,7 @@ fun SettingsFlow(
     var stage by remember {
         mutableStateOf(
             when {
-                // TV shows only the pairing QR â nothing editable to gate. (Trade-off:
+                // TV shows only the pairing QR — nothing editable to gate. (Trade-off:
                 // the QR token is a pairing credential; fine while the kids are young.)
                 isTv -> Stage.Editor
                 biometricsAvailable -> Stage.Biometric
@@ -134,14 +134,14 @@ fun SettingsFlow(
                 }
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "Confirm it's youâ¦",
+                        "Confirm it's you…",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
             Stage.Enter -> key(stage, error) {
-                // The stretched hash costs ~100ms of CPU â off the main thread,
+                // The stretched hash costs ~100ms of CPU — off the main thread,
                 // or every PIN entry drops frames on a TV box.
                 val scope = rememberCoroutineScope()
                 var checking by remember { mutableStateOf(false) }
@@ -157,7 +157,7 @@ fun SettingsFlow(
                                 error = null
                                 stage = Stage.Editor
                             } else {
-                                error = "Wrong PIN â try again"
+                                error = "Wrong PIN — try again"
                             }
                         }
                     }
@@ -190,7 +190,7 @@ fun SettingsFlow(
                             }
                         }
                         else -> {
-                            error = "PINs didn't match â start again"
+                            error = "PINs didn't match — start again"
                             stage = Stage.Create
                         }
                     }
@@ -198,7 +198,7 @@ fun SettingsFlow(
             }
             Stage.Editor -> {
                 // State, not the passed-in flag: dedicating the device to a kid
-                // must swap this screen to the QR immediately â the parent is
+                // must swap this screen to the QR immediately — the parent is
                 // standing there with the other phone ready to scan, and being
                 // bounced out of settings first would read as "nothing happened".
                 var kidDevice by remember { mutableStateOf(isKidDevice) }
@@ -216,7 +216,7 @@ private enum class Stage { Biometric, Enter, Create, Confirm, Editor }
 
 /**
  * Settings on a kid's phone/tablet: nothing to edit here (the parent phone
- * owns the config) â just the pairing QR, like the TV screen, phone-shaped.
+ * owns the config) — just the pairing QR, like the TV screen, phone-shaped.
  */
 @Composable
 private fun KidDeviceScreen(configStore: ConfigStore) {
@@ -235,7 +235,7 @@ private fun KidDeviceScreen(configStore: ConfigStore) {
 // Admin editor
 // ---------------------------------------------------------------------------
 
-/** TV settings: no form â just the pairing QR and a live version line. All
+/** TV settings: no form — just the pairing QR and a live version line. All
  *  editing happens on the paired phone; pushes update this screen in place. */
 @Composable
 private fun TvSettingsScreen(configStore: ConfigStore, pairingStore: PairingStore) {
@@ -246,7 +246,7 @@ private fun TvSettingsScreen(configStore: ConfigStore, pairingStore: PairingStor
             // 1080p screen: UpdateSection is the last child, so the version and
             // the Install button were the exact things clipped off the bottom.
             // A parent looking for "what build is this TV on, and can I update
-            // it" found a screen that ended before the answer â the controls
+            // it" found a screen that ended before the answer — the controls
             // were there and shipped and simply could not be seen.
             //
             // Centred only while it fits. Arrangement.Center on a scrolling
@@ -267,7 +267,7 @@ private fun TvSettingsScreen(configStore: ConfigStore, pairingStore: PairingStor
 
 /**
  * The pairing QR + live version line, shared by the TV settings screen and the
- * kid-phone/tablet settings section â any device running the LAN server can be
+ * kid-phone/tablet settings section — any device running the LAN server can be
  * paired to a parent phone the same way.
  */
 @Composable
@@ -280,7 +280,7 @@ internal fun PairingPanel(configStore: ConfigStore, tv: Boolean = false) {
     val server = LanServerHolder.server
     val ip = remember { LanServer.localIp() }
     // Live: a push from the phone changes the fingerprint on screen within 2s,
-    // so the parent can watch the two devices match â and the same tick is
+    // so the parent can watch the two devices match — and the same tick is
     // what turns "waiting" into "paired" without anyone pressing anything.
     LaunchedEffect(Unit) {
         val store = PairingStore(context)
@@ -364,7 +364,7 @@ internal fun PairingPanel(configStore: ConfigStore, tv: Boolean = false) {
             // The settings fingerprint is diagnostics, not the headline: it
             // reads as a quiet footer under the thing the parent came for.
             val editedText = edited.takeIf { it > 0 }?.let {
-                "  Â·  edited " + java.text.SimpleDateFormat("d MMM h:mm a", java.util.Locale.US)
+                "  ·  edited " + java.text.SimpleDateFormat("d MMM h:mm a", java.util.Locale.US)
                     .format(java.util.Date(it))
             } ?: ""
             Text(
@@ -374,7 +374,7 @@ internal fun PairingPanel(configStore: ConfigStore, tv: Boolean = false) {
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
             Text(
-                "Updates live â after a push from the phone both devices show the same number.",
+                "Updates live — after a push from the phone both devices show the same number.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -388,7 +388,7 @@ internal fun PairingPanel(configStore: ConfigStore, tv: Boolean = false) {
             // it is the one place a TV can be identified without a keyboard.
             Spacer(Modifier.height(10.dp))
             Text(
-                "${android.os.Build.MODEL ?: "This device"}  Â·  Yosemite Kids " +
+                "${android.os.Build.MODEL ?: "This device"}  ·  Yosemite Kids " +
                     io.yosemitekids.app.BuildConfig.VERSION_NAME,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -403,7 +403,7 @@ internal fun PairingPanel(configStore: ConfigStore, tv: Boolean = false) {
 private enum class PairStep { NoNetwork, Waiting, Asking, Paired }
 
 /**
- * The one line that says what is happening and what to do next â a QR with
+ * The one line that says what is happening and what to do next — a QR with
  * nothing under it leaves a parent watching a static screen wondering whether
  * anything is working, and never says when they can leave.
  */
@@ -413,11 +413,11 @@ private fun PairStatus(step: PairStep, approved: Int) {
         PairStep.NoNetwork -> Triple(
             StatusFailRed,
             "Pairing needs Wi-Fi",
-            "This device isn't on the network â connect it and come back."
+            "This device isn't on the network — connect it and come back."
         )
         PairStep.Waiting -> Triple(
             MaterialTheme.colorScheme.onSurfaceVariant,
-            "Waiting for a phone to scanâ¦",
+            "Waiting for a phone to scan…",
             "Open Yosemite Kids on the parent's phone, or point its camera here."
         )
         PairStep.Asking -> Triple(
@@ -428,7 +428,7 @@ private fun PairStatus(step: PairStep, approved: Int) {
         PairStep.Paired -> Triple(
             StatusOkGreen,
             if (approved == 1) "Paired with 1 phone" else "Paired with $approved phones",
-            "All set â you can go back. Settings arrive from the phone by themselves."
+            "All set — you can go back. Settings arrive from the phone by themselves."
         )
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -438,7 +438,7 @@ private fun PairStatus(step: PairStep, approved: Int) {
                 color = tint,
                 modifier = Modifier.size(18.dp)
             )
-            PairStep.Paired -> Text("â", color = tint, style = MaterialTheme.typography.titleMedium)
+            PairStep.Paired -> Text("✓", color = tint, style = MaterialTheme.typography.titleMedium)
             PairStep.NoNetwork -> Text("!", color = tint, style = MaterialTheme.typography.titleMedium)
         }
         Spacer(Modifier.width(10.dp))
@@ -461,7 +461,7 @@ private fun AdminScreen(
     /** Force a config sweep now rather than waiting for the poll. */
     onSyncNow: () -> Unit = {},
     onDone: (changed: Boolean) -> Unit,
-    /** The parent confirmed "this device is a kid's" â swap to the QR screen. */
+    /** The parent confirmed "this device is a kid's" — swap to the QR screen. */
     onBecameKidDevice: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
@@ -472,7 +472,7 @@ private fun AdminScreen(
     val syncNotices = remember { io.yosemitekids.app.data.SyncNotices(settingsContext) }
 
     // Bumped when the config file is replaced underneath the form (a Pull from a
-    // kid device) â the whole form reloads from disk, dropping unsaved edits.
+    // kid device) — the whole form reloads from disk, dropping unsaved edits.
     var configEpoch by remember { mutableIntStateOf(0) }
     // Off-main read (file + JSON): opening settings shows a beat of spinner
     // instead of freezing the tap that opened them.
@@ -482,13 +482,13 @@ private fun AdminScreen(
             // A degraded read means config.json exists but did not parse, so
             // "no profiles" is an artefact of the failure, not a fact about
             // the family. Minting a kid here would save that invention over
-            // the unreadable file and push it to every device â turning a
+            // the unreadable file and push it to every device — turning a
             // recoverable read error into permanent data loss.
             if (c.profiles.isNotEmpty() || configStore.degraded) c
             else {
                 // Every family has a kid: rules, grants and pauses all live on
                 // the kid's page now, so a kid-less config would have nowhere
-                // to edit them. The family's existing setup becomes "Kid" â
+                // to edit them. The family's existing setup becomes "Kid" —
                 // the upgrade story stays "what you had, now with a name".
                 // Done here, on the admin phone only, so the id is minted once
                 // and reaches every device by the usual push; a TV inventing
@@ -498,7 +498,7 @@ private fun AdminScreen(
                     // parent phones that each open Settings on the same
                     // kid-less config must mint the *same* kid. A random id
                     // gives two, and today's whole-file last-writer-wins hides
-                    // that by discarding one â a merge would keep both, and
+                    // that by discarding one — a merge would keep both, and
                     // the family would find two copies of their child. Same
                     // 8-hex shape as Profile.newId; the config has no profiles
                     // yet, so it cannot collide with one.
@@ -556,13 +556,13 @@ private fun AdminScreen(
     var pins by remember(initial) { mutableStateOf(initial.pins) }
     var homeRows by remember(initial) { mutableStateOf(initial.homeRows) }
     var baseline by remember(initial) { mutableStateOf(initial) }
-    /** Entries added by this session's URL import â shown with a NEW tag for review. */
+    /** Entries added by this session's URL import — shown with a NEW tag for review. */
     var newIds by remember { mutableStateOf(setOf<String>()) }
 
-    // Real names (keyed by url) for entries that carry no label â pasted links
-    // and file imports. A raw "UUâ¦" id tells a parent nothing when they're
+    // Real names (keyed by url) for entries that carry no label — pasted links
+    // and file imports. A raw "UU…" id tells a parent nothing when they're
     // setting time multipliers, so resolve names the way the kid's home screen
-    // does: seed from its tile cache (instant, offline), then fetch the rest â
+    // does: seed from its tile cache (instant, offline), then fetch the rest —
     // memoized and rate-limited upstream, so this never hammers YouTube. Shared
     // by the channel list rows and the export, which writes them as "| Name".
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -584,7 +584,7 @@ private fun AdminScreen(
     var statsDevice by remember { mutableStateOf<PairedDevice?>(null) }
     var digestOpen by remember { mutableStateOf(false) }
     var activityOpen by remember { mutableStateOf(false) }
-    // The review queue and the blocked list, pushed from Screening â and from
+    // The review queue and the blocked list, pushed from Screening — and from
     // the digest's Screening card, which is why they live above the digest's
     // early return: a flag declared below it is a fresh `false` by the time
     // the digest has closed, and the tap would land back on the root.
@@ -593,19 +593,19 @@ private fun AdminScreen(
 
     // The root-page selection lives up here, above every early return: it is
     // what a sub-page returns TO. Declared below the returns it was forgotten
-    // while one was open, and Back from "Blocked videos" landed on the root â
+    // while one was open, and Back from "Blocked videos" landed on the root —
     // and Stats, opened from a device's page, returns here too.
     var page by remember { mutableStateOf<SettingsPage?>(null) }
     // Where Back goes when a page was reached from another page rather than
     // from the root. Channels links to Listing at its foot; without this,
     // Back from Listing skipped Channels entirely. One level is all the
-    // design needs â nothing links deeper than that.
+    // design needs — nothing links deeper than that.
     var pageFrom by remember { mutableStateOf<SettingsPage?>(null) }
     // The fleet, and the pages Devices & sync pushes: one device, a
     // co-parent, this phone, the hub, "add a device". The fleet holds the
-    // last sweep's answers so the list renders from them instantly â the LAN
-    // fills in behind it â and it must outlive a trip to a device's page,
-    // or every return would flash "Checkingâ¦" down the whole list.
+    // last sweep's answers so the list renders from them instantly — the LAN
+    // fills in behind it — and it must outlive a trip to a device's page,
+    // or every return would flash "Checking…" down the whole list.
     val fleet = remember { DeviceFleet(pairingStore) }
     DisposableEffect(fleet) { onDispose { fleet.close() } }
     // The fleet is a snapshot of the paired list; a pairing completed in the
@@ -654,7 +654,7 @@ private fun AdminScreen(
 
     /**
      * The form as a config: what the auto-apply below and Push both deliver.
-     * `baseline` is what disk holds as far as this form knows â the open-time
+     * `baseline` is what disk holds as far as this form knows — the open-time
      * snapshot until the first save, then whatever was last written. The
      * fields are listed here one per line because guard 1 reads this body to
      * check that every field the form writes is claimed by a settings group;
@@ -694,7 +694,7 @@ private fun AdminScreen(
      * landed under the open form and keeps the disk's copy of any section
      * the editor left alone. Adopt only the baseline and the form still lacks
      * those, so the next save shows the stamper a unit in `base` and not in
-     * `next` â which is exactly what a deletion looks like. A co-parent's
+     * `next` — which is exactly what a deletion looks like. A co-parent's
      * channel was tombstoned by this phone's second tap, and every tap
      * re-minted the AI unit ("changed screening", nobody touching screening).
      * One snapshot for all of it, because Push calls this from an IO thread
@@ -740,7 +740,7 @@ private fun AdminScreen(
      */
     // Takes the bytes `save` wrote, not a Whitelist to re-serialize. A second
     // serialization is a second clock read and, worse, would ship a config
-    // without the stamps the save just minted â so the merge on the receiving
+    // without the stamps the save just minted — so the merge on the receiving
     // side would have nothing to work with.
     fun pushAll(json: String) {
         pushJob.getAndSet(io.yosemitekids.app.data.LanPushScope.scope.launch {
@@ -752,13 +752,13 @@ private fun AdminScreen(
                 targets.filterNot { d ->
                     LanClient.pushConfig(d, json).also { sent ->
                         android.util.Log.i("YosemiteKids",
-                            "settings push â ${d.name}: ${if (sent) "accepted" else "unreachable"}"
+                            "settings push → ${d.name}: ${if (sent) "accepted" else "unreachable"}"
                         )
                     }
                 }
             var missed = push(devices)
             // A standby Chromecast rejoins Wi-Fi seconds after waking, and a
-            // just-(re)installed app has no server until its next launch â
+            // just-(re)installed app has no server until its next launch —
             // both miss the push by moments. Two quiet retries beat leaving
             // it to the 5-minute reconcile.
             repeat(2) {
@@ -822,12 +822,12 @@ private fun AdminScreen(
     var openSource by remember { mutableStateOf<String?>(null) }
     var openAddFromYouTube by remember { mutableStateOf(false) }
     var openSuggested by remember { mutableStateOf(false) }
-    // A fresh visit starts on "All", unsearched, not selecting â the state
+    // A fresh visit starts on "All", unsearched, not selecting — the state
     // survives a push to a source page, not a trip back to the root.
     LaunchedEffect(page) { if (page != SettingsPage.Channels) channelList.reset() }
     // Whether the AI connection actually answers, for the row that leads to
-    // it. Nothing on disk records this â the one real signal is the /models
-    // call the form makes â so the row makes the same call, only while the
+    // it. Nothing on disk records this — the one real signal is the /models
+    // call the form makes — so the row makes the same call, only while the
     // Screening page is the thing on screen (the form probes for itself when
     // it is open), and again on the way back so an edited key is reflected.
     val aiLink by produceState<String?>(
@@ -837,14 +837,14 @@ private fun AdminScreen(
         val keyless = ai.baseUrl.startsWith("http://")
         value = when {
             ai.baseUrl.isBlank() -> "Tap to choose a provider"
-            ai.apiKey.isBlank() && !keyless -> "Not connected Â· no API key yet"
+            ai.apiKey.isBlank() && !keyless -> "Not connected · no API key yet"
             else -> {
-                value = "Checkingâ¦"
+                value = "Checking…"
                 val reachable = runCatching { io.yosemitekids.app.data.AiScreener.listModels(ai) }.isSuccess
                 when {
-                    !reachable -> "Not connected Â· couldn't reach it"
-                    ai.model.isBlank() -> "Connected Â· no model chosen"
-                    else -> "Connected Â· ${ai.model}"
+                    !reachable -> "Not connected · couldn't reach it"
+                    ai.model.isBlank() -> "Connected · no model chosen"
+                    else -> "Connected · ${ai.model}"
                 }
             }
         }
@@ -953,7 +953,7 @@ private fun AdminScreen(
                 profiles = profiles,
                 deviceProfiles = deviceProfiles,
                 // The form's fingerprint, not the file's: between an edit and
-                // its auto-save, "in sync â" measured against disk would be a
+                // its auto-save, "in sync ✓" measured against disk would be a
                 // lie for a beat.
                 localHash = currentHash,
                 localSecretlessHash = currentSecretlessHash,
@@ -1048,7 +1048,7 @@ private fun AdminScreen(
                     lineHeight = 19.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                // A phone can be a kid's own device too â dedicate it and it
+                // A phone can be a kid's own device too — dedicate it and it
                 // never asks who's watching.
                 WatchingAsRow(
                     "This phone:", fleet.myToken, profiles, deviceProfiles,
@@ -1060,7 +1060,7 @@ private fun AdminScreen(
                 )
             }
             // Search index: who's the master, and how far each channel's
-            // crawl has got. Read-only â the master does the work.
+            // crawl has got. Read-only — the master does the work.
             SectionTitle("Search index")
             SettingsCard { SearchIndexSection(entries, masterToken, pairingStore) }
             SectionTitle("Offline downloads", help = DOWNLOADS_HELP)
@@ -1128,7 +1128,7 @@ private fun AdminScreen(
             onBack = { openAddFromYouTube = false },
             onChanged = { updated ->
                 // What the search added is "New" on the channel list, the
-                // same as a directory add â the tag is the session's, not
+                // same as a directory add — the tag is the session's, not
                 // the config's, so it is marked here.
                 val before = entries.mapTo(mutableSetOf()) { it.id }
                 newIds = newIds + updated.map { it.id }.filter { it !in before }
@@ -1183,8 +1183,8 @@ private fun AdminScreen(
                     // here": a single kid's pause is on their page, and the
                     // family pause is on the settings home.
                     Text(
-                        "A kidâs page holds their profile, screen-time rules and " +
-                            "todayâs extras. The pause that stops everyone is on the " +
+                        "A kid’s page holds their profile, screen-time rules and " +
+                            "today’s extras. The pause that stops everyone is on the " +
                             "settings home.",
                         style = MaterialTheme.typography.bodySmall
                             .copy(fontSize = 12.5.sp, lineHeight = 20.5.sp),
@@ -1264,7 +1264,7 @@ private fun AdminScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                     // One card, four blocks, each padded 12dp with a divider
-                    // running the full width between them â the dividers used
+                    // running the full width between them — the dividers used
                     // to sit inside the card's own padding and stop 16dp short
                     // of the border on both sides.
                     SettingsCard(padded = false) {
@@ -1273,7 +1273,7 @@ private fun AdminScreen(
                             ctl("listing-video-age").sub,
                             checked = showVideoAge,
                             onCheckedChange = { showVideoAge = it },
-                            help = "Adds â3 days agoâ beside the channel name under a " +
+                            help = "Adds “3 days ago” beside the channel name under a " +
                                 "video, the way other video apps do. Videos whose date YouTube " +
                                 "didn't give us show the channel alone."
                         )
@@ -1293,7 +1293,7 @@ private fun AdminScreen(
                                 // Chips from the manifest, not from PAGE_SIZES:
                                 // the hub renders the same list from the same
                                 // declaration, and its hand-written copy had
-                                // been offering 12/24/48 â three sizes this app
+                                // been offering 12/24/48 — three sizes this app
                                 // has never had.
                                 ctl("listing-page-size").options.forEach { o ->
                                     val n = o.value as Int?
@@ -1388,12 +1388,12 @@ private fun AdminScreen(
                         }
                     }
                     // What the four blocks have in common, once, under the
-                    // card â the three facts the per-option sentences above
+                    // card — the three facts the per-option sentences above
                     // no longer each repeat.
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "These are the kidâs defaults. They can re-sort with the chips on a " +
-                            "channel page and their choice sticks for them only. A channelâs " +
+                        "These are the kid’s defaults. They can re-sort with the chips on a " +
+                            "channel page and their choice sticks for them only. A channel’s " +
                             "own playlists always show above its videos.",
                         style = MaterialTheme.typography.bodySmall,
                         color = SettingsPlaceholder,
@@ -1403,13 +1403,13 @@ private fun AdminScreen(
                 SettingsPage.Screening -> {
                     // Rebuilt to raw-screening.png. The page used to be five
                     // headed sections stacked down a scroll; it is now the
-                    // connection, the two features it powers, and the rules â
+                    // connection, the two features it powers, and the rules —
                     // which is the order a parent sets them up in.
                     SectionTitle(
                         "AI connection",
                         help = "Where Yosemite Kids talks to an AI, and which model. Set it up " +
                             "once; screening new videos and finding channels are each " +
-                            "switched on separately below. Bring your own provider â a " +
+                            "switched on separately below. Bring your own provider — a " +
                             "model running on your own network works too."
                     )
                     // One row, not the form: the provider and whether it answers
@@ -1424,11 +1424,11 @@ private fun AdminScreen(
                             val link = aiLink
                             ValueRow(
                                 aiProviderName(ai.baseUrl) ?: "Not set up",
-                                link ?: "Checkingâ¦",
+                                link ?: "Checking…",
                                 onClick = { openAiConnection = true },
                                 summaryColor = when {
-                                    link == null || link == "Checkingâ¦" -> null
-                                    link.startsWith("Connected Â· ") && ai.model.isNotBlank() ->
+                                    link == null || link == "Checking…" -> null
+                                    link.startsWith("Connected · ") && ai.model.isNotBlank() ->
                                         SettingsSuccess
                                     else -> WarningAmber
                                 }
@@ -1471,8 +1471,8 @@ private fun AdminScreen(
                     }
                 }
                 SettingsPage.Devices -> {
-                    // Rebuilt to raw-devices.png: the fleet as rows â hub and
-                    // this phone among them â with the actions one tap in.
+                    // Rebuilt to raw-devices.png: the fleet as rows — hub and
+                    // this phone among them — with the actions one tap in.
                     // The four cards about the device in hand (its name, the
                     // search index, downloads, local videos) sit behind this
                     // phone's own row; the hub's setup card behind the hub's.
@@ -1514,7 +1514,7 @@ private fun AdminScreen(
                         SettingsDivider()
                         // Who changed what. Nothing like this existed, so
                         // "why did the TV change?" and "did my edit stick?"
-                        // were simply unanswerable â a parent's only recourse
+                        // were simply unanswerable — a parent's only recourse
                         // was comparing two screens by eye. The newest few are
                         // on the card now rather than the latest one alone:
                         // three lines answer the question outright, where one
@@ -1557,7 +1557,7 @@ private fun AdminScreen(
                                         // that never happened.
                                         changeAge(c.shownAt.takeIf { it > 0 } ?: c.at)?.let { age ->
                                             withStyle(SpanStyle(color = SettingsPlaceholder)) {
-                                                append("  Â·  $age")
+                                                append("  ·  $age")
                                             }
                                         }
                                     },
@@ -1568,7 +1568,7 @@ private fun AdminScreen(
                         }
                     }
                     // Which settings these are, and when they were last
-                    // edited â under the card as a footer, where a fingerprint
+                    // edited — under the card as a footer, where a fingerprint
                     // being read out loud belongs.
                     Spacer(Modifier.height(11.dp))
                     Column(Modifier.padding(horizontal = 4.dp)) {
@@ -1579,7 +1579,7 @@ private fun AdminScreen(
                     // Rebuilt to raw-playback.png. Four switches in one card
                     // under a single heading, each with a one-line summary and
                     // its paragraph behind a ?. Before, every switch printed its
-                    // full explanation always, under its own SectionTitle â four
+                    // full explanation always, under its own SectionTitle — four
                     // headings and four paragraphs for four toggles.
                     SectionTitle("While a video plays")
                     SettingsCard(padded = false) {
@@ -1592,7 +1592,7 @@ private fun AdminScreen(
                                 sponsorSkip, { sponsorSkip = it },
                                 help = "Skips the parts of a video the SponsorBlock community " +
                                     "has marked: sponsor messages, merch plugs, intros/outros " +
-                                    "and âlike and subscribeâ reminders. Marked parts show in " +
+                                    "and “like and subscribe” reminders. Marked parts show in " +
                                     "green on the TV's playback bar. Lookups send only an " +
                                     "anonymous fingerprint of the video, never what is being watched."
                             )
@@ -1680,8 +1680,8 @@ private fun AdminScreen(
                 }
                 SettingsPage.Backup -> {
                     // Rebuilt to raw-backup.png: the version card, then the
-                    // hub's card â its setup used to live only behind the
-                    // hub's row on Devices & sync â then the channel list's
+                    // hub's card — its setup used to live only behind the
+                    // hub's row on Devices & sync — then the channel list's
                     // ways in and out, then the full backup, as rows.
                     SectionTitle("App")
                     SettingsCard { UpdateSection(onUpdateFound = {}) }
@@ -1713,7 +1713,7 @@ private fun AdminScreen(
                             )
                         },
                         onImport = { parsed ->
-                            // Links only â screen-time rules are UI-managed, never file-driven.
+                            // Links only — screen-time rules are UI-managed, never file-driven.
                             val fresh = parsed.sources.filter { p -> entries.none { it.id == p.id } }
                             entries = entries + fresh
                             newIds = newIds + fresh.map { it.id }
@@ -1755,7 +1755,7 @@ private fun AdminScreen(
         // "Your change lost." Found here rather than raised: a background
         // sweep does not get to interrupt a parent, and this is the first
         // place they look after one. One banner per unit, dismissible, and
-        // never shown on a kid device â SyncNotices is only constructed for a
+        // never shown on a kid device — SyncNotices is only constructed for a
         // parent.
         val notices = remember(configEpoch) { syncNotices?.all().orEmpty() }
         var dismissed by remember { mutableStateOf(emptySet<String>()) }
@@ -1774,7 +1774,7 @@ private fun AdminScreen(
                         CompactButton(onClick = {
                             // Sets the FORM, not the file. Putting it back is
                             // itself a deliberate edit, so it wants a fresh
-                            // stamp â and writing under the open form would
+                            // stamp — and writing under the open form would
                             // just be overwritten by the next autosave.
                             runCatching {
                                 ConfigJson.fromJson(
@@ -1801,7 +1801,7 @@ private fun AdminScreen(
         // The daily errand, at the root.
         //
         // Granting ten minutes or pausing a kid meant opening their page and
-        // finding two controls among sixteen â every day, for the two things a
+        // finding two controls among sixteen — every day, for the two things a
         // parent does most. The card carries the same state the kid's page
         // shows and the same two actions, so the detail page is for the rules
         // rather than for the routine.
@@ -1825,7 +1825,7 @@ private fun AdminScreen(
         }
 
         // "Waiting for your OK": the held-back queue, surfaced at the root.
-        // Conditional on being non-empty â an always-on banner reading "0 held"
+        // Conditional on being non-empty — an always-on banner reading "0 held"
         // is exactly the kind of noise this redesign removes elsewhere.
         if (ai.enabled && heldForReview > 0) {
             ReviewBanner(heldForReview) { openReview = true }
@@ -1833,17 +1833,17 @@ private fun AdminScreen(
         }
 
         // Two status tiles: warnings that were two levels deep. Devices reads
-        // what the last sweep left in the fleet holder â never a network call,
+        // what the last sweep left in the fleet holder — never a network call,
         // the root has to open instantly.
         val pairedNow = fleet.devices.size
         val inSyncNow = fleet.inSyncCount(
             { d -> expectedHash(d, currentHash, currentSecretlessHash) }, localSyncHash
         )
-        // A fleet that has not answered yet is not "0 of 2 in sync" â that
+        // A fleet that has not answered yet is not "0 of 2 in sync" — that
         // read as two broken devices every time Settings opened. Start the
         // same check Devices & sync runs on open (LAN calls off-main; the
         // root still renders instantly from whatever the holder has) and say
-        // "Checkingâ¦" until something has answered.
+        // "Checking…" until something has answered.
         LaunchedEffect(fleet.devices) { if (!fleet.anyAnswered()) fleet.checkAll() }
         val answeredNow = fleet.anyAnswered()
         val behindNow = fleet.behindCount()
@@ -1853,7 +1853,7 @@ private fun AdminScreen(
                 "Devices",
                 when {
                     pairedNow == 0 -> "Nothing paired"
-                    !answeredNow -> "Checkingâ¦"
+                    !answeredNow -> "Checking…"
                     inSyncNow < pairedNow -> "$inSyncNow of $pairedNow in sync"
                     behindNow > 0 -> "$behindNow behind on updates"
                     else -> "$inSyncNow of $pairedNow in sync"
@@ -1877,22 +1877,22 @@ private fun AdminScreen(
         }
         // Every row's second line is live state, not a list of what is inside.
         // "Autoplay, quality, listening" told a parent what the page contains;
-        // "Autoplay on Â· up to 1080p" tells them what it currently says, which
+        // "Autoplay on · up to 1080p" tells them what it currently says, which
         // is the question they opened settings to answer.
         SectionTitle("Kids & content")
         SettingsCard(padded = false) {
             val kidsLine = profiles.joinToString(", ") { it.name }
                 .ifEmpty { "No kids yet" }
-                .let { if (profiles.isEmpty()) it else "$it Â· profiles, rules, bonus time" }
+                .let { if (profiles.isEmpty()) it else "$it · profiles, rules, bonus time" }
             HubRow(YosemiteIcons.People, "Kids", kidsLine) { page = SettingsPage.Kids }
             SettingsDivider()
             HubRow(
                 YosemiteIcons.Channels, "Channels & playlists",
                 buildString {
                     append("${entries.size} source${if (entries.size == 1) "" else "s"}")
-                    // Only when there is something new â a "0 with new videos"
+                    // Only when there is something new — a "0 with new videos"
                     // is noise on every visit for the sake of the rare visit.
-                    if (newIds.isNotEmpty()) append(" Â· ${newIds.size} with new videos")
+                    if (newIds.isNotEmpty()) append(" · ${newIds.size} with new videos")
                 }
             ) { page = SettingsPage.Channels }
             SettingsDivider()
@@ -1900,7 +1900,7 @@ private fun AdminScreen(
                 YosemiteIcons.Shield, "Content screening",
                 // The count at 0 too: the row states the queue, and the banner
                 // above is the thing that stays conditional.
-                if (ai.enabled) "On Â· $heldForReview held for review" else "Off"
+                if (ai.enabled) "On · $heldForReview held for review" else "Off"
             ) { page = SettingsPage.Screening }
         }
 
@@ -1913,7 +1913,7 @@ private fun AdminScreen(
                     // Two clauses always: a row that drops to "Autoplay on" at
                     // Auto reads as a row that forgot half its state.
                     qualityPhone?.takeIf { it > 0 }?.let { "up to ${it}p" } ?: "quality auto"
-                ).joinToString(" Â· ")
+                ).joinToString(" · ")
             ) { page = SettingsPage.Playback }
             SettingsDivider()
             HubRow(
@@ -1939,7 +1939,7 @@ private fun AdminScreen(
                         CHANNEL_ORDER_LATEST -> "latest video"
                         else -> "most watched"
                     }
-                ).filterNotNull().joinToString(" Â· ")
+                ).filterNotNull().joinToString(" · ")
             ) { page = SettingsPage.Listing }
             SettingsDivider()
             HubRow(
@@ -1954,7 +1954,7 @@ private fun AdminScreen(
                 when {
                     pairedNow == 0 -> "Nothing paired yet"
                     !answeredNow -> "$pairedNow paired"
-                    else -> "$pairedNow paired Â· $offlineNow offline"
+                    else -> "$pairedNow paired · $offlineNow offline"
                 }
             ) { page = SettingsPage.Devices }
             SettingsDivider()
@@ -1963,7 +1963,7 @@ private fun AdminScreen(
                 // The version and the one fact about backup a parent wants
                 // from the row: whether there has ever been one. The amber
                 // "Never backed up" tone stays on the page itself.
-                "${io.yosemitekids.app.BuildConfig.VERSION_NAME} Â· " + if (lastBackupAt > 0L) {
+                "${io.yosemitekids.app.BuildConfig.VERSION_NAME} · " + if (lastBackupAt > 0L) {
                     "backed up " + java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault())
                         .format(java.util.Date(lastBackupAt))
                 } else "never backed up"
@@ -2019,12 +2019,12 @@ private fun AdminScreen(
 
         // The build and the "changes apply as you make them" line, as a footer.
         // Both were the second and third things on the screen, above the kid a
-        // parent came to act on â diagnostics and reassurance, in the slot the
+        // parent came to act on — diagnostics and reassurance, in the slot the
         // errand should have had.
         Spacer(Modifier.height(20.dp))
         Text(
             "Yosemite Kids ${io.yosemitekids.app.BuildConfig.VERSION_NAME} " +
-                "(${io.yosemitekids.app.BuildConfig.VERSION_CODE})  Â·  changes apply as you " +
+                "(${io.yosemitekids.app.BuildConfig.VERSION_CODE})  ·  changes apply as you " +
                 "make them and reach the kids' devices on their own.",
             fontSize = 12.sp,
             lineHeight = 18.sp,
@@ -2041,7 +2041,7 @@ private fun AdminScreen(
 /**
  * The pages behind the settings root.
  *
- * Not "HubPage": three unrelated things in this repo were called hub â the
+ * Not "HubPage": three unrelated things in this repo were called hub — the
  * Docker service, its web GUI's own HubPage, and this. Naming the settings
  * nav after the settings screen removes the collision that made "the hub page"
  * ambiguous in every conversation about it.
@@ -2059,12 +2059,12 @@ private enum class SettingsPage(val title: String) {
 /**
  * One page of the hub: an app bar, then the content in a scroll.
  *
- * The bar is pinned rather than scrolled with the content â it carries the
+ * The bar is pinned rather than scrolled with the content — it carries the
  * page's name and its only way back, and a long page that scrolls both away
  * leaves a parent with neither. Back is the chevron alone, so its
  * contentDescription is the only label TalkBack has to read.
  *
- * [actions] sit at the title's right edge, the way an app bar carries them â
+ * [actions] sit at the title's right edge, the way an app bar carries them —
  * "Select" and "+" on Channels & playlists (full-04-channels.png). Most pages
  * have none.
  */
@@ -2124,7 +2124,7 @@ internal fun SubPage(
  * A root row: icon, title, one-line summary, chevron.
  *
  * Drawn icons, not emoji. Six emoji in a column rendered at six different
- * optical weights and colours â the one part of the app a parent lands on
+ * optical weights and colours — the one part of the app a parent lands on
  * first looked like a sticker sheet. Emoji stay where they are content: the
  * kid's avatar.
  */
@@ -2208,7 +2208,7 @@ internal fun SettingsCard(padded: Boolean = true, content: @Composable ColumnSco
  * Worth the space: a suggestion row is the one part of this app that decides
  * something on its own, and a parent who curated every channel by hand is owed
  * a plain answer to "what is it doing, and where does it get the videos". The
- * claims here are the code â see `HomeState.suggestionsFor`; if that changes,
+ * claims here are the code — see `HomeState.suggestionsFor`; if that changes,
  * this changes with it.
  */
 @Composable
@@ -2220,7 +2220,7 @@ private fun SuggestionExplainer() {
     }
     val points = listOf(
         "What it reads" to
-            "The titles of videos this kid has opened on this device. Nothing else â " +
+            "The titles of videos this kid has opened on this device. Nothing else — " +
             "not their age, not the time of day, not what other kids watch.",
         "How it matches" to
             "It looks for words shared between those titles and videos the kid has " +
@@ -2236,7 +2236,7 @@ private fun SuggestionExplainer() {
             "Popularity is not part of the ranking.",
         "Keeping it varied" to
             "At most two videos per channel, so one busy channel cannot fill the row. " +
-            "It reaches back through a channel's older videos, which is the point â " +
+            "It reaches back through a channel's older videos, which is the point — " +
             "the rest of the home screen is newest-first.",
         "When it is empty" to
             "A kid who has not watched anything yet gets no row at all, and neither " +
@@ -2248,7 +2248,7 @@ private fun SuggestionExplainer() {
             "own row rather than sharing one."
     )
     // The card spaces its children evenly, which left a heading as far from
-    // its own paragraph as from the previous one â seven headings and seven
+    // its own paragraph as from the previous one — seven headings and seven
     // bodies with no visible grouping. Each pair is one child instead.
     points.forEach { (heading, body) ->
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -2321,15 +2321,15 @@ internal fun SegmentChip(
  * the two buttons a parent actually presses.
  *
  * Granting minutes and pausing were on the kid's detail page among sixteen other
- * controls â the two most frequent actions in the app, filed with rules set once
+ * controls — the two most frequent actions in the app, filed with rules set once
  * a year. This is the errand, lifted to where it happens; the detail page keeps
  * the rules.
  *
- * Every number here comes from [SessionGuard]: budget (sessions Ã length + the
+ * Every number here comes from [SessionGuard]: budget (sessions × length + the
  * day's bonus), watched, and remaining as their difference. The card once
- * derived "used" as total â remaining with a total that ignored bonus minutes,
+ * derived "used" as total − remaining with a total that ignored bonus minutes,
  * and read "110 min left today" over "0 of 90 min used" the moment a parent
- * granted twenty â the verifier caught it on the emulator.
+ * granted twenty — the verifier caught it on the emulator.
  *
  * Both pauses apply: the family's "everyone at once" and this kid's own, later
  * wins. A card that said "watching" during a family pause would be worse than no
@@ -2378,8 +2378,8 @@ private fun KidErrandCard(
         else -> SettingsSuccess
     }
 
-    // The kid card is the one elevated card in the design â a step lighter
-    // than the page's other cards, with a stronger border â because it is the
+    // The kid card is the one elevated card in the design — a step lighter
+    // than the page's other cards, with a stronger border — because it is the
     // errand, not another destination.
     OutlinedCard(
         shape = RoundedCornerShape(10.dp),
@@ -2426,7 +2426,7 @@ private fun KidErrandCard(
 
         Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
             // The design's one line: how today stands on the left in its tone,
-            // what has been used on the right in grey. Always drawn â a kid
+            // what has been used on the right in grey. Always drawn — a kid
             // with no cap has a state too, and hiding the row made "is screen
             // time even on?" unanswerable from the card.
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2451,7 +2451,7 @@ private fun KidErrandCard(
             LinearProgressIndicator(
                 // How much of the day has been SPENT, which is what the "42 of
                 // 60 used" beside it says. It filled the remainder before, so
-                // the bar emptied as the day was used up â backwards from
+                // the bar emptied as the day was used up — backwards from
                 // every other progress bar a parent has ever seen.
                 progress = {
                     if (budget == null || budget == 0) 1f
@@ -2515,7 +2515,7 @@ private fun KidErrandCard(
             if (paused && !ownPauseOnly) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Everyone is paused â resume from the switch at the bottom.",
+                    "Everyone is paused — resume from the switch at the bottom.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -2580,7 +2580,7 @@ private fun ReviewBanner(count: Int, onOpen: () -> Unit) {
 
 /**
  * One of the two root status tiles: a label over a state, in the state's own
- * tone â green when everything is in sync or on, amber when it is not, dim
+ * tone — green when everything is in sync or on, amber when it is not, dim
  * when a feature is off. The tone is the tile's whole job: a parent reads the
  * colour before the words, and a white "4 of 5 in sync" said nothing.
  */
@@ -2621,14 +2621,14 @@ private fun RootStatusTile(
 /**
  * A quiet grey label over a card. With [help], a **?** sits at the label's
  * right edge (raw-screening.png, "AI connection") and the explanation unfolds
- * under the label â the same fold [ToggleRow] uses, so one gesture explains
+ * under the label — the same fold [ToggleRow] uses, so one gesture explains
  * everything on these pages.
  */
 @Composable
 internal fun SectionTitle(
     text: String,
     help: String? = null,
-    /** A quieter note at the label's right edge â "Docker on your network" beside "Hub". */
+    /** A quieter note at the label's right edge — "Docker on your network" beside "Hub". */
     aside: String? = null
 ) {
     var helpOpen by remember { mutableStateOf(false) }
@@ -2692,8 +2692,8 @@ private fun SearchIndexSection(
     val states by io.yosemitekids.app.data.ChannelIndex.sharedStates.collectAsState()
     val scope = rememberCoroutineScope()
     // The index is keyed by the CANONICAL source id (a @handle resolves to its
-    // UCâ¦ id during the feed fetch), while entries keep their raw whitelist id.
-    // SourceCache maps url â resolved Source, bridging the two â without it a
+    // UC… id during the feed fetch), while entries keep their raw whitelist id.
+    // SourceCache maps url → resolved Source, bridging the two — without it a
     // handle entry shows "not started" while its videos sit under the UC key.
     val canonicalByUrl by produceState<Map<String, String>>(emptyMap()) {
         value = withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -2711,7 +2711,7 @@ private fun SearchIndexSection(
 
     // Summary first: the per-channel list is long and rarely what the parent
     // came for. Totals answer "is search working" at a glance. Sum only the
-    // sources that are still whitelisted â a dropped channel's index file can
+    // sources that are still whitelisted — a dropped channel's index file can
     // outlive it on a device that hasn't run the cleanup yet.
     val whitelistedStates = entries.mapNotNull { stateFor(it) }
     val totalVideos = whitelistedStates.sumOf { it.count }
@@ -2727,7 +2727,7 @@ private fun SearchIndexSection(
         style = MaterialTheme.typography.bodyMedium
     )
     Text(
-        "$complete fully indexed  Â·  " + when {
+        "$complete fully indexed  ·  " + when {
             isMaster -> "this device is the master"
             hubIsMaster -> "the hub is the master"
             masterToken != null -> "another device is the master"
@@ -2740,7 +2740,7 @@ private fun SearchIndexSection(
     // The design's button here says "Rebuild index", but nothing on the phone
     // can start a crawl: the master's WorkManager job runs every 15 minutes on
     // its own and there is no route or entry point that presses it early. What
-    // the button CAN do is re-read the index from disk â the shared flow is
+    // the button CAN do is re-read the index from disk — the shared flow is
     // process-local, so a crawl that ran in the worker process (or before this
     // screen opened) only shows up after one. Labelled for what it does.
     var refreshing by remember { mutableStateOf(false) }
@@ -2765,7 +2765,7 @@ private fun SearchIndexSection(
         modifier = Modifier.fillMaxWidth().height(32.dp).tvFocusHighlight(cornerRadius = 8.dp)
     ) {
         Text(
-            if (refreshing) "Workingâ¦" else "Refresh counts",
+            if (refreshing) "Working…" else "Refresh counts",
             style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.5.sp)
         )
     }
@@ -2786,8 +2786,8 @@ private fun SearchIndexSection(
         Text(
             when {
                 isMaster ->
-                    "This phone builds the index â every channel's full list of videos, " +
-                        "so search on the TVs answers without asking YouTube â and shares it " +
+                    "This phone builds the index — every channel's full list of videos, " +
+                        "so search on the TVs answers without asking YouTube — and shares it " +
                         "with the other devices. If a hub is connected, it takes over as soon " +
                         "as any device has pulled from it: the hub is always on and this phone is not."
                 hubIsMaster ->
@@ -2797,7 +2797,7 @@ private fun SearchIndexSection(
                 masterToken != null ->
                     "Another phone builds the index; it arrives here over your home network."
                 else ->
-                    "Nobody builds it yet â the first parent phone to sync claims the job, " +
+                    "Nobody builds it yet — the first parent phone to sync claims the job, " +
                         "and a connected hub takes it over once a device has pulled from it."
             },
             style = MaterialTheme.typography.bodySmall,
@@ -2807,7 +2807,7 @@ private fun SearchIndexSection(
         // background run fires, so "is it stuck?" is answerable on screen.
         if (isMaster) {
             val lastRun by io.yosemitekids.app.data.ChannelIndex.lastRun.collectAsState()
-            // Seed from disk â the flow only ticks on runs within this process.
+            // Seed from disk — the flow only ticks on runs within this process.
             LaunchedEffect(Unit) {
                 if (lastRun == null) {
                     io.yosemitekids.app.data.ChannelIndex.lastRun.value =
@@ -2834,7 +2834,7 @@ private fun SearchIndexSection(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "Last run ${fmt.format(java.util.Date(run.atMillis))} â " +
+                        "Last run ${fmt.format(java.util.Date(run.atMillis))} — " +
                             "${run.pages} page(s) indexed",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2848,11 +2848,11 @@ private fun SearchIndexSection(
             val sched = runSchedule
             Text(
                 when {
-                    sched == null -> "Next run â checkingâ¦"
-                    sched.running -> "Running nowâ¦"
+                    sched == null -> "Next run — checking…"
+                    sched.running -> "Running now…"
                     sched.nextRunAt != null ->
-                        "Next run ${fmt.format(java.util.Date(sched.nextRunAt))} â pending"
-                    else -> "Next run â not scheduled"
+                        "Next run ${fmt.format(java.util.Date(sched.nextRunAt))} — pending"
+                    else -> "Next run — not scheduled"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2867,8 +2867,8 @@ private fun SearchIndexSection(
                 // YouTube's own verdict, carried by the crawl (IndexCrawlRun) and
                 // by a pull from the hub; the videos already listed stay.
                 s.gone != null -> "not on YouTube any more — ${s.gone}"
-                s.complete -> "${s.count} videos â"
-                else -> "${s.count} videos, still indexingâ¦"
+                s.complete -> "${s.count} videos ✓"
+                else -> "${s.count} videos, still indexing…"
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -2998,7 +2998,7 @@ private fun PinPad(
 
         Spacer(Modifier.height(16.dp))
         Text(
-            "â²â¼ choose a row  Â·  â / OK / â¶ pick the number",
+            "▲▼ choose a row  ·  ◀ / OK / ▶ pick the number",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

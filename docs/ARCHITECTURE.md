@@ -78,6 +78,10 @@ app/src/main/java/io/yosemitekids/app/
 │   ├── Diag.kt               The diagnostic ring: every Log.w/Log.e (guard 68)
 │   │                         plus the crash handler, drained into the hub's
 │   │                         POST /report by the sweep. Its own file, never config
+│   ├── PlaybackBreaker.kt    One failed video is skipped; two in a row is YouTube
+│   │                         refusing, and the player stops walking the queue
+│   ├── SearchHistoryStore.kt A kid's recent searches on this device; the rules
+│   │                         are RecentSearches in :core, shared with the hub
 │   ├── KidNotices.kt         In-app pills the kid sees (grants, rule changes)
 │   ├── NowPlaying.kt         What's playing (for /stats) + RemotePlayerControl bridge
 │   ├── SponsorBlock.kt       Segment lookup by hashed video id
@@ -101,7 +105,8 @@ app/src/main/java/io/yosemitekids/app/
     ├── VideoGrid.kt          Poster grid, hold menu, queue list, watched shelf
     ├── Tiles.kt              Shared tile pieces: PosterImage, pressScale, chips
     ├── FocusHighlight.kt     TV focus ring + D-pad helpers (hold, throttle)
-    ├── ProfilePicker.kt      "Who's watching?" + direction-PIN entry
+    ├── ProfilePicker.kt      "Who's watching?" + direction-PIN entry, and the kid's
+    │                         browser password as a typed way past it (pickerGate)
     ├── PlayerActivity.kt     The player: gate, resolve, ExoPlayer, kid controls
     │                         overlay, end card, listen mode, remote keys
     ├── ListenService.kt      Foreground service for screen-off audio
@@ -141,6 +146,8 @@ core/src/main/kotlin/io/yosemitekids/app/data/     the pure rules: no disk, no c
 │                       channel's description with every link, bare domain,
 │                       @handle and e-mail address taken out. Applied at the
 │                       extractor boundary, never at the draw site (guard 52)
+├── RecentSearches.kt   Newest first, no repeats, eight, and the × forgets one:
+│                       the phone's store and the hub's per-kid list both call it
 ├── Grants.kt / KidChoices.kt / Profile.kt / TimeWindows.kt / Tsv.kt
 ├── MasterElection.kt / MasterToken.kt   Who builds the search index (clock passed in)
 └── BackupFile.kt       The backup envelope, so the phone and the hub write one shape
@@ -149,6 +156,8 @@ core/src/main/kotlin/io/yosemitekids/app/ui/       what both faces draw, as data
 ├── HomeSections.kt     The home as data: shelf ids, the catalogue, the saved
 │                       order, pinMeta and the fail-closed resolvePins, the
 │                       television's opening focus. Guard 47; no Compose in it
+├── VideoMeta.kt        "Channel · 3 days ago": relativeAge and metaLine, one
+│                       spelling for the phone, the TV and the hub's kid page
 ├── DesignTokens.kt     The one palette and type scale, as ARGB ints and sp
 │                       numbers: KidHues, KID_DARK, KID_LIGHT, KidType, and the
 │                       colour maths that derives a signal colour for a ground
@@ -160,13 +169,18 @@ crawl/src/main/kotlin/io/yosemitekids/app/data/    network, disk, clock — plai
 │                       at startup so the crawler can reach YouTube and nothing else
 ├── YouTubeRepository.kt / Extractor.kt / OkHttpDownloader.kt   NewPipeExtractor
 ├── ChannelIndex.kt / IndexCrawler.kt / IndexCrawlRun.kt / IndexPull.kt
+│                       The index keeps each video's date and view count (roadmap
+│                       2M); a source YouTube refuses is marked gone, skipped for
+│                       a day and never a failed run
+├── PlaybackCache.kt    Resolved streams for twenty minutes, keyed on page URL and
+│                       ceiling, forgotten whole on a playback failure
 ├── AiScreener.kt / ScreeningStore.kt   The screener and the verdict store
 ├── Screening.kt        "May this child see this video?" — the one predicate,
 │                       beside the verdicts it reads, so the app and the hub
 │                       answer with the same function (guard 46)
 ├── SearchRank.kt / SearchOrder.kt   How good a hit is for this child, and the
-│                       orders the results screen can honestly offer. SearchOrder
-│                       records why "most recent" is not one of them
+│                       orders the results screen can honestly offer, with their
+│                       words (label); "Newest" since the index kept its dates
 └── QualityTargets.kt / PlaylistRef.kt / LocalUrls.kt / CrawlModule.kt
 
 hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container
@@ -189,6 +203,9 @@ hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container
 ├── HubReports.kt       What the clients said went wrong: POST /report and
 │                       POST /kid/report land here, printed to stdout as they
 │                       arrive and kept in memory for the console's Device log
+├── HubKidSearches.kt   Each kid's recent searches for the browser's search page,
+│                       through RecentSearches in :core; the × and Clear all
+│                       are POST /kid/search
 ├── HubBrowsers.kt      browsers.json: the one-shot codes a parent mints (the
 │                       QR's payload) and the browsers that got in. A
 │                       credential that can do nothing but play video, bound
@@ -397,6 +414,10 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Add a route a **child's browser** calls | `HubKidServer.register` + a `private fun <name>(ex)` beside the others + a row in `docs/LAN-API.md`'s **kid** table + the path in guard 57(a)'s expected set. It lives under `/kid/`, must call `watching(ex)` and fail closed to the sign-in screen (guard 60), answer through `respond()` so it carries the security headers, and take the child from the credential — never from a query. It is registered from `HubKidServer` *only*: a kid path registered from `HubServer` is one that skipped the gate (guard 57) |
 | Change how a child signs in to the kid app | `HubKidServer.claim` (the two doors: a parent's code, the kid's password), `HubKidLock` (the per-kid throttle), `KidPassword` in `:core` (the record both faces derive and verify), `Profile.webPassword` and its `kid.web` merge unit; the phone's row is in `KidPage.kt`, the console's card in `index.html` under `kid-web-password`, both declared in `SettingsSurface` |
 | See what went wrong on a device, or make something new report | `Diag.w` / `Diag.e` in the app (guard 68 refuses a raw `Log.w`) and `report()` in `kid.html`; the ring drains in `ConfigSync.sweep` through `LanClient.report`; `HubReports` prints and keeps it, `/api/state` carries `reports`, the console's `reportsCard` draws it. `docker logs yosemite-kids-hub` has the same lines |
+| Offer a search order, or change a chip's words | `SearchOrder` in `:crawl` (`ALL`, `label`, `order` - the phone's `SearchOrderChips` and the hub's `HubKidHome.search` both read it; the page draws `orders` from the reply). "Newest" needs `publishedAt`, which the index keeps since 1.9.0; anything ranked by views is deliberately not offered |
+| A channel YouTube says is gone | `IndexCrawlRun.goneReason` decides (a `ContentNotAvailableException` in the cause chain), `ChannelIndex.markGone` remembers it with YouTube's words and `GONE_RETRY_MS` says when to try again; it shows on the console's Channels row and Devices index card (`state.index.gone`) and in the phone's index list. A page that arrives clears it |
+| Change how long the player keeps a resolved stream | `PlaybackCache` in `:crawl` (`TTL_MS`, `MAX_ENTRIES`), in front of `YouTubeRepository.resolvePlayback`; `HubStream` keeps its own for the browser with the same numbers. `PlaybackBreaker.MAX_CONSECUTIVE` is the other knob on that path |
+| The recent-search chips, on any face | `RecentSearches` in `:core` is the rule; the phone's `SearchHistoryStore` and the hub's `HubKidSearches` hold the lists; the page's `renderSearchPage` draws the hub's and posts the × to `/kid/search` |
 | Record how the television draws a kid surface, or that it skips one | `KidSurface`: `tvWhy` for an adaptation (the rail, the remote, ten-foot tiles), `onTv = false` + `tvWhy` for a skip; guard 62(f) requires the reason and the gate prints the skips. The TV keeps its QR-only settings and its rail on purpose |
 | Make a parent's setting reach every kid face | `SettingsSurface.honouredBy` (`phone`, `tv`, `web`) on the control; a control honoured by `web` must be read in `HubKidHome`/`HubKidServer` through the phone's own `:crawl` function (guard 69), and one the browser cannot honour says why in `honourWhy` - the gate prints those. Page size is honoured by `HubKidHome.page`; the browser asks for the next page with `from=` and caps nothing itself (guard 61) |
 | Bump the **hub's version** | `val hubVersion` in `hub/build.gradle.kts`, kept equal to the app's `versionName` by guard 39. It rides `GET /health`, `GET /status` and the admin page, and it is the only way to tell whether a container is old enough to drop config keys it does not model on the next save |

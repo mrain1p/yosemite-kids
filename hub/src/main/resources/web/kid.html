@@ -35,7 +35,7 @@
   bar and no tab strip. Added without these it is a Safari tab with a URL a
   child can edit.
 
-  iOS still needs its own three tags beside the manifest â Safari has honoured
+  iOS still needs its own three tags beside the manifest — Safari has honoured
   `apple-mobile-web-app-*` for a decade and reads the manifest for less than
   Chrome does, and this product's whole audience for the browser IS an iPad.
 
@@ -46,7 +46,7 @@
   --yk-background, then refilled whenever the look changes. Two reasons, and
   the first is a rule: a hex here would be a colour written into this file,
   which is the one thing it may not have (guard 61). The second is that it
-  would be the wrong colour anyway â on "My colour" the brand dark would draw
+  would be the wrong colour anyway — on "My colour" the brand dark would draw
   a hard band above a page that is not dark at all.
 -->
 <link rel="manifest" href="/kid/manifest.webmanifest">
@@ -275,7 +275,7 @@
 
   /* Channel tiles, name under.
      Sixteen by nine and not a square: the hub indexes videos, not channel
-     avatars, so a channel wears its newest video â and a square crop of a
+     avatars, so a channel wears its newest video — and a square crop of a
      16:9 frame cuts the middle out of every one of them. */
   .chan .label { text-align: center; }
 
@@ -525,7 +525,7 @@
 
 <div id="app" hidden>
   <header class="bar">
-    <button class="icon-btn" id="back" hidden aria-label="Back">â</button>
+    <button class="icon-btn" id="back" hidden aria-label="Back">←</button>
     <div class="avatar" id="avatar"></div>
     <div class="who" id="who"></div>
     <span class="pill" id="time" hidden></span>
@@ -544,13 +544,13 @@
   <dialog class="sheet" id="hold-menu">
     <h3 id="holdTitle"></h3>
     <div id="holdRows"></div>
-    <button class="close" id="holdClose"><span class="glyph">â</span>Close</button>
+    <button class="close" id="holdClose"><span class="glyph">✕</span>Close</button>
   </dialog>
 
   <nav class="tabs" id="tabs" hidden>
-    <button id="tab-home" aria-selected="true"><span class="glyph">ð </span>Home</button>
-    <button id="tab-channels" aria-selected="false"><span class="glyph">ðº</span>Channels</button>
-    <button id="tab-you" aria-selected="false"><span class="glyph">ð</span>You</button>
+    <button id="tab-home" aria-selected="true"><span class="glyph">🏠</span>Home</button>
+    <button id="tab-channels" aria-selected="false"><span class="glyph">📺</span>Channels</button>
+    <button id="tab-you" aria-selected="false"><span class="glyph">🙂</span>You</button>
   </nav>
 </div>
 
@@ -656,7 +656,7 @@
    * in each.
    *
    * The membership comes from the payload (`fav`, `later`, `queued`), and the
-   * answer to a tap comes back from the STORE â the queue is capped and can
+   * answer to a tap comes back from the STORE — the queue is capped and can
    * refuse, so the row follows what the hub says rather than what was asked.
    */
   function openHold(video) {
@@ -666,9 +666,9 @@
     clear(rows);
 
     [
-      { list: "favorites", on: video.fav, glyph: "â¤ï¸", add: "Add to Favorites", off: "Remove from Favorites" },
-      { list: "watch-later", on: video.later, glyph: "ð", add: "Add to Watch later", off: "Remove from Watch later" },
-      { list: "up-next", on: video.queued, glyph: "ð", add: "Add to Up next", off: "Remove from Up next" }
+      { list: "favorites", on: video.fav, glyph: "❤️", add: "Add to Favorites", off: "Remove from Favorites" },
+      { list: "watch-later", on: video.later, glyph: "🕒", add: "Add to Watch later", off: "Remove from Watch later" },
+      { list: "up-next", on: video.queued, glyph: "📚", add: "Add to Up next", off: "Remove from Up next" }
     ].forEach(function (row) {
       var b = el("button");
       b.type = "button";
@@ -725,7 +725,7 @@
     card.appendChild(poster);
     var label = el("div", "label");
     label.appendChild(el("span", "title", video.title));
-    // The hub composes the line ("Channel Â· 3 days ago", or the channel alone
+    // The hub composes the line ("Channel · 3 days ago", or the channel alone
     // when the parent's switch is off); older payloads carried only the name.
     label.appendChild(el("span", "sub", video.meta || video.channel));
     card.appendChild(label);
@@ -976,7 +976,7 @@
     return get(q).then(function (p) { if (p) renderChannels(p); });
   }
 
-  /** A seeded mix across every channel â the browser's "Surprise me". */
+  /** A seeded mix across every channel — the browser's "Surprise me". */
   function renderSurprise(payload) {
     var main = document.getElementById("main");
     clear(main);
@@ -1155,7 +1155,7 @@
   /**
    * When a video ends, play the next thing the child lined up.
    *
-   * Up next is a queue for one sitting â bedtime stories, in order â so a
+   * Up next is a queue for one sitting — bedtime stories, in order — so a
    * finished video should hand over to the next rather than stop dead. The
    * queue is **self-draining**: the video that just ended is taken out, which
    * is what makes "play the first one" mean "play the next one" without this
@@ -1239,9 +1239,9 @@
           return r.ok ? null : r.json().catch(function () { return null; });
         })
         .then(function (body) {
-          // `say`, never `detail`. The latter is written for a parent's log â
+          // `say`, never `detail`. The latter is written for a parent's log —
           // "this kid has a bedtime or a daily budget and nobody has set the
-          // family's home timezone" â and this page was showing it to a
+          // family's home timezone" — and this page was showing it to a
           // five-year-old. KidWords in :core holds the child's half, so a
           // refusal reads the same on the television and on the tablet.
           why.textContent = (body && body.say) || "That will not play right now.";
@@ -1336,7 +1336,7 @@
    * The countdown pill.
    *
    * The words come from the hub (KidWords in :core), so a child is told the
-   * same thing here and on the television â and what counts as LOW comes with
+   * same thing here and on the television — and what counts as LOW comes with
    * them, because the amber is a promise about when a warning starts and two
    * faces disagreeing about that is two different products.
    */
@@ -1421,7 +1421,7 @@
    * per-device and has never synced.
    */
   var LOOKS = ["colour", "dark", "light"];
-  var LOOK_GLYPH = { colour: "ð¨", dark: "ð", light: "âï¸" };
+  var LOOK_GLYPH = { colour: "🎨", dark: "🌙", light: "☀️" };
 
   function applyLook(look) {
     var root = document.documentElement;
@@ -1450,7 +1450,7 @@
    * rather than written anywhere: that is the only way it can follow a kid's
    * own ground, and the only way this file stays free of colours (guard 61).
    *
-   * After applyLook, never before â on "My colour" the ground is a per-request
+   * After applyLook, never before — on "My colour" the ground is a per-request
    * value that only exists once /home has answered.
    */
   function paintStatusBar() {
@@ -1482,7 +1482,7 @@
    * the child's own password.
    *
    * One path for both, so a scanned code and a typed password take exactly
-   * the same route â including the refusals. A second, quieter route for the
+   * the same route — including the refusals. A second, quieter route for the
    * scanned case is how "the QR works but says nothing when the code has
    * expired" happens.
    */
@@ -1586,7 +1586,7 @@
    *
    * **The code is removed from the address bar either way**, before the claim
    * is even attempted. It is single-use and expires in ten minutes, so what is
-   * left in a tablet's history is already spent â but a spent code sitting in
+   * left in a tablet's history is already spent — but a spent code sitting in
    * the address bar is also a code a child can see, screenshot, and hand to a
    * sibling to try, and the tidier answer costs one line. replaceState rather
    * than pushState, so the back gesture does not walk them into a claim that
@@ -1627,8 +1627,8 @@
    * The tablet's Back gesture, which used to leave the app entirely.
    *
    * This page never touched the History API, so on an iPad a swipe from the
-   * left edge â the gesture for "go back one screen" everywhere else on the
-   * device â navigated away from the site. Installed to the home screen that
+   * left edge — the gesture for "go back one screen" everywhere else on the
+   * device — navigated away from the site. Installed to the home screen that
    * is worse still: there is no address bar to get back with, so a child who
    * swiped had to be rescued by an adult.
    *
@@ -1647,7 +1647,7 @@
 
   window.addEventListener("popstate", function () {
     var dlg = document.getElementById("hold-menu");
-    // A sheet is the first thing Back should close â it is on top.
+    // A sheet is the first thing Back should close — it is on top.
     if (dlg && dlg.open) { dlg.close(); return; }
     stopBeating();
     document.getElementById("q").value = "";
@@ -1694,13 +1694,13 @@
   });
 
   // A code in the address bar is a QR that was just scanned, so redeem it
-  // FIRST and let its own success load the home. Starting both â the claim and
-  // the ordinary load â races them: the load wins, paints the code box, and is
+  // FIRST and let its own success load the home. Starting both — the claim and
+  // the ordinary load — races them: the load wins, paints the code box, and is
   // then replaced a moment later, which reads as the page flickering rather
   // than as it working.
   // The look, before anything is fetched. applyLook used to run only once
-  // /home had answered, which meant the CODE BOX â the first screen anyone
-  // installing this ever sees â had no theme-color at all, so an installed
+  // /home had answered, which meant the CODE BOX — the first screen anyone
+  // installing this ever sees — had no theme-color at all, so an installed
   // iPad drew its status bar in the browser's default grey above a dark page.
   // "My colour" still needs /home for the kid's own ground and repaints then;
   // this is the brand look arriving immediately rather than a frame late.

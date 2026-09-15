@@ -82,22 +82,22 @@ fun ProfileAvatar(profile: Profile, size: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/** Emoji â bundled Fluent Emoji 3D drawable (res/drawable-nodpi/avatar_*.png). */
+/** Emoji → bundled Fluent Emoji 3D drawable (res/drawable-nodpi/avatar_*.png). */
 val FLUENT_AVATARS: Map<String, String> = mapOf(
-    "ð¦" to "avatar_fox", "ð¼" to "avatar_panda", "ð¦" to "avatar_lion",
-    "ð¸" to "avatar_frog", "ð°" to "avatar_rabbit", "ð¦" to "avatar_unicorn",
-    "ð" to "avatar_octopus", "ð¦" to "avatar_trex",
-    "ð" to "avatar_car", "ð" to "avatar_rocket", "ð" to "avatar_train",
-    "ð" to "avatar_tractor", "ð" to "avatar_helicopter", "âµ" to "avatar_sailboat",
-    "ð¤" to "avatar_robot", "ð»" to "avatar_ghost", "ð" to "avatar_star",
-    "ð" to "avatar_rainbow", "ð" to "avatar_watermelon", "â½" to "avatar_soccer",
-    "ð¸" to "avatar_guitar", "ð§" to "avatar_cupcake"
+    "🦊" to "avatar_fox", "🐼" to "avatar_panda", "🦁" to "avatar_lion",
+    "🐸" to "avatar_frog", "🐰" to "avatar_rabbit", "🦄" to "avatar_unicorn",
+    "🐙" to "avatar_octopus", "🦖" to "avatar_trex",
+    "🚗" to "avatar_car", "🚀" to "avatar_rocket", "🚂" to "avatar_train",
+    "🚜" to "avatar_tractor", "🚁" to "avatar_helicopter", "⛵" to "avatar_sailboat",
+    "🤖" to "avatar_robot", "👻" to "avatar_ghost", "🌟" to "avatar_star",
+    "🌈" to "avatar_rainbow", "🍉" to "avatar_watermelon", "⚽" to "avatar_soccer",
+    "🎸" to "avatar_guitar", "🧁" to "avatar_cupcake"
 )
 
 /**
- * Full-screen "Who's watching?" â one row of big tiles, D-pad and touch alike.
+ * Full-screen "Who's watching?" — one row of big tiles, D-pad and touch alike.
  * Picking a protected profile detours through the blind direction-PIN entry.
- * [remainingMinutes] (profile id â minutes left today) makes budget-stealing
+ * [remainingMinutes] (profile id → minutes left today) makes budget-stealing
  * visible on the tile itself; null entries show no number.
  */
 @Composable
@@ -180,7 +180,7 @@ fun WhosWatchingScreen(
                         Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (profile.pin != null) {
-                                Text("ð ", style = MaterialTheme.typography.bodySmall)
+                                Text("🔒 ", style = MaterialTheme.typography.bodySmall)
                             }
                             Text(
                                 profile.name,
@@ -199,7 +199,7 @@ fun WhosWatchingScreen(
                 }
             }
             Spacer(Modifier.height(40.dp))
-            // Still gated by the parent check inside â this is a doorway, not a hole.
+            // Still gated by the parent check inside — this is a doorway, not a hole.
             TextButton(
                 onClick = onOpenSettings,
                 modifier = Modifier.tvFocusHighlight()
@@ -216,7 +216,7 @@ fun WhosWatchingScreen(
 
 /**
  * Blind PIN entry, Google-TV style: the code is four D-pad presses
- * (â â â â¶ and the OK button) and the screen shows only dots filling up â
+ * (↑ ↓ ◀ ▶ and the OK button) and the screen shows only dots filling up —
  * a sibling on the couch sees nothing worth memorizing. Touch devices get
  * the same five buttons, so one code works everywhere.
  *
@@ -276,7 +276,7 @@ fun DirectionPinScreen(
             )
             if (wrong) {
                 Spacer(Modifier.height(8.dp))
-                Text("That wasn't it â try again", color = MaterialTheme.colorScheme.error)
+                Text("That wasn't it — try again", color = MaterialTheme.colorScheme.error)
             }
             Spacer(Modifier.height(28.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -294,7 +294,7 @@ fun DirectionPinScreen(
             }
             Spacer(Modifier.height(32.dp))
             // Touch path: same four arrows as buttons. On TV these are never
-            // reached â the key handler above consumes D-pad presses first.
+            // reached — the key handler above consumes D-pad presses first.
             DirectionArrowPad(onPress = ::press)
             Spacer(Modifier.height(20.dp))
             if (alternative != null && onAlternative != null) {
@@ -379,7 +379,7 @@ internal fun pickerGate(profile: Profile): PickerGate = PickerGate(
     passwordOffered = profile.pin != null && profile.webPassword != null
 )
 
-/** The D-pad diamond (â â â â around OK) for entering and setting codes. */
+/** The D-pad diamond (↑ ↓ ← → around OK) for entering and setting codes. */
 @Composable
 fun DirectionArrowPad(onPress: (Char) -> Unit) {
     @Composable
@@ -402,13 +402,13 @@ fun DirectionArrowPad(onPress: (Char) -> Unit) {
         }
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        key("â", 'U')
+        key("↑", 'U')
         Row(verticalAlignment = Alignment.CenterVertically) {
-            key("â", 'L')
+            key("←", 'L')
             key("OK", 'C', emphasized = true)
-            key("â", 'R')
+            key("→", 'R')
         }
-        key("â", 'D')
+        key("↓", 'D')
     }
 }
 
@@ -417,6 +417,6 @@ fun directionPinArrows(pin: String): String =
     if (!isValidDirectionPin(pin)) pin
     else pin.map {
         when (it) {
-            'U' -> "â"; 'D' -> "â"; 'L' -> "â"; 'R' -> "â"; else -> "OK"
+            'U' -> "↑"; 'D' -> "↓"; 'L' -> "←"; 'R' -> "→"; else -> "OK"
         }
     }.joinToString(" ")

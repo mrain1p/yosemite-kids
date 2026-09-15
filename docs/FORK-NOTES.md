@@ -1894,3 +1894,103 @@ test only until the 1.8.0 APK is on the fleet.
 Seen on the NAS and left for the owner: the crawl keeps retrying one channel
 YouTube answers "The playlist does not exist" for, backing off each time; it
 wants removing from the list or a crawl-side "gone" verdict.
+
+### The index keeps its dates, the player keeps its streams, and the last two web surfaces (1.9.0)
+
+The round after the four goals, started from one question the owner asked
+about the release before it: *why can't the browser show a video's age when
+the phone can — don't they read the same cached data?* They should have. Both
+faces run the same extractor from `:crawl`, and it handed the crawl an upload
+date and a view count for every video; the crawl wrote five keys to disk and
+dropped both. Fixing that (roadmap §2M, written up a week earlier as "a
+smaller job than it sounds") is the first item, and most of the rest of the
+round is what it unlocked or what the same week's NAS log turned up.
+
+- **The index keeps the date and the count** (`IndexedVideo.viewCount`,
+  `publishedAt`; keys `v` and `p`, absent on a row an older build wrote, so
+  a five-key file still parses and no re-crawl is ordered). A row the index
+  already holds *learns* both from the next crawl of its page — the count
+  every time, the date once — because page 1 is re-read on every delta
+  crawl and the harvest walks the rest. `ChannelIndexDateTest` is the gate.
+- **Every face honours the two settings that needed them.** *Show when a
+  video came out* and *Channel page layout* were declared unhonoured by the
+  browser with the reason; both are `honouredBy` every kid face now, and
+  guard 69 holds the hub's kid routes to reading them. The hub composes the
+  "Channel · 3 days ago" line itself, with `metaLine` and `relativeAge`
+  moved from `:app` to `:core` (`ui/VideoMeta.kt`), so the page draws it
+  verbatim and three faces say it one way. "Latest video" joined the
+  browser's Channels grid, read the way the phone reads its cache; "Newest"
+  joined the phone's search chips (`SearchOrder.RECENT`), with an undated
+  row sorting last and never hidden. The gate's "kid-facing settings the
+  browser does not honour" line is empty for the first time.
+- **A channel YouTube says is gone is marked, not the reason every crawl
+  fails.** The NAS log showed it: one channel answered "The playlist does not
+  exist" on every run, and with the other fifty-three complete it was the
+  only thing a run ever attempted, so every run was a failed run and the hub
+  backed the whole crawl off — fifteen minutes doubling to six hours — for a
+  verdict that was never going to change. `IndexCrawlRun` now tells
+  YouTube's verdict (a `ContentNotAvailableException` anywhere in the cause
+  chain) from a failure that might be this box's, marks the source gone with
+  YouTube's own words, leaves it alone for a day and counts it as neither a
+  page nor a failure; a page that later arrives clears the mark. The console
+  tags the row *Not on YouTube* with the reason and the choice (remove it,
+  or keep the videos already listed), the Devices page lists it under the
+  index, the phone's index list says the same, and the hub logs one line.
+- **The player keeps the streams it resolved** (`PlaybackCache` in `:crawl`,
+  in front of `resolvePlayback`): twenty minutes, sixty-four entries, the
+  hub's own numbers from 1.4.0. Keyed on the page URL *and* the ceiling, or
+  the quality picker would be handed the old streams; forgotten whole on a
+  playback failure, or a stale URL would be a video that cannot play handed
+  back on every retry; bypassed by downloads. A replay, "Up next" back to a
+  video just watched, or a quality step back to a ceiling already resolved
+  now costs no extraction — a request YouTube's bot detection watches and a
+  multi-second wait in front of a child.
+- **The player stops walking the queue when YouTube stops answering**
+  (`PlaybackBreaker`). One failure is the video's and is skipped as before;
+  the second in a row is YouTube's, and the player stops rather than
+  sprinting through the lineup one refused extraction after another — the
+  burst a bot wall looks for. The card says so in a second sentence, *Try
+  again* resets the count because a person chose to, and a video that plays
+  resets it too.
+- **The channel page's rails hold their slot** (roadmap 8C.2, the other half
+  of the family's week-one report). New for you appeared only with three or
+  more new videos, so a channel with two looked half-built; the playlist
+  strip appeared a second after the paint and pushed the grid down. The
+  New-for-you slot is always drawn — a short row, a line saying there is
+  nothing new, or a skeleton — and the strip has a skeleton in its own keys
+  until the listing answers either way (`HomeState.channelPlaylistsPending`).
+  Guard 71 holds both, in both gates.
+- **Two of the three kid surfaces the gate still named reached the
+  browser.** *Watched* — a channel's finished videos, newest-watched first
+  through the phone's own `orderByWatched`, at `/kid/channel?watched=1`,
+  with a "Watched · N" link on the page. *The search page* — the page before
+  a query: recent searches as chips with the × that forgets one, kept per kid
+  on the hub (`HubKidSearches`) where the phone keeps them on the device,
+  both through `RecentSearches` in `:core`; and the order chips — Best match
+  · Newest · Shortest · Mix it up — through `SearchOrder` with one set of
+  words (`SearchOrder.label`) on every face. A search-as-you-type page must
+  not remember every prefix, so a search joins the recents only when Enter
+  or a chip says the child meant it (`remember=1`). The gate prints
+  `playlists` alone now; that one waits on the crawler indexing playlists.
+- **The phone's Who's watching? accepts the kid's browser password.** Beside
+  the four-press PIN, never instead of it: the PIN is the phone's lock and a
+  kid with a password and no PIN opens with a tap as before. *Use the
+  password instead* appears only when there is one to use (`pickerGate`,
+  `PickerGateTest`), and it is verified against the same PBKDF2 record the
+  hub verifies.
+- **Three canaries could not fire** and were caught by the first Linux run
+  of the canary in CI, where it takes a minute rather than the hour it takes
+  on Windows: guard 56 counted files rather than declarations, guard 70 was
+  satisfied by a function existing rather than being called, and guard 42
+  had the same shape. All three tightened. The hand-trip habit that tripped
+  guards locally also cost one commit its edits (`git checkout --` restores
+  from the index, not from the working copy); the canary in a worktree is
+  the tool for that, and the lesson is in the working notes.
+
+Verified: the JVM suites in `:core`, `:crawl`, `:hub` and `:app` (new:
+`ChannelIndexDateTest`, `PlaybackCacheTest`, `HubKidSearchTest`,
+`RecentSearchesTest`, `PlaybackBreakerTest`, `PickerGateTest`, and the
+gone-source and Newest cases in `IndexCrawlRunTest` and `SearchOrderTest`);
+both gates; the canary in CI. The channel-page rails, the breaker's card and
+the password screen are Compose and were compiled, not driven: they want a
+finger on the phone before anyone calls them finished.

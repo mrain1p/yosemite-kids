@@ -30,8 +30,8 @@ import io.yosemitekids.app.data.PlaylistRef
 
 /**
  * The "By playlist" channel layout: the channel's playlists as a row of
- * chips at the top of its page â the same idea as the channel bar on the
- * home screen, one level down â then "All videos" and the grid. A chip opens
+ * chips at the top of its page — the same idea as the channel bar on the
+ * home screen, one level down — then "All videos" and the grid. A chip opens
  * the playlist as its own page; Back returns to the channel. The row goes
  * into the channel grid as full-span items so the page scrolls as one.
  */
@@ -40,7 +40,7 @@ internal fun LazyGridScope.playlistRow(
     isTv: Boolean,
     onOpenPlaylist: (PlaylistRef) -> Unit,
     channelName: String = "",
-    /** "See all" â every playlist with its video count. */
+    /** "See all" → every playlist with its video count. */
     onSeeAll: (() -> Unit)? = null
 ) {
     if (playlists.isEmpty()) return
@@ -63,7 +63,7 @@ internal fun LazyGridScope.playlistRow(
 
 /**
  * Every playlist a channel has, one row each with its cover and how many
- * videos are in it â the strip's "See all". A row opens the playlist.
+ * videos are in it — the strip's "See all". A row opens the playlist.
  */
 @Composable
 internal fun PlaylistsPage(
@@ -136,13 +136,13 @@ internal fun PlaylistsPage(
 }
 
 /**
- * "The World of Insects | SciShow Kids" â "The World of Insects": channels
+ * "The World of Insects | SciShow Kids" → "The World of Insects": channels
  * stamp their own name on every playlist title, and on the channel's own
- * page that stamp is just noise. Separators seen in the wild: | Â· - â â â¢
+ * page that stamp is just noise. Separators seen in the wild: | · - – — •
  */
 internal fun cleanPlaylistName(name: String, channelName: String): String {
     if (channelName.isBlank()) return name.trim()
-    val sep = "[|Â·â¢\\-ââ:]"
+    val sep = "[|·•\\-–—:]"
     val tail = Regex("\\s*$sep\\s*${Regex.escape(channelName)}\\s*$", RegexOption.IGNORE_CASE)
     val head = Regex("^\\s*${Regex.escape(channelName)}\\s*$sep\\s*", RegexOption.IGNORE_CASE)
     val cleaned = name.replace(tail, "").replace(head, "").trim()
@@ -154,7 +154,7 @@ internal fun cleanPlaylistName(name: String, channelName: String): String {
  * name with "See all" (the playlist as its own page), then its first videos
  * as shelf tiles. Above the grid, before the "By playlist" chip row if the
  * parent chose that layout too. Rows the channel has picked but whose
- * videos haven't loaded yet are simply not there â never an empty row.
+ * videos haven't loaded yet are simply not there — never an empty row.
  */
 internal fun LazyGridScope.playlistShelves(
     shelves: List<PlaylistShelf>,
@@ -314,7 +314,7 @@ private fun PlaylistsRow(
 
 /**
  * One playlist in the row: its cover, rounded, with the video count in the
- * corner and the name underneath â a channel chip's shape, but 16:9 because
+ * corner and the name underneath — a channel chip's shape, but 16:9 because
  * a playlist's cover is a video frame, not a face.
  */
 @Composable
@@ -364,7 +364,7 @@ private fun PlaylistChip(playlist: PlaylistRef, width: Dp, onClick: () -> Unit) 
 }
 
 /**
- * One video in a horizontal shelf â the TV home rows. Rounded 16:9 poster
+ * One video in a horizontal shelf — the TV home rows. Rounded 16:9 poster
  * with the duration and the red watched bar, then the channel's face beside
  * the title and channel name. Finished videos dim the poster, as in the
  * grids. OK plays; a held OK (or a touch hold) opens the same menu the
@@ -380,8 +380,8 @@ internal fun ShelfVideoTile(
     modifier: Modifier = Modifier,
     width: Dp = 236.dp,
     /**
-     * Replaces the "channel Â· today" line. The Downloads shelf says
-     * "channel Â· 142 MB" instead: on that row what matters about a video is
+     * Replaces the "channel · today" line. The Downloads shelf says
+     * "channel · 142 MB" instead: on that row what matters about a video is
      * that it is here and what it cost, not when it went up.
      */
     metaOverride: String? = null,
