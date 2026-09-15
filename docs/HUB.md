@@ -587,6 +587,36 @@ is a separate counter on purpose.
 browser. It stops on that browser's next request. Deleting the child's profile
 is not the same thing and does not do it for you.
 
+## When something goes wrong on a device
+
+The hub is the one thing in the house that keeps a log, so the devices tell
+it. Every warning and error the app logs — a channel that would not warm, a
+sync merge it could not read, a video that would not play, a crash — goes
+into a small ring on that device (`Diag`, sixty entries, its own file, never
+the config), and the next time the device's sweep reaches the hub it drains
+the ring into `POST /report`. There is no timer and nothing is sent that is
+not a failure: no minutes, no titles, nothing about what was watched. A television
+that could not reach the hub all afternoon says so the moment it can.
+
+The kid page does the same for itself: a script error, an unhandled promise,
+or a video the hub answered with a 5xx goes to `POST /kid/report`, a handful
+per page load and then it stops.
+
+Each entry lands in two places at once:
+
+- **The container log.** One line per entry, beside the hub's own:
+  `report device Living room TV (tv 1.8.0) [warn] warm UCabc failed — SocketTimeout`.
+  `docker logs yosemite-kids-hub` (or Container Manager's log tab) is the
+  half that survives a restart.
+- **The console.** Devices → **Device log**: the same lines, newest first,
+  three hundred at most, in memory. A restart clears this card and keeps the
+  log — the right way round for a trail whose unit is "this afternoon".
+
+Levels are `warn`, `error`, `crash` (the app died; the line names the
+exception and the first frame in the app) and, from a browser, whatever the
+page said. A device that has never contacted a hub keeps its ring and nobody
+reads it; a family with no hub loses nothing they had.
+
 **What the page looks like.** The same home screen the television and the
 phone draw: the pinned hero a parent chose, the channel rail, Keep watching,
 More like what you watch, the video feed and Watched lately — in that order,

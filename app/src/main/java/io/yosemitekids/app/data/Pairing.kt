@@ -543,7 +543,7 @@ class LanServer(
                     socket.accept()
                 } catch (e: Exception) {
                     if (socket.isClosed) break
-                    android.util.Log.w("YosemiteKids", "lan accept failed, retrying", e)
+                    Diag.w("lan accept failed, retrying", e)
                     Thread.sleep(250)
                     continue
                 }
@@ -1540,6 +1540,19 @@ object LanClient {
         withContext(Dispatchers.IO) {
             runCatching {
                 request(device, "POST", "/config", configJson).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
+    /**
+     * Drain this device's diagnostic ring into a hub (`POST /report`). Only
+     * a hub answers it; a television or a phone is on `DEVICE_ONLY`'s other
+     * side and would 404. True when the hub took it, so the caller can mark
+     * those entries sent.
+     */
+    suspend fun report(device: PairedDevice, body: String): Boolean =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                request(device, "POST", "/report", body).use { it.isSuccessful }
             }.getOrDefault(false)
         }
 

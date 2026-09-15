@@ -80,3 +80,4 @@ can still fail (guard 65 requires one from 56 upward).
 | 65 | A guard is not finished until something proves it can fail. | `scripts/guard-canary.sh`, `scripts/check.sh` | yes |
 | 66 | Finished plans live in docs/archive, and docs/ holds only what is live. | `docs/archive`, `docs/ROADMAP.md`, `docs/PLAN-*.md` | yes |
 | 67 | The guard index is generated, and it is current. | `docs/GUARDS.md`, `scripts/guard-index.sh` | yes |
+| 68 | What goes wrong on a device reaches the hub, and nothing goes wrong silently. | `app/src/main/java/io/yosemitekids/app/data/Diag.kt`, `app/src/main/java`, `app/.../data/Diag.kt`, `app/src/main/java/io/yosemitekids/app/YosemiteKidsApp.kt`, `app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt`, `hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt`, `hub/src/main/kotlin/io/yosemitekids/hub/HubReports.kt` | yes |

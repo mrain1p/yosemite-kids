@@ -197,6 +197,7 @@ CHUNKER=crawl/src/main/kotlin/io/yosemitekids/app/data/StreamChunker.kt
 GRID=app/src/main/java/io/yosemitekids/app/ui/VideoGrid.kt
 INDEX=docs/GUARDS.md
 CANARY=scripts/guard-canary.sh
+APP=app/src/main/java/io/yosemitekids/app/YosemiteKidsApp.kt
 # Built from parts so the doc-path guard in check.sh does not look for a plan
 # file that exists only for the length of one canary run.
 PLANFILE=docs/PLAN-canary
@@ -303,6 +304,11 @@ canary 67 "$INDEX" \
   "the guard index falling behind the guards" \
   "is behind the guards" \
   'printf "| 999 | canary | - | - |\n" >> "$INDEX"'
+
+canary 68 "$APP" \
+  "a warning logged past the diagnostic ring" \
+  "past the diagnostic ring" \
+  'sed -i "/Diag.install(this)/a\        android.util.Log.w(\"YosemiteKids\", \"canary\")" "$APP"'
 
 echo
 if [ "$failed" -gt 0 ]; then

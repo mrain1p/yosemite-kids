@@ -92,11 +92,11 @@ object DeepCheck {
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            android.util.Log.w("YosemiteKids", "Deep check $videoId failed — $fallback", e)
+            Diag.w("Deep check $videoId failed — $fallback", e)
             null
         }
         if (checked == null && timedOut) {
-            android.util.Log.w("YosemiteKids",
+            Diag.w(
                 "Deep check $videoId timed out after ${timeoutMs}ms " +
                     "(transcript ${if (transcriptChars < 0) "not fetched" else "$transcriptChars chars"}) " +
                     "— $fallback"

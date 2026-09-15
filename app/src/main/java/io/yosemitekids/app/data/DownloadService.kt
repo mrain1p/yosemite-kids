@@ -126,7 +126,7 @@ class DownloadService : Service() {
                 DownloadEvents.progress.value = null
                 return
             } catch (e: Exception) {
-                android.util.Log.w("YosemiteKids", "download $videoId attempt $attempt failed", e)
+                Diag.w("download $videoId attempt $attempt failed", e)
                 lastError = e
             }
         }

@@ -75,6 +75,9 @@ app/src/main/java/io/yosemitekids/app/
 │   ├── Downloads.kt / DownloadService.kt / DownloadChecker.kt / LocalLibrary.kt
 │   │                         Offline copies with parent approval; sideloaded files
 │   ├── Backup.kt             Full backup/restore bundle (config + watch state + verdicts)
+│   ├── Diag.kt               The diagnostic ring: every Log.w/Log.e (guard 68)
+│   │                         plus the crash handler, drained into the hub's
+│   │                         POST /report by the sweep. Its own file, never config
 │   ├── KidNotices.kt         In-app pills the kid sees (grants, rule changes)
 │   ├── NowPlaying.kt         What's playing (for /stats) + RemotePlayerControl bridge
 │   ├── SponsorBlock.kt       Segment lookup by hashed video id
@@ -183,6 +186,9 @@ hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container
 │                       Guards 57-60
 ├── HubKidLock.kt       Five wrong passwords close one kid's door for a
 │                       minute, doubling to fifteen. Never HubSessions
+├── HubReports.kt       What the clients said went wrong: POST /report and
+│                       POST /kid/report land here, printed to stdout as they
+│                       arrive and kept in memory for the console's Device log
 ├── HubBrowsers.kt      browsers.json: the one-shot codes a parent mints (the
 │                       QR's payload) and the browsers that got in. A
 │                       credential that can do nothing but play video, bound
@@ -390,6 +396,7 @@ pre-profile stores) and `"_<profileId>"` for the rest — see `ProfileNamespace`
 | Add a route to the **hub** | `HubServer.start` + a `private fun <name>(ex)` beside the others + `docs/LAN-API.md`'s hub table (guard 30). If it is a route a device also answers, `authorised(ex)` first (guard 29) and take it off `DEVICE_ONLY` (guard 22). Answer through `respond()`; a route that writes its own headers must call `securityHeaders(ex)` itself, and guard 41 counts |
 | Add a route a **child's browser** calls | `HubKidServer.register` + a `private fun <name>(ex)` beside the others + a row in `docs/LAN-API.md`'s **kid** table + the path in guard 57(a)'s expected set. It lives under `/kid/`, must call `watching(ex)` and fail closed to the sign-in screen (guard 60), answer through `respond()` so it carries the security headers, and take the child from the credential — never from a query. It is registered from `HubKidServer` *only*: a kid path registered from `HubServer` is one that skipped the gate (guard 57) |
 | Change how a child signs in to the kid app | `HubKidServer.claim` (the two doors: a parent's code, the kid's password), `HubKidLock` (the per-kid throttle), `KidPassword` in `:core` (the record both faces derive and verify), `Profile.webPassword` and its `kid.web` merge unit; the phone's row is in `KidPage.kt`, the console's card in `index.html` under `kid-web-password`, both declared in `SettingsSurface` |
+| See what went wrong on a device, or make something new report | `Diag.w` / `Diag.e` in the app (guard 68 refuses a raw `Log.w`) and `report()` in `kid.html`; the ring drains in `ConfigSync.sweep` through `LanClient.report`; `HubReports` prints and keeps it, `/api/state` carries `reports`, the console's `reportsCard` draws it. `docker logs yosemite-kids-hub` has the same lines |
 | Bump the **hub's version** | `val hubVersion` in `hub/build.gradle.kts`, kept equal to the app's `versionName` by guard 39. It rides `GET /health`, `GET /status` and the admin page, and it is the only way to tell whether a container is old enough to drop config keys it does not model on the next save |
 | Change what the hub's page shows | `HubWeb.state` (what `GET /api/state` carries) then `hub/src/main/resources/web/index.html` — one file, no build step, nothing fetched from a CDN, because a NAS may have no outbound access. Pages are the `ROUTES` map (guard 11); a control drawn from the manifest needs no markup at all |
 | Change how the hub is signed in to | `HubPassword` (the KDF), `HubTokens.hasPassword`/`setPassword`/`verifyAdminSecret`, `HubSessions` (the escalating lockout), and the one `HubServer.adminGate()` every presentation of the secret goes through (guard 25) |

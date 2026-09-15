@@ -1,5 +1,6 @@
 package io.yosemitekids.app.ui
 
+import io.yosemitekids.app.data.Diag
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.yosemitekids.app.data.*
@@ -1098,7 +1099,7 @@ class MainViewModel(
                             async {
                                 runCatching { yt.source(entry, background = cosmetic) }
                                     .getOrElse { e ->
-                                        android.util.Log.w("YosemiteKids", "source ${entry.id} failed", e)
+                                        Diag.w("source ${entry.id} failed", e)
                                         Source(entry.id, entry.url, entry.label ?: entry.id, null, entry.kind)
                                     }
                             }
@@ -1121,7 +1122,7 @@ class MainViewModel(
                 }
             }
             .onFailure { e ->
-                android.util.Log.w("YosemiteKids", "whitelist refresh failed", e)
+                Diag.w("whitelist refresh failed", e)
                 _state.value = _state.value.copy(refreshing = false)
                 refreshInFlight = false
                 // Keep showing the cached tiles if we have them; only error on a cold cache.
@@ -1150,7 +1151,7 @@ class MainViewModel(
         for (entry in entries) {
             val resolved = runCatching { yt.source(entry) }.getOrNull()
             if (resolved == null) {
-                android.util.Log.w("YosemiteKids", "new source ${entry.id} did not resolve")
+                Diag.w("new source ${entry.id} did not resolve")
                 continue
             }
             // Matched by URL, never by id, for the reason the refresh above
@@ -1158,7 +1159,7 @@ class MainViewModel(
             sources = sources.map { if (it.url == resolved.url) resolved else it }
             val videos = runCatching { yt.uploadsPage(resolved).videos }
                 .getOrElse { e ->
-                    android.util.Log.w("YosemiteKids", "warm new ${resolved.id} failed", e)
+                    Diag.w("warm new ${resolved.id} failed", e)
                     emptyList()
                 }
             if (videos.isNotEmpty()) {
@@ -1198,7 +1199,7 @@ class MainViewModel(
         for (source in walk) {
             val videos = runCatching { yt.uploadsPage(source, background = true).videos }
                 .getOrElse { e ->
-                    android.util.Log.w("YosemiteKids", "warm ${source.id} failed", e)
+                    Diag.w("warm ${source.id} failed", e)
                     emptyList()
                 }
             if (videos.isNotEmpty()) {
@@ -1609,7 +1610,7 @@ class MainViewModel(
                 pumpUntilFilled()
             }
             .onFailure {
-                android.util.Log.w("YosemiteKids", "open ${source.id} failed", it)
+                Diag.w("open ${source.id} failed", it)
                 if (cachedVideos.isEmpty()) {
                     _state.value = _state.value.copy(loading = false, error = it.message ?: it.javaClass.simpleName)
                 } else {
@@ -1635,7 +1636,7 @@ class MainViewModel(
             cache.load(source.id)?.takeIf { cache.isFresh(source.id) }
         } ?: runCatching { yt.channelPlaylists(source) }
             .onSuccess { withContext(Dispatchers.IO) { cache.save(source.id, it) } }
-            .onFailure { android.util.Log.w("YosemiteKids", "playlists of ${source.id} failed", it) }
+            .onFailure { Diag.w("playlists of ${source.id} failed", it) }
             .getOrNull()
             ?: return null
         // A channel's "Shorts" playlist is the one collection a kid's shelf
@@ -1686,7 +1687,7 @@ class MainViewModel(
             var videos = withContext(Dispatchers.IO) { videoCache.load(id) }
             if (videos.isEmpty()) {
                 val page = runCatching { yt.uploadsPage(playlist, background = true) }
-                    .onFailure { android.util.Log.w("YosemiteKids", "playlist row $id failed", it) }
+                    .onFailure { Diag.w("playlist row $id failed", it) }
                     .getOrNull()?.videos.orEmpty()
                 if (page.isEmpty()) continue
                 withContext(Dispatchers.IO) { videoCache.save(id, page.take(500)) }
@@ -1810,7 +1811,7 @@ class MainViewModel(
                 kickScreening(rawVideos)
             }
             .onFailure {
-                android.util.Log.w("YosemiteKids", "surprise failed", it)
+                Diag.w("surprise failed", it)
                 _state.value = _state.value.copy(loading = false, error = it.message ?: it.javaClass.simpleName)
             }
     }
@@ -1863,7 +1864,7 @@ class MainViewModel(
                     (_state.value.screen as? Screen.ChannelVideos)?.let { publishChannel(it.source) }
                     kickScreening(page.videos)
                 }
-                .onFailure { android.util.Log.w("YosemiteKids", "load more failed", it) }
+                .onFailure { Diag.w("load more failed", it) }
             loadingMore = false
             _state.value = _state.value.copy(loadingMore = false)
             pumpUntilFilled()

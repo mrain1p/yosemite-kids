@@ -56,7 +56,7 @@ class IndexCrawlWorker(
         val outcome = IndexCrawlRun.run(
             index, sources,
             crawlOnce = { crawler.crawlOnce(it) },
-            onFailure = { android.util.Log.w("YosemiteKids", "index crawl failed", it) }
+            onFailure = { Diag.w("index crawl failed", it) }
         )
         android.util.Log.i("YosemiteKids", outcome.summary)
         return Result.success()

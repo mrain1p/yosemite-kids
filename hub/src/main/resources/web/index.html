@@ -2302,8 +2302,49 @@
     out.appendChild(d);
 
     out.appendChild(browsersCard());
+    out.appendChild(reportsCard());
     out.appendChild(phoneOnlyNote("Devices"));
     return out;
+  }
+
+  /**
+   * What the clients have said went wrong.
+   *
+   * A television that could not reach YouTube, a phone whose sync merge
+   * failed, a tablet whose video the hub could not carry: each device keeps
+   * a small ring of its own warnings and drains it here the next time its
+   * sweep reaches this hub, and the kid page posts its own errors as they
+   * happen. Nothing here is telemetry — no minutes, no titles, only what
+   * broke — and the same lines are in the container log, which survives a
+   * restart where this list does not.
+   */
+  function reportsCard() {
+    var list = state.reports || [];
+    var c = card(
+      "Device log",
+      "What the phones, televisions and browsers have reported going wrong. " +
+        "Each device says so the next time it syncs; the kid page says so as it happens. " +
+        "The same lines are in the container log."
+    );
+    if (!list.length) {
+      c.appendChild(el("p", "sub", "Nothing reported since this hub started."));
+      return c;
+    }
+    var ul = el("ul", "rows");
+    list.slice(0, 60).forEach(function (r) {
+      var when = new Date(r.at).toLocaleString();
+      var who = r.who + (r.kind && r.kind !== "browser" ? " (" + r.kind + (r.version ? " " + r.version : "") + ")" : "");
+      var line = el("li", null);
+      var head = el("div", "line");
+      head.appendChild(el("span", "tag", r.level));
+      head.appendChild(el("span", "grow", who));
+      head.appendChild(el("span", "sub", when));
+      line.appendChild(head);
+      line.appendChild(el("div", "sub", r.msg));
+      ul.appendChild(line);
+    });
+    c.appendChild(ul);
+    return c;
   }
 
   /**

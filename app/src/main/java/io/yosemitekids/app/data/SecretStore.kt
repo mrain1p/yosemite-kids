@@ -36,7 +36,7 @@ class SecretStore(context: Context) {
             // A wedged Keystore must not take AI screening down with it. This
             // file is excluded from backup the same way, so the key still never
             // leaves the device — it just isn't encrypted at rest.
-            android.util.Log.w("YosemiteKids", "encrypted prefs unavailable — storing plainly", it)
+            Diag.w("encrypted prefs unavailable — storing plainly", it)
             appContext.getSharedPreferences(FALLBACK_FILE, Context.MODE_PRIVATE)
         }
     }

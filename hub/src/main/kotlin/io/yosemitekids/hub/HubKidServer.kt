@@ -90,6 +90,8 @@ class HubKidServer(
      * stores the phone uses, never a hub-shaped copy. See [HubSavedLists].
      */
     private val lists: HubSavedLists,
+    /** Where a browser's page errors go: the console's Devices page and the container log. See [HubReports]. */
+    private val reports: HubReports,
     /** Passed in so tests need no clock, like every other class here. */
     private val now: () -> Long = { System.currentTimeMillis() }
 ) {
@@ -213,6 +215,11 @@ class HubKidServer(
         // credits the watch meter, which is how a browser's minutes reach a
         // kid's daily budget at all, and remembers the resume position.
         s.createContext("/kid/progress") { ex -> guarded(ex) { progress(ex) } }
+        // "Something on this page broke." A page error or a video the hub
+        // could not carry, so a parent can see it on the console instead of
+        // hearing about it at bedtime. Behind the cookie like everything
+        // else, and it changes nothing.
+        s.createContext("/kid/report") { ex -> guarded(ex) { report(ex) } }
         // What makes this installable on an iPad: an icon on the home screen,
         // full screen, no address bar. Unauthenticated on purpose — a browser
         // fetches these while installing, often without credentials, and they
@@ -336,6 +343,32 @@ class HubKidServer(
                 respond(ex, 409, JSONObject().put("refused", reason.name).toString())
             }
         )
+    }
+
+    /**
+     * `POST /kid/report {entries:[{at, level, msg}]}` — the page saying what
+     * broke: an uncaught script error, a promise nobody handled, a video the
+     * hub answered with a 5xx. Filed under the child this browser watches as,
+     * from the cookie and never the body (guard 60), so a parent reading the
+     * console knows which tablet. Bounded by [HubReports]; a page can post a
+     * handful per load and then stops itself, so a loop of errors is a
+     * handful of lines and not a flood.
+     */
+    private fun report(ex: HttpExchange) {
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        val browser = watching(ex) ?: return
+        val body = readBody(ex) ?: return respond(ex, 413, "too large")
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return respond(ex, 400, JSONObject().put("error", "bad report").toString())
+        val kept = reports.record(
+            from = "browser",
+            who = nameOf(browser.kid).ifEmpty { browser.kid },
+            kind = "browser",
+            version = json.optString("version").ifEmpty { null },
+            entries = json.optJSONArray("entries")
+        )
+        respond(ex, 200, JSONObject().put("kept", kept).toString())
     }
 
     /**

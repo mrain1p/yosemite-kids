@@ -79,7 +79,7 @@ class ConfigStore internal constructor(
         val text = synchronized(FILE_LOCK) { if (file.exists()) file.readText() else null }
         val parsed = text?.let {
             runCatching { withSecrets(ConfigJson.fromJson(it)) }.getOrElse { e ->
-                android.util.Log.e("YosemiteKids",
+                Diag.e(
                     "config.json exists but does not parse — serving the last good copy",
                     e
                 )
@@ -298,7 +298,7 @@ class ConfigStore internal constructor(
                 by = by
             )
             if (stamped.clockLooksWrong) {
-                android.util.Log.w("YosemiteKids",
+                Diag.w(
                     "a peer's config claims a date more than a week ahead — check the TV's clock"
                 )
             }
@@ -412,7 +412,7 @@ class ConfigStore internal constructor(
                 )
             }
         }.getOrElse { e ->
-            android.util.Log.w("YosemiteKids", "incoming config rejected", e)
+            Diag.w("incoming config rejected", e)
             null
         } ?: return null
 
@@ -444,7 +444,7 @@ class ConfigStore internal constructor(
     }.getOrElse { e ->
         // A rejected push is otherwise invisible on both ends — the phone shows
         // "out of sync" forever and nobody learns why.
-        android.util.Log.w("YosemiteKids", "incoming config rejected", e)
+        Diag.w("incoming config rejected", e)
         false
     }
 

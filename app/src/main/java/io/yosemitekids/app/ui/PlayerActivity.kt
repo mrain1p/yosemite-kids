@@ -1,5 +1,6 @@
 package io.yosemitekids.app.ui
 
+import io.yosemitekids.app.data.Diag
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.WindowManager
@@ -1823,7 +1824,7 @@ class PlayerActivity : ComponentActivity() {
     private fun onPlaybackFailed(message: String) {
         // The detail is for whoever reads logcat; the kid gets the friendly
         // card with a way forward (see ErrorCard).
-        android.util.Log.w("YosemiteKids", "playback failed for $currentPageUrl: $message")
+        Diag.w("playback failed for $currentPageUrl: $message")
         if (indexState.intValue < queue.lastIndex) playIndex(indexState.intValue + 1)
         else {
             errorCursor.intValue = 0

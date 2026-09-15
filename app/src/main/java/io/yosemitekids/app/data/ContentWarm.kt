@@ -97,7 +97,7 @@ object ContentWarm {
                     // One channel failing must not end the run — a deleted or
                     // region-blocked channel would otherwise stop every channel
                     // after it from ever refreshing, permanently.
-                    android.util.Log.w("YosemiteKids", "warm ${source.id} failed", e)
+                    Diag.w("warm ${source.id} failed", e)
                     emptyList()
                 }
             if (videos.isEmpty()) continue

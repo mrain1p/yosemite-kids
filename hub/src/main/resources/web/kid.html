@@ -1094,7 +1094,18 @@
       // left. <video> only ever says "it did not play", so ask the route
       // itself for the reason, in the hub's own words.
       fetch(v.src, { credentials: "same-origin", headers: { Range: "bytes=0-1" } })
-        .then(function (r) { return r.ok ? null : r.json().catch(function () { return null; }); })
+        .then(function (r) {
+          // A refusal (403) is a rule doing its job and is not reported. A
+          // 5xx is the hub failing to carry the video - resolve-failed, no
+          // muxed stream - and that is exactly what a parent wants to see
+          // on the console, with the hub's own `detail` beside the id.
+          if (r.status >= 500) {
+            r.clone().json().catch(function () { return {}; }).then(function (b) {
+              report("error", "video " + video.id + " did not play: " + r.status + " " + ((b && (b.detail || b.error)) || ""));
+            });
+          }
+          return r.ok ? null : r.json().catch(function () { return null; });
+        })
         .then(function (body) {
           // `say`, never `detail`. The latter is written for a parent's log —
           // "this kid has a bedtime or a daily budget and nobody has set the
@@ -1156,6 +1167,38 @@
     document.body.appendChild(t);
     setTimeout(function () { t.remove(); }, 6000);
   }
+
+  // --- telling the hub what broke ----------------------------------------
+
+  /**
+   * A page error, on its way to the console's Devices page and the container
+   * log. Not telemetry: only what went wrong, a handful per load, and never
+   * anything about what was watched. A browser that has not signed in has no
+   * cookie for /kid/report and the post is simply refused.
+   */
+  var reported = 0;
+  var REPORT_MAX = 5;
+  function report(level, message) {
+    if (reported >= REPORT_MAX) return;
+    reported++;
+    try {
+      fetch("/kid/report", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        // Not cut here: the hub bounds the text (HubReports.MAX_TEXT), and the
+        // page caps nothing (guard 61).
+        body: JSON.stringify({ entries: [{ at: Date.now(), level: level, msg: String(message) }] })
+      }).catch(function () { /* the hub not answering is what the sweep is for */ });
+    } catch (e) { /* nothing left to say it with */ }
+  }
+  window.addEventListener("error", function (e) {
+    report("error", (e.message || "script error") + (e.filename ? " @" + e.filename.split("/").pop() + ":" + e.lineno : ""));
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var r = e.reason;
+    report("error", "unhandled: " + ((r && (r.message || r.toString())) || "rejection"));
+  });
 
   /**
    * The countdown pill.

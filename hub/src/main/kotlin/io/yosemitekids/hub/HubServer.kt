@@ -135,6 +135,13 @@ class HubServer(
     private val kidLists = HubSavedLists(store.dataDir)
 
     /**
+     * What the clients have said went wrong. In memory and printed to
+     * stdout as it arrives — see [HubReports] for why not the volume.
+     * Shared with the kid routes, which take a browser's page errors.
+     */
+    private val reports = HubReports(now)
+
+    /**
      * The kid's half: the page at `/kid` and every route under it.
      *
      * Built here because everything it needs is something this server already
@@ -144,7 +151,7 @@ class HubServer(
      * only to the kid cookie, which this class never reads, and the parent
      * session is a header no kid route ever looks at (guards 57, 59).
      */
-    private val kid = HubKidServer(browsers, store, policy, meter, kidHistory, kidLists, now)
+    private val kid = HubKidServer(browsers, store, policy, meter, kidHistory, kidLists, reports, now)
 
     /** The verdict engine and the browser meter, for tests and a future route. */
     fun policy(): HubPolicy = policy
@@ -249,6 +256,10 @@ class HubServer(
         // box never holds a credential on anything and guard 7 is untouched.
         // A relay and a scoreboard; it stops nobody watching anything.
         s.createContext("/usage") { ex -> guarded(ex) { usage(ex) } }
+        // What went wrong on a device, drained by its sweep the next time it
+        // reaches this box. Printed to the container log and kept for the
+        // console; it stops nothing and changes nothing. See [HubReports].
+        s.createContext("/report") { ex -> guarded(ex) { report(ex) } }
         // Video bytes are NOT here. `/kid/media` is a kid route
         // ([HubKidServer]), answering only to the kid cookie, because the
         // thing that plays video is a child's browser and nothing a parent's
@@ -469,6 +480,35 @@ class HubServer(
     }
 
     /**
+     * `POST /report {version, kind, entries:[{at, level, msg}]}` — a device
+     * draining its diagnostic ring.
+     *
+     * Authenticated like every device route, and named by the enrolment the
+     * token belongs to — never by anything in the body, so a device cannot
+     * file a line under a sibling's name. Bounded by [HubReports] on every
+     * dimension, because all of it is text off the wire. Always 200 with a
+     * count: a device that could be told "your report was refused" would
+     * only keep it and try again, and there is nothing to refuse — a
+     * malformed row is skipped, and the rest of the trail is kept.
+     */
+    private fun report(ex: HttpExchange) {
+        if (!authorised(ex)) return
+        if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        val body = readBody(ex) ?: return respond(ex, 413, "too large")
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return respond(ex, 400, JSONObject().put("error", "bad report").toString())
+        val who = tokens.nameOf(ex.requestHeaders.getFirst("X-Token")) ?: "a device"
+        val kept = reports.record(
+            from = "device",
+            who = who,
+            kind = json.optString("kind").ifEmpty { null },
+            version = json.optString("version").ifEmpty { null },
+            entries = json.optJSONArray("entries")
+        )
+        respond(ex, 200, JSONObject().put("kept", kept).toString())
+    }
+
+    /**
      * A device asking to join: the one route gated by neither a token nor a
      * session, because a device that has never been here holds nothing to
      * present.
@@ -677,7 +717,7 @@ class HubServer(
                 ex, 200,
                 HubWeb.state(
                     store, tokens, dataDir, now(), index, screening, master, crawl, startedAt,
-                    browsers = browsers
+                    browsers = browsers, reports = reports
                 )
             )
 

@@ -173,6 +173,16 @@ object ConfigSync {
                 )
             }
             answered[device] = status
+            // The hub answered, so tell it what has gone wrong here since it
+            // last heard — the diagnostic ring, drained on the one path that
+            // already talks to it. No timer of its own: a device that is
+            // failing to reach the hub has nobody to tell, and says so the
+            // moment it can. Only a hub keeps a log; a television does not.
+            if (device.isHub) {
+                Diag.pendingReport(context?.let { DeviceKind.of(it) })?.let { (body, newest) ->
+                    if (LanClient.report(device, body)) Diag.forgetUpTo(newest)
+                }
+            }
             // Read per iteration, not hoisted above the loop. With two
             // TVs, merging the first one lands a co-parent's channel —
             // and comparing the second against the pre-merge hash
@@ -233,7 +243,7 @@ object ConfigSync {
                     }
                     val outcome = store.mergeIncoming(theirs, device.name)
                     if (outcome == null) {
-                        android.util.Log.w("YosemiteKids",
+                        Diag.w(
                             "config sync: ${device.name} sent a config we couldn't read"
                         )
                         return@forEach

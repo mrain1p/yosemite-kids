@@ -10,6 +10,10 @@ class YosemiteKidsApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // First, so a crash in anything below is the first thing the ring
+        // holds. See Diag: warnings and errors land in a ring the next hub
+        // contact drains, and the crash handler in front of the default one.
+        io.yosemitekids.app.data.Diag.install(this)
         io.yosemitekids.app.data.Extractor.init()
         // Thumbnail/playback quality targets from connection + device type.
         io.yosemitekids.app.data.NetworkQuality.configureTargets(this)

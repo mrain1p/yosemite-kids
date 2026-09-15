@@ -1556,8 +1556,8 @@ kidsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
 #         browser. Digits included in the class, so a path with a number in
 #         it cannot slip past unmatched (that happened; the guard failed OPEN).
 kid_routes=$(grep -oE "createContext\((KID_PATH|${q}/[a-z0-9/.-]*${q})" "$kidsrv" | sed "s/createContext(//; s/KID_PATH/\/kid/; s/${q}//g" | sort -u | tr "\n" " " || true)
-[ "$kid_routes" = "/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/progress /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you " ] ||
-  guard_fail "HubKidServer registers [$kid_routes] and guard 57 expects [/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/progress /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you ]. Adding one is a decision: it must fail closed to the sign-in screen (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+[ "$kid_routes" = "/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/progress /kid/report /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you " ] ||
+  guard_fail "HubKidServer registers [$kid_routes] and guard 57 expects [/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/progress /kid/report /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you ]. Adding one is a decision: it must fail closed to the sign-in screen (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 for r in $kid_routes; do
   case "$r" in
     /kid|/kid/*) ;;
@@ -1666,7 +1666,7 @@ fi
 #     route did while it was a placeholder on the admin origin, lets a child
 #     name their older sibling and watch on their bedtime, their budget and
 #     their block list.
-for fn in whoami media home channel search progress thumb; do
+for fn in whoami media home channel search progress thumb report list you; do
   body=$(awk -v f="    private fun $fn(ex: HttpExchange)" 'index($0, f) == 1 { inside = 1 } inside { print; if (inside && /^    }$/) exit }' "$kidsrv")
   [ -n "$body" ] ||
     guard_fail "guard 60 cannot find $fn(ex: HttpExchange) in $kidsrv; it is blind."
@@ -1973,6 +1973,31 @@ guard_index=docs/GUARDS.md
 if ! diff -q <(bash scripts/guard-index.sh) <(tr -d "\r" < "$guard_index") >/dev/null 2>&1; then
   guard_fail "docs/GUARDS.md is behind the guards. Regenerate it: bash scripts/guard-index.sh > docs/GUARDS.md"
 fi
+
+# 68. What goes wrong on a device reaches the hub, and nothing goes wrong silently.
+#     Every warning and error the app logs goes through Diag, which keeps a
+#     ring the next hub contact drains into POST /report: that is the whole
+#     of client diagnostics, and a raw Log.w or Log.e is a failure the hub
+#     never hears about. The crash handler is installed first thing in the
+#     Application, and the sweep is where the ring is drained - a timer of
+#     its own would be telemetry, and a device that cannot reach the hub has
+#     nobody to tell until it can.
+diag_src=app/src/main/java/io/yosemitekids/app/data/Diag.kt
+[ -f "$diag_src" ] ||
+  guard_fail "$diag_src is gone; guard 68 is blind. The device's diagnostic ring lives there."
+raw_logs=$(grep -rnE "(android[.]util[.])?\bLog[.](w|e)\(" app/src/main/java --include=*.kt | grep -v "/Diag.kt:" || true)
+[ -z "$raw_logs" ] ||
+  guard_fail "the app logs a warning or an error past the diagnostic ring:
+$raw_logs
+Use Diag.w / Diag.e (app/.../data/Diag.kt). A raw Log.w is a failure the hub is never told about, and the whole point of the ring is that a television failing all afternoon says so the next time its sweep reaches the box."
+grep -q "Diag.install(this)" app/src/main/java/io/yosemitekids/app/YosemiteKidsApp.kt ||
+  guard_fail "YosemiteKidsApp no longer calls Diag.install(this). Without it the ring has no file and the crash handler is never in front of the default one."
+grep -q "Diag.pendingReport(" app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt ||
+  guard_fail "ConfigSync no longer drains the diagnostic ring (Diag.pendingReport). The sweep is the one path that already talks to the hub; a ring nobody drains is a log nobody reads."
+grep -q "createContext(${q}/report${q})" hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt ||
+  guard_fail "HubServer no longer answers POST /report. A device draining its ring at a hub without it gets a page in reply and keeps the ring forever."
+grep -q "println(${q}report " hub/src/main/kotlin/io/yosemitekids/hub/HubReports.kt ||
+  guard_fail "HubReports no longer prints each report to stdout. The container log is the half of this that survives a restart, and the half a parent without the console can reach."
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

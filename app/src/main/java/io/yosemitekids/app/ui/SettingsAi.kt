@@ -1,5 +1,6 @@
 package io.yosemitekids.app.ui
 
+import io.yosemitekids.app.data.Diag
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -106,7 +107,7 @@ internal fun AiConnectionSection(
             .onFailure {
                 // The row shows a trimmed line; the log keeps the provider's
                 // whole answer, which is what actually says why.
-                android.util.Log.w("YosemiteKids", "model list from ${ai.baseUrl} failed", it)
+                Diag.w("model list from ${ai.baseUrl} failed", it)
                 modelsMessage = "Couldn't load models: ${it.message?.take(80)}"
             }
     }

@@ -1803,7 +1803,7 @@ $kidRoutes = @(Get-Content $kidSrv |
     ForEach-Object { $_.Matches } |
     ForEach-Object { if ($_.Groups[1].Value -eq "KID_PATH") { "/kid" } else { $_.Groups[2].Value } } |
     Sort-Object -Unique)
-$expected = "/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/progress /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you"
+$expected = "/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/progress /kid/report /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you"
 if (($kidRoutes -join " ") -ne $expected) {
     Fail-Guard "HubKidServer registers [$($kidRoutes -join ' ')] and guard 57 expects [$expected]. Adding one is a decision: it must fail closed to the sign-in screen (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 }
@@ -1921,7 +1921,7 @@ if ($hubText.Contains("`"$kidCookie`"")) {
 #     route did while it was a placeholder on the admin origin, lets a child
 #     name their older sibling and watch on their bedtime, their budget and
 #     their block list.
-foreach ($fn in @("whoami", "media", "home", "channel", "search", "progress", "thumb")) {
+foreach ($fn in @("whoami", "media", "home", "channel", "search", "progress", "thumb", "report", "list", "you")) {
     $kidFn = [regex]::Match($kidText, "(?ms)^    private fun $fn\(ex: HttpExchange\).*?^    \}").Value
     if (-not $kidFn) {
         Fail-Guard "guard 60 cannot find $fn(ex: HttpExchange) in $kidSrv; it is blind."
@@ -2264,6 +2264,38 @@ foreach ($n in $declared) {
     if ($indexRows[$n] -ne $has) {
         Fail-Guard "docs/GUARDS.md is behind the guards. Regenerate it: bash scripts/guard-index.sh > docs/GUARDS.md"
     }
+}
+
+# 68. What goes wrong on a device reaches the hub, and nothing goes wrong silently.
+#     Every warning and error the app logs goes through Diag, which keeps a
+#     ring the next hub contact drains into POST /report. A raw Log.w or
+#     Log.e is a failure the hub never hears about.
+$diagSrc = "app/src/main/java/io/yosemitekids/app/data/Diag.kt"
+if (-not (Test-Path $diagSrc)) {
+    Fail-Guard "$diagSrc is gone; guard 68 is blind. The device's diagnostic ring lives there."
+}
+$rawLogs = @(Get-ChildItem -Recurse -Filter *.kt app/src/main/java |
+    Where-Object { $_.Name -ne "Diag.kt" } |
+    ForEach-Object {
+        $lf = $_
+        $rel = $lf.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/")
+        Get-Content $lf.FullName | Select-String -Pattern '(android\.util\.)?\bLog\.(w|e)\(' |
+            ForEach-Object { "${rel}:$($_.LineNumber)" }
+    })
+if ($rawLogs.Count -gt 0) {
+    Fail-Guard "the app logs a warning or an error past the diagnostic ring: $($rawLogs -join '; ') - use Diag.w / Diag.e (app/.../data/Diag.kt). A raw Log.w is a failure the hub is never told about."
+}
+if (-not (Get-Content "app/src/main/java/io/yosemitekids/app/YosemiteKidsApp.kt" -Raw).Contains("Diag.install(this)")) {
+    Fail-Guard "YosemiteKidsApp no longer calls Diag.install(this). Without it the ring has no file and the crash handler is never in front of the default one."
+}
+if (-not (Get-Content "app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt" -Raw).Contains("Diag.pendingReport(")) {
+    Fail-Guard "ConfigSync no longer drains the diagnostic ring (Diag.pendingReport). The sweep is the one path that already talks to the hub; a ring nobody drains is a log nobody reads."
+}
+if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt" -Raw).Contains('createContext("/report")')) {
+    Fail-Guard "HubServer no longer answers POST /report. A device draining its ring at a hub without it gets a page in reply and keeps the ring forever."
+}
+if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubReports.kt" -Raw).Contains('println("report ')) {
+    Fail-Guard "HubReports no longer prints each report to stdout. The container log is the half of this that survives a restart, and the half a parent without the console can reach."
 }
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }

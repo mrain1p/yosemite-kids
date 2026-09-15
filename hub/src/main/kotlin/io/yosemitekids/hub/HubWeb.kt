@@ -135,7 +135,9 @@ object HubWeb {
          * one. Null on a hub built without the kid listener at all, which the
          * page renders as an empty list rather than as an error.
          */
-        browsers: HubBrowsers? = null
+        browsers: HubBrowsers? = null,
+        /** What the clients have reported going wrong, for the Devices page. Null in tests that have none. */
+        reports: HubReports? = null
     ): String {
         val config = runCatching { store.load() }.getOrElse { Whitelist(emptyList(), emptySet()) }
         // Keyless, and explicitly so. `config` comes off the hub's own disk,
@@ -253,6 +255,9 @@ object HubWeb {
             .put("review", reviewJson(screening, config))
             .put("devices", devices)
             .put("browsers", watchers)
+            // What the clients reported going wrong, newest first. An empty
+            // list on a hub built without the store, never an absent key.
+            .put("reports", reports?.recent() ?: org.json.JSONArray())
             .put("pending", pending)
             .put("versions", HubVersions.list(store))
             .put("index", indexJson ?: JSONObject.NULL)

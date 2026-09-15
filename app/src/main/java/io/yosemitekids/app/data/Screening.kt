@@ -120,7 +120,7 @@ class Screener(val store: ScreeningStore) {
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.w("YosemiteKids",
+                Diag.w(
                     "AI screening batch failed (attempt ${attempt + 1})", e)
                 if (attempt >= RETRY_DELAYS_MS.size) return
                 delay(RETRY_DELAYS_MS[attempt])
