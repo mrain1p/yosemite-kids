@@ -259,7 +259,7 @@ private fun PinnedCardRow(
  * a control that moves under the finger is worse than one that is greyed.
  */
 @Composable
-private fun MoveButton(
+internal fun MoveButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     enabled: Boolean,

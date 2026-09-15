@@ -18,6 +18,7 @@ import io.yosemitekids.app.ui.VideoItem
 import io.yosemitekids.app.ui.defaultFilterFor
 import io.yosemitekids.app.ui.filterVideos
 import io.yosemitekids.app.ui.homeSections
+import io.yosemitekids.app.ui.homeShelfTitle
 import io.yosemitekids.app.ui.orderChannels
 import io.yosemitekids.app.ui.surpriseMix
 import io.yosemitekids.app.ui.kidTinted
@@ -153,7 +154,7 @@ class HubKidHome(
         out.put("kid", kidJson(kidId))
         out.put("theme", themeJson(kidId))
         out.put("time", timeJson(kidId, viewer))
-        out.put("sections", sectionsJson())
+        out.put("sections", sectionsJson(kidId))
 
         // --- the hero ---------------------------------------------------
         val pinnedIds = config?.pinsFor(kidId)?.map { it.sourceId }.orEmpty()
@@ -622,17 +623,16 @@ class HubKidHome(
     }
 
     /**
-     * The shelves, in order, with their enabled flags.
-     *
-     * A parent's saved order is not a config field yet — the home-screen editor
-     * is on the roadmap — so this asks [homeSections] with nothing saved, which
-     * is precisely what the app does today. When the field lands, this line
-     * reads it and the browser gets the editor for free, because the ordering
-     * rule was never written here.
+     * The shelves, in order, with their enabled flags: the parent's
+     * arrangement of this kid's home (`Whitelist.homeRowsFor`, the same
+     * call the phone makes) reconciled against this build's catalogue by
+     * [homeSections] in `:core`. The ordering rule was never written here,
+     * which is why the row editor reached the browser the day the field did.
      */
-    private fun sectionsJson(): JSONArray {
+    private fun sectionsJson(kidId: String): JSONArray {
         val arr = JSONArray()
-        for (section in homeSections(emptyList())) {
+        val saved = runCatching { store.load().homeRowsFor(kidId) }.getOrDefault(homeSections(emptyList()))
+        for (section in saved) {
             arr.put(
                 JSONObject()
                     .put("id", section.id)
@@ -643,18 +643,8 @@ class HubKidHome(
         return arr
     }
 
-    private fun titleOf(id: String): String = when (id) {
-        HomeShelf.PINNED -> ""
-        HomeShelf.CHANNELS -> "Channels"
-        HomeShelf.KEEP_WATCHING -> "Keep watching"
-        HomeShelf.SUGGESTED -> "More like what you watch"
-        HomeShelf.VIDEOS -> "Videos"
-        HomeShelf.HISTORY -> "Watched lately"
-        // A shelf this build's catalogue knows and this page has no words for.
-        // Not an error: HOME_SHELVES is the list, and a face that cannot title
-        // one draws it untitled rather than dropping it.
-        else -> ""
-    }
+    /** One spelling for every face: `homeShelfTitle` in `:core`, never words of this page's own. */
+    private fun titleOf(id: String): String = homeShelfTitle(id)
 
     internal companion object {
         /** Every shelf id the page must be able to draw, for the guard's benefit. */

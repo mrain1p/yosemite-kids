@@ -554,6 +554,7 @@ private fun AdminScreen(
     var pageSize by remember(initial) { mutableStateOf(initial.pageSize) }
     var showVideoAge by remember(initial) { mutableStateOf(initial.showVideoAge) }
     var pins by remember(initial) { mutableStateOf(initial.pins) }
+    var homeRows by remember(initial) { mutableStateOf(initial.homeRows) }
     var baseline by remember(initial) { mutableStateOf(initial) }
     /** Entries added by this session's URL import — shown with a NEW tag for review. */
     var newIds by remember { mutableStateOf(setOf<String>()) }
@@ -682,7 +683,8 @@ private fun AdminScreen(
             qualityPhone = qualityPhone,
             pageSize = pageSize,
             showVideoAge = showVideoAge,
-            pins = pins
+            pins = pins,
+            homeRows = homeRows
         ).toConfig(baseline)
     }
 
@@ -724,6 +726,7 @@ private fun AdminScreen(
             pageSize = f.pageSize
             showVideoAge = f.showVideoAge
             pins = f.pins
+            homeRows = f.homeRows
             baseline = result.baseline
         }
     }
@@ -1246,6 +1249,17 @@ private fun AdminScreen(
                             resolvedNames = resolvedNames,
                             pins = pins,
                             onPins = { pins = it }
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    // Then the rows themselves, for the same kid: which
+                    // shelves their home shows and in what order. Its own
+                    // card for the reason the hero has one.
+                    SettingsCard(padded = false) {
+                        HomeRowsEditor(
+                            profiles = profiles,
+                            homeRows = homeRows,
+                            onRows = { homeRows = it }
                         )
                     }
                     Spacer(Modifier.height(12.dp))

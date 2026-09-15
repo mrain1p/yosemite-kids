@@ -2013,8 +2013,8 @@ foreach ($decl in $shelfDecls) {
     if ($kidPageText -notmatch [regex]::Escape("`"$shelf`"")) {
         Fail-Guard "HomeShelf names the shelf `"$shelf`" and the kid page has no branch for it, so a browser draws every shelf but that one - silently. Add it to renderHome(), or take it out of the shared catalogue."
     }
-    if ($kidHomeText -notmatch [regex]::Escape("HomeShelf.$name")) {
-        Fail-Guard "HomeShelf.$name (`"$shelf`") is a shelf $kidHomeSrc never names, so the browser would draw it untitled. Give it a title in titleOf()."
+    if ((Get-Content "core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt" -Raw) -notmatch [regex]::Escape("HomeShelf.$name")) {
+        Fail-Guard "HomeShelf.$name (`"$shelf`") is a shelf homeShelfTitle in HomeSections.kt never names, so every face would draw it untitled. Give it a title there."
     }
 }
 
@@ -2355,6 +2355,36 @@ foreach ($blk in $honoured) {
 }
 if ($notOnWeb.Count -gt 0) {
     Write-Host "   kid-facing settings the browser does not honour: $($notOnWeb -join ' ')"
+}
+
+# 70. One place arranges a home screen's rows, and every face draws the one list.
+#     The pinned hero's rule (guard 42), one field along: HomeRows.withOrder
+#     in :core mints every rank on both faces, and both faces read the list
+#     through Whitelist.homeRowsFor.
+$rowsSrc = "core/src/main/kotlin/io/yosemitekids/app/data/HomeRows.kt"
+if (-not (Test-Path $rowsSrc)) {
+    Fail-Guard "$rowsSrc is gone; guard 70 is blind. The home's rows live there, in :core, for every face."
+}
+$rowNew = @(Get-ChildItem -Recurse -Filter *.kt app/src/main, hub/src/main |
+    ForEach-Object {
+        $rf = $_
+        $rel = $rf.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/")
+        Get-Content $rf.FullName | Select-String -Pattern '[^A-Za-z]HomeRow\(' | ForEach-Object { "${rel}:$($_.LineNumber)" }
+    })
+if ($rowNew.Count -gt 0) {
+    Fail-Guard "a home row is built outside :core: $($rowNew -join '; ') - the rank spacing, the catalogue check and the reset-to-nothing live in HomeRows.withOrder, and a row minted anywhere else has none of them."
+}
+if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt" -Raw).Contains("HomeRows.withOrder")) {
+    Fail-Guard "HubWeb no longer runs an incoming home patch through HomeRows.withOrder, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedRows."
+}
+if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt" -Raw).Contains("homeRowsFor(")) {
+    Fail-Guard "HubKidHome no longer reads the parent's arrangement (Whitelist.homeRowsFor). The browser would draw the default while the television draws what the parent saved."
+}
+if (-not (Get-Content "app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt" -Raw).Contains("homeRowsFor(")) {
+    Fail-Guard "MainViewModel no longer reads the parent's arrangement (Whitelist.homeRowsFor). The phone and the television would draw the default while the browser draws what the parent saved."
+}
+if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt" -Raw).Contains("homeShelfTitle")) {
+    Fail-Guard "HubKidHome titles a shelf with words of its own. homeShelfTitle in :core is the one spelling; a second is a shelf called two things on two faces."
 }
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }

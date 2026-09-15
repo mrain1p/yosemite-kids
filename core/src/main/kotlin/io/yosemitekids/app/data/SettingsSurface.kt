@@ -298,7 +298,7 @@ object SettingsSurface {
                 )
             )),
         SettingsSection("kid-shelves", "How videos are listed", Page.LISTING, "",
-            listOf("showVideoAge", "pageSize", "channelLayout", "channelOrder", "pins"),
+            listOf("showVideoAge", "pageSize", "channelLayout", "channelOrder", "pins", "homeRows"),
             Where.BOTH, true,
             "How the kid's home is laid out. Inline on the phone with no " +
                 "composable of its own, which is exactly why this manifest is " +
@@ -312,6 +312,17 @@ object SettingsSurface {
                     "listing-pins", "Pinned on the home screen",
                     sub = "Up to three channels or playlists, big, at the top of this kid’s home.",
                     kind = ControlKind.CUSTOM, writes = "pins", json = "home",
+                    honouredBy = KID_FACES
+                ),
+                // The home's rows: which shelves, in what order, on or off,
+                // per kid. Like the hero, every edit on either face goes
+                // through one function in :core (HomeRows.withOrder), which
+                // mints the ranks and turns "the default, everything on" back
+                // into no rows at all.
+                SettingsControl(
+                    "listing-rows", "Rows on the home screen",
+                    sub = "Which shelves this kid’s home shows, and in what order. Reset puts the default back.",
+                    kind = ControlKind.CUSTOM, writes = "homeRows", json = "home",
                     honouredBy = KID_FACES
                 ),
                 SettingsControl(

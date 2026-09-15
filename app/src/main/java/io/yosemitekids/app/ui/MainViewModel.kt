@@ -1023,7 +1023,11 @@ class MainViewModel(
                     homeFilter = effectiveHomeFilter(),
                     channelFilter = effectiveChannelFilter(),
                     pageSize = list.pageSize,
-                    showVideoAge = list.showVideoAge
+                    showVideoAge = list.showVideoAge,
+                    // The parent's arrangement of this kid's home, or the
+                    // default layout: the same list the browser draws from
+                    // (HubKidHome.sectionsJson), reconciled by :core.
+                    homeSections = list.homeRowsFor(activeProfileId)
                 )
                 // Only the kid whose home this is owns these prefs. With nobody
                 // picked yet (who's-watching screen) `sessionGuard` is still the

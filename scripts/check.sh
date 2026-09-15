@@ -1743,8 +1743,10 @@ for pair in $shelf_pairs; do
   #         one.
   grep -qF "\"$shelf\"" "$kidpage" ||
     guard_fail "HomeShelf names the shelf \"$shelf\" and the kid page has no branch for it, so a browser draws every shelf but that one - silently. Add it to renderHome(), or take it out of the shared catalogue."
-  grep -qF "HomeShelf.$name" "$shelves" ||
-    guard_fail "HomeShelf.$name (\"$shelf\") is a shelf $shelves never names, so the browser would draw it untitled. Give it a title in titleOf()."
+  #         The title itself is homeShelfTitle in :core - one spelling for
+  #         every face - so that is where a shelf must be named.
+  grep -qF "HomeShelf.$name" core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt ||
+    guard_fail "HomeShelf.$name (\"$shelf\") is a shelf homeShelfTitle in HomeSections.kt never names, so every face would draw it untitled. Give it a title there."
 done
 
 
@@ -2081,6 +2083,38 @@ done <<EOF
 $honour_blocks
 EOF
 [ -z "$not_on_web" ] || echo "   kid-facing settings the browser does not honour:$not_on_web"
+
+# 70. One place arranges a home screen's rows, and every face draws the one list.
+#     The pinned hero's rule (guard 42), one field along. Two faces edit the
+#     rows - the phone's settings form and the hub's browser - and the
+#     arithmetic is the part that goes wrong quietly: ranks spaced so a move
+#     touches only the rows that moved, unknown shelves dropped, and "the
+#     default, everything on" stored as no rows at all so a reset leaves a
+#     family's document as one that never touched the editor. A second copy
+#     would not throw; it would mint ranks the other face never spaces, and
+#     the symptom is a home whose order differs between the television and
+#     the NAS.
+rows_src=core/src/main/kotlin/io/yosemitekids/app/data/HomeRows.kt
+[ -f "$rows_src" ] ||
+  guard_fail "$rows_src is gone; guard 70 is blind. The home's rows live there, in :core, for every face."
+#     (a) Nothing outside :core builds a HomeRow. Every edit goes through
+#         HomeRows.withOrder.
+row_new=$(grep -rnE "[^A-Za-z]HomeRow\(" --include=*.kt app/src/main hub/src/main 2>/dev/null || true)
+[ -z "$row_new" ] ||
+  guard_fail "a home row is built outside :core. The rank spacing, the catalogue check and the reset-to-nothing live in HomeRows.withOrder, and a row minted anywhere else has none of them. Found:
+$row_new"
+#     (b) The hub mints the ranks a browser sends it, and both faces read the
+#         same list: the hub's kid page and the phone through homeRowsFor.
+grep -qF "HomeRows.withOrder" hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt ||
+  guard_fail "HubWeb no longer runs an incoming home patch through HomeRows.withOrder, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedRows."
+grep -qF "homeRowsFor(" hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt ||
+  guard_fail "HubKidHome no longer reads the parent's arrangement (Whitelist.homeRowsFor). The browser would draw the default while the television draws what the parent saved."
+grep -qF "homeRowsFor(" app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt ||
+  guard_fail "MainViewModel no longer reads the parent's arrangement (Whitelist.homeRowsFor). The phone and the television would draw the default while the browser draws what the parent saved."
+#     (c) One spelling of a shelf's name. The kid page and the console's
+#         editor both take it from homeShelfTitle in :core.
+grep -qF "homeShelfTitle" hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt ||
+  guard_fail "HubKidHome titles a shelf with words of its own. homeShelfTitle in :core is the one spelling; a second is a shelf called two things on two faces."
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

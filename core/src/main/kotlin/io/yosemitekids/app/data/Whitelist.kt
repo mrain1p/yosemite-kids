@@ -408,6 +408,14 @@ data class Whitelist(
      */
     val pins: List<Pin> = emptyList(),
     /**
+     * How each kid's home screen is arranged — which shelves, in what order,
+     * drawn or not — one [HomeRow] per shelf per home; [homeRowsFor]
+     * resolves a viewer's. Empty is the default layout (`HOME_SHELVES`), and
+     * an empty list writes nothing and hashes as nothing, for the reason the
+     * pinned hero's does (`HomeRowsConfigTest`). See [HomeRow].
+     */
+    val homeRows: List<HomeRow> = emptyList(),
+    /**
      * Sync bookkeeping: when each part of this config was last edited, what
      * has been deleted, and the recent change log. Never enforced, never read
      * by a screen — it exists so two parents' edits can be merged instead of
@@ -446,6 +454,15 @@ data class Whitelist(
         val p = profile(profileId) ?: return Pins.ordered(pins.filter { it.kidId == null })
         return Pins.ordered(pins.filter { it.kidId == p.id })
     }
+
+    /**
+     * The home screen's shelves for one kid, in the parent's order and
+     * reconciled against this build's catalogue — ready to draw. Resolved the
+     * way [pinsFor] is: a kid who exists gets their own arrangement, anyone
+     * else the family's; a home nobody has arranged is the default layout.
+     */
+    fun homeRowsFor(profileId: String?): List<io.yosemitekids.app.ui.HomeSection> =
+        HomeRows.sections(homeRows, profile(profileId)?.id)
 
     fun isBlockedFor(videoId: String?, profileId: String?): Boolean {
         videoId ?: return false

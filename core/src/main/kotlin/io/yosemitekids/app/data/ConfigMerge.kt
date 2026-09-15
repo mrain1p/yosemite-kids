@@ -474,7 +474,7 @@ object ConfigMerge {
         // it alongside its source or its kid, and that must beat a stale
         // copy still listing it, or a deleted channel's card would outlive
         // the channel.
-        "src", "kid", "kid.pin", "kid.web", "allow", "afor", "dev", "grant", "home.pin" -> Safe.ABSENT
+        "src", "kid", "kid.pin", "kid.web", "allow", "afor", "dev", "grant", "home.pin", "home.row" -> Safe.ABSENT
         else -> Safe.SCALAR
     }
 
@@ -783,10 +783,36 @@ object ConfigMerge {
                 at[key] = d.at
                 kept += key to pick
             }
+            val pinsOut = JSONArray().also { arr ->
+                kept.sortedWith(compareBy({ it.second.optInt("rank") }, { it.first }))
+                    .forEach { arr.put(it.second) }
+            }
+
+            // --- the home's rows: the same loop, one unit per shelf per home.
+            // A row for a kid the merged document no longer lists goes with
+            // the kid; a row naming a shelf this build has not got is kept,
+            // because a newer build's shelf is not an orphan and homeSections
+            // simply does not draw it here.
+            val lr = rowsByKey(L.root)
+            val rr = rowsByKey(R.root)
+            val keptRows = ArrayList<Pair<String, JSONObject>>()
+            (lr.keys + rr.keys).forEach { key ->
+                val d = decide(key)
+                if (d.gone > 0) gone[key] = d.gone
+                if (!d.present) return@forEach
+                val mine = lr[key]
+                val theirs = rr[key]
+                val pick = pickValue(d, mine, theirs) ?: return@forEach
+                val kid = pick.optString("kid")
+                if (kid.isNotEmpty() && kid !in kids) return@forEach
+                collide(key, "home.row", d, mine?.toString(), theirs?.toString())
+                at[key] = d.at
+                keptRows += key to pick
+            }
             putHome(
-                out, locRoot,
+                out, locRoot, pinsOut,
                 JSONArray().also { arr ->
-                    kept.sortedWith(compareBy({ it.second.optInt("rank") }, { it.first }))
+                    keptRows.sortedWith(compareBy({ it.second.optInt("rank") }, { it.first }))
                         .forEach { arr.put(it.second) }
                 }
             )
@@ -1162,11 +1188,23 @@ object ConfigMerge {
      * result keeps the key only if the local document had it, so a document
      * merged against itself reads as unchanged.
      */
-    private fun putHome(out: JSONObject, local: JSONObject, pins: JSONArray) {
+    private fun putHome(out: JSONObject, local: JSONObject, pins: JSONArray, rows: JSONArray) {
         val was = local.optJSONObject("home")
         val home = JSONObject(was?.toString() ?: "{}")
         if (pins.length() > 0 || was?.has("pins") == true) home.put("pins", pins) else home.remove("pins")
+        if (rows.length() > 0 || was?.has("rows") == true) home.put("rows", rows) else home.remove("rows")
         if (home.length() > 0 || was != null) out.put("home", home) else out.remove("home")
+    }
+
+    /** The home's rows keyed by unit, as [pinsByKey] keys the cards. A row with no shelf id is not a row. */
+    private fun rowsByKey(root: JSONObject): Map<String, JSONObject> {
+        val out = LinkedHashMap<String, JSONObject>()
+        val home = root.optJSONObject("home") ?: return out
+        jsonObjects(home, "rows").forEach { o ->
+            val id = o.optString("id")
+            if (id.isNotBlank()) out.putIfAbsent(ConfigStamp.row(o.optString("kid").ifEmpty { null }, id), o)
+        }
+        return out
     }
 
     private fun settingsOf(root: JSONObject): JSONObject =

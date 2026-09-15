@@ -249,17 +249,14 @@ for the next round rather than rushed:
   **The release condition still stands:** an older build drops `home` on the
   round trip, so a household is only safe to pin on once every device *and*
   the hub image are on ≥1.1.0.
-- **The home ROW ORDER editor is not started, and is further off than it
-  looks.** Verified 2026-09-07 while building the pin editor: `HomeShelf` and
-  `HOME_SHELVES` read like data, but `UiState.homeSections` is initialised to
-  `homeSections(emptyList())` and **assigned nowhere in the repo**; `Whitelist`
-  has no row-order property; and `ConfigJson` knows exactly one key under
-  `home` (`pins`). So the shelf order is a hardcoded catalogue wearing a data
-  shape, and an editor for it is not UI work — it is a whole config-field
-  cycle first (a merge unit, a stamp, a change code, a safe state, omitted-at-
-  default serialisation, the fingerprint tail, the four canonical tests, and a
-  loop in `ConfigMerge.merge` so guard 38 is satisfied). §4 of the sync skill
-  is the checklist. Do that before drawing anything.
+- ~~**The home ROW ORDER editor is not started.**~~ **Done 2026-09-14**, the
+  way the 09-07 note said it had to be: a whole config-field cycle first
+  (`Whitelist.homeRows`, one `HomeRow` per shelf per home, the `home.row`
+  unit, absent-safe, omitted-at-default, the fingerprint tail, the canonical
+  tests in `HomeRowsConfigTest`, its loop in `ConfigMerge.merge`), read by
+  every face through `homeRowsFor`, edited only through
+  `HomeRows.withOrder` (guard 70), with the console's editor (`cardRows`) and
+  the phone's Listing page on top. "Reset to default" stores no rows at all.
 - **The hero uses the channel avatar as artwork**, upscaled. Real channel
   banners would fix the weakest thing on the home screen.
 
@@ -752,9 +749,12 @@ mapping and its environment line come out of the NAS compose file.
 - **Favourite / subscribe to a channel.** Real value, but it is new per-kid
   cross-device state and therefore a full sectioned-merge cycle through the most
   convergence-sensitive code in the repo.
-- **Home shelf order as a config field, and the parent's shelf editor.** Gated
-  on a two-release fleet condition: `ConfigJson.toJson` rebuilds `home` from the
-  parsed model, so any device on 1.4.0 or earlier drops a saved order.
+- ~~**Home shelf order as a config field, and the parent's shelf editor.**~~
+  **Done 2026-09-14** (§2K). The fleet condition was met the way the pinned
+  hero met it: an empty list writes nothing and hashes as nothing, and every
+  device in the house is past 1.1.0. A device older than this build drops a
+  saved arrangement on its own round trip; update every device before
+  arranging a home.
 - **Delete `TvTopChips`; measure the real Chromecast.** Both need a remote in
   front of the real television, and both fail silently from an emulator.
 - **MSE/HLS above 360p.** The largest remaining web-player piece, and 360p on a

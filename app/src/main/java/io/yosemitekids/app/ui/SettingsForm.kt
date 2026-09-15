@@ -48,7 +48,9 @@ internal data class SettingsForm(
      * card: a row this session never opened is carried through untouched
      * rather than re-stamped, exactly as a channel the parent did not edit is.
      */
-    val pins: List<Pin>
+    val pins: List<Pin>,
+    /** The home screens' rows — every kid's in one list, carried whole for the reason [pins] is. */
+    val homeRows: List<io.yosemitekids.app.data.HomeRow> = emptyList()
 ) {
     /**
      * The form as a config, shaped for saving. [baseline] is what disk holds
@@ -118,7 +120,8 @@ internal data class SettingsForm(
             // widened again tomorrow, and until then `resolvePins` refuses
             // to draw it. Fail closed at the render, and at the moment of
             // pinning (`Pins.withRow`) — not on every unrelated save.
-            pins = pins
+            pins = pins,
+            homeRows = homeRows
         )
     }
 
@@ -145,7 +148,8 @@ internal data class SettingsForm(
             qualityPhone = c.qualityPhone,
             pageSize = c.pageSize,
             showVideoAge = c.showVideoAge,
-            pins = c.pins
+            pins = c.pins,
+            homeRows = c.homeRows
         )
     }
 }

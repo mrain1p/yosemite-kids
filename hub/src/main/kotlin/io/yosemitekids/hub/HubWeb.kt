@@ -242,6 +242,18 @@ object HubWeb {
             // offering "Pin a channel", and a 3 typed here would be a second
             // cap to drift from the renderer's.
             .put("pins", JSONObject().put("max", Pins.MAX))
+            // The home's catalogue for the row editor: every shelf this build
+            // draws, in default order, with the one spelling of its name.
+            // From :core, so the editor cannot offer a shelf the home cannot
+            // draw or call one something the kid page does not.
+            .put(
+                "shelves",
+                JSONArray().also { arr ->
+                    io.yosemitekids.app.ui.HOME_SHELVES.forEach { id ->
+                        arr.put(JSONObject().put("id", id).put("label", io.yosemitekids.app.ui.homeShelfLabel(id)))
+                    }
+                }
+            )
             // The document itself, minus its bookkeeping. The page renders from
             // this, so a control is only ever as stale as the last fetch.
             .put("config", raw.apply { remove("sync") })
@@ -504,7 +516,9 @@ object HubWeb {
             // patch would re-derive a row nobody touched, and a row four cards
             // long from a build that allows four would be trimmed by an edit
             // to the AI model.
-            if ("home" in keys) next.copy(pins = normalisedPins(current, next)) else next
+            if ("home" in keys) {
+                next.copy(pins = normalisedPins(current, next), homeRows = normalisedRows(current, next))
+            } else next
         }
 
         if (hadKids.isNotEmpty()) {
@@ -539,6 +553,26 @@ object HubWeb {
      * What this cannot fix, and nothing here should pretend to: two parents
      * moving the same card resolve by the later stamp, silently, per card.
      */
+    /**
+     * The home's rows, the way [normalisedPins] does the hero: the browser
+     * sends one home's shelves in the parent's order with their flags, and
+     * every rank is minted here by `HomeRows.withOrder` against what is
+     * stored (guard 70). A home the patch does not list is reset to the
+     * default, which is what leaving it out of a whole-object patch means.
+     */
+    private fun normalisedRows(current: Whitelist, next: Whitelist): List<io.yosemitekids.app.data.HomeRow> {
+        val homes = (current.homeRows.map { it.kidId } + next.homeRows.map { it.kidId }).distinct()
+        var rows = current.homeRows
+        homes.forEach { kid ->
+            rows = io.yosemitekids.app.data.HomeRows.withOrder(
+                rows, kid,
+                io.yosemitekids.app.data.HomeRows.rowsOf(next.homeRows, kid)
+                    .map { io.yosemitekids.app.ui.HomeSection(it.id, it.enabled) }
+            )
+        }
+        return rows
+    }
+
     private fun normalisedPins(current: Whitelist, next: Whitelist): List<Pin> {
         // Both sides, so a row the patch emptied is emptied rather than kept.
         val rows = (current.pins.map { it.kidId } + next.pins.map { it.kidId }).distinct()

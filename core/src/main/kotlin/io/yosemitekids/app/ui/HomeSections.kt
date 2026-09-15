@@ -159,3 +159,23 @@ fun firstFocusableShelf(
     sections: List<HomeSection>,
     counts: Map<String, Int>
 ): String? = sections.firstOrNull { it.enabled && (counts[it.id] ?: 0) > 0 }?.id
+
+/**
+ * The words a shelf is titled with, on every face. One spelling here, read
+ * by the hub's kid page and the console's row editor alike, so a shelf is
+ * never called two things. The hero has no title: it is the biggest thing on
+ * the page and says its own name. A shelf this build does not know is
+ * titled by its id rather than dropped, so a newer build's row still reads.
+ */
+fun homeShelfTitle(id: String): String = when (id) {
+    HomeShelf.PINNED -> ""
+    HomeShelf.CHANNELS -> "Channels"
+    HomeShelf.KEEP_WATCHING -> "Keep watching"
+    HomeShelf.SUGGESTED -> "More like what you watch"
+    HomeShelf.VIDEOS -> "Videos"
+    HomeShelf.HISTORY -> "Watched lately"
+    else -> id
+}
+
+/** What the row editor calls a shelf — the same words, with the hero named. */
+fun homeShelfLabel(id: String): String = if (id == HomeShelf.PINNED) "Pinned" else homeShelfTitle(id)

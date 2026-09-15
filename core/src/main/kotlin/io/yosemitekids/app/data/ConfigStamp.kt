@@ -44,6 +44,10 @@ object ConfigStamp {
     fun pin(kidId: String?, sourceId: String) = "home.pin|${kidId ?: PIN_FAMILY}|$sourceId"
     fun pin(p: Pin) = pin(p.kidId, p.sourceId)
 
+    /** One row of a kid's home screen — the pinned hero's shape, one unit per shelf per home. */
+    fun row(kidId: String?, id: String) = "home.row|${kidId ?: PIN_FAMILY}|$id"
+    fun row(r: HomeRow) = row(r.kidId, r.id)
+
     /**
      * The kid segment of a family card — [Pin.kidId] null, the row a
      * household with no profiles sees. Never a valid profile id, so it cannot
@@ -313,6 +317,46 @@ object ConfigStamp {
             orphaned
         }
 
+        // --- The home screen's rows ------------------------------------
+        // The pinned hero's shape, one unit per shelf per home: a move is an
+        // edit to exactly the rows that moved, a toggle to one, and two
+        // parents arranging different rows both land.
+        val prevRow = previous.homeRows.associateBy { row(it) }
+        val baseRow = base.homeRows.associateBy { row(it) }
+        val nextRow = next.homeRows.associateBy { row(it) }
+        val homeRows = ArrayList<HomeRow>()
+        nextRow.forEach { (key, r) ->
+            homeRows += r
+            val b = baseRow[key]
+            when {
+                b == null -> {
+                    readd(key)
+                    changes += line("home.row.add", "arranged the ${r.id} shelf${forWhom(r.kidId)}", who, by, mint)
+                }
+                b.rank != r.rank || b.enabled != r.enabled -> {
+                    touch(key)
+                    changes += line(
+                        "home.row.move",
+                        (if (b.enabled != r.enabled) (if (r.enabled) "turned on the " else "turned off the ") else "moved the ") +
+                            "${r.id} shelf${forWhom(r.kidId)}",
+                        who, by, mint
+                    )
+                }
+            }
+        }
+        (baseRow.keys - nextRow.keys).forEach { key ->
+            remove(key)
+            val r = baseRow.getValue(key)
+            changes += line("home.row.remove", "reset the ${r.id} shelf${forWhom(r.kidId)}", who, by, mint)
+        }
+        (prevRow.keys - baseRow.keys - nextRow.keys).forEach { homeRows += prevRow.getValue(it) }
+        // A row outlives its kid no more than a card does.
+        homeRows.removeAll { r ->
+            val orphaned = r.kidId != null && profiles.none { it.id == r.kidId }
+            if (orphaned) remove(row(r))
+            orphaned
+        }
+
         // --- Sets -------------------------------------------------------
         val blocked = setUnit(
             previous.blockedVideoIds, base.blockedVideoIds, next.blockedVideoIds,
@@ -404,6 +448,7 @@ object ConfigStamp {
             profiles = profiles,
             grants = grants,
             pins = pins,
+            homeRows = homeRows,
             blockedVideoIds = blocked,
             aiAllowedVideoIds = aiAllowed,
             blockedFor = blockedFor,

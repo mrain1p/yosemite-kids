@@ -189,6 +189,16 @@ object ConfigJson {
                 // (PinsConfigTest is the gate); a set one must move the hash,
                 // or the offline reconcile never carries a card to the TV.
                 // The rank is in it: a reorder is what the kid sees.
+                // The home's rows ride the same way, after the hero: set
+                // only, at the tail, rank and flag included because both are
+                // what the kid sees.
+                if (w.homeRows.isNotEmpty()) {
+                    append(";HR:")
+                    HomeRows.ordered(w.homeRows).forEach { r ->
+                        append(r.kidId ?: ""); append(','); append(r.id); append(',')
+                        append(r.rank); append(','); append(if (r.enabled) 1 else 0); append(';')
+                    }
+                }
                 if (w.pins.isNotEmpty()) {
                     append(";HP:")
                     Pins.ordered(w.pins).forEach { p ->
@@ -312,8 +322,13 @@ object ConfigJson {
             // its own. An empty list writes nothing: every install on this
             // release holds one, and a family that never pins keeps its bytes
             // and its hash — see fingerprint for why that is load-bearing.
-            if (w.pins.isNotEmpty()) {
-                root.put("home", JSONObject().put("pins", JSONArray(pinsToJson(w.pins))))
+            if (w.pins.isNotEmpty() || w.homeRows.isNotEmpty()) {
+                root.put("home", JSONObject().apply {
+                    if (w.pins.isNotEmpty()) put("pins", JSONArray(pinsToJson(w.pins)))
+                    // The home's rows, beside the hero and under the same
+                    // rule: only once a parent has arranged something.
+                    if (w.homeRows.isNotEmpty()) put("rows", JSONArray(rowsToJson(w.homeRows)))
+                })
             }
             // Last, and only when there is anything to say: a family that has
             // never edited since upgrading writes a byte-identical file, so no
@@ -551,6 +566,37 @@ object ConfigJson {
         /** No delimiter of the key or the fingerprint and no whitespace; otherwise any id the whitelist can hold. */
         private val PIN_PART = Regex("[^|;,=\\s]+")
 
+        /** The home's rows as a JSON array string — the `home.rows` key, in canonical order. */
+        fun rowsToJson(rows: List<HomeRow>): String =
+            JSONArray().apply {
+                HomeRows.ordered(rows).forEach { r ->
+                    put(JSONObject().apply {
+                        r.kidId?.let { put("kid", it) }
+                        put("id", r.id)
+                        put("rank", r.rank)
+                        // Written only when off: on is the default and the
+                        // common case, and a row that is on writes no flag.
+                        if (!r.enabled) put("on", false)
+                    })
+                }
+            }.toString()
+
+        /** Per-row lenient, like cards: one a build cannot read drops alone, and no cap here. */
+        fun rowsFromJson(text: String?): List<HomeRow> = runCatching {
+            val arr = JSONArray(text ?: return emptyList())
+            (0 until arr.length()).mapNotNull { i ->
+                runCatching {
+                    val o = arr.getJSONObject(i)
+                    val id = o.getString("id")
+                    val kid = o.optString("kid").ifEmpty { null }
+                    if (!o.has("rank") || !PIN_PART.matches(id) || kid == ConfigStamp.PIN_FAMILY ||
+                        (kid != null && !PIN_PART.matches(kid))
+                    ) return@runCatching null
+                    HomeRow(kidId = kid, id = id, rank = o.getInt("rank"), enabled = o.optBoolean("on", true))
+                }.getOrNull()
+            }
+        }.getOrDefault(emptyList())
+
         private fun limitsFromJson(lo: JSONObject): Limits {
             fun opt(name: String): Int? = if (lo.has(name)) lo.getInt(name) else null
             // A config written before windows existed carries only the bedtime
@@ -700,6 +746,8 @@ object ConfigJson {
                 // carries that key from its own root untouched.
                 pins = pinsFromJson(root.optJSONObject("home")?.optJSONArray("pins")?.toString())
                     .distinctBy { ConfigStamp.pin(it) },
+                homeRows = rowsFromJson(root.optJSONObject("home")?.optJSONArray("rows")?.toString())
+                    .distinctBy { ConfigStamp.row(it) },
                 // Outside the throwing path on purpose: a malformed or
                 // future-versioned blob must cost the family its bookkeeping,
                 // never its channels. See ConfigMerge.syncFromJson.

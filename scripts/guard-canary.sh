@@ -200,6 +200,7 @@ CANARY=scripts/guard-canary.sh
 APP=app/src/main/java/io/yosemitekids/app/YosemiteKidsApp.kt
 SETTINGS=core/src/main/kotlin/io/yosemitekids/app/data/SettingsSurface.kt
 KIDSURF=core/src/main/kotlin/io/yosemitekids/app/ui/KidSurface.kt
+HUBWEB=hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt
 # Built from parts so the doc-path guard in check.sh does not look for a plan
 # file that exists only for the length of one canary run.
 PLANFILE=docs/PLAN-canary
@@ -316,6 +317,11 @@ canary 62 "$KIDSURF" \
   "a surface the television skips with no reason" \
   "not drawn on the television and say nothing" \
   'sed -i "s/tvWhy = \"Reached from the rail/onTv = false, tvWhyX = \"Reached from the rail/" "$KIDSURF"'
+
+canary 70 "$HUBWEB" \
+  "a browser's row ranks taken as sent" \
+  "HomeRows.withOrder" \
+  'sed -i "s/homeRows = normalisedRows(current, next)/homeRows = next.homeRows/" "$HUBWEB"'
 
 canary 69 "$SETTINGS" \
   "a setting the browser claims to honour and the hub never reads" \

@@ -1937,11 +1937,125 @@
     return next;
   }
 
+  // --- the home's rows ---------------------------------------------------
+  //
+  // Declared CUSTOM in the manifest as `listing-rows`. Same shape as the
+  // hero's card: the page sends one kid's shelves in the order the parent
+  // left them, with their on/off flags, and HubWeb.normalisedRows mints
+  // every rank through HomeRows.withOrder in :core. The catalogue and the
+  // shelf names come from the hub (state.shelves), never from this page.
+
+  /** The stored rows, whatever this build knows about `home`. */
+  function rowsAll() { return (cfg().home && cfg().home.rows) || []; }
+
+  /**
+   * What the kid page will draw for this kid: the saved rows in rank order,
+   * then any catalogue shelf they never named, switched on — homeSections()
+   * in :core, spelled once more here only to DRAW the editor, since the hub
+   * re-derives it on every save regardless.
+   */
+  function rowsFor(kidId) {
+    var saved = rowsAll().filter(function (r) { return (r.kid || null) === kidId; })
+      .sort(function (a, b) { return a.rank - b.rank; });
+    var named = {};
+    var out = [];
+    saved.forEach(function (r) {
+      if (!named[r.id]) { named[r.id] = true; out.push({ id: r.id, on: r.on !== false }); }
+    });
+    (state.shelves || []).forEach(function (s) {
+      if (!named[s.id]) { named[s.id] = true; out.push({ id: s.id, on: true }); }
+    });
+    return out;
+  }
+
+  function shelfLabel(id) {
+    var hit = (state.shelves || []).filter(function (s) { return s.id === id; })[0];
+    return hit ? hit.label : id;
+  }
+
+  /** Apply one edit to a freshly read home, for the reason editPins gives. */
+  function editRows(kidId, change) {
+    return api("/api/state").then(function (s) {
+      state = s;
+      var order = change(rowsFor(kidId));
+      var body = rowsAll().filter(function (r) { return (r.kid || null) !== kidId; });
+      order.forEach(function (row, i) {
+        // Position is the parent's order on the way in; the hub mints the
+        // real rank. `on` is written only when off, as the wire does.
+        var one = { id: row.id, rank: i };
+        if (!row.on) one.on = false;
+        if (kidId) one.kid = kidId;
+        body.push(one);
+      });
+      var home = Object.assign({}, cfg().home || {}, { rows: body });
+      return patch({ home: home });
+    });
+  }
+
+  function cardRows() {
+    var ctl = controlById("listing-rows");
+    var c = card(ctl.label, ctl.sub);
+    c.dataset.control = "listing-rows";
+    var list = kids();
+    if (list.length) {
+      if (!list.filter(function (k) { return k.id === pinsKid; }).length) pinsKid = list[0].id;
+      var pick = el("div", "line");
+      list.forEach(function (k) {
+        var b = el("button", "chip", k.name);
+        b.setAttribute("aria-pressed", String(k.id === pinsKid));
+        b.onclick = function () { pinsKid = k.id; render(); };
+        pick.appendChild(b);
+      });
+      c.appendChild(pick);
+    }
+    var kidId = list.length ? pinsKid : null;
+    var rows = rowsFor(kidId);
+    var ul = el("ul", "rows");
+    rows.forEach(function (row, i) {
+      var li = el("li");
+      var line = el("div", "line");
+      line.appendChild(el("div", (row.on ? "name grow" : "sub grow"), shelfLabel(row.id)));
+      line.appendChild(button("▲", "quiet", function () {
+        if (i === 0) return Promise.resolve();
+        return editRows(kidId, function (cur) {
+          var next = cur.slice();
+          var t = next[i - 1]; next[i - 1] = next[i]; next[i] = t;
+          return next;
+        }).then(refresh);
+      }));
+      line.appendChild(button("▼", "quiet", function () {
+        if (i === rows.length - 1) return Promise.resolve();
+        return editRows(kidId, function (cur) {
+          var next = cur.slice();
+          var t = next[i + 1]; next[i + 1] = next[i]; next[i] = t;
+          return next;
+        }).then(refresh);
+      }));
+      line.appendChild(button(row.on ? "Hide" : "Show", "quiet", function () {
+        return editRows(kidId, function (cur) {
+          return cur.map(function (r) { return r.id === row.id ? { id: r.id, on: !r.on } : r; });
+        }).then(refresh);
+      }));
+      li.appendChild(line);
+      ul.appendChild(li);
+    });
+    c.appendChild(ul);
+    var reset = el("div", "line");
+    reset.appendChild(el("div", "sub grow", "The default is every shelf, in this order, all shown."));
+    reset.appendChild(button("Reset to default", "quiet", function () {
+      return editRows(kidId, function () { return []; }).then(refresh);
+    }));
+    c.appendChild(reset);
+    return c;
+  }
+
   function pageListing() {
     var out = document.createDocumentFragment();
     // The hero first: the biggest thing on the kid's home, and the only
     // control on this page that is set per kid rather than for the family.
     add(out, cardPins());
+    // Then the rows themselves, for the same kid.
+    add(out, cardRows());
     // Every control here came from the manifest the moment this page stopped
     // being hand-written, and three of the four were wrong before it did: page
     // sizes of 12/24/48 against the app's 10/20/30 and All, layouts of
