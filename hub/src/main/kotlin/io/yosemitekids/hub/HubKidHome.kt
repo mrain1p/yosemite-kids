@@ -14,6 +14,9 @@ import io.yosemitekids.app.ui.HomeShelf
 import io.yosemitekids.app.ui.KID_DARK
 import io.yosemitekids.app.ui.KidSurface
 import io.yosemitekids.app.ui.PinnableSource
+import io.yosemitekids.app.ui.VideoItem
+import io.yosemitekids.app.ui.defaultFilterFor
+import io.yosemitekids.app.ui.filterVideos
 import io.yosemitekids.app.ui.homeSections
 import io.yosemitekids.app.ui.orderChannels
 import io.yosemitekids.app.ui.surpriseMix
@@ -22,6 +25,9 @@ import io.yosemitekids.app.ui.kidTokenRoles
 import io.yosemitekids.app.ui.resolvePins
 import org.json.JSONArray
 import org.json.JSONObject
+
+/** The channel orders this box can produce: no open counts, no upload dates, so these three. */
+private val WEB_SORTS = setOf(CHANNEL_ORDER_ALPHA, CHANNEL_ORDER_ALPHA_DESC, CHANNEL_ORDER_RANDOM)
 
 /**
  * What a child's browser is shown — assembled here, decided everywhere else.
@@ -344,6 +350,16 @@ class HubKidHome(
      */
     fun channels(kidId: String, sort: String?, seed: Long): JSONObject {
         val catalogue = policy.catalogueFor(kidId)
+        // No sort asked for is the parent's "Channel row order" - the same
+        // family default the phone and the television open on (honouredBy in
+        // SettingsSurface). Where the parent chose an order this box cannot
+        // produce - Most watched needs open counts, Latest video needs
+        // publishedAt - A to Z is the honest fallback, and the reply says
+        // which order it actually used so the chips agree with the grid.
+        val familyOrder = runCatching { store.load().channelOrder }.getOrDefault("")
+        val effective = sort?.takeIf { it.isNotBlank() }
+            ?: familyOrder.takeIf { it in WEB_SORTS }
+            ?: CHANNEL_ORDER_ALPHA
         val sources = catalogue.map { source ->
             Source(
                 id = source.entry.id,
@@ -355,7 +371,7 @@ class HubKidHome(
         }
         val ordered = orderChannels(
             channels = sources,
-            sort = sort.orEmpty(),
+            sort = effective,
             // Not kept on this box. Passing zero makes the default sort a
             // stable no-op rather than an arbitrary one.
             opens = { 0 },
@@ -375,7 +391,7 @@ class HubKidHome(
             )
         }
         return JSONObject()
-            .put("sort", sort.orEmpty())
+            .put("sort", effective)
             .put("seed", seed)
             .put("channels", arr)
             .put("sorts", JSONArray().put(sortJson(CHANNEL_ORDER_ALPHA, "A to Z"))
@@ -385,6 +401,20 @@ class HubKidHome(
 
     private fun sortJson(id: String, label: String) =
         JSONObject().put("id", id).put("label", label)
+
+    /**
+     * One page of a grid: the parent's "Videos before Show more" (`pageSize`)
+     * applied here, because the page may cap nothing (guard 61). Null means
+     * the family never set one and the whole list goes, as on the phone.
+     * The reply's `from`, `more` and `total` are what the page draws the
+     * button from; it asks for the next page with `from=` and appends.
+     */
+    private fun page(items: List<Pair<Video, Float>>, from: Int): Triple<List<Pair<Video, Float>>, Boolean, Int> {
+        val size = runCatching { store.load().pageSize }.getOrNull()
+        val start = from.coerceIn(0, items.size)
+        val slice = if (size == null) items.drop(start) else items.drop(start).take(size)
+        return Triple(slice, start + slice.size < items.size, items.size)
+    }
 
     /**
      * A random mix across every channel this kid may see — [surpriseMix].
@@ -410,19 +440,37 @@ class HubKidHome(
             .put("videos", videosJson(mix.map { it to (watched[it.url]?.fraction ?: 0f) }, watched, saved))
     }
 
-    /** One channel's page: its name, what the parent let through of its description, its videos. */
-    fun channel(kidId: String, sourceId: String): JSONObject? {
+    /**
+     * One channel's page: its name, what the parent let through of its
+     * description, its videos — in the order the parent's "Channel page
+     * layout" asks for, one `pageSize` at a time.
+     *
+     * The order is [defaultFilterFor] over [filterVideos], the same two
+     * functions the phone's channel page opens with — and, honestly, only
+     * half honoured: the index keeps no view counts, so "Popular first" comes
+     * out as index order here until it does (`SettingsSurface` says so in
+     * the control's honourWhy, rather than claiming the browser obeys it).
+     * The page size IS honoured, here and on search; guard 69 holds this
+     * file to reading what the manifest says the browser honours.
+     */
+    fun channel(kidId: String, sourceId: String, from: Int = 0): JSONObject? {
         val source = policy.catalogueFor(kidId).firstOrNull { it.entry.id == sourceId } ?: return null
         val watched = history.pointsFor(kidId)
         val saved = savedFor(kidId)
+        val layout = runCatching { store.load().channelLayout }.getOrDefault("")
+        val items = source.videos.map { it.toVideo() }.map { VideoItem(it, watched[it.url]?.fraction) }
+        // Seeded from the channel, so "random" would hold still for a sitting;
+        // the two layouts a parent can pick never reach that branch.
+        val ordered = filterVideos(items, defaultFilterFor(layout), sourceId.hashCode().toLong())
+            .map { it.video to (it.progress ?: 0f) }
+        val (slice, more, total) = page(ordered, from)
         return JSONObject()
             .put("id", source.entry.id)
             .put("name", nameOf(source))
-            .put("count", source.videos.size)
-            .put(
-                "videos",
-                videosJson(source.videos.map { it.toVideo() }.map { it to (watched[it.url]?.fraction ?: 0f) }, watched, saved)
-            )
+            .put("count", total)
+            .put("from", from.coerceIn(0, total))
+            .put("more", more)
+            .put("videos", videosJson(slice, watched, saved))
     }
 
     /**
@@ -431,7 +479,7 @@ class HubKidHome(
      * for Mario should not have to scroll past seventy videos of everything
      * else to find one.
      */
-    fun search(kidId: String, query: String): JSONObject {
+    fun search(kidId: String, query: String, from: Int = 0): JSONObject {
         val terms = SearchRank.terms(query)
         val catalogue = policy.catalogueFor(kidId)
         val watched = history.pointsFor(kidId)
@@ -450,9 +498,15 @@ class HubKidHome(
         val ranked = SearchRank.rank(hits, terms, query, signals) {
             SearchRank.Key(it.title, it.channelName, it.url)
         }
+        // Paged like a channel: the same "Videos before Show more" the phone's
+        // grid honours on its search results.
+        val (slice, more, total) = page(ranked.map { it to (watched[it.url]?.fraction ?: 0f) }, from)
         return JSONObject()
             .put("query", query)
-            .put("videos", videosJson(ranked.map { it to (watched[it.url]?.fraction ?: 0f) }, watched, saved))
+            .put("count", total)
+            .put("from", from.coerceIn(0, total))
+            .put("more", more)
+            .put("videos", videosJson(slice, watched, saved))
     }
 
     // --- shape ----------------------------------------------------------

@@ -141,7 +141,23 @@ data class KidSurfaceDef(
      * ten-foot card is bigger. What must not happen is a difference nobody
      * wrote down, which is indistinguishable from drift six months later.
      */
-    val why: String = ""
+    val why: String = "",
+    /**
+     * Whether the television draws this surface. The phone and the television
+     * are one APK and [KidFace.APP] means both, which is exactly how a
+     * difference between them went unrecorded for years. False needs [tvWhy];
+     * guard 62(f) prints what the television skips beside what the browser
+     * lacks.
+     */
+    val onTv: Boolean = true,
+    /**
+     * How the television draws this differently, or why it does not draw it.
+     * The television keeps its rail and its remote; a surface that adapts to
+     * ten feet and a D-pad is consistent, not forked - but the adaptation is
+     * a decision, and it is written here rather than in whoever last touched
+     * the composable.
+     */
+    val tvWhy: String = ""
 )
 
 object KidSurface {
@@ -180,7 +196,11 @@ object KidSurface {
             screen = "Home",
             rules = listOf("homeSections", "resolvePins", "KidHome.keepWatching", "KidHome.history", "KidHome.suggestions", "KidHome.interleave"),
             route = "/home",
-            webReady = true
+            webReady = true,
+            tvWhy = "Same shelves, same order (homeSections), drawn as a LazyColumn with the feed " +
+                "three across beside the rail, where the phone draws one LazyVerticalGrid and the " +
+                "hero is a static row rather than a carousel: a D-pad walks rows, a thumb scrolls a " +
+                "grid. HomeShelves.kt, GridPage vs ColumnPage."
         ),
         KidSurfaceDef(
             id = "channel",
@@ -207,7 +227,11 @@ object KidSurface {
             kind = SurfaceKind.SCREEN,
             rules = listOf("KidHome.FINISHED_FRACTION"),
             route = "/media",
-            webReady = true
+            webReady = true,
+            tvWhy = "The stage only: no portrait scaffold, no picture-in-picture, no gestures, and " +
+                "the transport is the remote's keys (PlayerActivity.onKeyDown) with a state glyph " +
+                "in place of the phone's overlay. The end card, the countdown and every refusal " +
+                "read the same (KidWords)."
         ),
 
         // --- declared, not yet drawn in a browser -------------------------
@@ -238,7 +262,9 @@ object KidSurface {
             rules = listOf("KidHome.history"),
             route = "/you",
             caps = listOf(ROW_PREVIEW, YOU_PAGE_MAX),
-            webReady = true
+            webReady = true,
+            tvWhy = "Reached from the rail (TvNavRail.RailStop) rather than a bottom tab; the " +
+                "shelves and their order are YOU_SHELVES on every face."
         ),
         KidSurfaceDef(
             id = "favorites",
@@ -290,7 +316,9 @@ object KidSurface {
             title = "What would you like to do?",
             kind = SurfaceKind.DIALOG,
             route = "/list",
-            webReady = true
+            webReady = true,
+            tvWhy = "Opened by holding OK on the remote (FocusHighlight's hold helper) where a " +
+                "finger long-presses; the rows and their words are the same."
         ),
         KidSurfaceDef(
             id = "channels",
@@ -300,7 +328,10 @@ object KidSurface {
             rules = listOf("orderChannels"),
             route = "/channels",
             webReady = true,
-            why = "Three of the app's six sorts are absent and that is deliberate: Most watched needs open counts the hub does not keep, and Latest video and Just added need publishedAt, which ChannelIndex throws away (roadmap 2M). SearchOrder set the precedent - a chip that sorts by an all-equal key is worse than no chip."
+            why = "Three of the app's six sorts are absent and that is deliberate: Most watched needs open counts the hub does not keep, and Latest video and Just added need publishedAt, which ChannelIndex throws away (roadmap 2M). SearchOrder set the precedent - a chip that sorts by an all-equal key is worse than no chip.",
+            tvWhy = "A rail stop rather than a bottom tab, and a grid of large tiles for ten feet " +
+                "(TvChannelsGrid) where the phone lists rounded tiles with shelves " +
+                "(PhoneChannelsList). Same channels, same orderChannels."
         ),
         KidSurfaceDef(
             id = "search-page",
@@ -309,7 +340,9 @@ object KidSurface {
             screen = "Search",
             webReady = false,
             why = "R5. The page BEFORE a query - recent searches and the control row. The browser " +
-                "searches as you type and so has never had one."
+                "searches as you type and so has never had one.",
+            tvWhy = "A rail stop with the system's on-screen keyboard; the phone has the mic. Same " +
+                "recents, same SearchOrder."
         ),
         KidSurfaceDef(
             id = "surprise",
@@ -374,4 +407,8 @@ object KidSurface {
     /** What the browser draws today. */
     fun forWeb(): List<KidSurfaceDef> =
         surfaces.filter { it.face != KidFace.APP && it.webReady }
+
+    /** What the television draws. Everything the app draws, less what [KidSurfaceDef.onTv] rules out. */
+    fun forTv(): List<KidSurfaceDef> =
+        surfaces.filter { it.face != KidFace.WEB && it.onTv }
 }

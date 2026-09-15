@@ -554,7 +554,11 @@ class HubKidServer(
         // Null is "not on this kid's list" as much as "no such channel", and
         // the answer is deliberately the same 404 for both: a child's browser
         // must not be able to tell a sibling's channel from a missing one.
-        val body = browse.channel(browser.kid, id)
+        //
+        // `from` is where the page's "Show more" continues from. The cap is
+        // the parent's pageSize, applied HERE (guard 61 forbids the page
+        // slicing), and `more` in the reply says whether to draw the button.
+        val body = browse.channel(browser.kid, id, from = pageFrom(ex))
             ?: return respond(ex, 404, JSONObject().put("error", "not here").toString())
         respond(ex, 200, body.toString())
     }
@@ -567,8 +571,12 @@ class HubKidServer(
         if (q.length > MAX_QUERY_CHARS) {
             return respond(ex, 400, JSONObject().put("error", "too long").toString())
         }
-        respond(ex, 200, browse.search(browser.kid, q).toString())
+        respond(ex, 200, browse.search(browser.kid, q, from = pageFrom(ex)).toString())
     }
+
+    /** `from=` on a paged route: a non-negative offset, bounded, or zero. */
+    private fun pageFrom(ex: HttpExchange): Int =
+        param(ex, "from")?.take(6)?.toIntOrNull()?.coerceIn(0, 100_000) ?: 0
 
     /**
      * `POST /progress {v, positionMs, durationMs}` — "still watching, and this

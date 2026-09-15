@@ -998,8 +998,39 @@
     clear(main);
     document.getElementById("back").hidden = false;
     document.getElementById("searchrow").hidden = true;
-    main.appendChild(shelf(channel.name, grid(channel.videos)));
+    var g = grid(channel.videos);
+    main.appendChild(shelf(channel.name, g));
+    // "Show more", drawn only when the hub says there is more: the parent's
+    // "Videos before Show more" is applied on the box, and this page asks for
+    // the next page rather than holding a copy of the number (guard 61).
+    moreButton(main, channel, function (from) {
+      return get("/kid/channel?id=" + encodeURIComponent(channel.id) + "&from=" + from);
+    }, g);
     state.view = "channel";
+  }
+
+  /**
+   * The button under a paged grid. Asks the hub for the next page and appends
+   * it; goes away when the hub says there is no more.
+   */
+  function moreButton(main, payload, fetchPage, g) {
+    if (!payload.more) return;
+    // Where the next page starts: the hub's `from` plus what it sent. The
+    // page keeps a position and nothing else - no copy of the list, no cap.
+    var nextFrom = (payload.from || 0) + (payload.videos || []).length;
+    var btn = el("button", "chip more");
+    btn.type = "button";
+    btn.textContent = "Show more";
+    btn.onclick = function () {
+      btn.disabled = true;
+      fetchPage(nextFrom).then(function (next) {
+        if (!next) { btn.disabled = false; return; }
+        (next.videos || []).forEach(function (v) { g.appendChild(videoCard(v)); });
+        nextFrom = (next.from || 0) + (next.videos || []).length;
+        if (!next.more) btn.remove(); else btn.disabled = false;
+      });
+    };
+    main.appendChild(btn);
   }
 
   function renderSearch(result) {
@@ -1013,7 +1044,11 @@
       note.appendChild(el("div", null, "Try another word."));
       main.appendChild(note);
     } else {
-      main.appendChild(shelf(null, grid(result.videos)));
+      var g = grid(result.videos);
+      main.appendChild(shelf(null, g));
+      moreButton(main, result, function (from) {
+        return get("/kid/search?q=" + encodeURIComponent(result.query || "") + "&from=" + from);
+      }, g);
     }
     state.view = "search-results";
   }

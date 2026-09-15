@@ -1833,6 +1833,39 @@ todo=$(awk '
 ' "$kidmanifest" | sort | tr "\n" " " || true)
 [ -z "$todo" ] || echo "   kid surfaces still to reach the browser: $todo"
 
+#     (f) THE TELEVISION IS A FACE TOO, AND A SURFACE IT SKIPS SAYS WHY. The
+#         phone and the television are one APK, and for years "the app" meant
+#         both - which is exactly how a difference between them went
+#         unrecorded. A surface the TV does not draw (onTv = false) carries
+#         tvWhy, and one it draws differently may carry it; the gate prints
+#         what the television skips, beside what the browser lacks.
+tv_missing_why=$(awk '
+  /KidSurfaceDef\(/ { inside = 1; body = ""; }
+  inside { body = body $0 }
+  inside && /^        \),?$/ {
+    inside = 0
+    if (body ~ /onTv = false/ && body !~ /tvWhy = /) {
+      match(body, /id = "[a-z-]+"/)
+      print substr(body, RSTART + 6, RLENGTH - 7)
+    }
+  }
+' "$kidmanifest" | tr "\n" " " || true)
+[ -z "$tv_missing_why" ] ||
+  guard_fail "these kid surfaces are not drawn on the television and say nothing about why: $tv_missing_why
+The television is a face of its own. A gap with no reason beside it cannot be told from an oversight."
+tv_skips=$(awk '
+  /KidSurfaceDef\(/ { inside = 1; body = "" }
+  inside { body = body $0 }
+  inside && /^        \),?$/ {
+    inside = 0
+    if (body ~ /onTv = false/) {
+      match(body, /id = "[a-z-]+"/)
+      print substr(body, RSTART + 6, RLENGTH - 7)
+    }
+  }
+' "$kidmanifest" | sort | tr "\n" " " || true)
+[ -z "$tv_skips" ] || echo "   kid surfaces the television skips (each with a reason): $tv_skips"
+
 # 63. The two faces draw a card from ONE set of numbers.
 #     The palette and the type scale have been shared since KidTokensCss was
 #     written and the browser STILL did not look like the app: every geometry
@@ -1998,6 +2031,56 @@ grep -q "createContext(${q}/report${q})" hub/src/main/kotlin/io/yosemitekids/hub
   guard_fail "HubServer no longer answers POST /report. A device draining its ring at a hub without it gets a page in reply and keeps the ring forever."
 grep -q "println(${q}report " hub/src/main/kotlin/io/yosemitekids/hub/HubReports.kt ||
   guard_fail "HubReports no longer prints each report to stdout. The container log is the half of this that survives a restart, and the half a parent without the console can reach."
+
+# 69. A setting a child's screen obeys is obeyed on every face that draws it, or says why not.
+#     SettingsSurface.where says who can SET a control; honouredBy says which
+#     kid faces OBEY it, and that half went unwatched: "Videos before Show
+#     more", "Channel page layout" and "Channel row order" were set on the
+#     phone, obeyed by the phone and the television, and ignored by the
+#     browser, with nothing anywhere saying so. A kid-facing control now
+#     names its faces; one the browser honours must be read by the hub's kid
+#     routes, and one it does not must carry the reason - and the gate prints
+#     what the browser does not honour yet, the way it prints the surfaces.
+settings_manifest=core/src/main/kotlin/io/yosemitekids/app/data/SettingsSurface.kt
+kid_routes_src="hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt"
+grep -q "honouredBy" "$settings_manifest" ||
+  guard_fail "$settings_manifest no longer declares honouredBy; guard 69 is blind."
+honour_blocks=$(awk '
+  /SettingsControl\(/ { inside = 1; body = "" }
+  inside { body = body $0 " " }
+  inside && /^                \),?$/ {
+    inside = 0
+    if (body ~ /honouredBy = /) {
+      match(body, /"[a-z-]+"/); id = substr(body, RSTART + 1, RLENGTH - 2)
+      match(body, /writes = "[A-Za-z.]+"/); w = substr(body, RSTART + 10, RLENGTH - 11)
+      web = (body ~ /honouredBy = KID_FACES/ || body ~ /FACE_WEB/) ? "web" : "-"
+      why = (body ~ /honourWhy = /) ? "why" : "-"
+      print id " " w " " web " " why
+    }
+  }
+' "$settings_manifest")
+[ -n "$honour_blocks" ] ||
+  guard_fail "guard 69 found no control with honouredBy in $settings_manifest; it is blind."
+not_on_web=""
+while read -r id w web why; do
+  [ -n "$id" ] || continue
+  if [ "$web" = "web" ]; then
+    #     Honoured by the browser means the hub's kid routes read it. The
+    #     property's leaf name must appear beside a config read in one of
+    #     them - a control that only the phone reads is a promise the
+    #     browser is silently breaking.
+    leaf=${w##*.}
+    grep -qE "\.$leaf\b|\b${leaf}For\(" $kid_routes_src ||
+      guard_fail "$id says the browser honours \"$w\" and nothing in HubKidHome or HubKidServer reads .$leaf. Either read it there (the phone's own function from :crawl, never a second rule) or take web out of honouredBy and say why in honourWhy."
+  else
+    [ "$why" = "why" ] ||
+      guard_fail "$id is honoured by some kid faces and not the browser, and says nothing about why. A gap with no reason beside it cannot be told from an oversight; put the reason in honourWhy."
+    not_on_web="$not_on_web $id"
+  fi
+done <<EOF
+$honour_blocks
+EOF
+[ -z "$not_on_web" ] || echo "   kid-facing settings the browser does not honour:$not_on_web"
 
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 

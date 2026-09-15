@@ -2096,6 +2096,26 @@ if ($todo.Count -gt 0) {
     Write-Host "   kid surfaces still to reach the browser: $(($todo | Sort-Object) -join ' ')"
 }
 
+#     (f) THE TELEVISION IS A FACE TOO, AND A SURFACE IT SKIPS SAYS WHY.
+$tvMissingWhy = @()
+$tvSkips = @()
+foreach ($blk in $surfaceBlocks) {
+    $body = $blk.Groups[1].Value
+    if ($body -match 'onTv = false') {
+        $idMatch = [regex]::Match($body, 'id = "([a-z-]+)"')
+        if ($idMatch.Success) {
+            $tvSkips += $idMatch.Groups[1].Value
+            if ($body -notmatch 'tvWhy = ') { $tvMissingWhy += $idMatch.Groups[1].Value }
+        }
+    }
+}
+if ($tvMissingWhy.Count -gt 0) {
+    Fail-Guard "these kid surfaces are not drawn on the television and say nothing about why: $($tvMissingWhy -join ' ') - the television is a face of its own. A gap with no reason beside it cannot be told from an oversight."
+}
+if ($tvSkips.Count -gt 0) {
+    Write-Host "   kid surfaces the television skips (each with a reason): $(($tvSkips | Sort-Object) -join ' ')"
+}
+
 # 63. The two faces draw a card from ONE set of numbers.
 #     The palette and the type scale have been shared since KidTokensCss was
 #     written and the browser STILL did not look like the app: every geometry
@@ -2296,6 +2316,45 @@ if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt" -Ra
 }
 if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubReports.kt" -Raw).Contains('println("report ')) {
     Fail-Guard "HubReports no longer prints each report to stdout. The container log is the half of this that survives a restart, and the half a parent without the console can reach."
+}
+
+# 69. A setting a child's screen obeys is obeyed on every face that draws it, or says why not.
+#     SettingsSurface.where says who can SET a control; honouredBy says which
+#     kid faces OBEY it. One the browser honours must be read by the hub's
+#     kid routes; one it does not must carry the reason.
+$settingsManifest = "core/src/main/kotlin/io/yosemitekids/app/data/SettingsSurface.kt"
+$kidRoutesText = (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt" -Raw) + (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt" -Raw)
+$manifestText = Get-Content $settingsManifest -Raw
+if (-not $manifestText.Contains("honouredBy")) {
+    Fail-Guard "$settingsManifest no longer declares honouredBy; guard 69 is blind."
+}
+# Anchored on the newline rather than (?m)$: the file may carry CRLF on a
+# Windows checkout, and .NET's $ does not stop before a \r.
+$controlBlocks = [regex]::Matches($manifestText, '(?s)SettingsControl\((.*?)\n                \),?\r?\n')
+$honoured = @($controlBlocks | Where-Object { $_.Groups[1].Value -match 'honouredBy = ' })
+if ($honoured.Count -eq 0) {
+    Fail-Guard "guard 69 found no control with honouredBy in $settingsManifest; it is blind."
+}
+$notOnWeb = @()
+foreach ($blk in $honoured) {
+    $body = $blk.Groups[1].Value
+    $id = [regex]::Match($body, '"([a-z-]+)"').Groups[1].Value
+    $writes = [regex]::Match($body, 'writes = "([A-Za-z.]+)"').Groups[1].Value
+    $web = ($body -match 'honouredBy = KID_FACES') -or ($body -match 'FACE_WEB')
+    if ($web) {
+        $leaf = $writes.Split('.')[-1]
+        if ($kidRoutesText -notmatch ("\." + [regex]::Escape($leaf) + "\b|\b" + [regex]::Escape($leaf) + "For\(")) {
+            Fail-Guard "$id says the browser honours `"$writes`" and nothing in HubKidHome or HubKidServer reads .$leaf. Either read it there (the phone's own function from :crawl, never a second rule) or take web out of honouredBy and say why in honourWhy."
+        }
+    } else {
+        if ($body -notmatch 'honourWhy = ') {
+            Fail-Guard "$id is honoured by some kid faces and not the browser, and says nothing about why. A gap with no reason beside it cannot be told from an oversight; put the reason in honourWhy."
+        }
+        $notOnWeb += $id
+    }
+}
+if ($notOnWeb.Count -gt 0) {
+    Write-Host "   kid-facing settings the browser does not honour: $($notOnWeb -join ' ')"
 }
 
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }

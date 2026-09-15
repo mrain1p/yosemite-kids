@@ -118,7 +118,21 @@ data class SettingsControl(
      * [where] is not [Where.BOTH]: "specific to each" is a decision, and a
      * decision with no recorded reason is re-litigated every round.
      */
-    val why: String = ""
+    val why: String = "",
+    /**
+     * Which of the KID faces obey this setting — `phone`, `tv`, `web` — for a
+     * control that changes what a child sees rather than what a parent does.
+     * Empty for a parent-side control. [where] says who can *set* it; this
+     * says who *honours* it, which is the half that used to go unwatched:
+     * "Videos before Show more" was set on the phone, obeyed by the phone and
+     * the television, and ignored by the browser, and nothing said so. Guard
+     * 69 reads it: a control honoured by `web` must be read by the hub's kid
+     * routes, and one honoured by the app but not the browser must say why
+     * in [honourWhy]. The gate prints what the browser does not honour yet.
+     */
+    val honouredBy: List<String> = emptyList(),
+    /** Why a kid-facing control is not honoured by every kid face. Required when [honouredBy] names some but not all of them. */
+    val honourWhy: String = ""
 )
 
 data class SettingsSection(
@@ -153,6 +167,12 @@ data class SettingsSection(
 )
 
 object SettingsSurface {
+
+    /** The kid faces a setting can be honoured by. See [SettingsControl.honouredBy]. */
+    const val FACE_PHONE = "phone"
+    const val FACE_TV = "tv"
+    const val FACE_WEB = "web"
+    val KID_FACES: List<String> = listOf(FACE_PHONE, FACE_TV, FACE_WEB)
 
     val sections: List<SettingsSection> = listOf(
 
@@ -291,21 +311,34 @@ object SettingsSurface {
                 SettingsControl(
                     "listing-pins", "Pinned on the home screen",
                     sub = "Up to three channels or playlists, big, at the top of this kid’s home.",
-                    kind = ControlKind.CUSTOM, writes = "pins", json = "home"
+                    kind = ControlKind.CUSTOM, writes = "pins", json = "home",
+                    honouredBy = KID_FACES
                 ),
                 SettingsControl(
                     "listing-video-age", "Show when a video came out",
                     sub = "“3 days ago” beside the channel name",
-                    kind = ControlKind.TOGGLE, writes = "showVideoAge"
+                    kind = ControlKind.TOGGLE, writes = "showVideoAge",
+                    honouredBy = listOf(FACE_PHONE, FACE_TV),
+                    honourWhy = "The browser draws its cards from the hub's search index, and " +
+                        "ChannelIndex throws publishedAt away (roadmap 2M) - there is no date " +
+                        "to show. The day the index keeps one, the hub carries it and this " +
+                        "moves to every face; a card that guessed would be worse than none."
                 ),
                 SettingsControl(
                     "listing-page-size", "Videos before “Show more”",
                     kind = ControlKind.CHIPS, writes = "pageSize",
-                    options = PAGE_SIZES.map { ControlOption(it, it?.toString() ?: "All") }
+                    options = PAGE_SIZES.map { ControlOption(it, it?.toString() ?: "All") },
+                    honouredBy = KID_FACES
                 ),
                 SettingsControl(
                     "listing-channel-layout", "Channel page layout",
                     kind = ControlKind.CHIPS, writes = "channelLayout",
+                    honouredBy = listOf(FACE_PHONE, FACE_TV),
+                    honourWhy = "The hub orders a channel page with the phone's own defaultFilterFor " +
+                        "and filterVideos, but ChannelIndex keeps no view counts, so \"Popular first\" " +
+                        "is the same order as \"Newest first\" there - the same gap as the upload " +
+                        "date (roadmap 2M). Declared unhonoured rather than honoured by accident; " +
+                        "it moves to every face the day the index carries counts.",
                     // The two the phone offers. CHANNEL_LAYOUTS carries a third
                     // the settings screen has never shown; a face that offered
                     // it would be offering something the other cannot.
@@ -317,6 +350,12 @@ object SettingsSurface {
                 SettingsControl(
                     "listing-channel-order", "Channel row order",
                     kind = ControlKind.CHIPS, writes = "channelOrder",
+                    honouredBy = KID_FACES,
+                    // Honoured where the order exists: the browser keeps no
+                    // open counts and no upload dates, so "Most watched" and
+                    // "Latest video" fall back to A to Z there (HubKidHome).
+                    // That is the same honesty KidSurface records for the
+                    // Channels chips, one setting along.
                     // Every value in CHANNEL_ORDERS, in its order. The kid's
                     // chip row offers one more ("Just added"), which is
                     // device-local by nature and so cannot be a family

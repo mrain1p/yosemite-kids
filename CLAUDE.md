@@ -179,8 +179,14 @@ not at review time**. Anything two faces both draw or both decide belongs in
 `:core` or `:crawl` before the second face is written:
 
 - **`KidSurface`** declares every screen, shelf and dialog, which faces draw
-  it, and `webReady` where one does not yet (guard 62; the gate prints
-  `kid surfaces still to reach the browser: …` on every run).
+  it, `webReady` where the browser does not yet, and `onTv`/`tvWhy` for how
+  the television adapts it or why it skips it (guard 62; the gate prints
+  `kid surfaces still to reach the browser: …` and what the TV skips on every
+  run).
+- **`SettingsSurface.honouredBy`** says which kid faces *obey* a parent's
+  setting, as `where` says who can set it; a setting the browser honours must
+  be read by the hub's kid routes (guard 69), and the gate prints what the
+  browser does not honour yet.
 - **`DesignTokens`**, `KidGeometry` and `KidType` hold every colour and
   number a card is drawn from; the browser's stylesheet is generated from
   them (guards 48, 63).
