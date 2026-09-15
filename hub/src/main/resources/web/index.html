@@ -2040,9 +2040,14 @@
       ul.appendChild(li);
     });
     c.appendChild(ul);
+    // The same two sentences the phone's editor uses, and Reset only when
+    // there is something to reset: no saved row for this home IS the default.
+    var isDefault = !rowsAll().filter(function (r) { return (r.kid || null) === kidId; }).length;
     var reset = el("div", "line");
-    reset.appendChild(el("div", "sub grow", "The default is every shelf, in this order, all shown."));
-    reset.appendChild(button("Reset to default", "quiet", function () {
+    reset.appendChild(el("div", "sub grow", isDefault
+      ? "This is the default: every shelf, in this order."
+      : "The default is every shelf, all shown, in the order a new install gets."));
+    if (!isDefault) reset.appendChild(button("Reset to default", "quiet", function () {
       return editRows(kidId, function () { return []; }).then(refresh);
     }));
     c.appendChild(reset);

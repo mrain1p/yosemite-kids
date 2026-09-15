@@ -242,12 +242,12 @@ canary 58 "$KIDSRV" \
 
 canary 59 "$KIDSRV" \
   "the kid throttle sharing the parents bucket" \
-  "HubRate was added for the kid" \
+  "has no HubRate of its own" \
   'sed -i "s/HubRate(MAX_CLAIMS_PER_WINDOW/HubRateCanary(MAX_CLAIMS_PER_WINDOW/" "$KIDSRV"'
 
 canary 59 "$HUBSRV" \
   "the parents session becoming a cookie again" \
-  "sets a cookie" \
+  "sets or reads a cookie" \
   'sed -i "/private fun logout(ex: HttpExchange)/a\        ex.responseHeaders.add(\"Set-Cookie\", \"canary=1\")" "$HUBSRV"'
 
 canary 59 "$KIDSRV" \
@@ -288,7 +288,7 @@ canary 63 "$TILES" \
 canary 64 "$GRID" \
   "the grid forgetting whether the child scrolled" \
   "VideoGrid lost childScrolled" \
-  'sed -i "s/childScrolled/childScrolledCanary/g" "$GRID"'
+  'sed -i "s/childScrolled/scrolledCanary/g" "$GRID"'
 
 # Editing this very file while it runs is safe on purpose: sed -i writes a
 # new file and renames it over the old one, and the bash that is running

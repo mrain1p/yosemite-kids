@@ -1796,3 +1796,101 @@ the fork already had:
   (`;AI_HOLD_INCOMPLETE:true`), the discipline every field added after a
   family's config already existed follows here, so a household that never
   turns it on keeps a byte-identical `ai` object and the hash it had.
+
+### One origin, the kid's own password, a trail back to the hub, and rows a parent arranges (1.8.0)
+
+Seven phases against four goals the owner set in one sitting: the three faces
+consistent, the tree cheaper to work in, the home screen modular, and a way
+to find out what went wrong on a device *after* it went wrong. Two
+corrections shaped it: the television keeps its QR-only settings screen and
+its rail — consistent and adapted, never given a settings page of its own —
+and the hub's two faces had to become **one origin**, with the code box gone.
+
+- **Housekeeping first.** Finished plans moved to `docs/archive/` (with a
+  README saying what each was), the kid-player design files to
+  `docs/design/kid-player/`, and CLAUDE.md lost the paragraphs that were
+  history rather than instruction. `docs/GUARDS.md` is now generated from the
+  guard headings by `scripts/guard-index.sh` (guard 67 fails the gate when it
+  is stale), and `scripts/guard-canary.sh` mutates a detached worktree to
+  prove every guard from 56 on can actually fail (guard 65 holds each new
+  guard to having a case; CI runs the canary after the guards). The
+  `yosemite-kids-map` skill says which file to open for each kind of change
+  and which never to read end to end.
+- **The manifests say what the television does and what the browser obeys.**
+  `KidSurfaceDef.onTv`/`tvWhy` records how the TV adapts each kid surface or
+  why it skips it (guard 62); `SettingsControl.honouredBy`/`honourWhy` says
+  which kid faces *obey* a setting, and a setting the browser claims to
+  honour must be read by the hub's kid routes (guard 69). The gate prints
+  both lists on every run. Two settings the browser cannot honour are
+  declared with the reason instead of faked: *Show when a video came out*
+  (the index carries no publish date) and *Channel page layout* (no view
+  counts to sort "popular" by).
+- **One origin.** The kid page moved from a port of its own to `/kid` on the
+  console's port; the second port is gone from the Dockerfile, the compose
+  file and every doc, and the compose file says to drop the old line. The
+  attack the second port was built against (a kid-page script posting to
+  `/api/config` with the parent's cookie riding along) is answered without
+  it: the parent's session is an `X-Session` **header**, kept in the
+  console's `sessionStorage` and sent only by requests the console makes, so
+  there is no parent cookie for a kid-path request to carry; the kid's
+  credential is a cookie scoped to `Path=/kid/` that the console's routes
+  never read (`HubServer` never names it); the kid routes keep their own
+  throttle (`HubRate`) and never reach `HubSessions`; and still no
+  `Access-Control-` header anywhere. Guards 57–60 were rewritten for the new
+  boundary and `HubKidBoundaryTest` walks it.
+- **The kid signs in with a QR or their own password; the code box is gone.**
+  The console's *Watch in a browser* card shows a QR whose link carries the
+  one-time code, so a phone camera signs a tablet in with nothing typed. Or
+  the kid opens `/kid`, sees *Who's watching?* — the kids who have a
+  password, avatar and colour — picks themself and types it. The password is
+  the parent's to set on the kid's page (`/api/kid-password`), 4–64
+  characters, distinct from the parent's, stored as PBKDF2-HMAC-SHA256 at
+  210 000 iterations by the one `Pbkdf2` in `:core` the parent's password now
+  uses too, and pushed to devices as a record, never as text. Five wrong
+  guesses lock that kid for a minute, doubling to fifteen (`HubKidLock`),
+  per kid, so a sibling's typing never locks the parent or the other kid out.
+  **Every browser signs in again after this upgrade**; the old cookie was
+  bound to the old origin.
+- **A trail back to the hub.** `Diag` in `:app` keeps the last sixty
+  warnings, errors and the uncaught exception that killed the process, in
+  SharedPreferences, and no code outside it may call `Log.w`/`Log.e` (guard
+  68). Nothing is sent while nothing goes wrong: the ring is drained on the
+  device's next contact with a hub (`ConfigSync.sweep` → `POST /report`, up
+  to fifty entries, each cut at 500 characters), and the browser reports
+  `window.error`, `unhandledrejection` and a `/kid/media` 5xx over
+  `POST /kid/report`. `HubReports` keeps the last three hundred in memory,
+  prints each as `report <from> <who> (<kind> <version>) [<level>] <msg>` so
+  `docker logs` has it, and the Devices page shows a *Device log* card.
+- **Consistency sweep on the web.** Channel and search rows are paged by the
+  family's page size with the same *Show more* the phone has; the channel
+  row order (*A to Z*, *Most watched*, …) is honoured; every shelf title is
+  `homeShelfTitle` in `:core`, one spelling for three faces.
+- **The rows are the parent's to arrange.** `Whitelist.homeRows` holds one
+  `HomeRow` per shelf per home (a kid's, or the family's), in the pinned
+  hero's shape for the pinned hero's reasons: a merge unit each
+  (`home.row|<kid>|<shelf>`, absent-safe, tombstoned with its kid), the
+  position a rank so a move stamps only what moved, on/off a flag beside it,
+  nothing written and nothing hashed while the family never arranges (the
+  hash a 1.7.0 device computes stays equal), and a shelf this build has not
+  got carried but not drawn. One function arranges a home —
+  `HomeRows.withOrder` — and guard 70 holds both editors to it: *Rows on the
+  home screen* on the console's Listing page and `HomeRowsEditor` on the
+  phone's, both declared once as `listing-rows`, both with move, hide and
+  *Reset to default*. Every face reads the result through
+  `Whitelist.homeRowsFor`. Update every device before arranging: a 1.7.0
+  device carries the rows but draws the default.
+
+Verified: the JVM suites in `:core`, `:hub` and `:app` (new:
+`KidWebPasswordTest`, `HomeRowsConfigTest`, `DiagRingTest`,
+`HubKidBoundaryTest`, `HubReportsTest`, `HubKidListingTest`); guards in both
+scripts; the canary on every case it covers; and in a browser against a
+throwaway hub: the password sign-in with a wrong guess refused, the QR link,
+the *Device log* card receiving a browser report, and the rows editor —
+Videos moved above Suggested and Watched lately hidden on the console, the
+kid's home served in that order. The one-origin hub image has run on the
+owner's NAS since the third phase. Device-side reporting is proven by unit
+test only until the 1.8.0 APK is on the fleet.
+
+Seen on the NAS and left for the owner: the crawl keeps retrying one channel
+YouTube answers "The playlist does not exist" for, backing off each time; it
+wants removing from the list or a crawl-side "gone" verdict.
