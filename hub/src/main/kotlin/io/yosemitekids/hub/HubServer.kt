@@ -65,16 +65,6 @@ class HubServer(
     private val master: HubMaster? = null,
     private val crawl: HubCrawl? = null,
     /**
-     * The kid origin's port — a **second listener**, not a path under this one.
-     *
-     * Zero lets the OS choose, which is what every test wants and what makes
-     * two servers in one JVM harmless. `Main` passes `YOSEMITE_KIDS_KID_PORT`.
-     * See [HubKidServer] for why a port and not a path: on one origin a
-     * child's page can spend a parent's session cookie against `/api/config`,
-     * and every gate this project has agrees that it may.
-     */
-    private val kidPort: Int = 0,
-    /**
      * Passed in so tests need no clock and the merge stays clock-free.
      *
      * Last on purpose. Every existing call site passes it as a trailing
@@ -145,26 +135,22 @@ class HubServer(
     private val kidLists = HubSavedLists(store.dataDir)
 
     /**
-     * The kid's own origin.
+     * The kid's half: the page at `/kid` and every route under it.
      *
      * Built here because everything it needs is something this server already
      * holds — the config, the verdict engine, the meter, the claim store and
-     * the browsers' watch history — and started and stopped with it, so a
-     * container has one listener's lifecycle to think about and gets two. It
-     * shares **objects**, not routes: the two servers answer disjoint path
-     * sets (guard 57), and nothing about the admin session reaches it (guard
-     * 59).
+     * the browsers' watch history — and registered on this one listener in
+     * [start]. It shares **objects**, not credentials: the kid routes answer
+     * only to the kid cookie, which this class never reads, and the parent
+     * session is a header no kid route ever looks at (guards 57, 59).
      */
-    private val kid = HubKidServer(kidPort, browsers, store, policy, meter, kidHistory, kidLists, now)
+    private val kid = HubKidServer(browsers, store, policy, meter, kidHistory, kidLists, now)
 
     /** The verdict engine and the browser meter, for tests and a future route. */
     fun policy(): HubPolicy = policy
     fun watchMeter(): HubWatchMeter = meter
 
-    /** The kid origin's bound port, for the boot line and for tests. */
-    fun kidPort(): Int = kid.boundPort()
-
-    /** The kid origin's stream counter, so a test can fill it over a socket. */
+    /** The kid routes' stream counter, so a test can fill it over a socket. */
     internal fun mediaSlots(): HubMedia.Slots = kid.mediaSlots()
 
     /**
@@ -263,11 +249,11 @@ class HubServer(
         // box never holds a credential on anything and guard 7 is untouched.
         // A relay and a scoreboard; it stops nobody watching anything.
         s.createContext("/usage") { ex -> guarded(ex) { usage(ex) } }
-        // Video bytes are NOT here. `/media` lives on the kid origin
-        // ([HubKidServer]), because the thing that plays video is a child's
-        // browser and a child's browser must not be on this origin at all —
-        // see that class for what a page here can do with a parent's session
-        // cookie. Guard 57 fails the build if it comes back.
+        // Video bytes are NOT here. `/kid/media` is a kid route
+        // ([HubKidServer]), answering only to the kid cookie, because the
+        // thing that plays video is a child's browser and nothing a parent's
+        // session holds may fetch it. Guard 57 fails the build if a kid path
+        // is registered from this file.
         //
         // Registered individually rather than under one prefix: a prefix
         // context would swallow every path beneath it, and "/" already
@@ -275,6 +261,12 @@ class HubServer(
         assets.forEach { (path, type) ->
             s.createContext(path) { ex -> guarded(ex) { asset(ex, path, type) } }
         }
+
+        // The kid app, at /kid and beneath it, on this same listener. Before
+        // "/" so the JDK's longest-prefix match sends a child's calls to the
+        // kid routes and never to the console's catch-all - and handed the
+        // catch-all for the typos the prefix match brings it ("/kids").
+        kid.register(s) { ex -> web(ex) }
 
         // The admin GUI. "/" is registered last and matches everything not
         // claimed above, so an unknown path lands on the page rather than on
@@ -286,10 +278,6 @@ class HubServer(
 
         s.start()
         server = s
-        // The kid's origin comes up with this one and goes down with it. It
-        // is a separate listener on a separate port; it is not separate
-        // plumbing for a parent to start, stop or forget.
-        kid.start()
         return s.address.port
     }
 
@@ -634,13 +622,22 @@ class HubServer(
     }
 
     /**
-     * Trade the admin token for a session cookie.
+     * Trade the admin token or the password for a session.
      *
      * This route is what makes the admin token guessable: before the GUI it
      * could only be presented programmatically, one call at a time. Hence the
      * throttle, which refuses rather than slows — a parent mistyping it twice
      * is unaffected, and anything trying thousands is stopped rather than
      * merely inconvenienced.
+     *
+     * The session comes back **in the body, never as a cookie.** The console
+     * keeps it in the tab that signed in and sends it as [SESSION_HEADER] on
+     * every call. That is the whole of what lets the kid app share this
+     * origin: a cookie is attached by the browser to any request for this
+     * host, so a page a child opened could spend a parent's session against
+     * `/api/config` without ever reading it; a header is attached only by
+     * script that holds the value, and the kid page holds nothing. Guard 59
+     * fails the build if this file ever sets a cookie or reads one.
      */
     private fun login(ex: HttpExchange) {
         if (ex.requestMethod != "POST") return respond(ex, 405, "no")
@@ -656,24 +653,16 @@ class HubServer(
             ?: json?.optString("token")?.ifEmpty { null }
         adminGate(ex, given) ?: return
         val id = sessions.open()
-        // No Secure flag: this is plain HTTP on a home LAN, and marking the
-        // cookie Secure would stop it being sent at all. HttpOnly and
-        // SameSite are the two that do work here.
-        ex.responseHeaders.add(
-            "Set-Cookie",
-            "$SESSION_COOKIE=$id; HttpOnly; SameSite=Strict; Path=/; Max-Age=" +
-                (HubSessions.SESSION_TTL_MS / 1000)
+        respond(
+            ex, 200,
+            JSONObject().put("ok", true).put("session", id)
+                .put("ttlSeconds", HubSessions.SESSION_TTL_MS / 1000).toString()
         )
-        respond(ex, 200, JSONObject().put("ok", true).toString())
     }
 
     private fun logout(ex: HttpExchange) {
         if (ex.requestMethod != "POST") return respond(ex, 405, "no")
         sessions.close(sessionOf(ex))
-        ex.responseHeaders.add(
-            "Set-Cookie",
-            "$SESSION_COOKIE=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"
-        )
         respond(ex, 200, JSONObject().put("ok", true).toString())
     }
 
@@ -688,7 +677,7 @@ class HubServer(
                 ex, 200,
                 HubWeb.state(
                     store, tokens, dataDir, now(), index, screening, master, crawl, startedAt,
-                    browsers = browsers, kidPort = kid.boundPort()
+                    browsers = browsers
                 )
             )
 
@@ -817,6 +806,41 @@ class HubServer(
                 }
             }
 
+            /**
+             * `POST /api/kid-password {kid, password}` — set, or with a blank
+             * password clear, a child's own password for the kid app.
+             *
+             * A route of its own rather than a `profiles` patch for the same
+             * reason `/api/ai-key` is: what lands in the config is the
+             * derived record, and deriving it is the hub's job — a browser
+             * that could patch a record in could patch any record in, and a
+             * password the page hashed would be a second KDF to keep equal to
+             * the first. The record is one field of the profile and syncs
+             * like the rest, so the phone verifies what the hub set and the
+             * hub verifies what the phone set. Bounded off the wire.
+             */
+            "/api/kid-password" -> mutate(ex) { body ->
+                val kid = body.optString("kid").take(64)
+                if (!body.has("kid") || !body.has("password")) null
+                else {
+                    val password = body.optString("password").take(io.yosemitekids.app.data.KidPassword.MAX_LENGTH)
+                    if (password.isNotEmpty() &&
+                        io.yosemitekids.app.data.Pbkdf2.normalize(password).length < io.yosemitekids.app.data.KidPassword.MIN_LENGTH
+                    ) {
+                        JSONObject().put("saved", false).put("why", "TOO_SHORT")
+                    } else if (store.load().profile(kid) == null) {
+                        JSONObject().put("saved", false).put("why", "BAD_KID")
+                    } else {
+                        val record = password.takeIf { it.isNotEmpty() }
+                            ?.let { io.yosemitekids.app.data.KidPassword.record(it, now()) }
+                        store.edit(WHO, now()) { w ->
+                            w.copy(profiles = w.profiles.map { if (it.id == kid) it.copy(webPassword = record) else it })
+                        }
+                        JSONObject().put("saved", true).put("set", record != null)
+                    }
+                }
+            }
+
             "/api/versions" -> mutate(ex) { body ->
                 if (!body.has("restore")) null
                 else JSONObject().put(
@@ -899,11 +923,14 @@ class HubServer(
                         // several — but the browser that just asked reached it
                         // somehow, and that route is the one the tablet on the
                         // same network can use too.
-                        val host = ex.requestHeaders.getFirst("Host")
-                            ?.substringBefore(':')
-                            ?.takeIf { it.isNotBlank() }
+                        //
+                        // Host and port both, exactly as the parent reached
+                        // this box: the kid app is a path on this same
+                        // origin, so the address the tablet opens is the
+                        // address the console is open on.
+                        val host = ex.requestHeaders.getFirst("Host")?.takeIf { it.isNotBlank() }
                         val kidUrl = outcome.code
-                            ?.let { code -> host?.let { "http://$it:${kid.boundPort()}/?c=$code" } }
+                            ?.let { code -> host?.let { "http://$it${HubKidServer.KID_PATH}?c=$code" } }
                         JSONObject()
                             .put("minted", outcome.why == HubWeb.Minted.OK)
                             .put("code", outcome.code.orEmpty())
@@ -933,12 +960,13 @@ class HubServer(
         respond(ex, 200, result.toString())
     }
 
+    /**
+     * The session a call carries: the header, and only the header. Never a
+     * cookie — see [login] for why that is the wall between the console and
+     * the kid app on this one origin. Bounded, because it comes off the wire.
+     */
     private fun sessionOf(ex: HttpExchange): String? =
-        ex.requestHeaders.getFirst("Cookie")
-            ?.split(";")
-            ?.map { it.trim() }
-            ?.firstOrNull { it.startsWith("$SESSION_COOKIE=") }
-            ?.substringAfter("=")
+        ex.requestHeaders.getFirst(SESSION_HEADER)?.trim()?.take(64)?.ifEmpty { null }
 
     // --- plumbing -------------------------------------------------------
 
@@ -1081,7 +1109,14 @@ class HubServer(
     }
 
     internal companion object {
-        const val SESSION_COOKIE = "yk_session"
+        /**
+         * The parents' session travels in this header and in nothing else.
+         * Not a cookie, on purpose: the kid app shares this origin, and a
+         * cookie is attached by the browser to any request for the host,
+         * page or no page. Guard 59 holds this file to setting and reading
+         * no cookie at all.
+         */
+        const val SESSION_HEADER = "X-Session"
 
         /** How a hub edit is attributed in the change feed a parent reads. */
         const val WHO = "The hub"
@@ -1156,17 +1191,15 @@ class HubServer(
         /**
          * Refuse anything a browser on another site initiated.
          *
-         * SameSite=Strict already stops the cookie riding along, but a page
-         * that checks only the cookie is trusting the browser to have enforced
-         * that. The same reasoning as /pair-request in the app, which refuses
-         * any request carrying an Origin at all.
+         * The session is a header now and no cookie rides anywhere, so this
+         * is belt to those braces: a page on some other host on the LAN
+         * cannot post here even with a credential it somehow holds. The same
+         * reasoning as /pair-request in the app, which refuses any request
+         * carrying an Origin at all.
          *
-         * On the companion, and **shared with [HubKidServer]**, because the
-         * two listeners exist precisely so that this predicate answers false
-         * across them: a fetch from the kid page to `/api/config` carries the
-         * kid origin's `Origin:` and is refused here. Two copies of a security
-         * check are two things to harden, and the second one is the one
-         * somebody forgets — so there is one.
+         * On the companion, and **shared with [HubKidServer]**: two copies
+         * of a security check are two things to harden, and the second one
+         * is the one somebody forgets — so there is one.
          */
         internal fun sameOrigin(ex: HttpExchange): Boolean {
             val origin = ex.requestHeaders.getFirst("Origin") ?: return true

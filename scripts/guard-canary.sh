@@ -185,6 +185,7 @@ canary() {
 }
 
 KIDSRV=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
+HUBSRV=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 KIDPAGE=hub/src/main/resources/web/kid.html
 HOMESTATE=app/src/main/java/io/yosemitekids/app/ui/HomeState.kt
 TILES=app/src/main/java/io/yosemitekids/app/ui/Tiles.kt
@@ -217,12 +218,17 @@ canary 56 "$CHUNKER" \
   'printf "\nobject StreamChunker { /* canary */ }\n" >> "$CHUNKER"'
 
 canary 57 "$KIDSRV" \
-  "an unreviewed route on the kid origin" \
+  "an unreviewed route under /kid" \
   "Adding one is a decision" \
-  'sed -i "/createContext(\"\/whoami\")/i\        s.createContext(\"\/canary9\") { ex -> guarded(ex) { whoami(ex) } }" "$KIDSRV"'
+  'sed -i "/createContext(\"\/kid\/whoami\")/i\        s.createContext(\"\/kid\/canary9\") { ex -> guarded(ex) { whoami(ex) } }" "$KIDSRV"'
+
+canary 57 "$HUBSRV" \
+  "a kid path registered from the console side" \
+  "registered from HubServer" \
+  'sed -i "/createContext(\"\/login\")/i\        s.createContext(\"\/kid\/canary9\") { ex -> guarded(ex) { login(ex) } }" "$HUBSRV"'
 
 canary 58 "$KIDSRV" \
-  "a CORS header letting the origins read each other" \
+  "a CORS header letting another site read a kid reply" \
   "the hub sets a CORS header" \
   'sed -i "/X-Content-Type-Options/i\        ex.responseHeaders.add(\"Access-Control-Allow-Origin\", \"*\")" "$KIDSRV"'
 
@@ -230,6 +236,16 @@ canary 59 "$KIDSRV" \
   "the kid throttle sharing the parents bucket" \
   "HubRate was added for the kid" \
   'sed -i "s/HubRate(MAX_CLAIMS_PER_WINDOW/HubRateCanary(MAX_CLAIMS_PER_WINDOW/" "$KIDSRV"'
+
+canary 59 "$HUBSRV" \
+  "the parents session becoming a cookie again" \
+  "sets a cookie" \
+  'sed -i "/private fun logout(ex: HttpExchange)/a\        ex.responseHeaders.add(\"Set-Cookie\", \"canary=1\")" "$HUBSRV"'
+
+canary 59 "$KIDSRV" \
+  "the kid cookie losing its /kid/ path scope" \
+  "scoped to Path=" \
+  'sed -i "s/Path=\$KID_PATH\/; Max-Age=/Path=\/; Max-Age=/" "$KIDSRV"'
 
 canary 60 "$KIDSRV" \
   "a kid route that does not resolve the claim cookie" \

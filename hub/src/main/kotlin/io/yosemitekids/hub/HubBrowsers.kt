@@ -161,7 +161,7 @@ class HubBrowsers(dataDir: File) {
     }
 
     /** Why a claim failed, so the tablet can say something true. */
-    enum class Refusal { UNKNOWN_CODE, TOO_MANY_TRIES, TOO_MANY_BROWSERS }
+    enum class Refusal { UNKNOWN_CODE, TOO_MANY_TRIES, TOO_MANY_BROWSERS, WRONG_PASSWORD }
 
     /** What a claim produced: the cookie value, and the child it plays as. */
     data class Claimed(val token: String, val kid: String)
@@ -202,25 +202,39 @@ class HubBrowsers(dataDir: File) {
             )
         }
 
+        // The code is spent either way — it was typed, and a code that
+        // survived a refusal would be a code an attacker gets to keep trying
+        // against a full list until somebody revokes something.
+        root.put("pending", kept)   // the redeemed one is consumed
+        return admit(root, found.optString("kid"), now)
+    }
+
+    /**
+     * Let a browser in as [kid] because the hub has already decided it may —
+     * a parent's code was redeemed, or the child typed the password their
+     * parent set on their profile ([io.yosemitekids.app.data.KidPassword]).
+     *
+     * The decision is the caller's; this only mints the credential and holds
+     * the cap. Which child a browser watches as is bound here and never
+     * afterwards taken from a request (guard 60).
+     */
+    fun admit(kid: String, now: Long): Result<Claimed> = synchronized(lock) {
+        admit(read(), kid, now)
+    }
+
+    private fun admit(root: JSONObject, kid: String, now: Long): Result<Claimed> {
         val live = liveBrowsers(root, now)
         if (live.length() >= MAX_BROWSERS) {
-            // The code is spent either way — it was typed, and a code that
-            // survived a refusal would be a code an attacker gets to keep
-            // trying against a full list until somebody revokes something.
-            root.put("pending", kept)
             root.put("browsers", live)
             write(root)
             return Result.failure(ClaimRefused(Refusal.TOO_MANY_BROWSERS))
         }
-
         val token = (1..32).map { "0123456789abcdef"[rng.nextInt(16)] }.joinToString("")
-        val kid = found.optString("kid")
         live.put(
             JSONObject().put("token", token).put("kid", kid)
                 .put("claimedAt", now).put("lastSeenAt", 0L)
         )
         root.put("browsers", live)
-        root.put("pending", kept)   // the redeemed one is consumed
         write(root)
         return Result.success(Claimed(token, kid))
     }

@@ -49,8 +49,8 @@
   would be the wrong colour anyway — on "My colour" the brand dark would draw
   a hard band above a page that is not dark at all.
 -->
-<link rel="manifest" href="/kid-manifest.webmanifest">
-<link rel="apple-touch-icon" href="/kid-icon?s=apple">
+<link rel="manifest" href="/kid/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/kid/icon?s=apple">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -463,14 +463,28 @@
   }
   #claim p { color: var(--yk-on-surface-variant); }
   #claim .row { display: flex; gap: 10px; justify-content: center; margin: 20px 0 12px; }
-  #code {
-    width: 8em;
+  /* The avatars a child may sign in as: big enough for a small finger, and
+     the picked one lifts on the action colour so "which one am I" is never
+     a question. */
+  .who { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin: 18px 0 6px; }
+  .whoTile {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    width: 96px; padding: 12px 6px;
+    border-radius: 18px;
+    border: 2px solid transparent;
+    background: var(--yk-surface-container-high);
+    color: var(--yk-on-surface);
+  }
+  .whoTile.picked { border-color: var(--yk-action); background: var(--yk-surface-container-highest); }
+  .whoFace { font-size: 40px; line-height: 1; }
+  .whoName { font-weight: 600; font-size: var(--yk-font-label-large-size); }
+  #password {
+    width: 11em;
     padding: 12px 14px;
     border-radius: 14px;
     border: 1px solid var(--yk-outline);
     background: var(--yk-surface-container-high);
-    text-transform: uppercase;
-    letter-spacing: .22em;
+    color: var(--yk-on-surface);
     text-align: center;
   }
   .go {
@@ -491,14 +505,22 @@
 </head>
 <body>
 
+<!--
+  The sign-in screen. Two ways in and no code box: a grown-up's QR (the
+  console's URL lands here with ?c= and is redeemed before this is even
+  shown), or the child's own avatar and password. The avatars come from
+  /kid/kids - only children with a password set - so a family that signs in
+  by QR alone sees the one sentence and nothing to tap.
+-->
 <section id="claim" hidden>
-  <h1>Type your code</h1>
-  <p>Ask a grown-up for the code on the hub.</p>
-  <div class="row">
-    <input id="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" inputmode="latin">
-    <button class="go" id="go">Watch</button>
-  </div>
+  <h1>Who's watching?</h1>
+  <div id="whoGrid" class="who"></div>
+  <form id="whoForm" class="row" hidden autocomplete="off">
+    <input id="password" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" maxlength="64" placeholder="Your password">
+    <button class="go" id="go" type="submit">Watch</button>
+  </form>
   <p id="claimWhy"></p>
+  <p id="claimHint">Or ask a grown-up to show you the code on the hub.</p>
 </section>
 
 <div id="app" hidden>
@@ -561,7 +583,7 @@
   function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
   function thumbSrc(url) {
-    return url ? "/thumb?u=" + encodeURIComponent(url) : "";
+    return url ? "/kid/thumb?u=" + encodeURIComponent(url) : "";
   }
 
   function duration(seconds) {
@@ -653,7 +675,7 @@
       b.appendChild(el("span", "glyph", row.glyph));
       b.appendChild(el("span", null, row.on ? row.off : row.add));
       b.onclick = function () {
-        post("/list", { list: row.list, v: video.id, on: !row.on }).then(function (r) {
+        post("/kid/list", { list: row.list, v: video.id, on: !row.on }).then(function (r) {
           if (r) {
             // Follow the store, not the tap.
             if (row.list === "favorites") video.fav = r.on;
@@ -944,7 +966,7 @@
   }
 
   function loadChannels(sort, seed) {
-    var q = "/channels";
+    var q = "/kid/channels";
     var parts = [];
     if (sort) parts.push("sort=" + encodeURIComponent(sort));
     if (seed) parts.push("seed=" + encodeURIComponent(seed));
@@ -967,7 +989,7 @@
   }
 
   function loadSurprise(seed) {
-    return get("/surprise" + (seed ? "?seed=" + encodeURIComponent(seed) : ""))
+    return get("/kid/surprise" + (seed ? "?seed=" + encodeURIComponent(seed) : ""))
       .then(function (p) { if (p) goInto(function () { renderSurprise(p); }); });
   }
 
@@ -1016,7 +1038,7 @@
     // answers both, because "which video is next" is a decision and this page
     // does not make those -- it would also be three fetches deep at the exact
     // moment a child is waiting for the next story.
-    post("/list", { list: "up-next", v: finished.id, on: false }).then(function (r) {
+    post("/kid/list", { list: "up-next", v: finished.id, on: false }).then(function (r) {
       if (r && r.next) play(r.next);
     });
   }
@@ -1041,7 +1063,7 @@
     v.autoplay = true;
     v.playsInline = true;
     v.setAttribute("playsinline", "");
-    v.src = "/media?v=" + encodeURIComponent(video.id);
+    v.src = "/kid/media?v=" + encodeURIComponent(video.id);
     wrap.appendChild(v);
 
     var meta = el("div", "meta");
@@ -1103,7 +1125,7 @@
    * carries the countdown back, which is why the pill is never stale.
    */
   function beat(video, meta) {
-    fetch("/progress", {
+    fetch("/kid/progress", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
@@ -1180,20 +1202,20 @@
   }
 
   function openChannel(id) {
-    get("/channel?id=" + encodeURIComponent(id)).then(function (channel) {
+    get("/kid/channel?id=" + encodeURIComponent(id)).then(function (channel) {
       if (channel) goInto(function () { renderChannel(channel); });
     }).catch(function () { renderHome(); });
   }
 
   function runSearch(q) {
     if (!q) { renderHome(); return; }
-    get("/search?q=" + encodeURIComponent(q)).then(function (result) {
+    get("/kid/search?q=" + encodeURIComponent(q)).then(function (result) {
       if (result) goInto(function () { renderSearch(result); });
     });
   }
 
   function loadHome() {
-    return get("/home").then(function (home) {
+    return get("/kid/home").then(function (home) {
       if (!home) return;
       state.home = home;
       applyLook(state.look || savedLook());
@@ -1275,30 +1297,31 @@
     stopBeating();
     document.getElementById("app").hidden = true;
     document.getElementById("claim").hidden = false;
+    loadWho();
   }
 
   // --- wiring ----------------------------------------------------------
 
   /**
-   * Trade a code for the cookie.
+   * Trade a credential for the cookie: a grown-up's code (from the QR) or
+   * the child's own password.
    *
-   * Shared by the Watch button and by the QR arrival below, so a scanned code
-   * and a typed one take exactly the same path — including the refusals. A
-   * second, quieter route for the scanned case is how "the QR works but says
-   * nothing when the code has expired" happens.
+   * One path for both, so a scanned code and a typed password take exactly
+   * the same route — including the refusals. A second, quieter route for the
+   * scanned case is how "the QR works but says nothing when the code has
+   * expired" happens.
    */
-  function redeem(code) {
+  function redeem(body, said) {
     var why = document.getElementById("claimWhy");
-    if (!code) return Promise.resolve();
     why.textContent = "";
-    return fetch("/claim", {
+    return fetch("/kid/claim", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: code })
+      body: JSON.stringify(body)
     }).then(function (r) {
       if (r.ok) return loadHome();
-      // Every refusal lands on the code box, and it has to be shown
+      // Every refusal lands on the sign-in screen, and it has to be shown
       // explicitly: both panels start hidden, so a scanned code that has
       // expired would otherwise leave a child looking at a blank white page
       // with the reason written on something invisible.
@@ -1308,19 +1331,75 @@
           why.textContent = "Too many tries. Wait " + (b.retryAfter || 60) + " seconds.";
         });
       }
-      why.textContent = "That code did not work. Ask for a new one.";
+      why.textContent = said;
     }).catch(function () {
       showClaim();
       why.textContent = "The hub did not answer.";
     });
   }
 
-  document.getElementById("go").onclick = function () {
-    redeem(document.getElementById("code").value.trim());
-  };
+  /** Which avatar is tapped on the sign-in screen, or null. */
+  var whoIs = null;
 
-  document.getElementById("code").addEventListener("keydown", function (e) {
-    if (e.key === "Enter") document.getElementById("go").click();
+  /**
+   * The avatars a child may sign in as, drawn from /kid/kids. Fetched on
+   * every showing, not once: a parent setting a password on the phone is
+   * the moment a child is standing in front of this screen.
+   */
+  function loadWho() {
+    var grid = document.getElementById("whoGrid");
+    var form = document.getElementById("whoForm");
+    return fetch("/kid/kids", { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : { kids: [] }; })
+      .catch(function () { return { kids: [] }; })
+      .then(function (j) {
+        var list = (j && j.kids) || [];
+        grid.textContent = "";
+        if (!list.some(function (k) { return k.id === whoIs; })) whoIs = null;
+        list.forEach(function (k) {
+          var b = document.createElement("button");
+          b.type = "button";
+          b.className = "whoTile" + (k.id === whoIs ? " picked" : "");
+          var face = document.createElement("span");
+          face.className = "whoFace";
+          face.textContent = k.avatar || "";
+          var name = document.createElement("span");
+          name.className = "whoName";
+          name.textContent = k.name || "";
+          b.appendChild(face);
+          b.appendChild(name);
+          b.onclick = function () {
+            whoIs = k.id;
+            loadWho().then(function () { document.getElementById("password").focus(); });
+          };
+          grid.appendChild(b);
+        });
+        form.hidden = !whoIs;
+        var hint = document.getElementById("claimHint");
+        hint.hidden = list.length > 0 && !!whoIs;
+        hint.textContent = list.length
+          ? "Or ask a grown-up to show you the code on the hub."
+          : "Ask a grown-up to show you the code on the hub.";
+      });
+  }
+
+  function submitPassword() {
+    var field = document.getElementById("password");
+    var password = field.value;
+    if (!whoIs || !password) return;
+    field.value = "";
+    redeem({ kid: whoIs, password: password }, "That password did not work. Try again.");
+  }
+
+  document.getElementById("whoForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    submitPassword();
+  });
+  // Enter in the field as well as the form's own submit: an installed iPad
+  // app with a hardware keyboard, and a tablet whose on-screen "Go" key does
+  // not always raise submit, both land here.
+  document.getElementById("password").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); submitPassword(); }
   });
 
   /**
@@ -1359,7 +1438,7 @@
       // belongs at the top of History, and a You tab still showing the state
       // from breakfast is the app looking broken to the one person who knows
       // it is not.
-      get("/you").then(function (you) { if (you) renderYou(you); });
+      get("/kid/you").then(function (you) { if (you) renderYou(you); });
     } else {
       loadHome();
     }
@@ -1441,7 +1520,7 @@
 
   var scanned = codeFromUrl();
   if (scanned) {
-    redeem(scanned);
+    redeem({ code: scanned }, "That code did not work. Ask for a new one.");
   } else {
     loadHome().catch(function () {
       showClaim();

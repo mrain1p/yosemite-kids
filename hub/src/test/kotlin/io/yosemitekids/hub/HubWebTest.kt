@@ -130,9 +130,10 @@ class HubWebTest {
 
     @Test
     fun aCrossSiteRequestIsRefusedEvenWithAValidSession() {
-        // SameSite=Strict already stops the cookie riding along, but checking
-        // only the cookie trusts the browser to have enforced that. Same
-        // reasoning as /pair-request in the app.
+        // The session is a header and no cookie rides anywhere, so a page on
+        // another site cannot present it by accident - but a page that
+        // somehow held it still must not be able to use it from elsewhere.
+        // Same reasoning as /pair-request in the app.
         //
         // Over a raw socket because HttpURLConnection silently drops Origin —
         // it is on the JDK list of restricted headers. Sent through that, this
@@ -142,7 +143,7 @@ class HubWebTest {
             "GET /api/state HTTP/1.1",
             "Host: 127.0.0.1:$port",
             "Origin: http://evil.example",
-            "Cookie: yk_session=$session"
+            "${HubServer.SESSION_HEADER}: $session"
         )
         assertEquals(403, status)
     }
@@ -156,7 +157,7 @@ class HubWebTest {
             "GET /api/state HTTP/1.1",
             "Host: 127.0.0.1:$port",
             "Origin: http://127.0.0.1:$port",
-            "Cookie: yk_session=$session"
+            "${HubServer.SESSION_HEADER}: $session"
         )
         assertEquals(200, status)
     }
@@ -739,7 +740,7 @@ class HubWebTest {
             first.split(" ").getOrNull(1)?.toIntOrNull() ?: -1
         }
 
-    /** Returns the session cookie value, or null if the login was refused. */
+    /** Returns the session /login hands back in its body, or null if the login was refused. */
     private fun signIn(): String? {
         val url = URL("http://127.0.0.1:$port/login")
         val c = (url.openConnection() as HttpURLConnection).apply {
@@ -749,7 +750,7 @@ class HubWebTest {
         }
         c.outputStream.use { it.write(JSONObject().put("token", admin).toString().toByteArray()) }
         if (c.responseCode != 200) return null
-        return c.getHeaderField("Set-Cookie")?.substringAfter("yk_session=")?.substringBefore(";")
+        return JSONObject(c.inputStream.bufferedReader().readText()).optString("session").ifEmpty { null }
     }
 
     private fun call(path: String, cookie: String? = null) =
@@ -766,7 +767,7 @@ class HubWebTest {
     ): Pair<Int, String> {
         val c = (URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            cookie?.let { setRequestProperty("Cookie", "yk_session=$it") }
+            cookie?.let { setRequestProperty(HubServer.SESSION_HEADER, it) }
             if (body != null) {
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")

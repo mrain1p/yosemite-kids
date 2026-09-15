@@ -474,7 +474,7 @@ object ConfigMerge {
         // it alongside its source or its kid, and that must beat a stale
         // copy still listing it, or a deleted channel's card would outlive
         // the channel.
-        "src", "kid", "kid.pin", "allow", "afor", "dev", "grant", "home.pin" -> Safe.ABSENT
+        "src", "kid", "kid.pin", "kid.web", "allow", "afor", "dev", "grant", "home.pin" -> Safe.ABSENT
         else -> Safe.SCALAR
     }
 
@@ -678,7 +678,7 @@ object ConfigMerge {
                 val d = decide(key)
                 if (!d.present) {
                     listOf(
-                        key, ConfigStamp.kidPin(id), ConfigStamp.kidRules(id),
+                        key, ConfigStamp.kidPin(id), ConfigStamp.kidWeb(id), ConfigStamp.kidRules(id),
                         ConfigStamp.kidWindows(id), ConfigStamp.kidPause(id), ConfigStamp.kidBrk(id)
                     ).forEach { k ->
                         val dk = decide(k)
@@ -700,6 +700,8 @@ object ConfigMerge {
                 // and the picker then lets a sibling into that kid's profile.
                 val kid = JSONObject(base.toString())
                 fieldUnit(ConfigStamp.kidPin(id), ::decide, at, gone, mine, theirs, kid, "pin")
+                // The browser password, for the same reason and in the same shape.
+                fieldUnit(ConfigStamp.kidWeb(id), ::decide, at, gone, mine, theirs, kid, "web")
                 mergeKidLimits(id, ::decide, at, gone, mine, theirs, kid)
                 kept += d.at to kid
             }

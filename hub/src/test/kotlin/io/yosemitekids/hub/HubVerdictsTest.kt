@@ -323,7 +323,7 @@ class HubVerdictsTest {
         }
         c.outputStream.use { it.write(JSONObject().put("secret", admin).toString().toByteArray()) }
         if (c.responseCode != 200) return null
-        return c.getHeaderField("Set-Cookie")?.substringAfter("yk_session=")?.substringBefore(";")
+        return JSONObject(c.inputStream.bufferedReader().readText()).optString("session").ifEmpty { null }
     }
 
     private fun enrol(name: String): String =
@@ -360,7 +360,7 @@ class HubVerdictsTest {
         val c = (URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection).apply {
             requestMethod = method
             token?.let { setRequestProperty("X-Token", it) }
-            session?.let { setRequestProperty("Cookie", "yk_session=$it") }
+            session?.let { setRequestProperty(HubServer.SESSION_HEADER, it) }
             if (body != null) {
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")

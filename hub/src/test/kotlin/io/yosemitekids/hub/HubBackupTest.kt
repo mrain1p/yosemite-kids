@@ -264,12 +264,12 @@ class HubBackupTest {
         }
         c.outputStream.use { it.write(JSONObject().put("secret", admin).toString().toByteArray()) }
         if (c.responseCode != 200) return null
-        return c.getHeaderField("Set-Cookie")?.substringAfter("yk_session=")?.substringBefore(";")
+        return JSONObject(c.inputStream.bufferedReader().readText()).optString("session").ifEmpty { null }
     }
 
     private fun get(path: String, cookie: String?): Pair<Int, String> {
         val c = (URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection).apply {
-            cookie?.let { setRequestProperty("Cookie", "yk_session=$it") }
+            cookie?.let { setRequestProperty(HubServer.SESSION_HEADER, it) }
         }
         val code = c.responseCode
         val text = (if (code in 200..299) c.inputStream else c.errorStream)
@@ -282,7 +282,7 @@ class HubBackupTest {
             requestMethod = "POST"
             doOutput = true
             setRequestProperty("Content-Type", "application/json")
-            cookie?.let { setRequestProperty("Cookie", "yk_session=$it") }
+            cookie?.let { setRequestProperty(HubServer.SESSION_HEADER, it) }
         }
         c.outputStream.use { it.write(body.toByteArray()) }
         val code = c.responseCode

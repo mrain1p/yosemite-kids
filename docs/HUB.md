@@ -440,29 +440,32 @@ The icons are generated, not drawn: `node scripts/make-hub-icons.js
 hub/src/main/resources/web` rewrites them, deterministically, so re-running
 it without an edit produces no diff.
 
-## The ports — two of them, and why
+## The port — one, and where everything is on it
 
-The hub publishes **8765 for parents and devices, and 8766 for children's
-browsers**. Both sides of each line in `docker-compose.yml` read the same
-variable (`YOSEMITE_KIDS_PORT`, `YOSEMITE_KIDS_KID_PORT`), so no pair can
-drift — publishing one port while the process listens on another gives a
-container that is running, healthy and unreachable, and the health check does
-not catch it because it runs inside the container.
+The hub publishes **8765**, and everything is on it: the parents' console at
+`/`, every device's sync, and the kid app at **`/kid`**. Both sides of the
+`ports:` line in `docker-compose.yml` read the same variable
+(`YOSEMITE_KIDS_PORT`), so the pair cannot drift — publishing one port while
+the process listens on another gives a container that is running, healthy and
+unreachable, and the health check does not catch it because it runs inside
+the container.
 
-To move either, put `YOSEMITE_KIDS_PORT=9000` or
-`YOSEMITE_KIDS_KID_PORT=9001` in a `.env` beside the compose file. Then use
-that port when connecting a phone, because the app assumes 8765.
+To move it, put `YOSEMITE_KIDS_PORT=9000` in a `.env` beside the compose
+file. Then use that port when connecting a phone, because the app assumes
+8765. **If your compose file still publishes a second port** (older versions
+had the kid app on a port of its own), delete that line: nothing listens there any more.
 
-**The second port is a security boundary, not tidiness.** A child's page and
-the parents' console must not share an origin. If the kid's page lived at
-`/kid/` on 8765, a script on it could `POST /api/config` and the browser would
-attach the parent's session cookie: the host matches, the site matches, and
-`HttpOnly` does not stop a page *sending* a cookie it cannot read. On a shared
-family iPad with a parent signed in, that is a page a child opened rewriting
-the family's blocks, limits and AI settings. Two ports make them two origins,
-and the browser refuses it for you. If you put a reverse proxy in front of this
-hub, keep them two origins — two names or two ports — and do **not** merge
-them under one hostname with different paths.
+**What keeps a child's page away from the console, now that they share an
+address.** Not the port — the credentials. The parents' session is a header
+the console's own script attaches to each call, never a cookie, so nothing a
+browser does on its own carries it: a page a child opened cannot spend it
+against `/api/config`, because the browser has nothing to attach. The kid's
+cookie is scoped to `/kid/`, so the browser never presents it on the console's
+side, and the console never reads it. The build fails if either half slips
+(guards 57 and 59), and `HubKidBoundaryTest` asks the hub over sockets that a
+kid cookie is nothing on an admin route and a session is nothing on a kid
+route. A reverse proxy in front of this hub can therefore serve it under one
+hostname, paths and all.
 
 It no longer uses host networking. The hub is a plain server that devices dial
 by IP; it never broadcasts or discovers, so host mode bought nothing and cost
@@ -546,28 +549,39 @@ first full crawl with `docker stats yosemite-kids-hub` and put the number here.
 ## Letting a browser watch
 
 An iPad, a laptop, an old Android tablet — anything with a browser and no app
-— can watch, on the hub's **second port**. Nothing is installed and no account
-exists; a parent hands over a code and that browser is a watcher from then on.
+— can watch, at the hub's kid address: **`http://<nas>:8765/kid`**. Nothing
+is installed and no account exists. There are two ways in, and neither is a
+code to type.
 
-On the console: **Devices → Watch in a browser**. Tap a child's name and the
-hub mints a six-character code — same alphabet as a device's enrolment code,
-no O/0 and no I/1 — good for ten minutes and for one browser. The card also
-prints the address to open on the tablet, which is this hub's own address on
-the kid port (`http://<nas>:8766`).
+**By QR.** On the console: **Devices → Watch in a browser**. Tap a child's
+name and the hub mints a one-shot code, good for ten minutes and for one
+browser, and shows it as a QR. Point the tablet's camera at it: the URL it
+holds opens the kid page already signed in as that child. (A device with no
+camera opens the link the card prints under the QR, which is the same URL.)
 
-On the tablet: open that address, type the code. That browser now carries a
-cookie for six months and plays as **that child**, under that child's blocks,
-bedtime and daily budget. It cannot become another child: the credential
-carries the profile the parent chose, and there is no parameter on any request
-that names one.
+**By password.** On the child's page — on the phone under *Kids*, or on the
+console — set them a **password for the kid app**: at least four characters,
+theirs rather than yours, and it opens nothing but their own shelves. From
+then on the kid page's **"Who's watching?"** screen shows their avatar; they
+tap it and type their password. The password is one field of the family
+config, so setting it on the phone reaches the hub and setting it on the hub
+reaches the phone, and what is stored anywhere is the derived record, never
+the password. Five wrong answers close that child's door for a minute,
+doubling to fifteen, and touch nobody else.
+
+Either way, that browser now carries a cookie for six months and plays as
+**that child**, under that child's blocks, bedtime and daily budget. It
+cannot become another child: the credential carries the profile, and there is
+no parameter on any request that names one.
 
 **What that browser can and cannot do.** It can see that child's home screen,
-search it, and play from it. It cannot reach the console, the family's configuration, the
-backup, the AI key, or any device route — those are on the other origin, and a
-request from the kid's page to them is refused before it is read and could not
-be read back if it were not. It also cannot lock you out: a child mistyping a
-code ten times slows the kid page down for a minute and does nothing at all to
-your sign-in, which is a separate counter on purpose.
+search it, and play from it. It cannot reach the console, the family's
+configuration, the backup, the AI key, or any device route: the parents'
+session is a header the console attaches and never a cookie, so the kid page
+has nothing to present there, and the kid's own cookie is scoped to `/kid/`
+and never arrives anywhere else. It also cannot lock you out: a child
+mistyping a password all afternoon does nothing at all to your sign-in, which
+is a separate counter on purpose.
 
 **Losing a tablet.** Devices → Watch in a browser → Remove, beside that
 browser. It stops on that browser's next request. Deleting the child's profile
@@ -590,7 +604,7 @@ phone lives on the phone.
 
 ## Video in a browser — and the quality ceiling
 
-`GET /media?v=<id>` on the kid port serves a video's bytes to a browser. Whose
+`GET /kid/media?v=<id>` serves a video's bytes to a browser. Whose
 rules apply comes from the browser's claim cookie, never from the URL — a
 child who could name the kid could name their older sibling and watch on their
 bedtime and their budget.
@@ -655,7 +669,7 @@ before assuming: with the hub running,
 ```
 curl -s -o /dev/null -w '%{speed_download} B/s  %{http_code}\n' \
   -H 'Cookie: yk_kid=<from a claimed browser>' -H 'Range: bytes=0-2097151' \
-  http://<nas>:8766/media?v=<video id>
+  http://<nas>:8765/kid/media?v=<video id>
 ```
 
 A 360p stream needs roughly 0.5–1 Mbit/s (60–125 kB/s) sustained.

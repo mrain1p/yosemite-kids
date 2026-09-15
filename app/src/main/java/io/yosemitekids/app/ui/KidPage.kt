@@ -27,6 +27,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.yosemitekids.app.data.KidPassword
 import io.yosemitekids.app.data.PROFILE_AVATARS
 import io.yosemitekids.app.data.PROFILE_COLORS
 import io.yosemitekids.app.data.PairingStore
@@ -82,13 +84,15 @@ internal fun KidPage(
     var lookAt by remember { mutableStateOf(profile.lookAt) }
     var pin by remember { mutableStateOf(profile.pin) }
     var settingPin by remember { mutableStateOf(false) }
+    var webPassword by remember { mutableStateOf(profile.webPassword) }
+    var settingWeb by remember { mutableStateOf(false) }
     var limits by remember { mutableStateOf(profile.limits) }
     var editingAge by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
 
     val built = profile.copy(
         name = name.trim(), age = age, colorArgb = color, avatar = avatar, lookAt = lookAt,
-        pin = pin, limits = limits
+        pin = pin, limits = limits, webPassword = webPassword
     )
     LaunchedEffect(built) {
         if (built != profile && built.name.isNotBlank()) onChanged(built)
@@ -282,6 +286,71 @@ internal fun KidPage(
                         }
                     })
                     TextButton(onClick = { settingPin = false }) { Text("Cancel") }
+                }
+            }
+            // The kid's own password for the browser app: the same control
+            // the hub's console draws (SettingsSurface "kid-web-password"),
+            // and one field of the profile, so setting it here reaches the
+            // hub and setting it there reaches here. The record is derived
+            // on this phone; the password itself is never stored anywhere.
+            SettingsDivider()
+            val webControl = ctl("kid-web-password")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 64.dp)
+                    .tvFocusHighlight()
+                    .clickable { settingWeb = true }
+                    .padding(horizontal = 12.dp, vertical = 9.dp)
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(webControl.label, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        if (webPassword != null) "Set — ${name.ifBlank { "this kid" }} can sign in on a tablet"
+                        else "Not set — a tablet signs in by your QR only",
+                        style = MaterialTheme.typography.bodySmall
+                            .copy(fontSize = 12.sp, lineHeight = 17.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                CompactButton(onClick = { settingWeb = true }) {
+                    Text(if (webPassword == null) "Set" else "Change")
+                }
+                if (webPassword != null) {
+                    CompactButton(onClick = { webPassword = null }) { Text("Remove") }
+                }
+            }
+            if (settingWeb) {
+                var typed by remember { mutableStateOf("") }
+                var tooShort by remember { mutableStateOf(false) }
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+                ) {
+                    Text(
+                        webControl.sub,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = typed,
+                        onValueChange = { typed = it.take(KidPassword.MAX_LENGTH); tooShort = false },
+                        singleLine = true,
+                        label = { Text("Password") },
+                        isError = tooShort,
+                        supportingText = if (tooShort) ({ Text("At least ${KidPassword.MIN_LENGTH} characters.") }) else null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            val record = runCatching { KidPassword.record(typed, System.currentTimeMillis()) }.getOrNull()
+                            if (record == null) tooShort = true
+                            else { webPassword = record; settingWeb = false }
+                        }) { Text("Save") }
+                        TextButton(onClick = { settingWeb = false }) { Text("Cancel") }
+                    }
                 }
             }
         }

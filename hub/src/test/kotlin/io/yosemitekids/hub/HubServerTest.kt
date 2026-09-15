@@ -595,17 +595,19 @@ class HubServerTest {
         return Triple(code, text, cookie)
     }
 
-    private fun setPassword(current: String, next: String, cookie: String? = null) =
+    private fun setPassword(current: String, next: String, session: String? = null) =
         post(
             "/password",
             JSONObject().put("current", current).put("next", next).toString(),
-            if (cookie == null) emptyMap() else mapOf("Cookie" to cookie)
+            if (session == null) emptyMap() else mapOf(HubServer.SESSION_HEADER to session)
         )
 
-    private fun sessionCookie(secret: String): String {
-        val (code, _, cookie) = post("/login", JSONObject().put("secret", secret).toString())
+    /** The session /login hands back in its body — a header from then on, never a cookie. */
+    private fun session(secret: String): String {
+        val (code, body, cookie) = post("/login", JSONObject().put("secret", secret).toString())
         assertEquals(200, code)
-        return cookie!!.substringBefore(";")
+        assertEquals("a cookie is a credential the browser attaches on its own", null, cookie)
+        return JSONObject(body).getString("session")
     }
 
     @Test
@@ -705,7 +707,7 @@ class HubServerTest {
     @Test
     fun changingThePasswordNeedsTheCurrentOneEvenInsideASession() {
         setPassword(ADMIN, "the first password")
-        val mine = sessionCookie("the first password")
+        val mine = session("the first password")
         // A live session is not enough: that browser may be a phone on a
         // kitchen counter, and this is what stops whoever picks it up from
         // locking the parent out of their own hub.
@@ -717,13 +719,13 @@ class HubServerTest {
     @Test
     fun changingThePasswordEndsOtherSessionsAndKeepsTheCallersOwn() {
         setPassword(ADMIN, "the first password")
-        val kitchen = sessionCookie("the first password")
-        val mine = sessionCookie("the first password")
-        assertEquals(200, get("/api/state", null, mapOf("Cookie" to mine)).first)
+        val kitchen = session("the first password")
+        val mine = session("the first password")
+        assertEquals(200, get("/api/state", null, mapOf(HubServer.SESSION_HEADER to mine)).first)
 
         assertEquals(200, setPassword("the first password", "another password", mine).first)
-        assertEquals("the caller stays signed in", 200, get("/api/state", null, mapOf("Cookie" to mine)).first)
-        assertEquals("every other session ends", 401, get("/api/state", null, mapOf("Cookie" to kitchen)).first)
+        assertEquals("the caller stays signed in", 200, get("/api/state", null, mapOf(HubServer.SESSION_HEADER to mine)).first)
+        assertEquals("every other session ends", 401, get("/api/state", null, mapOf(HubServer.SESSION_HEADER to kitchen)).first)
     }
 
     @Test

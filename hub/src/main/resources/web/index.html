@@ -145,6 +145,16 @@
     user-select: all;
     -webkit-user-select: all;
   }
+  /* The QR's own URL, for a device with no camera: readable and selectable
+     in one tap, and it wraps rather than running off a phone-width card. */
+  .claimlink {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 14px;
+    margin: 6px 0 2px;
+    overflow-wrap: anywhere;
+    user-select: all;
+    -webkit-user-select: all;
+  }
   .tag { font-size: 11.5px; color: var(--dim); border: 1px solid var(--line);
     border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
   .empty { color: var(--dim); font-size: 13.5px; padding: 6px 0; }
@@ -313,18 +323,42 @@
     return e;
   }
 
+  // The session, and where it lives. A header the page attaches on purpose,
+  // NEVER a cookie: the kid app shares this origin, and a cookie is attached
+  // by the browser to any request for this host - page or no page - so a
+  // page a child opened could spend a parent's session against /api/config
+  // without ever reading it. sessionStorage rather than localStorage so it
+  // is this tab's and dies with it: a parent who signed in on the family
+  // iPad and closed the tab has signed out, which is the right answer on a
+  // device a child picks up next.
+  var SESSION_KEY = "yk_session";
+  function session() {
+    try { return sessionStorage.getItem(SESSION_KEY) || ""; } catch (e) { return ""; }
+  }
+  function setSession(id) {
+    try {
+      if (id) sessionStorage.setItem(SESSION_KEY, id); else sessionStorage.removeItem(SESSION_KEY);
+    } catch (e) { /* private mode: the page still works, for this load */ }
+  }
+  function authHeaders() {
+    var h = { "Content-Type": "application/json" };
+    var s = session();
+    if (s) h["X-Session"] = s;
+    return h;
+  }
+
   // Every request goes through here so "your session went away" is handled in
   // exactly one place. A hub restart drops all sessions, and a page that
   // responded to that by silently doing nothing would look broken.
   function api(path, body) {
     var opts = {
       method: body ? "POST" : "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       credentials: "same-origin"
     };
     if (body) opts.body = JSON.stringify(body);
     return fetch(path, opts).then(function (r) {
-      if (r.status === 401) { signedOut(); throw new Error("sign in"); }
+      if (r.status === 401) { setSession(""); signedOut(); throw new Error("sign in"); }
       return r.json().then(function (j) {
         if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
         return j;
@@ -340,11 +374,14 @@
   function postSecret(path, body) {
     return fetch(path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       credentials: "same-origin",
       body: JSON.stringify(body)
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
+        // /login answers with the session; keep it before anyone reads the
+        // reply, so the refresh that follows is already signed in.
+        if (r.ok && j && j.session) setSession(j.session);
         return { ok: r.ok, status: r.status, body: j };
       });
     });
@@ -1510,6 +1547,40 @@
     who.appendChild(grid);
     out.appendChild(who);
 
+    // The kid's own password for the kid app, from the manifest like every
+    // other control. The page never sees the record and never hashes
+    // anything: /api/kid-password derives it on the box, and what lands in
+    // the config is one field of this profile, which then syncs everywhere.
+    var web = card(controlById("kid-web-password").label, controlById("kid-web-password").sub);
+    web.dataset.control = "kid-web-password";
+    var webLine = el("div", "line");
+    var hasWeb = !!k.web;
+    webLine.appendChild(el("div", "sub grow", hasWeb
+      ? (k.name || "This kid") + " has a password and can sign in from \"Who's watching?\"."
+      : "No password yet. " + (k.name || "This kid") + " signs in by your QR only."));
+    var webField = document.createElement("input");
+    webField.type = "password";
+    webField.autocomplete = "new-password";
+    webField.placeholder = hasWeb ? "New password" : "At least 4 characters";
+    webField.maxLength = 64;
+    webLine.appendChild(webField);
+    var webWhy = el("p", "hint");
+    function setWeb(password) {
+      return api("/api/kid-password", { kid: k.id, password: password }).then(function (r) {
+        webField.value = "";
+        if (r.saved) return refresh();
+        webWhy.textContent = r.why === "TOO_SHORT" ? "At least four characters." : "Could not save that.";
+      });
+    }
+    webLine.appendChild(button(hasWeb ? "Change" : "Set", null, function () {
+      if (!webField.value) { webWhy.textContent = "Type a password first."; return Promise.resolve(); }
+      return setWeb(webField.value);
+    }));
+    if (hasWeb) webLine.appendChild(button("Remove", "quiet", function () { return setWeb(""); }));
+    web.appendChild(webLine);
+    web.appendChild(webWhy);
+    out.appendChild(web);
+
     // Tonight before the rules: a parent on this page at teatime is deciding
     // about this evening, not rewriting the schedule.
     var tonight = card("Tonight", null);
@@ -2240,23 +2311,22 @@
    *
    * A card of its own rather than a row under "Enrolled devices", because a
    * browser is not a device: it holds no config, syncs nothing, and its whole
-   * credential is "may watch, as this child". It is also the one card on this
-   * page that names a different origin — the kid's port is a separate
-   * listener, deliberately not a path on this one, so that a page a child
-   * opens cannot spend this session's cookie against /api/config.
+   * credential is "may watch, as this child". The kid app is a path on this
+   * same origin; what keeps a page a child opens from spending this session
+   * against /api/config is that the session is a header this script attaches
+   * and nothing ambient - see api() above.
    */
   function browsersCard() {
     var c = card(
       "Watch in a browser",
-      "A tablet or laptop can watch on this hub's kid address. Give it a code to type in — " +
-        "it lasts ten minutes, works once, and binds that browser to one kid."
+      "A tablet or laptop can watch at this hub's kid address. Point it at the QR below " +
+        "and it is signed in as that kid - or set the kid a password on their page and they " +
+        "sign themselves in from \"Who's watching?\"."
     );
 
     var where = el("p", "sub");
-    var kidPort = state.hub.kidPort;
-    where.textContent = kidPort
-      ? "On the tablet, open http://" + location.hostname + ":" + kidPort
-      : "This hub is not serving a kid address.";
+    var kidPath = state.hub.kidPath || "/kid";
+    where.textContent = "On the tablet, open http://" + location.host + kidPath;
     c.appendChild(where);
 
     // The code, once, here — never stored anywhere the page can fetch again.
@@ -2296,11 +2366,10 @@
       if (mintedClaim) {
         var left = Math.max(1, Math.round((mintedClaim.until - Date.now()) / 60000));
 
-        // The QR first, because it is the way this is meant to be used: point
-        // the tablet's camera and it lands on the kid page already claimed.
-        // The typed code below it is the fallback for a device with no camera,
-        // or a parent who would rather type — the television offers the same
-        // pair for pairing, and for the same reason.
+        // The QR is the way in: point the tablet's camera and it lands on
+        // the kid page already signed in. There is no code to type any more
+        // - the kid page has no box for one - so a device with no camera
+        // opens the link below instead, which is the same URL the QR holds.
         //
         // innerHTML, and the ONE place this page uses it: the SVG is built by
         // HubQr on this box from a code this box minted, so there is no
@@ -2310,15 +2379,13 @@
           var qrBox = el("div", "qr");
           qrBox.innerHTML = mintedClaim.qr;
           c.appendChild(qrBox);
-          c.appendChild(el("p", "sub", "Point " + mintedClaim.kid + "'s tablet at this, or type the code."));
-        } else {
-          c.appendChild(el("p", "sub", "Type this on " + mintedClaim.kid + "'s tablet:"));
+          c.appendChild(el("p", "sub", "Point " + mintedClaim.kid + "'s tablet at this."));
         }
-        // user-select:all, so one tap or click selects the whole code.
+        // user-select:all, so one tap or click selects the whole link.
         // Deliberately not a Copy button: navigator.clipboard needs a secure
         // context and this hub is plain HTTP on a home LAN, so the button
         // would be there and do nothing — which is worse than no button.
-        var big = el("p", "claimcode", mintedClaim.code);
+        var big = el("p", mintedClaim.url ? "claimlink" : "claimcode", mintedClaim.url || mintedClaim.code);
         c.appendChild(big);
         c.appendChild(el(
           "p", "sub",
@@ -2899,6 +2966,7 @@
   $("token").addEventListener("keydown", function (e) { if (e.key === "Enter") signIn(); });
   $("signout").onclick = function () {
     api("/logout", {}).catch(function () {}).then(function () {
+      setSession("");
       // Re-read on the way out: another browser may have claimed this hub
       // while this one was signed in, and the field it offers next must say
       // what to type now.

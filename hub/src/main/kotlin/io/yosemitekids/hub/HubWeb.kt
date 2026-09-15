@@ -135,14 +135,7 @@ object HubWeb {
          * one. Null on a hub built without the kid listener at all, which the
          * page renders as an empty list rather than as an error.
          */
-        browsers: HubBrowsers? = null,
-        /**
-         * The port a child's browser watches on. The page needs it because it
-         * is a **different origin** and nothing in the address bar implies it;
-         * a parent who is not told the number cannot open the kid's page at
-         * all. 0 means "not serving one", which the card says plainly.
-         */
-        kidPort: Int = 0
+        browsers: HubBrowsers? = null
     ): String {
         val config = runCatching { store.load() }.getOrElse { Whitelist(emptyList(), emptySet()) }
         // Keyless, and explicitly so. `config` comes off the hub's own disk,
@@ -283,7 +276,10 @@ object HubWeb {
                     .put("holdsKey", store.holdsKey())
                     .put("keyTail", store.keyTail())
                     .put("deviceCount", tokens.devices().size)
-                    .put("kidPort", kidPort)
+                    // Where the kid app is on this origin, for the card that
+                    // tells a parent what to open on the tablet. A path, not
+                    // a port: one address for the whole hub.
+                    .put("kidPath", HubKidServer.KID_PATH)
                     .put("startedAt", startedAt)
                     // The one health number a NAS actually needs. A volume
                     // that fills up takes the atomic write with it — the

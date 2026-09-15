@@ -1533,74 +1533,70 @@ That is the throttled form. Translate the browser's header into StreamChunker.ch
 [ -f crawl/src/test/kotlin/io/yosemitekids/app/StreamChunkerTest.kt ] ||
   guard_fail "crawl/src/test/.../StreamChunkerTest.kt is gone. The range maths moved to :crawl and its coverage moves with it - :app's test task no longer runs it."
 
-# 57. The kid's page and the parents' console are two ORIGINS, not two paths.
-#     This is the load-bearing decision of the whole web player, and the way
-#     it fails is by being quietly softened back into path-scoping by someone
-#     who reads two listeners as duplication. So, stated as a check:
-#
-#     If the kid's page lived at /kid/ on the console's origin, a script on it
-#     could fetch("/api/config", {method:"POST"}) and pass EVERY gate this hub
-#     has. sameOrigin() compares Origin's host to Host and they match. The
-#     parent's session cookie rides along, because cookie Path is matched
-#     against the REQUEST URI and not against the page that made the request.
-#     SameSite=Strict is satisfied, because it genuinely is the same site.
-#     HttpOnly is irrelevant, because the page never reads the cookie - it
-#     only sends it. On a shared family iPad with a parent signed in, that is
-#     a page a child opened rewriting the family's blocks, limits and AI
-#     settings, and minting itself bonus minutes through /api/grant.
+# 57. The kid app lives under /kid on the hub's one origin, and nothing else answers there.
+#     The web player used to be a second listener on a second port, so that
+#     the two were two browser origins. The danger that design answered is
+#     still the danger: a page a child opened, on the same origin as the
+#     console, can fetch("/api/config", {method:"POST"}) - and if the
+#     parent's session were an ambient cookie the browser would attach it,
+#     because cookie Path is matched against the REQUEST and SameSite=Strict
+#     is satisfied on one site. On one origin the wall is built from
+#     credentials instead (guard 59 holds that half): the parents' session
+#     is a header the console attaches, the kid cookie is scoped to /kid/.
+#     This guard holds the other half - that the kid's routes are exactly
+#     the ones somebody has thought about, all under one prefix, and that
+#     the console registers none of them.
 hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 kidsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
 [ -f "$kidsrv" ] ||
-  guard_fail "$kidsrv is gone; guard 57 is blind. The kid's origin lives there, and it is a second listener rather than a path under the console's."
-#     (a) The kid listener serves EXACTLY these sixteen paths. Not a floor: a
-#         route added here is a route somebody has to have thought about,
-#         because everything on this origin faces a child's browser.
-#         Digits included, and that is a fix rather than a flourish: the class
-#         was [a-z/.-], so a route like /kid-icon-192.png matched NOTHING and
-#         the guard failed OPEN - it would have reported the origin serving
-#         fewer paths than it does, and let an unreviewed one land invisibly.
-#         Exactly the failure this guard exists to prevent, in the guard.
-kid_routes=$(grep -oE "createContext\(${q}/[a-z0-9/.-]*${q}" "$kidsrv" | grep -oE "/[a-z0-9/.-]*" | sort -u | tr "\n" " " || true)
-[ "$kid_routes" = "/ /channel /channels /claim /home /kid-icon /kid-manifest.webmanifest /kid-tokens.css /list /media /progress /search /surprise /thumb /whoami /you " ] ||
-  guard_fail "the kid origin serves [$kid_routes] and guard 57 expects [/ /channel /channels /claim /home /kid-icon /kid-manifest.webmanifest /kid-tokens.css /list /media /progress /search /surprise /thumb /whoami /you ]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
-#     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
-#         path on both origins is a path where the argument above stops being
-#         true, one route at a time. "/" is each origin's own front door (the
-#         console for a parent, the kid page for a child) and the stylesheet
-#         carries no family data - guard 48 requires the console to keep
-#         serving it, and a page cannot be styled from an origin it may not
-#         read.
+  guard_fail "$kidsrv is gone; guard 57 is blind. The kid's routes live there, registered on the hub's one listener under /kid."
+#     (a) HubKidServer registers EXACTLY these paths, every one under /kid.
+#         Not a floor: a route added here is a route somebody has to have
+#         thought about, because everything under /kid faces a child's
+#         browser. Digits included in the class, so a path with a number in
+#         it cannot slip past unmatched (that happened; the guard failed OPEN).
+kid_routes=$(grep -oE "createContext\((KID_PATH|${q}/[a-z0-9/.-]*${q})" "$kidsrv" | sed "s/createContext(//; s/KID_PATH/\/kid/; s/${q}//g" | sort -u | tr "\n" " " || true)
+[ "$kid_routes" = "/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/progress /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you " ] ||
+  guard_fail "HubKidServer registers [$kid_routes] and guard 57 expects [/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/progress /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you ]. Adding one is a decision: it must fail closed to the sign-in screen (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 for r in $kid_routes; do
-  case "$r" in /|/kid-tokens.css) continue ;; esac
-  if grep -qF "createContext(${q}$r${q})" "$hubsrv"; then
-    guard_fail "$r is registered on BOTH listeners. The console must not answer a kid route: /media on a parent's origin is a video served to whatever holds that session, and /claim there is a credential minted on the wrong side of the wall."
-  fi
+  case "$r" in
+    /kid|/kid/*) ;;
+    *) guard_fail "HubKidServer registers $r, which is not under /kid. Every kid route lives under the one prefix the kid cookie is scoped to; a kid route outside it is a route the cookie never reaches, or one the console's catch-all was answering." ;;
+  esac
 done
+#     (b) The console registers no kid path. A kid route registered from
+#         HubServer is one that never went through watching(ex), and a path
+#         under /kid on the console's side is the kid cookie arriving where
+#         nothing expects it.
+console_kid=$(grep -n "createContext(${q}/kid" "$hubsrv" || true)
+[ -z "$console_kid" ] ||
+  guard_fail "a /kid path is registered from HubServer:
+$console_kid
+Every kid route is registered by HubKidServer.register, under /kid, behind watching(ex). The console registers none."
 #     (c) Every kid route has a row in its own section of docs/LAN-API.md.
 #         Guard 30 does this for the console by reading HubServer; the kid's
-#         half is a separate table because the auth, the origin and the
-#         reasoning are all different.
+#         half is a separate table because the auth and the reasoning differ.
 kiddoc=$(awk "/^## The kid.s routes/ { f = 1 } f && /^[|] / { print }" docs/LAN-API.md)
 [ -n "$kiddoc" ] ||
   guard_fail "docs/LAN-API.md has no \"## The kid's routes\" heading with a route table under it; guard 57 is blind."
 for r in $kid_routes; do
   grep -qE "(GET|POST) $r[^a-z-]" <<<"$kiddoc" ||
-    guard_fail "the kid origin serves $r and docs/LAN-API.md's kid section has no row for it. That table is the only place this origin's wire is written down."
+    guard_fail "HubKidServer serves $r and docs/LAN-API.md's kid section has no row for it. That table is the only place the kid app's wire is written down."
 done
-#     (d) The port is wired the way YOSEMITE_KIDS_PORT is: the published port
-#         and the port the process reads come from ONE variable. Publishing
-#         one and listening on another gives a container that is running,
-#         healthy and unreachable - the health check passes because it runs
-#         inside the container.
-grep -q 'YOSEMITE_KIDS_KID_PORT:-8766}:${YOSEMITE_KIDS_KID_PORT:-8766}' hub/docker-compose.yml ||
-  guard_fail "hub/docker-compose.yml does not publish the kid port through YOSEMITE_KIDS_KID_PORT on both sides of the ports line. The two halves read one variable or they drift."
-grep -q 'YOSEMITE_KIDS_KID_PORT=${YOSEMITE_KIDS_KID_PORT:-8766}' hub/docker-compose.yml ||
-  guard_fail "hub/docker-compose.yml publishes a kid port the container is never told about. The environment line reads the same variable as the ports line."
-grep -q "YOSEMITE_KIDS_KID_PORT" hub/src/main/kotlin/io/yosemitekids/hub/Main.kt ||
-  guard_fail "Main.kt no longer reads YOSEMITE_KIDS_KID_PORT, so the compose file's variable moves nothing."
+#     (d) One port, and one variable for it. The second port is gone: a
+#         compose file, a Dockerfile or Main.kt that still names it is a
+#         family publishing a port nothing listens on, and a doc that names
+#         it is an address a parent types and gets nothing from.
+second_port=$(grep -rn "YOSEMITE_KIDS_KID_PORT\|8766" hub/Dockerfile hub/docker-compose.yml hub/src/main/kotlin docs/HUB.md docs/SETUP.md 2>/dev/null || true)
+[ -z "$second_port" ] ||
+  guard_fail "something still names the retired kid port:
+$second_port
+The kid app is /kid on the one port. Publish 8765 and nothing else."
+grep -q 'YOSEMITE_KIDS_PORT:-8765}:${YOSEMITE_KIDS_PORT:-8765}' hub/docker-compose.yml ||
+  guard_fail "hub/docker-compose.yml does not publish the port through YOSEMITE_KIDS_PORT on both sides of the ports line. The two halves read one variable or they drift."
 #     (e) One code alphabet. A device's enrolment code and a kid's claim code
-#         are both read off a screen and typed by hand, so both drop the
-#         vowels and the look-alikes - and a second string with "the
+#         are both read off a screen (or a QR) and typed by hand, so both drop
+#         the vowels and the look-alikes - and a second string with "the
 #         confusable ones taken out" is how an O comes back into one of them.
 alphabet=$(grep -rl "ABCDEFGHJKMNPQRSTUVWXYZ23456789" hub/src/main | sort | tr "\n" " " || true)
 [ "$alphabet" = "hub/src/main/kotlin/io/yosemitekids/hub/HubTokens.kt " ] ||
@@ -1621,32 +1617,42 @@ cors=$(grep -rn "Access-Control-" hub/src/main | grep -vE ":[0-9]+:[[:space:]]*(
 $cors
 The kid origin and the admin origin exist precisely so they cannot read each other. If something needs data across them, move the data, not the wall."
 
-# 59. A child's wrong code cannot lock their parent out.
-#     With one shared counter, a six-year-old mistyping ten times locks the
-#     console for fifteen minutes, then thirty, then an hour - a throttle
-#     causing the exact failure it exists to prevent. HubRate was added for
-#     /enrol on the same argument; this is the second bucket, and the two must
-#     stay two objects.
+# 59. No credential is ambient across the wall, and a child's wrong password cannot lock their parent out.
+#     Three rules, one origin. The parents' session is a HEADER the console
+#     attaches on purpose - never a cookie, because a cookie is attached by
+#     the browser to any request for the host, page or no page, and a page a
+#     child opened would then spend it against /api/config. The kid's cookie
+#     is scoped to /kid/ so the browser never presents it on the console's
+#     side, and the console never reads it. And the kid's throttle is its
+#     own object: with one shared counter, a six-year-old mistyping their
+#     password locks the console for fifteen minutes, then thirty, then an
+#     hour - a throttle causing the exact failure it exists to prevent.
 grep -q "HubRate(" "$kidsrv" ||
-  guard_fail "$kidsrv has no HubRate of its own. /claim is unauthenticated and must be throttled - in ITS OWN bucket, never on HubSessions' counter, which is what a parent signs in against."
-#     Comment lines are skipped here too, so the KDoc may go on explaining
-#     which object it is that this file must never reach.
+  guard_fail "$kidsrv has no HubRate of its own. /kid/claim is unauthenticated and must be throttled - in ITS OWN bucket, never on HubSessions' counter, which is what a parent signs in against."
+grep -q "HubKidLock(" "$kidsrv" ||
+  guard_fail "$kidsrv has no HubKidLock. A password is guessable in a way a one-shot code is not; the per-kid lock is what bounds that, and it must never be HubSessions."
+#     Comment lines are skipped here, so the KDoc may go on explaining which
+#     object it is that this file must never reach.
 kid_sessions=$(grep -n "HubSessions" "$kidsrv" | grep -vE "^[0-9]+:[[:space:]]*(//|\*|/\*)" || true)
 [ -z "$kid_sessions" ] ||
   guard_fail "$kidsrv names HubSessions:
 $kid_sessions
-That object is the admin lockout and the admin session. A kid route that can reach it is a kid route that can lock a parent out - or worse, one a parent's cookie satisfies."
-#     And the two credentials have different names as well as different
-#     origins, so "which cookie is this" is never a question of routing.
+That object is the admin lockout and the admin session. A kid route that can reach it is a kid route that can lock a parent out - or worse, one a parent's credential satisfies."
+#     The parents' session: a header, and no cookie anywhere in HubServer.
+session_header=$(grep -oE "const val SESSION_HEADER = ${q}[A-Za-z-]+${q}" "$hubsrv" || true)
+[ -n "$session_header" ] ||
+  guard_fail "guard 59 cannot read SESSION_HEADER in $hubsrv; it is blind. The parents' session travels in that header and in nothing else."
+hub_cookies=$(grep -n "Set-Cookie\|getFirst(${q}Cookie${q})" "$hubsrv" | grep -vE "^[0-9]+:[[:space:]]*(//|\*|/\*)" || true)
+[ -z "$hub_cookies" ] ||
+  guard_fail "$hubsrv sets or reads a cookie:
+$hub_cookies
+The kid app shares this origin. A cookie the console sets is one the browser attaches to a request a child's page makes; the parents' session is the X-Session header and nothing ambient."
+#     The kid's cookie: named, scoped to /kid/, never read by the console.
 kid_cookie=$(grep -oE "const val CLAIM_COOKIE = ${q}[a-z_]+${q}" "$kidsrv" | grep -oE "${q}[a-z_]+${q}" || true)
-admin_cookie=$(grep -oE "const val SESSION_COOKIE = ${q}[a-z_]+${q}" "$hubsrv" | grep -oE "${q}[a-z_]+${q}" || true)
-{ [ -n "$kid_cookie" ] && [ -n "$admin_cookie" ]; } ||
-  guard_fail "guard 59 cannot read both cookie names (kid: ${kid_cookie:-none}, admin: ${admin_cookie:-none}); it is blind."
-[ "$kid_cookie" != "$admin_cookie" ] ||
-  guard_fail "the kid cookie and the admin session cookie are both $kid_cookie. Two names, so neither server can be handed the other's credential by accident."
-if grep -qF "$admin_cookie" "$kidsrv"; then
-  guard_fail "$kidsrv reads $admin_cookie, the admin session cookie. A parent signed in at the console is a stranger on the kid origin, and must stay one."
-fi
+[ -n "$kid_cookie" ] ||
+  guard_fail "guard 59 cannot read CLAIM_COOKIE in $kidsrv; it is blind."
+grep -qF 'Path=$KID_PATH/; Max-Age=' "$kidsrv" ||
+  guard_fail "the kid cookie in $kidsrv is not scoped to Path=\$KID_PATH/. Without the path scope the browser attaches it to /api and the page at /, and a kid credential arrives where nothing should see one - the wall coming down from the other side."
 if grep -qF "$kid_cookie" "$hubsrv"; then
   guard_fail "$hubsrv reads $kid_cookie, the kid's claim cookie. A kid credential must never satisfy an admin route."
 fi
@@ -1665,7 +1671,7 @@ for fn in whoami media home channel search progress thumb; do
   [ -n "$body" ] ||
     guard_fail "guard 60 cannot find $fn(ex: HttpExchange) in $kidsrv; it is blind."
   grep -q "watching(ex)" <<<"$body" ||
-    guard_fail "$fn() in $kidsrv does not call watching(ex). Every kid route that says anything about the family resolves the claim cookie first and fails closed to the code prompt."
+    guard_fail "$fn() in $kidsrv does not call watching(ex). Every kid route that says anything about the family resolves the kid cookie first and fails closed to the sign-in screen."
 done
 kid_from_query=$(grep -rnE "kidIn\(|&\)?kid=" hub/src/main --include=*.kt || true)
 [ -z "$kid_from_query" ] ||

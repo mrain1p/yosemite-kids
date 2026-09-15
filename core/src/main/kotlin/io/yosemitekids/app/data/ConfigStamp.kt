@@ -22,6 +22,8 @@ object ConfigStamp {
     fun src(id: String) = "src|$id"
     fun kid(id: String) = "kid|$id"
     fun kidPin(id: String) = "kid.pin|$id"
+    /** The kid's browser password — a credential, so a unit of its own like the PIN. */
+    fun kidWeb(id: String) = "kid.web|$id"
     fun kidRules(id: String) = "kid.rules|$id"
     fun kidWindows(id: String) = "kid.windows|$id"
     fun kidPause(id: String) = "kid.pause|$id"
@@ -192,6 +194,7 @@ object ConfigStamp {
                 // into their profile. On a genuinely new kid there is no
                 // tombstone, so readd is exactly touch.
                 readd(kidPin(id))
+                readd(kidWeb(id))
                 readd(kidRules(id))
                 readd(kidWindows(id))
                 readd(kidPause(id))
@@ -206,6 +209,10 @@ object ConfigStamp {
                 // silently removes the code a co-parent set an hour ago, and
                 // the picker then lets a sibling into that kid's profile.
                 if (b.pin != p.pin) touch(kidPin(id))
+                // The same argument for the browser password: set on the hub
+                // an hour ago, it must survive a phone that still holds the
+                // kid without it correcting the kid's age.
+                if (b.webPassword != p.webPassword) touch(kidWeb(id))
                 if (!sameRules(b.limits, p.limits)) touch(kidRules(id))
                 if (b.limits.windows != p.limits.windows) touch(kidWindows(id))
                 if (b.limits.pausedUntilMillis != p.limits.pausedUntilMillis) touch(kidPause(id))
@@ -214,7 +221,7 @@ object ConfigStamp {
             }
         }
         (baseKid.keys - nextKid.keys).forEach { id ->
-            listOf(kid(id), kidPin(id), kidRules(id), kidWindows(id), kidPause(id), kidBrk(id))
+            listOf(kid(id), kidPin(id), kidWeb(id), kidRules(id), kidWindows(id), kidPause(id), kidBrk(id))
                 .forEach { remove(it) }
             changes += line("kid.remove", "removed ${baseKid.getValue(id).name}", who, by, mint)
         }

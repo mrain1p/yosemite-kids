@@ -1785,59 +1785,39 @@ if (-not (Test-Path "crawl/src/test/kotlin/io/yosemitekids/app/StreamChunkerTest
     Fail-Guard "crawl/src/test/.../StreamChunkerTest.kt is gone. The range maths moved to :crawl and its coverage moves with it - :app's test task no longer runs it."
 }
 
-# 57. The kid's page and the parents' console are two ORIGINS, not two paths.
-#     This is the load-bearing decision of the whole web player, and the way
-#     it fails is by being quietly softened back into path-scoping by someone
-#     who reads two listeners as duplication. So, stated as a check:
-#
-#     If the kid's page lived at /kid/ on the console's origin, a script on it
-#     could fetch("/api/config", {method:"POST"}) and pass EVERY gate this hub
-#     has. sameOrigin() compares Origin's host to Host and they match. The
-#     parent's session cookie rides along, because cookie Path is matched
-#     against the REQUEST URI and not against the page that made the request.
-#     SameSite=Strict is satisfied, because it genuinely is the same site.
-#     HttpOnly is irrelevant, because the page never reads the cookie - it
-#     only sends it. On a shared family iPad with a parent signed in, that is
-#     a page a child opened rewriting the family's blocks, limits and AI
-#     settings, and minting itself bonus minutes through /api/grant.
+# 57. The kid app lives under /kid on the hub's one origin, and nothing else answers there.
+#     The web player used to be a second listener on a second port. On one
+#     origin the wall is built from credentials (guard 59); this guard holds
+#     the other half - the kid's routes are exactly the ones somebody has
+#     thought about, all under one prefix, and the console registers none.
 $hubSrv = "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt"
 $kidSrv = "hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt"
 if (-not (Test-Path $kidSrv)) {
-    Fail-Guard "$kidSrv is gone; guard 57 is blind. The kid's origin lives there, and it is a second listener rather than a path under the console's."
+    Fail-Guard "$kidSrv is gone; guard 57 is blind. The kid's routes live there, registered on the hub's one listener under /kid."
 }
 $kidText = Get-Content $kidSrv -Raw
 $hubText = Get-Content $hubSrv -Raw
-#     (a) The kid listener serves EXACTLY these sixteen paths. Not a floor: a
-#         route added here is a route somebody has to have thought about,
-#         because everything on this origin faces a child's browser.
+#     (a) HubKidServer registers EXACTLY these paths, every one under /kid.
 $kidRoutes = @(Get-Content $kidSrv |
-    # Digits included, and that is a fix rather than a flourish: the class was
-    # [a-z/.-], so a route like /kid-icon-192.png matched NOTHING and the guard
-    # failed OPEN - it would have reported fewer paths than the origin serves,
-    # and let an unreviewed one land invisibly.
-    Select-String -Pattern 'createContext\("(/[a-z0-9/.-]*)"' -AllMatches |
-    ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } |
+    Select-String -Pattern 'createContext\((KID_PATH|"(/[a-z0-9/.-]*)")' -AllMatches |
+    ForEach-Object { $_.Matches } |
+    ForEach-Object { if ($_.Groups[1].Value -eq "KID_PATH") { "/kid" } else { $_.Groups[2].Value } } |
     Sort-Object -Unique)
-if (($kidRoutes -join " ") -ne "/ /channel /channels /claim /home /kid-icon /kid-manifest.webmanifest /kid-tokens.css /list /media /progress /search /surprise /thumb /whoami /you") {
-    Fail-Guard "the kid origin serves [$($kidRoutes -join ' ')] and guard 57 expects [/ /channel /channels /claim /home /kid-icon /kid-manifest.webmanifest /kid-tokens.css /list /media /progress /search /surprise /thumb /whoami /you]. Adding one is a decision: it must fail closed to the code prompt (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+$expected = "/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/progress /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you"
+if (($kidRoutes -join " ") -ne $expected) {
+    Fail-Guard "HubKidServer registers [$($kidRoutes -join ' ')] and guard 57 expects [$expected]. Adding one is a decision: it must fail closed to the sign-in screen (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 }
-#     (b) Nothing but the two roots and the stylesheet is served by BOTH. A
-#         path on both origins is a path where the argument above stops being
-#         true, one route at a time. "/" is each origin's own front door (the
-#         console for a parent, the kid page for a child) and the stylesheet
-#         carries no family data - guard 48 requires the console to keep
-#         serving it, and a page cannot be styled from an origin it may not
-#         read.
 foreach ($r in $kidRoutes) {
-    if ($r -eq "/" -or $r -eq "/kid-tokens.css") { continue }
-    if ($hubText.Contains("createContext(`"$r`")")) {
-        Fail-Guard "$r is registered on BOTH listeners. The console must not answer a kid route: /media on a parent's origin is a video served to whatever holds that session, and /claim there is a credential minted on the wrong side of the wall."
+    if ($r -ne "/kid" -and -not $r.StartsWith("/kid/")) {
+        Fail-Guard "HubKidServer registers $r, which is not under /kid. Every kid route lives under the one prefix the kid cookie is scoped to."
     }
 }
+#     (b) The console registers no kid path.
+$consoleKid = @(Get-Content $hubSrv | Select-String -Pattern 'createContext("/kid' -SimpleMatch | ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" })
+if ($consoleKid.Count -gt 0) {
+    Fail-Guard "a /kid path is registered from HubServer: $($consoleKid -join '; ') - every kid route is registered by HubKidServer.register, under /kid, behind watching(ex). The console registers none."
+}
 #     (c) Every kid route has a row in its own section of docs/LAN-API.md.
-#         Guard 30 does this for the console by reading HubServer; the kid's
-#         half is a separate table because the auth, the origin and the
-#         reasoning are all different.
 $kidDoc = @()
 $inKidDoc = $false
 foreach ($line in Get-Content docs/LAN-API.md) {
@@ -1845,32 +1825,26 @@ foreach ($line in Get-Content docs/LAN-API.md) {
     if ($inKidDoc -and $line.StartsWith("| ")) { $kidDoc += $line }
 }
 if ($kidDoc.Count -eq 0) {
-    Fail-Guard "docs/LAN-API.md has no `"## The kid's routes`" heading with a route table under it; guard 57 is blind."
+    Fail-Guard "docs/LAN-API.md has no kid routes heading with a route table under it; guard 57 is blind."
 }
 foreach ($r in $kidRoutes) {
-    if (-not (@($kidDoc | Select-String -Pattern ("(GET|POST) " + $r + "[^a-z-]")).Count)) {
-        Fail-Guard "the kid origin serves $r and docs/LAN-API.md's kid section has no row for it. That table is the only place this origin's wire is written down."
+    if (-not (@($kidDoc | Select-String -Pattern ("(GET|POST) " + [regex]::Escape($r) + "[^a-z-]")).Count)) {
+        Fail-Guard "HubKidServer serves $r and docs/LAN-API.md's kid section has no row for it. That table is the only place the kid app's wire is written down."
     }
 }
-#     (d) The port is wired the way YOSEMITE_KIDS_PORT is: the published port
-#         and the port the process reads come from ONE variable. Publishing
-#         one and listening on another gives a container that is running,
-#         healthy and unreachable - the health check passes because it runs
-#         inside the container.
+#     (d) One port, and one variable for it. The second port is gone.
+$portFiles = @("hub/Dockerfile", "hub/docker-compose.yml", "docs/HUB.md", "docs/SETUP.md") + @(Get-ChildItem -Recurse -File hub/src/main/kotlin | ForEach-Object { $_.FullName })
+$secondPort = @(foreach ($pf in $portFiles) {
+    Get-Content $pf | Select-String -Pattern "YOSEMITE_KIDS_KID_PORT|8766" | ForEach-Object { "${pf}:$($_.LineNumber)" }
+})
+if ($secondPort.Count -gt 0) {
+    Fail-Guard "something still names the retired kid port: $($secondPort -join '; ') - the kid app is /kid on the one port. Publish 8765 and nothing else."
+}
 $compose = Get-Content "hub/docker-compose.yml" -Raw
-if (-not $compose.Contains('YOSEMITE_KIDS_KID_PORT:-8766}:${YOSEMITE_KIDS_KID_PORT:-8766}')) {
-    Fail-Guard "hub/docker-compose.yml does not publish the kid port through YOSEMITE_KIDS_KID_PORT on both sides of the ports line. The two halves read one variable or they drift."
+if (-not $compose.Contains('YOSEMITE_KIDS_PORT:-8765}:${YOSEMITE_KIDS_PORT:-8765}')) {
+    Fail-Guard "hub/docker-compose.yml does not publish the port through YOSEMITE_KIDS_PORT on both sides of the ports line. The two halves read one variable or they drift."
 }
-if (-not $compose.Contains('YOSEMITE_KIDS_KID_PORT=${YOSEMITE_KIDS_KID_PORT:-8766}')) {
-    Fail-Guard "hub/docker-compose.yml publishes a kid port the container is never told about. The environment line reads the same variable as the ports line."
-}
-if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/Main.kt" -Raw).Contains("YOSEMITE_KIDS_KID_PORT")) {
-    Fail-Guard "Main.kt no longer reads YOSEMITE_KIDS_KID_PORT, so the compose file's variable moves nothing."
-}
-#     (e) One code alphabet. A device's enrolment code and a kid's claim code
-#         are both read off a screen and typed by hand, so both drop the
-#         vowels and the look-alikes - and a second string with "the
-#         confusable ones taken out" is how an O comes back into one of them.
+#     (e) One code alphabet.
 $alphabet = @(Get-ChildItem -Recurse -File hub/src/main |
     Where-Object { (Get-Content $_.FullName -Raw).Contains("ABCDEFGHJKMNPQRSTUVWXYZ23456789") } |
     ForEach-Object { $_.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/") } | Sort-Object)
@@ -1900,36 +1874,39 @@ if ($cors.Count -gt 0) {
     Fail-Guard "the hub sets a CORS header: $($cors -join '; ') — the kid origin and the admin origin exist precisely so they cannot read each other. If something needs data across them, move the data, not the wall."
 }
 
-# 59. A child's wrong code cannot lock their parent out.
-#     With one shared counter, a six-year-old mistyping ten times locks the
-#     console for fifteen minutes, then thirty, then an hour - a throttle
-#     causing the exact failure it exists to prevent. HubRate was added for
-#     /enrol on the same argument; this is the second bucket, and the two must
-#     stay two objects.
+# 59. No credential is ambient across the wall, and a child's wrong password cannot lock their parent out.
+#     The parents' session is a HEADER the console attaches, never a cookie;
+#     the kid's cookie is scoped to /kid/ and the console never reads it; and
+#     the kid's throttle is its own object, never HubSessions.
 if (-not $kidText.Contains("HubRate(")) {
-    Fail-Guard "$kidSrv has no HubRate of its own. /claim is unauthenticated and must be throttled - in ITS OWN bucket, never on HubSessions' counter, which is what a parent signs in against."
+    Fail-Guard "$kidSrv has no HubRate of its own. /kid/claim is unauthenticated and must be throttled - in ITS OWN bucket, never on HubSessions' counter, which is what a parent signs in against."
 }
-#     Comment lines are skipped here too, so the KDoc may go on explaining
-#     which object it is that this file must never reach.
+if (-not $kidText.Contains("HubKidLock(")) {
+    Fail-Guard "$kidSrv has no HubKidLock. A password is guessable in a way a one-shot code is not; the per-kid lock is what bounds that, and it must never be HubSessions."
+}
 $kidSessions = @(Get-Content $kidSrv |
     Select-String -Pattern "HubSessions" -SimpleMatch |
     Where-Object { $_.Line.Trim() -notmatch '^(//|\*|/\*)' } |
     ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" })
 if ($kidSessions.Count -gt 0) {
-    Fail-Guard "$kidSrv names HubSessions: $($kidSessions -join '; ') — that object is the admin lockout and the admin session. A kid route that can reach it is a kid route that can lock a parent out, or worse, one a parent's cookie satisfies."
+    Fail-Guard "$kidSrv names HubSessions: $($kidSessions -join '; ') - that object is the admin lockout and the admin session. A kid route that can reach it is a kid route that can lock a parent out, or worse, one a parent's credential satisfies."
 }
-#     And the two credentials have different names as well as different
-#     origins, so "which cookie is this" is never a question of routing.
+if (-not ($hubText -match 'const val SESSION_HEADER = "[A-Za-z-]+"')) {
+    Fail-Guard "guard 59 cannot read SESSION_HEADER in $hubSrv; it is blind. The parents' session travels in that header and in nothing else."
+}
+$hubCookies = @(Get-Content $hubSrv |
+    Select-String -Pattern 'Set-Cookie|getFirst\("Cookie"\)' |
+    Where-Object { $_.Line.Trim() -notmatch '^(//|\*|/\*)' } |
+    ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" })
+if ($hubCookies.Count -gt 0) {
+    Fail-Guard "$hubSrv sets or reads a cookie: $($hubCookies -join '; ') - the kid app shares this origin. A cookie the console sets is one the browser attaches to a request a child's page makes; the parents' session is the X-Session header and nothing ambient."
+}
 $kidCookie = [regex]::Match($kidText, 'const val CLAIM_COOKIE = "([a-z_]+)"').Groups[1].Value
-$adminCookie = [regex]::Match($hubText, 'const val SESSION_COOKIE = "([a-z_]+)"').Groups[1].Value
-if (-not $kidCookie -or -not $adminCookie) {
-    Fail-Guard "guard 59 cannot read both cookie names (kid: '$kidCookie', admin: '$adminCookie'); it is blind."
+if (-not $kidCookie) {
+    Fail-Guard "guard 59 cannot read CLAIM_COOKIE in $kidSrv; it is blind."
 }
-if ($kidCookie -eq $adminCookie) {
-    Fail-Guard "the kid cookie and the admin session cookie are both $kidCookie. Two names, so neither server can be handed the other's credential by accident."
-}
-if ($kidText.Contains("`"$adminCookie`"")) {
-    Fail-Guard "$kidSrv reads `"$adminCookie`", the admin session cookie. A parent signed in at the console is a stranger on the kid origin, and must stay one."
+if (-not $kidText.Contains('Path=$KID_PATH/; Max-Age=')) {
+    Fail-Guard "the kid cookie in $kidSrv is not scoped to Path=KID_PATH/. Without the path scope the browser attaches it to /api and the page at /, and a kid credential arrives where nothing should see one - the wall coming down from the other side."
 }
 if ($hubText.Contains("`"$kidCookie`"")) {
     Fail-Guard "$hubSrv reads `"$kidCookie`", the kid's claim cookie. A kid credential must never satisfy an admin route."
@@ -1950,7 +1927,7 @@ foreach ($fn in @("whoami", "media", "home", "channel", "search", "progress", "t
         Fail-Guard "guard 60 cannot find $fn(ex: HttpExchange) in $kidSrv; it is blind."
     }
     if ($kidFn -notmatch "watching\(ex\)") {
-        Fail-Guard "$fn() in $kidSrv does not call watching(ex). Every kid route that says anything about the family resolves the claim cookie first and fails closed to the code prompt."
+        Fail-Guard "$fn() in $kidSrv does not call watching(ex). Every kid route that says anything about the family resolves the kid cookie first and fails closed to the sign-in screen."
     }
 }
 $kidQuery = @(Get-ChildItem -Recurse -Filter *.kt hub/src/main |

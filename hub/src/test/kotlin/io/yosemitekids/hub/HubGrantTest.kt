@@ -278,7 +278,7 @@ class HubGrantTest {
         }
         c.outputStream.use { it.write(JSONObject().put("secret", admin).toString().toByteArray()) }
         if (c.responseCode != 200) return null
-        return c.getHeaderField("Set-Cookie")?.substringAfter("yk_session=")?.substringBefore(";")
+        return JSONObject(c.inputStream.bufferedReader().readText()).optString("session").ifEmpty { null }
     }
 
     private fun post(path: String, body: String, cookie: String? = null): Pair<Int, String> {
@@ -286,7 +286,7 @@ class HubGrantTest {
             requestMethod = "POST"
             doOutput = true
             setRequestProperty("Content-Type", "application/json")
-            cookie?.let { setRequestProperty("Cookie", "yk_session=$it") }
+            cookie?.let { setRequestProperty(HubServer.SESSION_HEADER, it) }
         }
         c.outputStream.use { it.write(body.toByteArray()) }
         val code = c.responseCode

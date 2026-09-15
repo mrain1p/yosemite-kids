@@ -114,6 +114,10 @@ Do these in order; each pushes to the TV automatically when you press
 4. **Optional — lock a profile**: Kids → Edit → **Set code**. The code is
    four presses of the remote's arrows/OK button, entered blind (only dots
    show on the TV) — so a younger sibling can't pick an older kid's profile.
+   If you run the hub, the same page has **Password for the kid app**: set
+   one and that kid can sign themselves in on a tablet from "Who's
+   watching?", instead of you scanning a QR for them. It is their password,
+   not yours, and it opens nothing but their own shelves.
 5. **Optional — AI screening**: under *AI content screening*, pick a
    provider, paste an API key, write your house rules in plain words. New
    videos are checked per kid's age before kids can see them, and the first

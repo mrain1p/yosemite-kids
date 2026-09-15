@@ -23,13 +23,13 @@
 // the eviction below to this prefix.
 var PREFIX = "yk-hub-shell-";
 var CACHE = PREFIX + "v1";
-// "/" is the admin page today, and only because HubServer registers "/" last
-// and answers it with index.html. When a second app joins this origin that
-// stops being true: either "/" becomes something else, or it stays the admin
-// page and the player is served under a path of its own. Either way the
-// player gets its own worker, its own scope and its own PREFIX, and this
-// entry becomes the wrong shell to cache under it — so revisit this line
-// then rather than assuming "/" still means this page.
+// "/" is the admin page, and only because HubServer registers "/" last and
+// answers it with index.html. The second app has now joined this origin: the
+// kid player is served under /kid, and it deliberately has NO worker of its
+// own (see HubKidServer.manifest — a cached shell would keep a revoked child
+// looking at a working app). So this list stays the console's four paths and
+// nothing under /kid may ever join it: a kid page in Cache Storage outlives
+// the kid's cookie.
 var SHELL = [
   "/",
   "/manifest.webmanifest",

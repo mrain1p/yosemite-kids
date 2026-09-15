@@ -32,7 +32,16 @@ data class Profile(
      * device, and the parent can too, so the newest choice wins wherever the
      * two meet ([ProfileLooks]). Not a "modified" stamp for anything else.
      */
-    val lookAt: Long = 0L
+    val lookAt: Long = 0L,
+    /**
+     * The kid's own password for watching in a browser ([KidPassword]),
+     * stored as what verifies it and never as the password. Null = this kid
+     * signs in to a tablet only by a parent's QR. Distinct from [pin] (the
+     * D-pad code for the picker) and from any parent credential: it can do
+     * nothing but let a browser watch as this one child. Its own merge unit,
+     * like the PIN, because it is a credential riding inside an object.
+     */
+    val webPassword: PasswordRecord? = null
 ) {
     companion object {
         fun newId(): String = ByteArray(4)

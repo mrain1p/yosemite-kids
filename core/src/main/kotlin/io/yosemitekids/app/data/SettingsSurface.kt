@@ -165,6 +165,18 @@ object SettingsSurface {
                     "kids-list", "Kids",
                     sub = "Name, age, avatar and the profile lock.",
                     kind = ControlKind.CUSTOM, writes = "profiles"
+                ),
+                // One field of the profile, so it rides the `profiles` leaf the
+                // control above claims; declared on its own because both faces
+                // draw it as its own card, and the words have to match. Neither
+                // face ever holds the password: the phone derives the record
+                // itself and the hub derives it on POST /api/kid-password.
+                SettingsControl(
+                    "kid-web-password", "Password for the kid app",
+                    sub = "Lets this kid sign in to the browser app from \"Who's watching?\" " +
+                        "without a grown-up's QR. At least four characters; it is theirs, " +
+                        "not yours, and opens nothing but their own shelves.",
+                    kind = ControlKind.CUSTOM
                 )
             )),
         SettingsSection("screen-time-rules", "Screen time", Page.KIDS, "RulesSection",

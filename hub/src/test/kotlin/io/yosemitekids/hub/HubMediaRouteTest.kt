@@ -49,7 +49,6 @@ class HubMediaRouteTest {
     private lateinit var store: HubStore
     private lateinit var server: HubServer
     private var port = 0
-    private var kidPort = 0
 
     @Before
     fun setUp() {
@@ -60,7 +59,6 @@ class HubMediaRouteTest {
             index = ChannelIndex(File(dir, "search-index"))
         ) { T }
         port = server.start()
-        kidPort = server.kidPort()
     }
 
     @After
@@ -74,21 +72,21 @@ class HubMediaRouteTest {
     fun `media is refused without a claim`() {
         // This is the one route that costs a family's uplink. An unclaimed
         // caller must not be able to make the box fetch anything at all.
-        val (code, body) = get("/media?v=$VIDEO")
+        val (code, body) = get("/kid/media?v=$VIDEO")
         assertEquals(401, code)
         assertEquals("claim", JSONObject(body).getString("error"))
     }
 
     @Test
     fun `only GET carries media`() {
-        assertEquals(405, get("/media?v=$VIDEO", method = "POST", cookie = claim()).first)
+        assertEquals(405, get("/kid/media?v=$VIDEO", method = "POST", cookie = claim()).first)
     }
 
     @Test
     fun `a video id that is not a video id is refused before anything else`() {
         val cookie = claim()
-        assertEquals(400, get("/media?v=nope", cookie = cookie).first)
-        assertEquals(400, get("/media", cookie = cookie).first)
+        assertEquals(400, get("/kid/media?v=nope", cookie = cookie).first)
+        assertEquals(400, get("/kid/media", cookie = cookie).first)
     }
 
     // --- the rules, first -----------------------------------------------
@@ -100,7 +98,7 @@ class HubMediaRouteTest {
         // fetched. If it resolved first this would be a 502, because there is
         // no extractor and no network in this JVM.
         seed(blocked = setOf(VIDEO))
-        val (code, body) = get("/media?v=$VIDEO", cookie = claim())
+        val (code, body) = get("/kid/media?v=$VIDEO", cookie = claim())
         assertEquals(403, code)
         assertEquals(HubPolicy.BLOCKED, JSONObject(body).getString("error"))
         assertTrue(JSONObject(body).getString("detail").isNotEmpty())
@@ -112,14 +110,14 @@ class HubMediaRouteTest {
         // be able to tell apart, and the route passes the distinction through
         // rather than flattening every no into one.
         seed()
-        val (code, body) = get("/media?v=$VIDEO", cookie = claim())
+        val (code, body) = get("/kid/media?v=$VIDEO", cookie = claim())
         assertEquals(403, code)
         assertEquals(HubPolicy.UNKNOWN_VIDEO, JSONObject(body).getString("error"))
     }
 
     @Test
     fun `a hub with no config at all still answers with the rules, never a fetch`() {
-        val (code, body) = get("/media?v=$VIDEO", cookie = claim())
+        val (code, body) = get("/kid/media?v=$VIDEO", cookie = claim())
         assertEquals(403, code)
         // Whichever no it is, it is HubPolicy's and not the network's.
         assertTrue(
@@ -135,7 +133,7 @@ class HubMediaRouteTest {
         val cookie = claim()
         val slots = server.mediaSlots()
         repeat(HubKidServer.MAX_CONCURRENT_STREAMS) { assertTrue(slots.take()) }
-        val c = raw("/media?v=$VIDEO", cookie)
+        val c = raw("/kid/media?v=$VIDEO", cookie)
         assertEquals(503, c.responseCode)
         assertEquals("5", c.getHeaderField("Retry-After"))
         val body = c.errorStream.readBytes().decodeToString()
@@ -145,13 +143,13 @@ class HubMediaRouteTest {
         // And both control planes are untouched while every media slot is
         // held — the reason media has an executor of its own, on an origin of
         // its own.
-        assertEquals(200, get("/whoami", cookie = cookie).first)
+        assertEquals(200, get("/kid/whoami", cookie = cookie).first)
         assertEquals(200, admin("/health").first)
 
         slots.release()
         // A freed slot lets the next child in; the answer is now the rules'
         // and no longer the cap's.
-        assertEquals(403, get("/media?v=$VIDEO", cookie = cookie).first)
+        assertEquals(403, get("/kid/media?v=$VIDEO", cookie = cookie).first)
     }
 
     // --- plumbing -------------------------------------------------------
@@ -175,11 +173,11 @@ class HubMediaRouteTest {
      * tablet does. The mint is on the hub's own store rather than through
      * `POST /api/browsers` so these tests can run against a hub holding no
      * config at all — that route refuses a kid this hub has never heard of,
-     * which `HubKidOriginTest` covers.
+     * which `HubKidBoundaryTest` covers.
      */
     private fun claim(): String {
         val code = server.browsers().mint(KID, T)!!
-        val c = URL("http://127.0.0.1:$kidPort/claim").openConnection() as HttpURLConnection
+        val c = URL("http://127.0.0.1:$port/kid/claim").openConnection() as HttpURLConnection
         c.requestMethod = "POST"
         c.doOutput = true
         c.outputStream.use { it.write(JSONObject().put("code", code).toString().toByteArray()) }
@@ -190,7 +188,7 @@ class HubMediaRouteTest {
     }
 
     private fun raw(path: String, cookie: String? = null, method: String = "GET"): HttpURLConnection {
-        val c = URL("http://127.0.0.1:$kidPort$path").openConnection() as HttpURLConnection
+        val c = URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection
         c.requestMethod = method
         cookie?.let { c.setRequestProperty("Cookie", it) }
         if (method == "POST") {

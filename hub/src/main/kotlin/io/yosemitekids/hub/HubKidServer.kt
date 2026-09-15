@@ -3,67 +3,73 @@ package io.yosemitekids.hub
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import org.json.JSONObject
-import java.net.InetSocketAddress
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 
 /**
- * The kid's own origin: a second listener, on a port of its own, serving the
- * page a child watches on and nothing else.
+ * The kid's half of the hub: the page a child watches on, and the routes
+ * under `/kid/` that feed it. One listener with the parents' console, one
+ * port, one address a family has to know — and a wall between the two that
+ * is built from **credentials**, not from ports.
  *
- * ### Why a port and not a path
+ * ### The wall, and what holds it up
  *
- * This is the load-bearing decision in the whole web player and it must not be
- * softened back into path-scoping later, so the argument is written down here
- * rather than in a commit message.
+ * The web player used to live on a second port so that the two were two
+ * browser origins. The danger that design answered is real and it is still
+ * the danger here: a page a child opened, on the same origin as the console,
+ * can `fetch("/api/config", {method: "POST"})`, and if the parent's session
+ * were an ambient cookie the browser would attach it — `Path` is matched
+ * against the request, `SameSite=Strict` is satisfied, `HttpOnly` stops
+ * nothing from being *sent*. On a shared iPad that is a child's page holding
+ * a rewrite of the family's whole configuration.
  *
- * Put the kid's page at `/kid/` on the admin origin and a script on it can
- * `fetch("/api/config", {method: "POST", …})` — and that request passes every
- * gate this project has:
+ * So on one origin the rule is: **no credential is ambient across the
+ * wall.**
  *
- * - [HubServer.sameOrigin] compares the `Origin` host to the `Host` header,
- *   and on one origin they match;
- * - the parent's session cookie rides along, because cookie `Path` is matched
- *   against the **request URI**, not against the page that made the request;
- * - `SameSite=Strict` is satisfied, because it genuinely is the same site;
- * - `HttpOnly` is irrelevant — the page never reads the cookie, it only sends
- *   it.
+ * - The parent's session is a header (`X-Session`, [HubServer.SESSION_HEADER]),
+ *   held by the console's own script in the tab that signed in and attached
+ *   on purpose to each call. Nothing a browser does on its own carries it;
+ *   the hub sets no cookie for it and reads none (guard 59).
+ * - The kid's credential is a cookie, because a `<video>` and an `<img>` can
+ *   send no header — and it is scoped to `Path=/kid/`, so the browser never
+ *   attaches it to `/api/` or anything else on the console's side. The
+ *   console never reads it either way (guard 59): a kid cookie on an admin
+ *   route is nothing.
+ * - Every `/kid/` route that says anything about the family resolves that
+ *   cookie first and fails closed (guard 60); the child it answers for is
+ *   the cookie's, bound when the credential was minted, never a parameter.
+ * - Nothing here ever sends a CORS header (guard 58), and [HubServer.sameOrigin]
+ *   still refuses a request that arrived with a foreign `Origin`.
  *
- * On a shared family iPad with a parent signed in, that is a child's page
- * holding a rewrite of the family's whole configuration: `HubWeb.PATCHABLE`
- * covers `blocked`, `blockedFor`, `allowedFor`, `limits` and `ai`, and
- * `/api/grant` mints bonus minutes.
+ * ### How a browser gets in
  *
- * A second port makes the two genuinely different origins, and every one of
- * those gates starts working *for* us instead of against us. A fetch from the
- * kid page to the admin port carries a foreign `Origin:` header, so
- * `sameOrigin()` is false and the existing 403 fires — a defence that already
- * existed and was already tested. Reading a reply is separately impossible,
- * because **nothing here ever sends a CORS header** (guard 58): the browser's
- * own same-origin policy hides the response body even where a request is not
- * refused.
+ * Two ways, both through `POST /kid/claim`, and neither involves typing a
+ * code any more. A parent's console mints a one-shot code and shows it as a
+ * QR whose URL is `/kid?c=<code>`; the page redeems it on arrival. Or the
+ * child taps their own avatar and types the password their parent set on
+ * their profile (`Profile.webPassword`, [io.yosemitekids.app.data.KidPassword]),
+ * which is a field of the family config and so is the same on the phone,
+ * the hub and every device. The password is throttled per kid ([HubKidLock])
+ * on top of the bucket in front of the whole route, and never touches the
+ * parents' lockout.
  *
  * ### What it serves
  *
- * Exactly sixteen paths, listed in [start] and pinned by guard 57. There is no
- * catch-all page: `/` answers the kid page and every other path is a JSON 404,
- * where the admin listener deliberately answers an unclaimed path with the
- * console. That asymmetry is the point — on this origin an unknown path is
- * never something a parent mistyped, and answering `/login` or `/api/state`
- * with anything but a refusal would be the first crack in the wall this class
- * is.
+ * Exactly the paths listed in [register] and pinned by guard 57, all under
+ * `/kid`. There is no catch-all page: `/kid` answers the kid page and every
+ * other `/kid…` path is a JSON 404, where the console deliberately answers an
+ * unclaimed path with itself. That asymmetry is the point — under `/kid` an
+ * unknown path is never something a parent mistyped.
  *
  * ### Bounded, like everything else facing the LAN
  *
- * This listener faces the whole house before any credential is checked, so it
- * reads the same way `LanServer` does: a fixed worker pool, a request timeout,
- * a body cap far below the admin's (nothing here posts more than a code), and
- * a media pool that is separate again because a stream holds its thread for
- * the length of a video.
+ * These routes face the whole house before any credential is checked, so they
+ * read the way `LanServer` does: a request timeout, a body cap far below the
+ * admin's (nothing here posts more than a password), and a media pool that is
+ * separate again because a stream holds its thread for the length of a video.
  */
 class HubKidServer(
-    private val port: Int,
     private val browsers: HubBrowsers,
     private val store: HubStore,
     /**
@@ -123,14 +129,20 @@ class HubKidServer(
      */
     private val claims = HubRate(MAX_CLAIMS_PER_WINDOW, CLAIM_WINDOW_MS)
 
-    private var server: HttpServer? = null
+    /**
+     * The password throttle, per kid, behind [claims]. The bucket above
+     * bounds how fast the LAN can knock; this bounds how far one child's
+     * password can be guessed at all. Its own object for the reason
+     * [claims] is: never the parents' lockout.
+     */
+    private val kidLock = HubKidLock(now)
 
     /**
-     * Media runs on threads of its own, never on the pair this listener
-     * answers everything else with. Same argument as the admin server's, one
-     * origin along: a proxied stream holds its thread for as long as the
-     * browser keeps reading, so two children watching would leave nothing to
-     * answer `/claim` or `/whoami` with.
+     * Media runs on threads of its own, never on the pool the listener
+     * answers everything else with. Same argument as the console's routes: a
+     * proxied stream holds its thread for as long as the browser keeps
+     * reading, so two children watching would leave nothing to answer
+     * `/kid/claim` or `/kid/whoami` with.
      */
     private var mediaPool: ExecutorService? = null
 
@@ -145,72 +157,76 @@ class HubKidServer(
      */
     internal fun mediaSlots(): HubMedia.Slots = slots
 
-    /** Small. Nothing a child's browser posts here is bigger than a code. */
+    /** Small. Nothing a child's browser posts here is bigger than a password. */
     private val maxBody = 4 * 1024
 
-    fun start(): Int {
-        HubServer.applyRequestTimeout()
-        val s = HttpServer.create(InetSocketAddress(port), 0)
-        // Four, matching the admin listener. The two expensive routes — video
-        // and posters — have pools of their own, so what runs here is JSON
-        // built from files this box already has: fast, but no longer the two
-        // or three calls it was before the page had shelves, and a household
-        // opening three tablets at once should not queue.
-        s.executor = Executors.newFixedThreadPool(4)
+    /** The console's catch-all, for a path under the "/kid" prefix that is not ours. See [register]. */
+    private var console: (HttpExchange) -> Unit = { ex -> respond(ex, 404, JSONObject().put("error", "not here").toString()) }
 
-        // Trade a code for a cookie. Unauthenticated by necessity — a browser
-        // that has never been here holds nothing to present — and throttled in
-        // its own bucket for exactly that reason.
-        s.createContext("/claim") { ex -> guarded(ex) { claim(ex) } }
+    /**
+     * Register every kid route on the hub's one listener. Called by
+     * [HubServer.start] before it registers its own catch-all, and the paths
+     * here are the whole of what a child's browser can reach: guard 57 pins
+     * the list, and the JDK server's longest-prefix match sends anything else
+     * under `/kid` to [page], which 404s it.
+     */
+    fun register(s: HttpServer, console: (HttpExchange) -> Unit) {
+        // The JDK server matches a context by string prefix, not by path
+        // segment: "/kid" would also catch "/kids" and "/kidney", which are a
+        // parent's typos and belong to the console's catch-all. Everything
+        // that is not /kid or /kid/... is handed back.
+        this.console = console
+        // Trade a code or a password for the cookie. Unauthenticated by
+        // necessity — a browser that has never been here holds nothing to
+        // present — and throttled in its own bucket for exactly that reason.
+        s.createContext("/kid/claim") { ex -> guarded(ex) { claim(ex) } }
+        // The children a browser may sign in as, for the "Who's watching?"
+        // screen: only those with a password set, and only name and avatar.
+        s.createContext("/kid/kids") { ex -> guarded(ex) { kids(ex) } }
         // Who this browser is watching as. The page's first call, and what it
-        // renders the code box from when the answer is 401.
-        s.createContext("/whoami") { ex -> guarded(ex) { whoami(ex) } }
+        // renders the sign-in screen from when the answer is 401.
+        s.createContext("/kid/whoami") { ex -> guarded(ex) { whoami(ex) } }
         // The whole home screen in one answer: shelves, hero, channels, the
         // countdown. One request rather than six, because six is six chances
         // to half-draw a five-year-old's page over house wifi.
-        s.createContext("/home") { ex -> guarded(ex) { home(ex) } }
+        s.createContext("/kid/home") { ex -> guarded(ex) { home(ex) } }
         // The kid's own shelves: Favorites, Watch later, Up next, History. In
         // :core's order, with :core's words, and every shelf declared even when
         // it is empty - the page has one shape and an empty row says what would
         // fill it.
-        s.createContext("/you") { ex -> guarded(ex) { you(ex) } }
+        s.createContext("/kid/you") { ex -> guarded(ex) { you(ex) } }
         // Put a video in one of the kid's own lists, or take it out. The only
-        // route on this origin that writes anything a child chose — see [list]
-        // for the four things it checks before it does.
-        s.createContext("/list") { ex -> guarded(ex) { list(ex) } }
+        // kid route that writes anything a child chose — see [list] for the
+        // four things it checks before it does.
+        s.createContext("/kid/list") { ex -> guarded(ex) { list(ex) } }
         // Every channel, in the order the kid picked — orderChannels from
         // :crawl, so "A to Z" means the same thing here as on the television.
-        s.createContext("/channels") { ex -> guarded(ex) { channels(ex) } }
+        s.createContext("/kid/channels") { ex -> guarded(ex) { channels(ex) } }
         // A seeded mix across every channel. The seed is the whole point: an
         // unseeded shuffle is the one ordering two faces cannot agree on.
-        s.createContext("/surprise") { ex -> guarded(ex) { surprise(ex) } }
+        s.createContext("/kid/surprise") { ex -> guarded(ex) { surprise(ex) } }
         // One channel's videos.
-        s.createContext("/channel") { ex -> guarded(ex) { channel(ex) } }
+        s.createContext("/kid/channel") { ex -> guarded(ex) { channel(ex) } }
         // Search within what this kid may see, ranked by the shared SearchRank.
-        s.createContext("/search") { ex -> guarded(ex) { search(ex) } }
+        s.createContext("/kid/search") { ex -> guarded(ex) { search(ex) } }
         // "Still watching, and this far in." The one route that writes: it
         // credits the watch meter, which is how a browser's minutes reach a
         // kid's daily budget at all, and remembers the resume position.
-        s.createContext("/progress") { ex -> guarded(ex) { progress(ex) } }
-        // The kid palette and type scale, generated at build time from :core's
-        // one table (guard 48). Also served by the admin listener; it is the
-        // single path both origins answer, because it carries no family data
-        // and a stylesheet is not a route about anybody.
-        s.createContext("/kid-tokens.css") { ex -> guarded(ex) { asset(ex) } }
+        s.createContext("/kid/progress") { ex -> guarded(ex) { progress(ex) } }
         // What makes this installable on an iPad: an icon on the home screen,
         // full screen, no address bar. Unauthenticated on purpose — a browser
         // fetches these while installing, often without credentials, and they
         // say nothing about the family. See [manifest] for the service worker
         // this deliberately does not have.
-        s.createContext("/kid-manifest.webmanifest") { ex -> guarded(ex) { manifest(ex) } }
-        s.createContext("/kid-icon") { ex -> guarded(ex) { kidIcon(ex) } }
-        // Video bytes. Handed to another pool, so this thread goes straight
-        // back to answering the rest of the origin. See [dispatchMedia].
+        s.createContext("/kid/manifest.webmanifest") { ex -> guarded(ex) { manifest(ex) } }
+        s.createContext("/kid/icon") { ex -> guarded(ex) { kidIcon(ex) } }
+        // Video bytes. Handed to another pool, so the listener's thread goes
+        // straight back to answering everything else. See [dispatchMedia].
         val media = Executors.newFixedThreadPool(MAX_CONCURRENT_STREAMS) { r ->
             Thread(r, "yosemite-kids-kid-media").apply { isDaemon = true }
         }
         mediaPool = media
-        s.createContext("/media") { ex -> dispatchMedia(ex, media) }
+        s.createContext("/kid/media") { ex -> dispatchMedia(ex, media) }
         // Thumbnails get a pool of their own, and not the media one: a grid of
         // forty posters would otherwise fill the three stream slots and a child
         // pressing play would be told the hub is busy by their own home screen.
@@ -221,45 +237,44 @@ class HubKidServer(
             Thread(r, "yosemite-kids-kid-thumb").apply { isDaemon = true }
         }
         thumbPool = thumbs
-        s.createContext("/thumb") { ex ->
+        s.createContext("/kid/thumb") { ex ->
             try {
                 thumbs.execute { guarded(ex) { thumb(ex) } }
             } catch (e: RejectedExecutionException) {
                 guarded(ex) { respond(ex, 503, JSONObject().put("error", "busy").toString()) }
             }
         }
-        // The page, at "/" and at nothing else. Registered last like the admin
-        // server's, but emphatically not a catch-all: see [page].
-        s.createContext("/") { ex -> guarded(ex) { page(ex) } }
-
-        s.start()
-        server = s
-        return s.address.port
+        // The page, at "/kid" and at nothing else. The shortest prefix here,
+        // so it is what every unregistered "/kid…" path lands on — and it
+        // answers those with a 404, emphatically not a catch-all: see [page].
+        s.createContext(KID_PATH) { ex -> guarded(ex) { page(ex) } }
     }
 
     fun stop() {
-        server?.stop(0)
-        server = null
-        // Interrupted rather than drained, like the admin server's: a stream
-        // in flight is a child's video, and waiting for one to finish would
-        // hold the container's shutdown for the length of it.
+        // Interrupted rather than drained, like the console's: a stream in
+        // flight is a child's video, and waiting for one to finish would hold
+        // the container's shutdown for the length of it.
         mediaPool?.shutdownNow()
         mediaPool = null
         thumbPool?.shutdownNow()
         thumbPool = null
     }
 
-    /** The bound port — for tests, which ask for 0 and let the OS choose. */
-    fun boundPort(): Int = server?.address?.port ?: port
-
     // --- the claim ------------------------------------------------------
 
     /**
-     * `POST /claim {code}` — a code a parent minted, for the cookie this
+     * `POST /kid/claim {code}` or `{kid, password}` — for the cookie this
      * browser then carries.
      *
-     * The cookie is set on **this** origin, which is the whole point: the
-     * admin origin never sees it, and this one never sees the admin session.
+     * Two doors, one credential. A code is a parent's one-shot, redeemed by
+     * the page when the QR's URL arrives. A password is the child's own,
+     * checked against the record on their profile — and only after the
+     * per-kid lock says they may still try, so a sibling's guessing shuts one
+     * door for a while and never the parents'.
+     *
+     * The cookie is scoped to `Path=/kid/`: the browser attaches it to the
+     * kid routes and to nothing on the console's side, which is the half of
+     * the wall this route is responsible for.
      */
     private fun claim(ex: HttpExchange) {
         if (ex.requestMethod != "POST") return respond(ex, 405, "no")
@@ -270,18 +285,45 @@ class HubKidServer(
             return respond(ex, 429, JSONObject().put("retryAfter", wait).toString())
         }
         val body = readBody(ex) ?: return respond(ex, 413, "too large")
-        val code = runCatching { JSONObject(body).optString("code") }.getOrNull()
-            ?: return respond(ex, 400, JSONObject().put("error", "no code").toString())
-        browsers.claim(code, now()).fold(
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return respond(ex, 400, JSONObject().put("error", "bad request").toString())
+        val outcome: Result<HubBrowsers.Claimed> = when {
+            json.has("code") -> browsers.claim(json.optString("code"), now())
+            json.has("kid") -> {
+                // Bounded off the wire, like everything else here.
+                val kid = json.optString("kid").take(64)
+                val password = json.optString("password").take(io.yosemitekids.app.data.KidPassword.MAX_LENGTH)
+                val wait = kidLock.retryAfterSeconds(kid)
+                if (wait > 0) {
+                    ex.responseHeaders.add("Retry-After", wait.toString())
+                    return respond(ex, 429, JSONObject().put("retryAfter", wait).toString())
+                }
+                val record = runCatching { store.load().profile(kid)?.webPassword }.getOrNull()
+                // A kid with no password and a wrong password are one answer,
+                // and both count as a wrong guess: "this child has no
+                // password" is not something a browser on the LAN gets to
+                // learn one name at a time.
+                if (io.yosemitekids.app.data.KidPassword.verify(record, password)) {
+                    kidLock.passed(kid)
+                    browsers.admit(kid, now())
+                } else {
+                    kidLock.failed(kid)
+                    Result.failure(ClaimRefused(HubBrowsers.Refusal.WRONG_PASSWORD))
+                }
+            }
+            else -> return respond(ex, 400, JSONObject().put("error", "no code").toString())
+        }
+        outcome.fold(
             onSuccess = { claimed ->
-                // No Secure flag, for the reason /login gives: this is plain
-                // HTTP on a home LAN, and Secure would stop the cookie being
-                // sent at all. HttpOnly and SameSite are the two that work
-                // here — and Path=/ is harmless precisely because this origin
-                // serves nothing but the kid's five routes.
+                // No Secure flag, for the reason /login once gave: this is
+                // plain HTTP on a home LAN, and Secure would stop the cookie
+                // being sent at all. HttpOnly and SameSite are the two that
+                // work here — and Path=/kid/ is the one that matters now that
+                // the console shares this origin: the browser never sends this
+                // cookie to /api, /login or the page at "/".
                 ex.responseHeaders.add(
                     "Set-Cookie",
-                    "$CLAIM_COOKIE=${claimed.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=" +
+                    "$CLAIM_COOKIE=${claimed.token}; HttpOnly; SameSite=Strict; Path=$KID_PATH/; Max-Age=" +
                         (HubBrowsers.CLAIM_TTL_MS / 1000)
                 )
                 respond(ex, 200, JSONObject().put("ok", true).put("kid", nameOf(claimed.kid)).toString())
@@ -294,6 +336,34 @@ class HubKidServer(
                 respond(ex, 409, JSONObject().put("refused", reason.name).toString())
             }
         )
+    }
+
+    /**
+     * `GET /kid/kids` — who a browser may sign in as: the children with a
+     * password set, as name and avatar and nothing else.
+     *
+     * Unauthenticated, and that is a decision worth stating. A browser that
+     * has not claimed learns from this route that the family has children
+     * called Leo and Mia who watch here — the same thing anyone holding the
+     * television's remote sees on its "Who's watching?" screen, and the
+     * least a sign-in screen can show while still being one a five-year-old
+     * can use. It learns no rule, no video and nothing about a kid without a
+     * password; a family that wants the LAN to see no names sets no
+     * passwords and signs in by QR alone, and this answers with an empty
+     * list.
+     */
+    private fun kids(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val arr = org.json.JSONArray()
+        runCatching { store.load().profiles }.getOrDefault(emptyList())
+            .filter { it.webPassword != null }
+            .forEach { p ->
+                arr.put(
+                    JSONObject().put("id", p.id).put("name", p.name)
+                        .put("avatar", p.avatar).put("color", p.colorArgb)
+                )
+            }
+        respond(ex, 200, JSONObject().put("kids", arr).toString())
     }
 
     /**
@@ -787,7 +857,11 @@ class HubKidServer(
      * from `/whoami`, behind the cookie.
      */
     private fun page(ex: HttpExchange) {
-        if (ex.requestURI.path != "/") {
+        val path = ex.requestURI.path
+        // "/kids", "/kidney": the prefix match brought a parent's typo here.
+        // Not ours; the console answers it with its page like any other.
+        if (path != KID_PATH && !path.startsWith("$KID_PATH/")) return console(ex)
+        if (path != KID_PATH) {
             return respond(ex, 404, JSONObject().put("error", "not here").toString())
         }
         if (ex.requestMethod != "GET") return respond(ex, 405, "no")
@@ -840,8 +914,11 @@ class HubKidServer(
             // What fits under a home-screen icon. The long name is the one a
             // child never reads.
             .put("short_name", "Yosemite")
-            .put("start_url", "/")
-            .put("scope", "/")
+            // Its own scope beside the console's: a tap on the installed icon
+            // lands on the kid page, and the app stays within /kid.
+            .put("id", KID_PATH)
+            .put("start_url", KID_PATH)
+            .put("scope", KID_PATH)
             .put("display", "standalone")
             .put("orientation", "any")
             .put("background_color", ground)
@@ -863,7 +940,7 @@ class HubKidServer(
     }
 
     private fun icon(size: String, sizes: String, purpose: String) = JSONObject()
-        .put("src", "/kid-icon?s=$size")
+        .put("src", "$KID_PATH/icon?s=$size")
         .put("sizes", sizes)
         .put("type", "image/png")
         .put("purpose", purpose)
@@ -909,38 +986,15 @@ class HubKidServer(
         ex.responseBody.use { it.write(bytes) }
     }
 
-    private fun asset(ex: HttpExchange) {
-        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
-        val bytes = javaClass.getResourceAsStream("/web/kid-tokens.css")?.readBytes()
-            ?: return respond(ex, 404, "missing from this build")
-        ex.responseHeaders.add("Content-Type", "text/css; charset=utf-8")
-        // **Revalidated, never held.** This was `max-age=86400`, and a day of
-        // caching is a day in which a hub upgrade changes the palette or the
-        // card geometry and every child's browser keeps drawing the old one -
-        // the two faces diverging in TIME rather than in code, which no guard
-        // can see because both sides of the repo are correct. Found by opening
-        // the page after a rebuild and reading tokens that were right on the
-        // wire and absent in the browser.
-        //
-        // `no-cache` means revalidate, not "do not store": the browser keeps
-        // its copy and gets a 304 for it. On a LAN, for a few KB, that is a
-        // round trip nobody can feel - and it is what makes an upgrade to the
-        // container an upgrade to what a child sees.
-        ex.responseHeaders.add("Cache-Control", "no-cache")
-        securityHeaders(ex)
-        ex.sendResponseHeaders(200, bytes.size.toLong())
-        ex.responseBody.use { it.write(bytes) }
-    }
-
     // --- plumbing -------------------------------------------------------
 
     /**
      * The kid gate. Every route that says anything about the family goes
-     * through here, and it **fails closed to the code prompt**: null, after
-     * answering 401, is what the page renders as "type your code".
+     * through here, and it **fails closed to the sign-in screen**: null, after
+     * answering 401, is what the page renders as "Who's watching?".
      *
      * There is no fallback to the admin session and there cannot be — this
-     * class never reads [HubServer.SESSION_COOKIE] and holds no reference to
+     * class never reads [HubServer.SESSION_HEADER] and holds no reference to
      * [HubSessions] (guard 59). A parent signed in on the console is a
      * stranger here, which is the same statement in the other direction as a
      * kid cookie being nothing at all on `/api/`.
@@ -967,13 +1021,13 @@ class HubKidServer(
         runCatching { store.load().profile(kid)?.name }.getOrNull().orEmpty()
 
     /**
-     * Refuse anything a browser on another site initiated — including, and
-     * especially, the console one port along.
+     * Refuse anything a browser on another site initiated.
      *
-     * [HubServer.sameOrigin] itself, not a copy of it: the whole point of two
-     * listeners is that this predicate answers false between them, and two
-     * implementations of a security check are two things to harden, of which
-     * the second is the one somebody forgets.
+     * [HubServer.sameOrigin] itself, not a copy of it: two implementations of
+     * a security check are two things to harden, of which the second is the
+     * one somebody forgets. On one origin this no longer separates the kid
+     * page from the console — the credentials do that — but it still stops
+     * a page on some other site on the LAN posting here.
      */
     private fun sameOrigin(ex: HttpExchange): Boolean = HubServer.sameOrigin(ex)
 
@@ -1028,20 +1082,20 @@ class HubKidServer(
 
     internal companion object {
         /**
-         * The kid's cookie. A different name from [HubServer.SESSION_COOKIE]
-         * on purpose as well as by origin: the two are never both valid
-         * anywhere, and a shared name would make that an accident of routing
-         * rather than a fact.
+         * The kid's cookie: the one cookie this hub sets. Scoped to
+         * `Path=/kid/` when set (see [claim]), so the browser never presents
+         * it on the console's side, and never read by [HubServer] (guard 59).
+         * A different name from the parents' [HubServer.SESSION_HEADER] so
+         * "which credential is this" is never a question of routing.
          */
         const val CLAIM_COOKIE = "yk_kid"
 
         /**
-         * The port this listens on when nobody says otherwise — one past the
-         * admin's 8765, so a family reading their compose file sees the pair.
-         * `YOSEMITE_KIDS_KID_PORT` moves it, and `hub/docker-compose.yml`
-         * publishes it through the same variable so the two cannot drift.
+         * Where the kid app lives on the hub's one origin: the page at this
+         * path, every route beneath it. One address for a family to know —
+         * `http://<hub>:8765/kid` — and the prefix the kid cookie is scoped to.
          */
-        const val DEFAULT_PORT = 8766
+        const val KID_PATH = "/kid"
 
         /**
          * Claim attempts allowed in a window, and how long that window is.

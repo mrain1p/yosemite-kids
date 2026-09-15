@@ -112,6 +112,13 @@ object ConfigJson {
                         // the hash) *and* this, so both sides settle on one hash
                         // only once the phone has adopted the newer choice.
                         if (p.lookAt != 0L) { append(";LA:"); append(p.lookAt) }
+                        // The browser password, append-only-when-set: a
+                        // password set on the hub has to move the hash or the
+                        // offline reconcile never carries it to the phone. The
+                        // key's head and not the whole record - enough to
+                        // change when the password does, and nothing a hash
+                        // a peer compares needs to say about a credential.
+                        p.webPassword?.let { append(";W:"); append(it.setAt); append(','); append(it.key.take(8)) }
                         append('\n')
                     }
                 }
@@ -262,6 +269,7 @@ object ConfigJson {
                             p.age?.let { put("age", it) }
                             p.pin?.let { put("pin", it) }
                             if (p.lookAt != 0L) put("lookAt", p.lookAt)
+                            p.webPassword?.let { put("web", it.toJson()) }
                             put("limits", limitsToJson(p.limits))
                         })
                     }
@@ -640,7 +648,8 @@ object ConfigJson {
                         age = if (o.has("age")) o.getInt("age") else null,
                         limits = limitsFromJson(o.optJSONObject("limits") ?: JSONObject()),
                         pin = o.optString("pin").takeIf { isValidDirectionPin(it) },
-                        lookAt = o.optLong("lookAt", 0L)
+                        lookAt = o.optLong("lookAt", 0L),
+                        webPassword = PasswordRecord.fromJson(o.optJSONObject("web"))
                     )
                 }
             }

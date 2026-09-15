@@ -396,9 +396,11 @@ showing it late).
 ### 2N. The web player — all four steps landed, 1.4.0
 
 A child can open a browser on the LAN, type a code a parent minted, and watch.
-`GET /media` proxies a video's bytes (step 1); the kid has an **origin of its
-own** on a second port, and a claim code trades for the cookie that gets in
-(steps 2–3); and the page itself is a home screen with the television's
+`GET /media` proxies a video's bytes (step 1); the kid had an **origin of its
+own** on a second port and a claim code traded for the cookie that gets in
+(steps 2–3) — both retired in the one-origin round of 2026-09-14: the kid app
+is `/kid` on the one port, the wall is built from credentials, and a child
+gets in by a parent's QR or their own password; and the page itself is a home screen with the television's
 shelves, a channel page, search, and a player that resumes, counts minutes and
 says why when it will not play (step 4). See `docs/LAN-API.md` "The kid's
 routes" for the wire and the argument, and `docs/HUB.md` "Letting a browser
@@ -666,7 +668,8 @@ in the release skill, not on a risk list.
 because `curatorr-analyzer` holds 8766 (`0.0.0.0:8766->8765`). Both sides of
 that mapping are 8767 deliberately: the console prints the port the process
 binds *inside* the container, so an asymmetric publish would tell a parent the
-wrong number.
+wrong number. **Retired 2026-09-14:** the kid app is `/kid` on 8765 now; the 8767
+mapping and its environment line come out of the NAS compose file.
 
 ### 8C. Ship next
 
