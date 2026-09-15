@@ -1669,11 +1669,14 @@
       var head = el("div", "line");
       head.appendChild(el("div", "name grow", e.label || e.id));
       head.appendChild(el("span", "tag", e.kind === "PLAYLIST" ? "Playlist" : "Channel"));
+      var gone = ((state.index || {}).gone || []).filter(function (g) { return g.id === e.id; })[0];
+      if (gone) head.appendChild(el("span", "tag warn", "Not on YouTube"));
       head.appendChild(button("Remove", "quiet", function () {
         return api("/api/channels", { remove: e.id }).then(refresh);
       }));
       li.appendChild(head);
       li.appendChild(el("div", "sub", e.url || e.id));
+      if (gone) li.appendChild(el("div", "error", "YouTube says \u201c" + gone.reason + "\u201d. Remove it, or leave it and the videos already listed stay."));
 
       var mult = el("div", "line");
       mult.style.marginTop = "8px";
@@ -2711,6 +2714,13 @@
       : "A phone builds the index";
     sul.appendChild(ixRow(who, ix.election));
     sul.appendChild(ixRow(ix.complete + " of " + ix.sources + " channels fully indexed", ix.videos + " videos listed"));
+    // Said here and beside the channel: one dead channel used to fail every
+    // crawl and back the hub off for hours, and nothing on this page said why.
+    (ix.gone || []).forEach(function (g) {
+      sul.appendChild(ixRow("Not on YouTube any more: " + g.name,
+        "YouTube says \u201c" + g.reason + "\u201d (" + new Date(g.at).toLocaleDateString() + "). " +
+        "The videos already listed stay until you remove it on the Channels page; the crawl tries it again once a day."));
+    });
     sul.appendChild(ixRow(
       ix.lastRun
         ? "Last crawl " + new Date(ix.lastRun.at).toLocaleString() + ", " + ix.lastRun.pages + " pages" + (ix.lastRun.failed ? " (failed)" : "")

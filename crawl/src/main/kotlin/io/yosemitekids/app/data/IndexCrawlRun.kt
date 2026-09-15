@@ -1,6 +1,7 @@
 package io.yosemitekids.app.data
 
 import kotlinx.coroutines.delay
+import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
 
 /**
  * One bounded batch of the crawl: the loop that lived inside the app's
@@ -25,22 +26,38 @@ object IndexCrawlRun {
      */
     const val PAGES_PER_RUN = 60
 
-    data class Outcome(val pages: Int, val complete: Int, val total: Int, val failures: Int) {
+    /**
+     * How long a source YouTube called gone is left alone before one more
+     * try. A day: "does not exist" and "terminated" are not the flaky kind of
+     * error, and a channel that comes back after a takedown comes back in
+     * days, not minutes. Until then it costs the run nothing.
+     */
+    const val GONE_RETRY_MS = 24 * 60 * 60_000L
+
+    data class Outcome(val pages: Int, val complete: Int, val total: Int, val failures: Int, val gone: Int = 0) {
         /**
          * Failed = a source was attempted and threw without yielding a page:
          * the red dot in settings. A run that simply had nothing to do, or
-         * that got its pages before a later source failed, is fine.
+         * that got its pages before a later source failed, is fine — and so
+         * is a run whose only news was a source YouTube says is gone. That
+         * one used to count as a failure, and with every other channel
+         * complete it was the ONLY thing the run ever did: one dead channel
+         * failed every crawl and backed the hub off for hours at a time.
          */
         val failed: Boolean get() = failures > 0 && pages == 0
 
         /** The one log line: confirms the run happened, how much it did, how far along the catalog is. */
-        val summary: String get() = "index crawl: $pages pages this run, $complete/$total sources complete"
+        val summary: String
+            get() = "index crawl: $pages pages this run, $complete/$total sources complete" +
+                (if (gone > 0) ", $gone gone from YouTube" else "")
     }
 
     /**
      * @param crawlOnce fetches one page of [Source] into [index]; true when
      *   there is more to fetch. Throws on a failed fetch.
      * @param onFailure sees each throw; the run counts it and moves on.
+     * @param onGone sees each source YouTube refused outright, with the
+     *   reason in YouTube's words; the index remembers it ([ChannelIndex.markGone]).
      */
     suspend fun run(
         index: ChannelIndex,
@@ -48,14 +65,21 @@ object IndexCrawlRun {
         crawlOnce: suspend (Source) -> Boolean,
         onFailure: (Throwable) -> Unit = {},
         delayMs: Long = IndexCrawler.CRAWL_DELAY_MS,
-        pagesPerRun: Int = PAGES_PER_RUN
+        pagesPerRun: Int = PAGES_PER_RUN,
+        onGone: (Source, String) -> Unit = { _, _ -> },
+        now: () -> Long = System::currentTimeMillis
     ): Outcome {
-        val incomplete = sources.filter { index.state(it.id)?.complete != true }
+        val t = now()
+        val incomplete = sources.filter { s ->
+            val state = index.state(s.id)
+            state?.complete != true && (state?.gone == null || t - state.goneAt >= GONE_RETRY_MS)
+        }
         if (incomplete.isEmpty()) {
             // Still stamp the diagnostics line: a fully-crawled catalog should
             // read "ran, nothing to do", not "hasn't run since the last page".
             index.recordRun(0, failed = false)
-            return Outcome(0, sources.size, sources.size, 0)
+            val goneNow = sources.count { index.state(it.id)?.gone != null }
+            return Outcome(0, sources.count { index.state(it.id)?.complete == true }, sources.size, 0, goneNow)
         }
         // Round-robin from the first incomplete source. ~17 pages per
         // 500-video channel, so one run finishes a channel and starts the next.
@@ -73,9 +97,15 @@ object IndexCrawlRun {
                 if (attempts > 0) delay(delayMs)
                 attempts++
                 val more = runCatching { crawlOnce(source) }
-                    .getOrElse {
-                        onFailure(it)
-                        failures++
+                    .getOrElse { e ->
+                        val why = goneReason(e)
+                        if (why != null) {
+                            index.markGone(source.id, why, now())
+                            onGone(source, why)
+                        } else {
+                            onFailure(e)
+                            failures++
+                        }
                         false
                     }
                 if (!more) break
@@ -83,8 +113,34 @@ object IndexCrawlRun {
             }
             if (pages >= pagesPerRun) break
         }
-        val outcome = Outcome(pages, sources.size - incomplete.size, sources.size, failures)
+        // Counted from the index, not by subtraction: a source that was
+        // attempted and turned out gone would otherwise be taken off twice.
+        val gone = sources.count { index.state(it.id)?.gone != null }
+        val complete = sources.count { index.state(it.id)?.complete == true }
+        val outcome = Outcome(pages, complete, sources.size, failures, gone)
         index.recordRun(pages, failed = outcome.failed)
         return outcome
+    }
+
+    /**
+     * YouTube's own verdict on a source, or null for anything that might be
+     * this box's fault (a timeout, a bot wall, a parse error). The extractor
+     * says "content not available" for a deleted, private or terminated
+     * channel and for a playlist that no longer exists, and
+     * `YouTubeRepository.retryDelaysFor` already treats it as permanent;
+     * this is the same judgement, one level up, so the run does not carry
+     * it as a failure. The message is YouTube's wording with the extractor's
+     * "Got error:" wrapper and quotes stripped: what the console shows.
+     */
+    internal fun goneReason(e: Throwable): String? {
+        var cause: Throwable? = e
+        while (cause != null) {
+            if (cause is ContentNotAvailableException) {
+                val raw = cause.message.orEmpty()
+                return raw.removePrefix("Got error:").trim().trim('"').ifEmpty { "not available on YouTube" }
+            }
+            cause = cause.cause
+        }
+        return null
     }
 }

@@ -1,13 +1,13 @@
 # The hub
 
 An always-on peer for the family config. It runs in Docker on anything that
-stays powered — a NAS, a Pi, a spare box — holds the same `config.json` the
+stays powered â a NAS, a Pi, a spare box â holds the same `config.json` the
 phones and TVs hold, and merges with them over the existing LAN routes.
 
 It is entirely optional, and it started as one thing: two parents staying in
 step without both being home, an edit made on one phone reaching the other
 without waiting for a television they both happen to walk past. It has since
-become the other place a parent administers the family — a password-protected
+become the other place a parent administers the family â a password-protected
 page that edits nearly every setting the phone does, rules on the videos the AI
 held back, gives bonus minutes, holds the AI key so a second parent never types
 it, builds the search index, and keeps five snapshots you can roll back to. A
@@ -15,17 +15,17 @@ family that never runs one still loses nothing: every device works alone, and
 nothing in the app requires a hub to be present.
 
 **The TVs use it too, with one honest limit.** A television cannot join a hub
-itself — its entire parent settings screen is a QR code, so there is nowhere
-to type an address — so the phone introduces them: joining a hub also mints a
+itself â its entire parent settings screen is a QR code, so there is nowhere
+to type an address â so the phone introduces them: joining a hub also mints a
 token for every TV that phone administers and hands it over. From then on the
 TV reconciles with the hub directly, using the same code path a phone does.
 
-The limit is **reachability, not convergence** — and the difference matters,
+The limit is **reachability, not convergence** â and the difference matters,
 because the paragraph that used to sit here said a television only syncs while
 a child is watching it, and that has been false for two rounds. A change made
 on the hub reaches a TV three ways now: `POST /sync-now`, the nudge, the moment
 the hub's copy moves (only to an address the hub has been told, which it learns
-from the device's own calls — a television that has never called cannot be
+from the device's own calls â a television that has never called cannot be
 nudged); `ConfigSyncWorker` on a fifteen-minute floor whether or not anyone has
 opened the app; and the sweep in the app itself while it is open. In practice a
 rule set on the NAS lands on an awake television in seconds and on a sleeping
@@ -34,11 +34,11 @@ one within a quarter of an hour of it waking.
 What is still true: while the app is closed the device is not *reachable*.
 `LanServer` is built by `MainActivity` and dies with the process, so the
 parent's phone shows a sleeping TV as unreachable, "Play on TV" cannot wake it,
-and a nudge sent to it lands nowhere — the worker is the floor underneath that.
-Fixing it needs a foreground service, which is `docs/ROADMAP.md` §2A.
+and a nudge sent to it lands nowhere â the worker is the floor underneath that.
+Fixing it needs a foreground service, which is `docs/ROADMAP.md` Â§2A.
 
 The hub enrols as an ordinary `PairedDevice` named `Yosemite Kids hub`, and
-every sync path that already worked with a TV works with it unchanged — that
+every sync path that already worked with a TV works with it unchanged â that
 is still the design and `docs/archive/PLAN-hub.md` is why. What has changed since that
 sentence read "nothing in the app's main source set knows the hub exists" is
 that seven files now do: `HubEnrolment` joins one, `SettingsHub` is the screen
@@ -47,7 +47,7 @@ treated differently for (no subnet sweep for a box with a fixed address, no
 index pushed at a peer that answers 405, its own card rather than a device row,
 and what `POST /leave-hub` removes). `isHub` and `secretless` were one flag
 until 1.0.7 and are now two, because a hub that holds the API key is still a
-hub — see `docs/FORK-NOTES.md`.
+hub â see `docs/FORK-NOTES.md`.
 
 ## Deploying
 
@@ -61,8 +61,8 @@ and never compiles anything. The compose file is pull-only.
 The repository is public, but a GHCR package keeps its own visibility, and
 this one was first published while the repo was private. Until it is flipped,
 an anonymous pull is refused (`denied` / `authentication required`). On
-GitHub: your profile → **Packages** → `yosemite-kids-hub` → **Package
-settings** → *Danger Zone* → **Change visibility** → Public. The image holds
+GitHub: your profile â **Packages** â `yosemite-kids-hub` â **Package
+settings** â *Danger Zone* â **Change visibility** â Public. The image holds
 only the open source above, no token and no family data, so there is nothing
 to protect by keeping it private.
 
@@ -80,7 +80,7 @@ compose pull` with none.
 
 ### Running it
 
-Either as a Container Manager project (DSM 7.2): **Project → Create**, paste
+Either as a Container Manager project (DSM 7.2): **Project â Create**, paste
 `hub/docker-compose.yml`, pick any folder for the project, **Build**, then
 **Run**. Or from a shell, with the compose file wherever you keep it:
 
@@ -95,7 +95,7 @@ line: `/volume2/Docker/yosemite-kids/data:/data` holds `config.json`,
 every enrolled device and the whole configuration survive a move between
 projects; lose it, and every device has to enrol again.
 
-`usage.json` is the family's watch ledger — how many minutes each child has
+`usage.json` is the family's watch ledger â how many minutes each child has
 spent, per day, per device. It is deliberately **not** part of `config.json`:
 a counter is not a parent's decision, and one living in the synced document
 would put every pair of devices through a full merge and re-push once a minute
@@ -115,7 +115,7 @@ curl http://<nas>:8765/health
 The same number is on the admin page's **This hub** card, and it is worth
 reading whenever a setting made on a phone does not stick here. The hub is
 never the authority on the configuration, but it does rewrite the document
-whenever a parent saves something on this page — so an image older than a
+whenever a parent saves something on this page â so an image older than a
 setting will quietly drop that setting's field on the next save. New fields
 are held back a release for exactly this reason; the version is how you tell
 whether this box is behind.
@@ -168,12 +168,12 @@ Data volume /data is writable as uid 10001.
 Yosemite Kids hub listening on 8765, data in /data
 Devices enrolled: 0
 Admin token: <24 hex characters>
-No password set yet. Open this hub in a browser and set one — the token above is what claims it.
+No password set yet. Open this hub in a browser and set one â the token above is what claims it.
 Nothing paired yet. Approve a device code to pair the first one.
 ```
 
 Once a password is set the fourth line becomes `Admin token: not shown, because
-a password is set.` — see "The password" below.
+a password is set.` â see "The password" below.
 
 Confirm it from another machine on the LAN:
 
@@ -183,7 +183,7 @@ curl -i http://<host>:8765/status       -> 401, which is correct
 ```
 
 `/health` and `/setup` are the only unauthenticated routes, and `/setup`
-carries exactly one key — whether a password has been set. A 401 from `/status`
+carries exactly one key â whether a password has been set. A 401 from `/status`
 is the proof that the LAN cannot read a family's configuration without a
 token.
 
@@ -192,7 +192,7 @@ token.
 **First run.** Open `http://<host>:8765/` in a browser on the same network. The
 page offers to claim the hub: paste the admin token from the container log
 (`docker logs yosemite-kids-hub`), choose a password, and it signs you in. It
-then shows a **recovery token, once**, behind an "I have saved this" step —
+then shows a **recovery token, once**, behind an "I have saved this" step â
 save it where you keep passwords, not on the hub. Nothing can show it again.
 
 You can also sign in with the token and set the password later, from **App, hub
@@ -203,20 +203,20 @@ administer the hub.
 **What changes once a password exists:**
 
 - The token stops approving devices. It still signs in, still changes the
-  password, still mints a new recovery token — so a leaked log line can no
+  password, still mints a new recovery token â so a leaked log line can no
   longer quietly add a device to your family, only take the hub over visibly,
   by changing the password you meet at your next sign-in.
 - It stops being printed. The boot line becomes `Admin token: not shown,
   because a password is set.` To see it for one boot, set
   `YOSEMITE_KIDS_PRINT_ADMIN_TOKEN=1` in the compose file and restart.
 - The phone's field renames itself. It asks the hub (`GET /setup`) and says
-  "Hub password" instead of "Admin token" — one field either way, because the
+  "Hub password" instead of "Admin token" â one field either way, because the
   hub decides what matched.
 
-**Changing it.** App, hub & backup → Hub password. The current password (or
+**Changing it.** App, hub & backup â Hub password. The current password (or
 your recovery token) is required even though you are already signed in: that
 session may be a browser on a kitchen counter. Changing it signs out every
-other browser and leaves every enrolled device alone — devices hold their own
+other browser and leaves every enrolled device alone â devices hold their own
 enrolment tokens and never see this one.
 
 **Four ways back in, if the password is forgotten.** In the order to try them:
@@ -226,7 +226,7 @@ enrolment tokens and never see this one.
 2. `YOSEMITE_KIDS_ADMIN_TOKEN` in `docker-compose.yml`, if you pinned one. It
    always works and overrides the stored token.
 3. Set `YOSEMITE_KIDS_PRINT_ADMIN_TOKEN=1` and restart, if no password had been
-   set when the current token was minted — a first set rotates it, so the value
+   set when the current token was minted â a first set rotates it, so the value
    in an old log is dead.
 4. Stop the container and delete the `"password"` object from `/data/devices.json`
    by hand. The hub is then unclaimed again and the page offers to claim it.
@@ -236,8 +236,8 @@ There is deliberately **no reset route**. A `/forgot` endpoint on a box whose
 stated future is facing the internet is a second front door, and guard 25 fails
 the build if one appears.
 
-**The lockout.** Ten wrong secrets and every sign-in is refused — the right one
-included — for fifteen minutes, then thirty, then an hour, doubling to six. Any
+**The lockout.** Ten wrong secrets and every sign-in is refused â the right one
+included â for fifteen minutes, then thirty, then an hour, doubling to six. Any
 success clears it. It is counted globally rather than per address, because on a
 LAN an attacker picks their own source address. `/approve` shares that counter,
 so a phone's "Connect my TVs" with a wrong password stops at the first refusal
@@ -245,8 +245,8 @@ rather than spending an attempt per television.
 
 **How it is stored.** PBKDF2-HMAC-SHA256, 210 000 iterations, a 16-byte salt,
 under `password` in `devices.json`. The plaintext is never written. That is not
-because the file is a secure place — anyone who can read it already holds every
-device token and the recovery token beside it, and the hub is over — but
+because the file is a secure place â anyone who can read it already holds every
+device token and the recovery token beside it, and the hub is over â but
 because families reuse a password, and this volume gets backed up to cloud
 drives. Measure the first verify on your own NAS: on a low-power box a sign-in
 should still be well under a second.
@@ -254,7 +254,7 @@ should still be well under a second.
 ## The admin GUI
 
 Open `http://<host>:8765/` in a browser on the same network and sign in with
-your hub password — or, before you have set one, the admin token from the log.
+your hub password â or, before you have set one, the admin token from the log.
 From there you can manage channels and blocked videos, rule on the videos the
 AI is holding back, approve or remove devices, give a kid bonus minutes or turn
 watching off until midnight, set or change the password, and see what the hub
@@ -263,7 +263,7 @@ holds.
 It opens on a home page rather than a row of tabs: the kids at the top with
 what each one's rules currently say, two status tiles, then the settings
 grouped, each row's second line stating what that page says right now. A kid
-and a device are each a page of their own — `#/kids/<id>`, `#/devices/<ref>` —
+and a device are each a page of their own â `#/kids/<id>`, `#/devices/<ref>` â
 and the browser's Back button is what comes out of them, because when this is
 installed on a phone Back is the only navigation there is.
 
@@ -281,18 +281,18 @@ the button. The hub calls nothing: it holds no credential on any device by
 design, so it writes the change into the family config and tells the devices
 their copy has moved. Everything awake with the app open takes it in seconds;
 everything else takes it the next time it opens. The card on the page says
-this too, in those words — a parent standing in the doorway should not have to
+this too, in those words â a parent standing in the doorway should not have to
 come here to find out whether the television has heard yet.
 
 The status page names every setting that exists on the phone and is not here
 yet, so "can I do this on the NAS?" is answerable without guessing. That list
 comes from `SettingsSurface` in `:core`, which is the same list the build
-checks — a page cannot exist without an entry, and an entry cannot claim to be
+checks â a page cannot exist without an entry, and an entry cannot claim to be
 built without a page.
 
 Most of what you see is drawn from that manifest rather than written out here.
-`SettingsSurface` declares each control once — its words, how it is drawn, its
-range, and the config key it writes — `GET /api/state` ships the ones this face
+`SettingsSurface` declares each control once â its words, how it is drawn, its
+range, and the config key it writes â `GET /api/state` ships the ones this face
 is expected to have, and `renderControl` in `index.html` builds them. So a new
 switch on the phone appears on the hub from one declaration, and the two faces
 cannot call the same rule by two different names. A handful of controls are too
@@ -304,7 +304,7 @@ guard 26 tells a control that was built from one that was only claimed.
 
 *Content screening* carries the same review queue the phone has: the videos the
 AI held back, the ones it blocked, and Allow or Block for the family or for one
-child at a time. A ruling made here is an ordinary config edit — it reaches
+child at a time. A ruling made here is an ordinary config edit â it reaches
 every device on its next sync, the same way a channel or a bedtime does.
 
 The hub can show this because it holds verdicts now. Every phone pushes what it
@@ -321,11 +321,11 @@ count is measured against a device's cached feed, and the hub has none.
 **This page makes third-party requests, and it is the only page here that
 does.** The thumbnails are loaded by *your browser*, directly from YouTube's
 image CDN, using URLs a device recorded with the verdict. The hub is not in
-that fetch — it asks YouTube for nothing on this path, and the container's own
+that fetch â it asks YouTube for nothing on this path, and the container's own
 outbound allow-list is unchanged. The requests carry no referrer and no cookie
 this page sets, so YouTube learns that some browser asked for some thumbnails
 and nothing about your family. If the NAS has no outbound access, or you would
-rather your browser did not talk to YouTube at all, the page still works — the
+rather your browser did not talk to YouTube at all, the page still works â the
 thumbnails simply do not appear, and every ruling is still a title, a channel
 and a reason.
 
@@ -333,13 +333,13 @@ and a reason.
 
 The key for the AI that screens videos can live on this box. Set it on
 *Content screening*, and every parent's phone that joins this hub is given it
-on its next sync — which is the point: screening works for the whole household
+on its next sync â which is the point: screening works for the whole household
 without each parent finding the key and typing it again.
 
 **It is stored in plain text**, in `/data/secrets.json`, and there is no honest
 way around that. A phone keeps its copy in a Keystore-backed store that the
 hardware itself unlocks; a NAS has no such thing, and this container has no
-secret of its own to derive one from — a key encrypted with something sitting
+secret of its own to derive one from â a key encrypted with something sitting
 on the same volume protects against nothing. So the file is owner-only where
 the filesystem allows it (a Synology bind mount often does not, see
 *Permissions* below) and that is the whole of it. Anything running as root on
@@ -352,7 +352,7 @@ What follows from that, practically:
   more than one. A key that can only ever spend a few pounds a month is a very
   different thing to lose than the one your other projects use.
 - **"Someone got into the NAS" means "rotate the key".** Not "check whether
-  they found it" — assume they did, mint a new one, and paste it into
+  they found it" â assume they did, mint a new one, and paste it into
   *Replace the key*. That is one action and it is over.
 - **The page never shows it back.** Once set, all it will tell you is the last
   four characters, which is enough to answer "is this the one I pasted?" and
@@ -362,15 +362,15 @@ What follows from that, practically:
 
 Two things it is **not**. It is not in `config.json`, so it is not in the five
 snapshots under `versions/`, not in `GET /api/state`, and not in the backup you
-download — `HubStoreTest` asserts each of those at every depth. And it is not
+download â `HubStoreTest` asserts each of those at every depth. And it is not
 given to kid devices: `GET /config` puts it back only for an enrolment the
 approver recorded as a parent's phone. A television gets its key from a
 parent's phone, as it always has.
 
 Holding the key does not let the hub *call* the AI, and nothing here changed
 that. The screener runs on the devices; the hub still reaches exactly two
-things — YouTube through `:crawl`'s allow-listed client, and the devices'
-`/sync-now` — and guard 7 is untouched by this feature. Whether the hub should
+things â YouTube through `:crawl`'s allow-listed client, and the devices'
+`/sync-now` â and guard 7 is untouched by this feature. Whether the hub should
 ever screen is a separate decision with its own record.
 
 Rotating is also the one place the merge could have quietly beaten you. The key
@@ -391,7 +391,7 @@ time the settings change. It is for undoing something you just did.
 
 **Download a backup** is one file you keep somewhere that is not this NAS. It
 is the same envelope the phone's own export writes, so the file opens on a
-phone — which on the day the NAS is gone is the only thing left to open it
+phone â which on the day the NAS is gone is the only thing left to open it
 with. It carries no API key: the hub strips secrets on every write, so what is
 served is what is on disk, and a test asserts that at every depth of the file.
 
@@ -399,7 +399,7 @@ Restoring either one is a **deliberate edit, never a file copy**, and the
 distinction is not cosmetic. A restored document carries the stamps it had when
 it was taken, so writing those bytes would hand every peer that has edited
 since a newer stamp than yours: the restore would quietly undo itself on the
-next sync, and the tombstones this hub had learned would go with it — meaning
+next sync, and the tombstones this hub had learned would go with it â meaning
 every channel anyone had removed would come back. So a restore is applied as a
 fresh change on top of what is here now. It outranks every device, its
 deletions propagate, and a co-parent's bookkeeping survives it.
@@ -415,11 +415,11 @@ Notes on the session:
 ### Installing it on a phone
 
 The admin GUI is a progressive web app: a manifest, an icon and a service
-worker that caches the page shell — and only the shell. Nothing under
+worker that caches the page shell â and only the shell. Nothing under
 `/api` is ever cached, because a browser's cache outlives the session and
 the sign-out, and everything there is the family's configuration.
 
-**On iPhone or iPad**, over plain `http://<nas>:8765`, Safari's *Share →
+**On iPhone or iPad**, over plain `http://<nas>:8765`, Safari's *Share â
 Add to Home Screen* already gives an icon that opens in its own window with
 no address bar.
 
@@ -440,12 +440,12 @@ The icons are generated, not drawn: `node scripts/make-hub-icons.js
 hub/src/main/resources/web` rewrites them, deterministically, so re-running
 it without an edit produces no diff.
 
-## The port — one, and where everything is on it
+## The port â one, and where everything is on it
 
 The hub publishes **8765**, and everything is on it: the parents' console at
 `/`, every device's sync, and the kid app at **`/kid`**. Both sides of the
 `ports:` line in `docker-compose.yml` read the same variable
-(`YOSEMITE_KIDS_PORT`), so the pair cannot drift — publishing one port while
+(`YOSEMITE_KIDS_PORT`), so the pair cannot drift â publishing one port while
 the process listens on another gives a container that is running, healthy and
 unreachable, and the health check does not catch it because it runs inside
 the container.
@@ -456,7 +456,7 @@ file. Then use that port when connecting a phone, because the app assumes
 had the kid app on a port of its own), delete that line: nothing listens there any more.
 
 **What keeps a child's page away from the console, now that they share an
-address.** Not the port — the credentials. The parents' session is a header
+address.** Not the port â the credentials. The parents' session is a header
 the console's own script attaches to each call, never a cookie, so nothing a
 browser does on its own carries it: a page a child opened cannot spend it
 against `/api/config`, because the browser has nothing to attach. The kid's
@@ -477,15 +477,15 @@ Written down rather than left to instinct, because `gluetun` is already on
 this NAS and putting a container behind it is a two-line change that looks
 like a tidy-up.
 
-The hub talks to YouTube to build the search index, and — once a browser can
-watch — to resolve a stream. A residential address is treated leniently for
+The hub talks to YouTube to build the search index, and â once a browser can
+watch â to resolve a stream. A residential address is treated leniently for
 that. A commercial VPN's exit is a data-centre address, and data-centre
 addresses are treated far worse: challenges, captchas, and extraction that
 simply stops working. It is the single easiest way to turn the bot-detection
-risk in `ROADMAP.md` §K from a thing to be careful about into a thing that
+risk in `ROADMAP.md` Â§K from a thing to be careful about into a thing that
 has happened.
 
-Nothing enforces this — the hub cannot see its own egress path — so it is a
+Nothing enforces this â the hub cannot see its own egress path â so it is a
 rule for whoever edits the compose file. If extraction breaks shortly after a
 networking change, look here first, and remember that a ban and an extractor
 that needs updating look identical from inside the container (`scripts/upstream.*`
@@ -494,11 +494,11 @@ exists for exactly that reason).
 ## Connecting a phone
 
 On the phone: Settings, then Devices, then the hub section. Enter the address
-(`192.168.1.245:8765`) and the hub's secret — the field says which one it wants,
+(`192.168.1.245:8765`) and the hub's secret â the field says which one it wants,
 because the phone asks the hub (`GET /setup`) as soon as the address is typed:
 "Hub password" once one is set, "Admin token" until then. It is one field
 either way; the hub checks the password and the recovery token against the same
-header and decides which matched. The phone keeps neither — what it stores is
+header and decides which matched. The phone keeps neither â what it stores is
 the per-device enrolment token the hub hands back.
 
 The phone will not connect if the hub is refusing sign-ins: it reports the wait
@@ -512,8 +512,8 @@ forgotten.
 
 ## The search index
 
-Since 1.0.5 the hub builds the search index — every channel's full list of
-videos, so search on a TV answers without asking YouTube — instead of the
+Since 1.0.5 the hub builds the search index â every channel's full list of
+videos, so search on a TV answers without asking YouTube â instead of the
 parent's phone. It lives under `/data/search-index` beside `config.json`, so
 the volume you already back up carries it.
 
@@ -523,8 +523,8 @@ How it takes the job over, and gives it back:
   `GET /index-status`; the hub remembers that per device for a day
   (`HubTokens.armed`). Devices from 1.0.5 pull on every sync.
 - Every 15 minutes the hub runs the election (`HubMaster`, rules in `:core`
-  `MasterElection`). While armed, it claims the slot — from nobody, or from a
-  phone — after a probe proves YouTube answers from the NAS. The phone's
+  `MasterElection`). While armed, it claims the slot â from nobody, or from a
+  phone â after a probe proves YouTube answers from the NAS. The phone's
   worker sees the token is not its own and stops crawling.
 - The holder re-touches the master stamp every 6 hours. A stamp older than a
   day means the slot is vacant, so a hub that is off for a day hands the job
@@ -536,8 +536,14 @@ How it takes the job over, and gives it back:
 The crawl (`HubCrawl`) is the same 60-page, 4-seconds-apart batch the phone
 ran, every 15 minutes, on one thread. Consecutive failed runs back off,
 doubling from 15 minutes to 6 hours, so a NAS address YouTube has walled is
-not hammered. The Devices page of the admin GUI shows who builds the index,
-how far it is, the last crawl and whether any device is pulling.
+not hammered. A channel YouTube itself refuses — deleted, terminated, a playlist
+that no longer exists — is **not** a failed run: the crawl marks it gone, leaves
+it alone for a day, logs one line, and the Channels page says so beside the
+row (*Not on YouTube*) in YouTube's own words. The videos already listed stay
+until you remove it. (Before 1.9.0 one dead channel failed every run and
+backed the whole crawl off for hours.) The Devices page of the admin GUI
+shows who builds the index, how far it is, the last crawl, any channel that
+is gone, and whether any device is pulling.
 
 The container reaches exactly two things on the network: YouTube, through a
 client whose host allow-list is armed at startup, and the devices' `/sync-now`.
@@ -548,19 +554,19 @@ first full crawl with `docker stats yosemite-kids-hub` and put the number here.
 
 ## Letting a browser watch
 
-An iPad, a laptop, an old Android tablet — anything with a browser and no app
-— can watch, at the hub's kid address: **`http://<nas>:8765/kid`**. Nothing
+An iPad, a laptop, an old Android tablet â anything with a browser and no app
+â can watch, at the hub's kid address: **`http://<nas>:8765/kid`**. Nothing
 is installed and no account exists. There are two ways in, and neither is a
 code to type.
 
-**By QR.** On the console: **Devices → Watch in a browser**. Tap a child's
+**By QR.** On the console: **Devices â Watch in a browser**. Tap a child's
 name and the hub mints a one-shot code, good for ten minutes and for one
 browser, and shows it as a QR. Point the tablet's camera at it: the URL it
 holds opens the kid page already signed in as that child. (A device with no
 camera opens the link the card prints under the QR, which is the same URL.)
 
-**By password.** On the child's page — on the phone under *Kids*, or on the
-console — set them a **password for the kid app**: at least four characters,
+**By password.** On the child's page â on the phone under *Kids*, or on the
+console â set them a **password for the kid app**: at least four characters,
 theirs rather than yours, and it opens nothing but their own shelves. From
 then on the kid page's **"Who's watching?"** screen shows their avatar; they
 tap it and type their password. The password is one field of the family
@@ -583,15 +589,15 @@ and never arrives anywhere else. It also cannot lock you out: a child
 mistyping a password all afternoon does nothing at all to your sign-in, which
 is a separate counter on purpose.
 
-**Losing a tablet.** Devices → Watch in a browser → Remove, beside that
+**Losing a tablet.** Devices â Watch in a browser â Remove, beside that
 browser. It stops on that browser's next request. Deleting the child's profile
 is not the same thing and does not do it for you.
 
 ## When something goes wrong on a device
 
 The hub is the one thing in the house that keeps a log, so the devices tell
-it. Every warning and error the app logs — a channel that would not warm, a
-sync merge it could not read, a video that would not play, a crash — goes
+it. Every warning and error the app logs â a channel that would not warm, a
+sync merge it could not read, a video that would not play, a crash â goes
 into a small ring on that device (`Diag`, sixty entries, its own file, never
 the config), and the next time the device's sweep reaches the hub it drains
 the ring into `POST /report`. There is no timer and nothing is sent that is
@@ -605,12 +611,12 @@ per page load and then it stops.
 Each entry lands in two places at once:
 
 - **The container log.** One line per entry, beside the hub's own:
-  `report device Living room TV (tv 1.8.0) [warn] warm UCabc failed — SocketTimeout`.
+  `report device Living room TV (tv 1.8.0) [warn] warm UCabc failed â SocketTimeout`.
   `docker logs yosemite-kids-hub` (or Container Manager's log tab) is the
   half that survives a restart.
-- **The console.** Devices → **Device log**: the same lines, newest first,
+- **The console.** Devices â **Device log**: the same lines, newest first,
   three hundred at most, in memory. A restart clears this card and keeps the
-  log — the right way round for a trail whose unit is "this afternoon".
+  log â the right way round for a trail whose unit is "this afternoon".
 
 Levels are `warn`, `error`, `crash` (the app died; the line names the
 exception and the first frame in the app) and, from a browser, whatever the
@@ -619,12 +625,12 @@ reads it; a family with no hub loses nothing they had.
 
 **What the page looks like.** The same home screen the television and the
 phone draw: the pinned hero a parent chose, the channel rail, Keep watching,
-More like what you watch, the video feed and Watched lately — in that order,
+More like what you watch, the video feed and Watched lately â in that order,
 because the order comes from the same shared list all three faces read. Tapping
 a channel opens its page; the search box searches only what that child may see,
 ranked the way the app ranks it. A video resumes where they left it, the
 minutes left today sit in the corner and turn amber under five, and a refusal
-says which refusal it is — bedtime, out of time, a parent blocked this — in the
+says which refusal it is â bedtime, out of time, a parent blocked this â in the
 hub's own words rather than as a video that silently will not start.
 
 The colours are the child's: whichever of Dark, Light and their own colour the
@@ -632,23 +638,23 @@ palette button in the corner is set to, computed by the same code that themes
 the Android app. That choice lives in that browser, like the same switch on a
 phone lives on the phone.
 
-## Video in a browser — and the quality ceiling
+## Video in a browser â and the quality ceiling
 
 `GET /kid/media?v=<id>` serves a video's bytes to a browser. Whose
-rules apply comes from the browser's claim cookie, never from the URL — a
+rules apply comes from the browser's claim cookie, never from the URL â a
 child who could name the kid could name their older sibling and watch on their
 bedtime and their budget.
 
 **The hub carries the bytes; it does not redirect.** That is the expensive
 choice and it is deliberate, for two separate reasons:
 
-- googlevideo throttles a plain progressive GET — and an RFC-7233 `Range:`
-  header on an un-parameterised URL — to roughly playback speed. The form
+- googlevideo throttles a plain progressive GET â and an RFC-7233 `Range:`
+  header on an un-parameterised URL â to roughly playback speed. The form
   served at link speed is a `range=<start>-<end>` **query** parameter with
   `rn=` numbering. A browser's `<video>` can only emit the header, so a
   browser sent straight to Google gets the slow path and stalls. The hub reads
   the header and asks upstream in the query form (`StreamChunker` in `:crawl`,
-  the same code the television's player uses — guard 56 keeps it one copy).
+  the same code the television's player uses â guard 56 keeps it one copy).
 - A redirect cannot be taken back. Once a child's browser holds a googlevideo
   URL, Google serves it for hours and a parent blocking the video mid-play is
   talking to nobody. Because the hub is in the path, `HubPolicy.mayPlay` is
@@ -656,13 +662,13 @@ choice and it is deliberate, for two separate reasons:
   zero stops a video that is already running.
 
 **One host had to be added for this to work at all.** NewPipe's player request
-— the call that turns a video id into a stream URL — goes to
+â the call that turns a video id into a stream URL â goes to
 `youtubei.googleapis.com`, which was not on this container's outbound
 allow-list, so `GET /media` answered `502 {"error":"resolve-failed"}` naming
 the refused host. Everything else the hub does reaches
 `www.youtube.com/youtubei/v1/`, which is why the crawl always worked and this
 did not. It is now one entry in `Http.HUB_HOSTS` and in guard 7's list in both
-gate scripts — named in full rather than as `googleapis.com`, which would have
+gate scripts â named in full rather than as `googleapis.com`, which would have
 admitted every Google API there is. That list is still the whole statement of
 what this box on your network may dial, and widening it stays a decision
 somebody makes on purpose.
@@ -670,7 +676,7 @@ somebody makes on purpose.
 **The ceiling: about 360p in a browser, HD in the app.** This serves the muxed
 progressive stream. HD on YouTube means separate video-only and audio-only
 tracks merged at playback, which ExoPlayer does and a plain `<video>` cannot
-without MSE or HLS. Nobody has built that here, so the honest number is 360p —
+without MSE or HLS. Nobody has built that here, so the honest number is 360p â
 and a video with no muxed stream at all is refused with a named reason
 (`no-muxed-stream`, `no-stream-length`, `age-restricted`, `resolve-failed`)
 rather than served as something that will not decode.
@@ -682,17 +688,17 @@ does. `/media` therefore has its own executor and a hard cap
 (`HubKidServer.MAX_CONCURRENT_STREAMS`); a fourth stream gets `503` with
 `Retry-After`, never a queue.
 
-**One reply carries 2 MB.** Not a throttle — a browser simply asks for the next
+**One reply carries 2 MB.** Not a throttle â a browser simply asks for the next
 span, which is how every segmented server works. It is there because
 `com.sun.net.httpserver` **does not close a fixed-length response that was
 under-written**: declare `Content-Length: 1000`, write 100 bytes, close the
 exchange, and the socket stays open until the client's own read timeout. On
 this route that would be exactly what a child sees when a parent blocks a video
-mid-play — a stopped video looking like a frozen one. Capping every reply means
+mid-play â a stopped video looking like a frozen one. Capping every reply means
 a reply is always finished, and the rules are re-asked between them.
 
-**What it costs this box.** Every byte a child watches crosses the NAS twice —
-in from Google, out to the tablet — so the uplink and the container's CPU are
+**What it costs this box.** Every byte a child watches crosses the NAS twice â
+in from Google, out to the tablet â so the uplink and the container's CPU are
 now in the playback path in a way they never were for a television. Measure
 before assuming: with the hub running,
 
@@ -702,24 +708,24 @@ curl -s -o /dev/null -w '%{speed_download} B/s  %{http_code}\n' \
   http://<nas>:8765/kid/media?v=<video id>
 ```
 
-A 360p stream needs roughly 0.5–1 Mbit/s (60–125 kB/s) sustained.
+A 360p stream needs roughly 0.5â1 Mbit/s (60â125 kB/s) sustained.
 
 Measured on a development machine (not the NAS) against a 28.5 MB muxed
-stream, 2026-09-08: **10.1–11.3 MB/s per 2 MB span** and 10.2 MB/s for the
-whole file in one reply — 80 to 90 Mbit/s, roughly a hundred times what
+stream, 2026-09-08: **10.1â11.3 MB/s per 2 MB span** and 10.2 MB/s for the
+whole file in one reply â 80 to 90 Mbit/s, roughly a hundred times what
 playback needs. With three streams in flight, `GET /health` still answered in
 under 3 ms and the admin page's `/api/state` in 26 ms. Repeat this on the NAS
 before trusting it there: that box has a slower processor and shares its uplink
 with everything else it does.
 
-## Permissions — read this if the container restarts in a loop
+## Permissions â read this if the container restarts in a loop
 
 **Symptom.** `docker ps` shows `Restarting`, and the log repeats a
 `FileNotFoundException` on `/data/devices.json.tmp` (or `config.json.tmp`)
 every few seconds, with no admin token anywhere in it.
 
 **Cause.** `/data` is a bind mount. The image creates and chowns that folder at
-build time, and the mount lands on top of all of it — so the folder's real
+build time, and the mount lands on top of all of it â so the folder's real
 ownership and mode are the host's.
 
 On a Synology shared folder this bites in a way that looks impossible. The
@@ -732,7 +738,7 @@ d---------+ 2 10001 10001 4096 /volume2/Docker/yosemite-kids/data
 Mode `000`, with a `+` marking an ACL. The owner is correct and the owner is
 still denied, because the POSIX bits grant nothing to anyone; root writes only
 because root bypasses the check. A `chown` therefore changes nothing at all,
-which is what makes the failure so confusing — the ownership already looks
+which is what makes the failure so confusing â the ownership already looks
 right.
 
 **Fix.** The container repairs this itself now: `hub/docker-entrypoint.sh`
@@ -748,7 +754,7 @@ sudo docker restart yosemite-kids-hub
 If the mode reverts to `d---------+`, the share's ACL is re-imposing it. Then
 either drop the ACL on that folder with `/usr/syno/bin/synoacltool -del`, or
 pin `user: "<your uid>:<your gid>"` in `docker-compose.yml` so the container
-runs as an account the ACL already permits — `id -u` gives you the number.
+runs as an account the ACL already permits â `id -u` gives you the number.
 Note that pinning a uid the ACL does not name will not help; running as the
 folder's owner is not enough when the mode is 000.
 
@@ -763,7 +769,7 @@ the volume, which is exactly the thing an unprivileged process cannot do.
 
 `setpriv` rather than `su` or `gosu`: it execs in place, so the JVM stays PID 1
 and receives `docker stop`'s SIGTERM directly. A forking `su` would leave the
-hub with no signal handling and a ten-second kill on every restart — and a
+hub with no signal handling and a ten-second kill on every restart â and a
 write in flight then means a truncated `config.json`, which is the file every
 device would sync *from*.
 

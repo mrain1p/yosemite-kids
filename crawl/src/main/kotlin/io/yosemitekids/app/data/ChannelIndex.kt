@@ -31,7 +31,19 @@ class ChannelIndex(private val dir: File) {
         /** Newest videoId seen (delta anchor). */
         val newestVideoId: String?,
         /** True once the crawl reached the channel's oldest video. */
-        val complete: Boolean
+        val complete: Boolean,
+        /**
+         * Set when YouTube answered the source with "does not exist", "terminated"
+         * or the like (a ContentNotAvailableException): the reason, in YouTube's
+         * words, and when. A gone source is not crawled again for a day
+         * ([IndexCrawlRun.GONE_RETRY_MS]) and is never a *failed* run - one dead
+         * channel used to fail the whole crawl and back off every other channel
+         * with it. Cleared the moment a page of it arrives. The videos already
+         * listed stay: the parent decides whether to remove the channel, and the
+         * console and the phone say so beside it.
+         */
+        val gone: String? = null,
+        val goneAt: Long = 0L
     ) {
         /** Cheap change fingerprint: count+newest catches both deltas and
          *  rebuilds. Shared by statusJson and the master's push comparison. */
@@ -190,6 +202,8 @@ class ChannelIndex(private val dir: File) {
             append && fresh.isNotEmpty() && prev?.complete == true -> false
             else -> prev?.complete ?: false
         }
+        // Built fresh rather than copied: a page that arrives is proof the
+        // source is back, so a `gone` mark does not survive it.
         states = states + (sourceId to SourceState(
             count = merged.size,
             newestVideoId = merged.firstOrNull()?.videoId ?: prev?.newestVideoId,
@@ -199,6 +213,16 @@ class ChannelIndex(private val dir: File) {
     }
 
     fun state(sourceId: String): SourceState? = states[sourceId]
+
+    /**
+     * YouTube refused this source outright. Kept beside the crawl state so the
+     * run loop skips it and every face can say why. Whatever was indexed stays.
+     */
+    fun markGone(sourceId: String, reason: String, at: Long) {
+        val prev = states[sourceId] ?: SourceState(count = 0, newestVideoId = null, complete = false)
+        states = states + (sourceId to prev.copy(gone = reason.take(160), goneAt = at))
+        saveManifest()
+    }
     fun allStates(): Map<String, SourceState> = states
 
     // ---- manifest + LAN sync ----------------------------------------------
@@ -211,7 +235,9 @@ class ChannelIndex(private val dir: File) {
             SourceState(
                 count = s.optInt("count", 0),
                 newestVideoId = s.optString("newest").ifEmpty { null },
-                complete = s.optBoolean("complete", false)
+                complete = s.optBoolean("complete", false),
+                gone = s.optString("gone").ifEmpty { null },
+                goneAt = s.optLong("goneAt", 0L)
             )
         }
     }.getOrDefault(emptyMap())
@@ -224,6 +250,7 @@ class ChannelIndex(private val dir: File) {
                 put("count", s.count)
                 s.newestVideoId?.let { put("newest", it) }
                 put("complete", s.complete)
+                s.gone?.let { put("gone", it); put("goneAt", s.goneAt) }
             })
         }
         manifestFile.writeText(o.toString())
@@ -320,7 +347,9 @@ class ChannelIndex(private val dir: File) {
             SourceState(
                 count = head.optInt("count", 0),
                 newestVideoId = head.optString("newest").ifEmpty { null },
-                complete = head.optBoolean("complete", false)
+                complete = head.optBoolean("complete", false),
+                gone = head.optString("gone").ifEmpty { null },
+                goneAt = head.optLong("goneAt", 0L)
             )
         )
         return true

@@ -161,6 +161,23 @@ object HubWeb {
                 .put("sources", config.sources.size)
                 .put("complete", config.sources.count { states[it.id]?.complete == true })
                 .put("videos", config.sources.sumOf { states[it.id]?.count ?: 0 })
+                // Channels YouTube refused outright, in YouTube's words, so the
+                // Channels page can say so beside the row and the Devices page
+                // can list them. The videos already indexed stay until the parent
+                // removes the channel; that is their call, not the crawl's.
+                .put(
+                    "gone",
+                    JSONArray().also { arr ->
+                        config.sources.forEach { e ->
+                            val s = states[e.id] ?: return@forEach
+                            val why = s.gone ?: return@forEach
+                            arr.put(
+                                JSONObject().put("id", e.id).put("name", e.label ?: e.id)
+                                    .put("reason", why).put("at", s.goneAt)
+                            )
+                        }
+                    }
+                )
                 .put(
                     "lastRun",
                     lastRun?.let { r -> JSONObject().put("at", r.atMillis).put("pages", r.pages).put("failed", r.failed) }

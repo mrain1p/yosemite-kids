@@ -7,6 +7,7 @@ import io.yosemitekids.app.data.SourceKind
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -115,5 +116,52 @@ class IndexCrawlRunTest {
         assertEquals(1, onePage.failures)
         assertFalse(onePage.failed)
         assertFalse(index.lastRunInfo()!!.failed)
+    }
+
+    @Test
+    fun `a source YouTube says is gone is marked, is not a failure, and is left alone for a day`() = runBlocking {
+        val index = newIndex()
+        val gone = mutableListOf<String>()
+        val failed = mutableListOf<Throwable>()
+        var t = 1_000_000L
+        val outcome = IndexCrawlRun.run(
+            index, listOf(source("dead"), source("b")),
+            crawlOnce = { s ->
+                if (s.id == "dead") throw org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException("Got error: \"The playlist does not exist.\"")
+                else false
+            },
+            onFailure = { failed += it }, onGone = { s, why -> gone += "${s.id}: $why" },
+            delayMs = 0, now = { t }
+        )
+        assertEquals(listOf("dead: The playlist does not exist."), gone)
+        assertTrue("YouTube's verdict is not this box's failure", failed.isEmpty())
+        assertEquals(0, outcome.failures)
+        assertEquals(1, outcome.gone)
+        assertFalse("one dead channel must not back the whole crawl off", outcome.failed)
+        assertEquals("index crawl: 0 pages this run, 0/2 sources complete, 1 gone from YouTube", outcome.summary)
+        assertEquals("The playlist does not exist.", index.state("dead")!!.gone)
+        assertEquals(1_000_000L, index.state("dead")!!.goneAt)
+
+        // The next run does not even ask for it...
+        val asked = mutableListOf<String>()
+        t += 60 * 60_000L
+        IndexCrawlRun.run(index, listOf(source("dead"), source("b")), crawlOnce = { asked += it.id; false }, delayMs = 0, now = { t })
+        assertEquals(listOf("b"), asked)
+        // ...until a day has passed, and a page arriving clears the mark.
+        t += IndexCrawlRun.GONE_RETRY_MS
+        asked.clear()
+        IndexCrawlRun.run(
+            index, listOf(source("dead"), source("b")),
+            crawlOnce = { s -> asked += s.id; if (s.id == "dead") index.addVideos("dead", vids("dead", "d1"), complete = true); false },
+            delayMs = 0, now = { t }
+        )
+        assertEquals(listOf("dead", "b"), asked)
+        assertNull("a page arrived: the channel is back", index.state("dead")!!.gone)
+        // And the mark survives the manifest round trip, in YouTube's words.
+        index.markGone("b", "This channel was terminated.", t)
+        assertEquals("This channel was terminated.", ChannelIndex(File(tmp.root, "search-index")).state("b")!!.gone)
+        // A wrapped cause is still YouTube's verdict; anything else is not.
+        assertEquals("gone", IndexCrawlRun.goneReason(RuntimeException("x", org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException("gone"))))
+        assertNull(IndexCrawlRun.goneReason(java.io.IOException("timed out")))
     }
 }

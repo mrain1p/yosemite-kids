@@ -98,7 +98,11 @@ class HubCrawl(
             IndexCrawlRun.run(
                 index, sources, crawlOnce,
                 onFailure = { System.err.println("index crawl failed: ${it.message}") },
-                delayMs = pacingMs
+                delayMs = pacingMs,
+                // Once, when it happens, in the log a parent reads after the fact;
+                // the console says it beside the channel for as long as it lasts.
+                onGone = { s, why -> println("index crawl: ${s.name} (${s.id}) is gone from YouTube: $why") },
+                now = now
             )
         }
         if (outcome.failed) {
