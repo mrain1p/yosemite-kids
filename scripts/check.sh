@@ -1208,6 +1208,8 @@ grep -qE "^const val HOME_PINS_MAX = Pins[.]MAX$" core/src/main/kotlin/io/yosemi
 #         authority this guard exists to prevent.
 grep -qF "Pins.withRow" hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt ||
   guard_fail "HubWeb no longer runs an incoming home patch through Pins.withRow, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedPins."
+grep -qF "pins = normalisedPins(current, next)" hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt ||
+  guard_fail "HubWeb's home patch no longer stores normalisedPins(current, next): the cards land as the browser sent them instead of being re-minted through Pins.withRow. Having the function in the file is not the same as calling it on the patch."
 
 # 43. One spelling of a family day.
 #     A day is a bucket key, and a value put in one bucket and read out of
@@ -1509,7 +1511,7 @@ grep -q "PlayerDismiss" app/src/test/java/io/yosemitekids/app/PlayerDismissTest.
 chunker=crawl/src/main/kotlin/io/yosemitekids/app/data/StreamChunker.kt
 [ -f "$chunker" ] ||
   guard_fail "$chunker is gone; guard 56 is blind. The shared range arithmetic lives there so :app and :hub run one copy of it."
-chunker_decls=$(grep -rl "object StreamChunker" --include=*.kt app/src/main core/src/main crawl/src/main hub/src/main | sort | tr "\n" " " || true)
+chunker_decls=$(grep -rn "object StreamChunker" --include=*.kt app/src/main core/src/main crawl/src/main hub/src/main | cut -d: -f1 | sort | tr "\n" " " || true)
 [ "$chunker_decls" = "$chunker " ] ||
   guard_fail "guard 56 wanted exactly one 'object StreamChunker', in $chunker, and found: ${chunker_decls:-none}. The television and the hub translate a position into a URL the same way or they do not; move it back and let both import it."
 #     (b) Nothing else builds a range= query by hand.
@@ -2107,6 +2109,8 @@ $row_new"
 #         same list: the hub's kid page and the phone through homeRowsFor.
 grep -qF "HomeRows.withOrder" hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt ||
   guard_fail "HubWeb no longer runs an incoming home patch through HomeRows.withOrder, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedRows."
+grep -qF "homeRows = normalisedRows(current, next)" hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt ||
+  guard_fail "HubWeb's home patch no longer stores normalisedRows(current, next): the rows land as the browser sent them, ranks and all, instead of being re-minted through HomeRows.withOrder. Having the function in the file is not the same as calling it on the patch."
 grep -qF "homeRowsFor(" hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt ||
   guard_fail "HubKidHome no longer reads the parent's arrangement (Whitelist.homeRowsFor). The browser would draw the default while the television draws what the parent saved."
 grep -qF "homeRowsFor(" app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt ||

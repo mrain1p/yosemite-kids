@@ -1355,6 +1355,9 @@ $hubWeb40 = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt" -Raw
 if (-not $hubWeb40.Contains("Pins.withRow")) {
     Fail-Guard "HubWeb no longer runs an incoming home patch through Pins.withRow, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedPins."
 }
+if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt" -Raw).Contains("pins = normalisedPins(current, next)")) {
+    Fail-Guard "HubWeb's home patch no longer stores normalisedPins(current, next): the cards land as the browser sent them instead of being re-minted through Pins.withRow. Having the function in the file is not the same as calling it on the patch."
+}
 
 # 43. One spelling of a family day.
 #     A day is a bucket key, and a value put in one bucket and read out of
@@ -1746,8 +1749,13 @@ if (-not (Test-Path $chunkerSrc)) {
 }
 $chunkerMain = @("app/src/main", "core/src/main", "crawl/src/main", "hub/src/main")
 $chunkerDecls = @(Get-ChildItem -Recurse -Filter *.kt $chunkerMain |
-    Where-Object { (Get-Content $_.FullName -Raw) -match 'object StreamChunker' } |
-    ForEach-Object { $_.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/") } | Sort-Object)
+    ForEach-Object {
+        # One entry per DECLARATION, not per file: a second copy pasted into
+        # the same file is the drift too.
+        $rel = $_.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/")
+        $n = ([regex]::Matches((Get-Content $_.FullName -Raw), 'object StreamChunker')).Count
+        for ($i = 0; $i -lt $n; $i++) { $rel }
+    } | Sort-Object)
 if ($chunkerDecls.Count -ne 1 -or $chunkerDecls[0] -ne $chunkerSrc) {
     Fail-Guard "guard 56 wanted exactly one 'object StreamChunker', in $chunkerSrc, and found: $(if ($chunkerDecls.Count) { $chunkerDecls -join ', ' } else { 'none' }). The television and the hub translate a position into a URL the same way or they do not; move it back and let both import it."
 }
@@ -2376,6 +2384,9 @@ if ($rowNew.Count -gt 0) {
 }
 if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt" -Raw).Contains("HomeRows.withOrder")) {
     Fail-Guard "HubWeb no longer runs an incoming home patch through HomeRows.withOrder, so whatever ranks a browser sent are what the family gets. See HubWeb.normalisedRows."
+}
+if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt" -Raw).Contains("homeRows = normalisedRows(current, next)")) {
+    Fail-Guard "HubWeb's home patch no longer stores normalisedRows(current, next): the rows land as the browser sent them, ranks and all, instead of being re-minted through HomeRows.withOrder. Having the function in the file is not the same as calling it on the patch."
 }
 if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt" -Raw).Contains("homeRowsFor(")) {
     Fail-Guard "HubKidHome no longer reads the parent's arrangement (Whitelist.homeRowsFor). The browser would draw the default while the television draws what the parent saved."
