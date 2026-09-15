@@ -99,6 +99,15 @@ data class UiState(
      * chose the "By playlist" layout and the channel has any. Empty otherwise.
      */
     val channelPlaylists: List<io.yosemitekids.app.data.PlaylistRef> = emptyList(),
+    /**
+     * True from opening a channel until its playlist listing has answered,
+     * either way. The row above the grid arrives a second after the page
+     * paints, and a slot that is sometimes there reads as breakage (roadmap
+     * 8C.2) - so while this is true the page draws the row's skeleton in the
+     * row's own keys, and the real strip lands in a place that was already
+     * there instead of pushing the grid down.
+     */
+    val channelPlaylistsPending: Boolean = false,
     /** The parent-picked playlists of the open channel, each with its first videos, as rows above the grid. */
     val playlistShelves: List<PlaylistShelf> = emptyList(),
     /** The You tab's rows (empty shelves are left out). */

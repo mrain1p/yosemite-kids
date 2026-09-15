@@ -896,10 +896,15 @@ fun YosemiteScreen(
                                     // one reads as the app being broken.
                                     onSurprise = { vm.surpriseMe(source) }
                                 )
-                                // What's new first — that is what a kid came for.
-                                if (fresh.size >= 3) {
-                                    newForYouRow(fresh, isTv, { s.channelAvatars[it] }, onPlay) { feedMenuFor = it }
-                                }
+                                // What's new first — that is what a kid came for. The slot is
+                                // always there (roadmap 8C.2): two new videos are a short row,
+                                // none is a line saying so, and "still loading" is a skeleton in
+                                // the keys the real row takes. A rail that comes and goes reads
+                                // as the app being broken.
+                                newForYouRow(
+                                    fresh, isTv, { s.channelAvatars[it] }, onPlay,
+                                    loading = s.loading && s.videos.isEmpty()
+                                ) { feedMenuFor = it }
                                 // Then how the channel organises itself: the strip
                                 // of playlists, "See all" for the full list with
                                 // counts, and the first few opened out as rows.
@@ -908,6 +913,10 @@ fun YosemiteScreen(
                                         s.channelPlaylists, isTv, vm::openPlaylist, channelName,
                                         onSeeAll = vm::openPlaylists
                                     )
+                                } else if (s.channelPlaylistsPending) {
+                                    // Same keys as the real strip: it arrives a second after the
+                                    // page paints and must land in a slot that was already there.
+                                    playlistRowPending(isTv)
                                 }
                                 playlistShelves(
                                     s.playlistShelves, isTv, { s.channelAvatars[it] },

@@ -684,8 +684,11 @@ mapping and its environment line come out of the NAS compose file.
    playlist rows arriving after the paint. Gated on `DragInteraction.Start`,
    which is the only signal separating the child scrolling from the app
    scrolling.
-2. **"Something is missing" on a channel page.** The other half of the same
-   week-one report and still open. `YosemiteScreen.kt:900` draws New-for-you
+2. ~~**"Something is missing" on a channel page.**~~ **Done in 1.9.0**: the
+   New-for-you slot is always drawn (a short row, a line saying there is
+   nothing new, or a skeleton while loading) and the playlist strip has a
+   skeleton in its own keys until the listing answers; guard 71 holds both.
+   Was: the other half of the same week-one report and still open. `YosemiteScreen.kt:900` draws New-for-you
    only `if (fresh.size >= 3)` and `:906` draws Playlists only when non-empty,
    so a channel with two unwatched videos renders as block-then-Videos and
    looks half-built. A rail that is sometimes there reads as breakage. Any

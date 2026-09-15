@@ -2398,6 +2398,42 @@ if (-not (Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt" -R
     Fail-Guard "HubKidHome titles a shelf with words of its own. homeShelfTitle in :core is the one spelling; a second is a shelf called two things on two faces."
 }
 
+# 71. The channel page's rails hold their slot.
+#     Reported by the family as "something is missing": New for you appeared
+#     only with three or more new videos and the playlist strip only once it
+#     had loaded, so a channel with two new videos looked half-built and the
+#     strip pushed the grid down a second after the page painted. The rule
+#     (roadmap 8C.2): a rail's placeholder occupies the slot AND the keys the
+#     real row will take, so nothing below moves when it lands.
+$rails = "app/src/main/java/io/yosemitekids/app/ui/PlaylistShelves.kt"
+$railpage = "app/src/main/java/io/yosemitekids/app/ui/YosemiteScreen.kt"
+if (-not (Test-Path $rails) -or -not (Test-Path $railpage)) {
+    Fail-Guard "PlaylistShelves.kt or YosemiteScreen.kt is gone; guard 71 is blind."
+}
+$railsText = Get-Content $rails -Raw
+#     (a) The pending strip uses the real strip's keys, both of them.
+foreach ($k in @("pl:title", "pl:row")) {
+    $n = ([regex]::Matches($railsText, [regex]::Escape("key = `"$k`""))).Count
+    if ($n -ne 2) {
+        Fail-Guard "guard 71 wanted key `"$k`" twice in $rails (the real playlist strip and its pending placeholder) and found $n. A placeholder in different keys pushes the grid down when the real row lands."
+    }
+}
+#     (b) New for you never returns early on an empty list: the slot is drawn.
+$nfy = [regex]::Match($railsText, '(?s)fun LazyGridScope\.newForYouRow\(.*?\r?\n\}\r?\n').Value
+if (-not $nfy) { Fail-Guard "newForYouRow is gone from $rails; guard 71 is blind." }
+if ($nfy.Contains("isEmpty()) return")) {
+    Fail-Guard "newForYouRow returns early on an empty list. The slot is always drawn - a short row, a line saying there is nothing new, or a skeleton - because a rail that comes and goes reads as breakage."
+}
+#     (c) The page does not gate the rail on a count, and draws the pending strip.
+$pageText = Get-Content $railpage -Raw
+if ($pageText -match 'if \(fresh\.size (>=|>) [0-9]') {
+    Fail-Guard "YosemiteScreen gates New for you on a count of new videos again. Two new videos are a short row, not a missing rail."
+}
+if (-not $pageText.Contains("playlistRowPending(")) {
+    Fail-Guard "YosemiteScreen no longer draws playlistRowPending while the strip loads, so the strip lands a second after the paint in a slot that was not there."
+}
+
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

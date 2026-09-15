@@ -1547,7 +1547,8 @@ class MainViewModel(
         _state.value = _state.value.copy(
             screen = Screen.ChannelVideos(source), loading = true, videos = emptyList(),
             held = 0, error = null, channelWatched = emptyList(), watchedTileAt = null,
-            channelPlaylists = emptyList(), playlistShelves = emptyList(), scrollTo = 0
+            channelPlaylists = emptyList(), playlistShelves = emptyList(), scrollTo = 0,
+            channelPlaylistsPending = source.kind == SourceKind.CHANNEL
         )
         feedHandle = null
         uploadsNextPage = null
@@ -1556,7 +1557,13 @@ class MainViewModel(
         // then the first few (pinned ones first) as rows.
         if (source.kind == SourceKind.CHANNEL) {
             launch {
-                val refs = loadPlaylistRow(source) ?: return@launch
+                val refs = loadPlaylistRow(source)
+                // Answered either way: the skeleton row makes way for the real
+                // strip, or for nothing. Only while this is still the open page.
+                if ((_state.value.screen as? Screen.ChannelVideos)?.source?.id == source.id) {
+                    _state.value = _state.value.copy(channelPlaylistsPending = false)
+                }
+                if (refs == null) return@launch
                 val ids = (playlistPicks[source.url].orEmpty() + refs.map { it.id }).distinct()
                 loadPlaylistShelves(source, ids, refs)
             }

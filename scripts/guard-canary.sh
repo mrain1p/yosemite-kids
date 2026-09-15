@@ -201,6 +201,7 @@ APP=app/src/main/java/io/yosemitekids/app/YosemiteKidsApp.kt
 SETTINGS=core/src/main/kotlin/io/yosemitekids/app/data/SettingsSurface.kt
 KIDSURF=core/src/main/kotlin/io/yosemitekids/app/ui/KidSurface.kt
 HUBWEB=hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt
+RAILS=app/src/main/java/io/yosemitekids/app/ui/PlaylistShelves.kt
 # Built from parts so the doc-path guard in check.sh does not look for a plan
 # file that exists only for the length of one canary run.
 PLANFILE=docs/PLAN-canary
@@ -326,7 +327,12 @@ canary 70 "$HUBWEB" \
 canary 69 "$SETTINGS" \
   "a setting the browser claims to honour and the hub never reads" \
   "nothing in HubKidHome or HubKidServer reads" \
-  'sed -i "s/honouredBy = listOf(FACE_PHONE, FACE_TV),/honouredBy = KID_FACES,/" "$SETTINGS"'
+  'sed -i "s/writes = \"sponsorSkip\"/writes = \"sponsorSkip\", honouredBy = KID_FACES/" "$SETTINGS"'
+
+canary 71 "$RAILS" \
+  "the playlist strip's placeholder in keys of its own" \
+  "wanted key" \
+  'sed -i "0,/key = \"pl:row\"/s//key = \"plc:row\"/" "$RAILS"'
 
 echo
 if [ "$failed" -gt 0 ]; then

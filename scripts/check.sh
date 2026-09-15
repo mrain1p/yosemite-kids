@@ -2120,6 +2120,36 @@ grep -qF "homeRowsFor(" app/src/main/java/io/yosemitekids/app/ui/MainViewModel.k
 grep -qF "homeShelfTitle" hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt ||
   guard_fail "HubKidHome titles a shelf with words of its own. homeShelfTitle in :core is the one spelling; a second is a shelf called two things on two faces."
 
+
+# 71. The channel page's rails hold their slot.
+#     Reported by the family as "something is missing": New for you appeared
+#     only with three or more new videos and the playlist strip only once it
+#     had loaded, so a channel with two new videos looked half-built and the
+#     strip pushed the grid down a second after the page painted. The rule
+#     (roadmap 8C.2): a rail's placeholder occupies the slot AND the keys the
+#     real row will take, so nothing below moves when it lands.
+rails=app/src/main/java/io/yosemitekids/app/ui/PlaylistShelves.kt
+railpage=app/src/main/java/io/yosemitekids/app/ui/YosemiteScreen.kt
+[ -f "$rails" ] && [ -f "$railpage" ] ||
+  guard_fail "PlaylistShelves.kt or YosemiteScreen.kt is gone; guard 71 is blind."
+#     (a) The pending strip uses the real strip's keys, both of them.
+for k in "pl:title" "pl:row"; do
+  n=$(grep -cF "key = \"$k\"" "$rails" || true)
+  [ "$n" = 2 ] ||
+    guard_fail "guard 71 wanted key \"$k\" twice in $rails (the real playlist strip and its pending placeholder) and found $n. A placeholder in different keys pushes the grid down when the real row lands."
+done
+#     (b) New for you never returns early on an empty list: the slot is drawn.
+nfy=$(awk '/fun LazyGridScope.newForYouRow\(/ { f = 1 } f { print } f && /^}$/ { exit }' "$rails")
+[ -n "$nfy" ] ||
+  guard_fail "newForYouRow is gone from $rails; guard 71 is blind."
+grep -q "isEmpty()) return" <<<"$nfy" &&
+  guard_fail "newForYouRow returns early on an empty list. The slot is always drawn - a short row, a line saying there is nothing new, or a skeleton - because a rail that comes and goes reads as breakage."
+#     (c) The page does not gate the rail on a count, and draws the pending strip.
+grep -qE "if \(fresh\.size (>=|>) [0-9]" "$railpage" &&
+  guard_fail "YosemiteScreen gates New for you on a count of new videos again. Two new videos are a short row, not a missing rail."
+grep -q "playlistRowPending(" "$railpage" ||
+  guard_fail "YosemiteScreen no longer draws playlistRowPending while the strip loads, so the strip lands a second after the paint in a slot that was not there."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 
