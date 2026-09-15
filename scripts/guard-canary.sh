@@ -66,7 +66,11 @@ fi
 # both were fine - and it is the worst failure this script can have, because
 # the conclusion "your guard does not work" is the one thing it exists to say
 # and the one thing nobody double-checks.
-LOCK=.git/yosemite-guard-canary.lock
+# Through git rather than a literal .git/: in a worktree .git is a FILE that
+# points at the real directory, and a lock that cannot be created reads as
+# "another canary is running" - which is exactly what happened the first
+# time this ran in one.
+LOCK="$(git rev-parse --git-dir)/yosemite-guard-canary.lock"
 if ! (set -o noclobber; echo "$$" > "$LOCK") 2>/dev/null; then
   echo "${RED}another guard-canary is already running${OFF} (pid $(cat "$LOCK" 2>/dev/null))." >&2
   echo "Two instances mutate and restore the same files and report working guards as blind." >&2
