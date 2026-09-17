@@ -594,9 +594,13 @@
     if (!seconds || seconds < 1) return "";
     var m = Math.floor(seconds / 60);
     var s = Math.floor(seconds % 60);
-    if (m < 60) return m + ":" + (s < 10 ? "0" : "") + s;
-    var h = Math.floor(m / 60);
-    return h + ":" + ((m % 60) < 10 ? "0" : "") + (m % 60);
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    if (m < 60) return m + ":" + pad(s);
+    // The seconds stay on past an hour. They used to be dropped here, so a
+    // 1:05:30 video read "1:05" in a browser and "1:05:30" on the phone beside
+    // it - the same video, two lengths. formatClock in Theme.kt is the shape
+    // this follows, and moving both onto one function in :core is §9C's work.
+    return Math.floor(m / 60) + ":" + pad(m % 60) + ":" + pad(s);
   }
 
   // --- cards -----------------------------------------------------------

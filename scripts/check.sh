@@ -172,7 +172,9 @@ fi
 
 # A doc path named in source is a promise. Renaming the doc leaves the
 # pointer behind, and the place it is read is a container log at 3am.
-for d in $(grep -rhoE 'docs/[A-Za-z0-9_.-]+[.]md' app/src core/src crawl/src hub/src scripts 2>/dev/null | sort -u); do
+# --exclude-dir: scripts/smoke installs Playwright under node_modules, whose
+# own docs and error strings are not this repo's promises.
+for d in $(grep -rhoE --exclude-dir=node_modules 'docs/[A-Za-z0-9_.-]+[.]md' app/src core/src crawl/src hub/src scripts 2>/dev/null | sort -u); do
   [ -f "$d" ] || guard_fail "source points at $d, which does not exist."
 done
 
@@ -357,7 +359,7 @@ if [ -f "$roadmap" ]; then
     case "$k" in
       path) [ -e "$a" ] || ls "$a" >/dev/null 2>&1 ||
         guard_fail "ROADMAP.md item$item cites $a, which no longer exists. Is that item done? Delete it and its anchor row." ;;
-      code) grep -rqF "$a" app/src core/src crawl/src hub/src scripts 2>/dev/null ||
+      code) grep -rqF --exclude-dir=node_modules "$a" app/src core/src crawl/src hub/src scripts 2>/dev/null ||
         guard_fail "ROADMAP.md item$item cites \`$a\`, which is gone from the codebase. Is that item done? Delete it and its anchor row." ;;
     esac
   done < <(grep -E "^\| §" "$roadmap" || true)
@@ -468,7 +470,7 @@ done
 #     what a device does; a route added to LanServer.handle and not to the
 #     table exists for nobody but its author. /join-hub and /leave-hub had
 #     been missing for a whole round before this guard existed.
-for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z-]+' | sort -u); do
+for r in $(grep -oE 'path == "/[a-z0-9._-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z0-9._-]+' | sort -u); do
   grep -qE "(GET|POST) $r[^a-z-]" docs/LAN-API.md ||
     guard_fail "LanServer answers $r and docs/LAN-API.md has no row for it. Add it to the route table."
 done
@@ -596,7 +598,7 @@ fi
 hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 device_only=$(sed -n '/val DEVICE_ONLY = setOf(/,/)$/p' "$hubsrv")
 [ -n "$device_only" ] || guard_fail "HubServer.kt declares no DEVICE_ONLY set; guard 22 is blind."
-for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z-]+' | sort -u); do
+for r in $(grep -oE 'path == "/[a-z0-9._-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z0-9._-]+' | sort -u); do
   if grep -qF "createContext(${q}$r${q})" "$hubsrv"; then continue; fi
   grep -qF "${q}$r${q}" <<<"$device_only" ||
     guard_fail "LanServer answers $r and the hub neither implements it nor names it in HubServer.DEVICE_ONLY — its catch-all would hand a device the admin page with a 200."
@@ -868,7 +870,7 @@ done
 #     passes every other check here, and is invisible from outside unless
 #     someone thinks to call the route with no token.
 hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
-for r in $(grep -oE 'path == "/[a-z-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z-]+' | sort -u); do
+for r in $(grep -oE 'path == "/[a-z0-9._-]+"' app/src/main/java/io/yosemitekids/app/data/Pairing.kt | grep -oE '/[a-z0-9._-]+' | sort -u); do
   reg=$(grep -F "createContext(${q}$r${q})" "$hubsrv" || true)
   [ -n "$reg" ] || continue
   fn=$(printf "%s" "$reg" | sed -nE "s/.*guarded\(ex\) \{ ([a-zA-Z]+)\(ex\).*/\1/p")
@@ -900,7 +902,9 @@ hubsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 hubdoc=$(awk '/^## The hub.s routes/ { f = 1 } f && /^[|] / { print }' docs/LAN-API.md)
 [ -n "$hubdoc" ] ||
   guard_fail "docs/LAN-API.md has no \"## The hub's routes\" heading with a route table under it; guard 30 is blind."
-hub_routes=$(grep -oE "createContext\(${q}/[a-z/-]*${q}" "$hubsrv" | grep -oE "/[a-z/-]*" | sort -u || true)
+# Digits and dots included: /kid-tokens.css, /sw.js and the icon routes are
+# registered too, and the old class saw none of them - 18 of ~24 routes.
+hub_routes=$(grep -oE "createContext\(${q}/[a-z0-9._/-]*${q}" "$hubsrv" | grep -oE "/[a-z0-9._/-]*" | sort -u || true)
 [ -n "$hub_routes" ] ||
   guard_fail "guard 30 read no createContext(${q}/…${q}) routes out of $hubsrv; it is blind."
 for r in $hub_routes; do
@@ -1675,7 +1679,7 @@ for fn in whoami media home channel search progress thumb report list you playli
   grep -q "watching(ex)" <<<"$body" ||
     guard_fail "$fn() in $kidsrv does not call watching(ex). Every kid route that says anything about the family resolves the kid cookie first and fails closed to the sign-in screen."
 done
-kid_from_query=$(grep -rnE "kidIn\(|&\)?kid=" hub/src/main --include=*.kt || true)
+kid_from_query=$(grep -rnE "kidIn\(|[?&]kid=" hub/src/main --include=*.kt || true)
 [ -z "$kid_from_query" ] ||
   guard_fail "the kid is parsed out of a request:
 $kid_from_query

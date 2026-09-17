@@ -130,3 +130,31 @@ dependencies {
 tasks.test {
     useJUnit()
 }
+
+/**
+ * A hub with a family in it, on a port, for the browser smoke test
+ * (`scripts/smoke/smoke.mjs`).
+ *
+ * From the TEST classpath on purpose. `SmokeHub` builds the same `HubServer`
+ * the image runs with the election and the crawl left null - the two things
+ * `Main` wires that reach YouTube - so a check that runs on every push never
+ * touches the network, and no environment variable exists in production that
+ * could start a hub with its rules half-wired.
+ *
+ *     gradlew :hub:smokeHub -PsmokePort=18765
+ */
+val smokeHub by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Start a seeded hub for the browser smoke test (no network)."
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("io.yosemitekids.hub.SmokeHub")
+    argumentProviders.add(
+        CommandLineArgumentProvider {
+            listOf(
+                layout.buildDirectory.dir("smoke-hub").get().asFile.absolutePath,
+                (project.findProperty("smokePort") as String? ?: "0")
+            )
+        }
+    )
+}

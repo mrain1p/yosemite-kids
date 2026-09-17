@@ -114,6 +114,28 @@ Wireless debugging (Developer options on the phone/TV) makes `adb install -r`
 the whole deploy — no Downloader app, no APK copying. The TV shows up in
 `adb devices -l` on its own once enabled; see CLAUDE.md for the quirks.
 
+## The kid page in a browser
+
+Two page-level defects shipped in a fortnight and nothing in the repo could
+have caught either: a playlist strip whose one insert missed its anchor, and a
+player that sat at 144p with a full buffer. Guard 61 lints that page and
+`HubWebTest` tests the shape of what it sends; only a browser runs it.
+
+```bash
+./gradlew :hub:smokeHub -PsmokePort=18765 &     # a seeded hub, no network
+cd scripts/smoke && npm install && npx playwright install chromium
+node smoke.mjs http://127.0.0.1:18765 ada00001 otter sam0000000a
+```
+
+`SmokeHub` (in `hub/src/test`) builds the same `HubServer` the image runs with
+the election and the crawl left null - the two things `Main` wires that reach
+YouTube - and seeds two children, one channel only the older may see, and a
+handful of videos. The walk signs in with a kid's password, checks that the
+home, channels, a channel page, You and search all draw cards, and then asks
+for the video this child may not see: it must be refused `403` with a policy
+reason, because a `502` would mean the gate let it through and the hub went
+looking for a stream. CI runs the same three commands on every push.
+
 ## Icons, banner, store assets
 
 The launcher icon is adaptive (`drawable/ic_launcher_foreground.xml` on

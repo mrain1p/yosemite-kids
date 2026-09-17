@@ -53,10 +53,18 @@ const page = await browser.newPage({ viewport: { width: 420, height: 900 } });
 // A page error is a failure even if every assertion below passes: the page is
 // written to report its own errors, and a silent one is the class of defect
 // this file exists for.
+// A thrown exception, or a console error the page itself wrote. NOT a
+// resource that failed to load: this hub has no network on purpose, so every
+// poster 502s, the pre-sign-in fetch 401s and the gate probe below 403s —
+// all of which are the hub answering correctly and the page handling it.
+// Filtering those is what leaves this check meaning "the page broke".
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
 page.on("console", (m) => {
-  if (m.type() === "error") pageErrors.push(m.text());
+  if (m.type() !== "error") return;
+  const text = m.text();
+  if (text.includes("Failed to load resource")) return;
+  pageErrors.push(text);
 });
 
 try {

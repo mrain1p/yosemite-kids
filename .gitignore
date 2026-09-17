@@ -21,3 +21,6 @@ scripts/seed-config.real.json
 
 # Isolated worktrees the orchestrator creates for parallel agents; never part of the tree.
 .claude/worktrees/
+
+# The browser smoke test installs Playwright here; the lock file is kept.
+scripts/smoke/node_modules/

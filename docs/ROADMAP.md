@@ -78,7 +78,7 @@ samples), and until then treat those numbers as inherited rather than observed.
 1.10.0**: `LanService`, a foreground service the activity starts on a television
 only, holds the process and rebuilds the server from `buildLanServer` if the
 system restarts it; the wiring moved out of `MainActivity` into `LanServers.kt`.
-**Untested on a real television** - that is Â§9F's evening, not an open design.
+**Untested on a real television** - that is §9F's evening, not an open design.
 
 *To review when A is built: should the device hold the connection open instead?*
 Rather than the hub nudging a device it may not be able to reach, the device
@@ -339,8 +339,12 @@ are regressions from the revamp and outrank the rest.**
 
 **Chrome.**
 
-- **The chip row clips its last item.** On You, "Up next" is cut off mid-word;
-  the owner reports the same on Search, wanting all four visible.
+- ~~**The chip row clips its last item.**~~ Done, and confirmed by reading both:
+  the You strip and the search order chips are `FlowRow`s that wrap, with the
+  reason written beside the You one — a fixed, small set of the kid's own
+  shelves must not hide its last member off an edge with nothing to say it is
+  there. The blocked-window pills still scroll, deliberately: that row can grow
+  without bound and wrapping it would push the page down.
 - **Swipe the now-playing video down into the floating player**, the way
   YouTube does. PiP already exists and the button is on the overlay; this is
   the gesture, not the feature.
@@ -923,7 +927,8 @@ size — and the phases below reordered where a finding demands it.
 - **Home-load failure honesty.** `loadHome()` in `kid.html` sends a signed-in
   child to the sign-in screen when the hub does not answer; only a 401 should.
   The page should say the hub did not answer and try again.
-- **The chip row clips its last item** on You and Search (§2L), from the phone.
+- ~~**The chip row clips its last item** on You and Search (§2L).~~ Already done:
+  both are wrapping `FlowRow`s. The roadmap had not caught up.
 - **Upstream sync first**, per the house rule; the last was 2026-09-14.
 - A release when this lands, because the fixes are kid-visible.
 
@@ -1068,15 +1073,16 @@ row below is one half of something already right.
     to the bash gate, and guard 65 reads bash's headings — so the only gate that
     runs on Windows, and the one the author runs before committing, is the half
     with no canary.
-13. **Guards 14, 22, 29 and 30 cannot see a route with a digit or a dot.** This
+13. ✅ **Guards 14, 22, 29 and 30 cannot see a route with a digit or a dot.** This
     is the exact regex class that made guard 57 fail open once; the lesson was
     applied to 57 alone. Guard 30 additionally misses every asset route,
     including the stylesheet another guard requires.
 14. **Guard 60's handler list has drifted** — two routes that answer with the
     family's catalogue are unchecked — and its query-parameter clause is
-    mistyped identically in both scripts, so it catches `&kid=` and misses
-    `?kid=`, which is how a first parameter is written. A shared typo is
-    invisible to the mirror check and to the canary.
+    mistyped identically in both scripts, so it caught `&kid=` and missed
+    `?kid=`, which is how a first parameter is written — ✅ fixed; a shared typo
+    is invisible to the mirror check and to the canary, which is the reason the
+    handler list should be derived from guard 57's rather than hand-kept.
 15. **Guard 62(d) enforces nothing**: twenty-four recursive greps whose result is
     discarded, reading in the file as a clause.
 16. **~18 checks carry no number**, so they are in no index, exempt from the

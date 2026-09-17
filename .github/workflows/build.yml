@@ -90,10 +90,38 @@ jobs:
       - name: Worker tests
         run: node --test worker/test/*.test.mjs
 
+      # The two page-level defects that shipped in a fortnight - a strip that
+      # never drew, a player that sat at 144p - were both invisible to every
+      # guard and every route test, because only a browser runs the page.
+      # This signs in as a child does and walks the four screens they use.
+      # The hub it drives is SmokeHub: the same HubServer with the election
+      # and the crawl left null, so nothing here reaches YouTube.
+      - name: Install the browser for the page smoke test
+        working-directory: scripts/smoke
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Kid page smoke test
+        run: |
+          ./gradlew :hub:smokeHub -PsmokePort=18765 > "$RUNNER_TEMP/smoke-hub.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf --max-time 2 http://127.0.0.1:18765/health > /dev/null; then break; fi
+            sleep 2
+          done
+          curl -sf --max-time 5 http://127.0.0.1:18765/health || {
+            echo "the smoke hub never answered"; cat "$RUNNER_TEMP/smoke-hub.log"; exit 1;
+          }
+          node scripts/smoke/smoke.mjs http://127.0.0.1:18765 ada00001 otter sam0000000a
+
+      - name: The smoke hub's log, when the walk failed
+        if: failure()
+        run: cat "$RUNNER_TEMP/smoke-hub.log" || true
+
       - name: Upload test report
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: unit-test-report
-          path: app/build/reports/tests/
+          path: "*/build/reports/tests/"
           if-no-files-found: ignore

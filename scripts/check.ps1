@@ -139,7 +139,10 @@ if (-not (Select-String -Path hub/docker-entrypoint.sh -Pattern 'can_write' -Sim
 
 # A doc path named in source is a promise. Renaming the doc leaves the
 # pointer behind, and the place it is read is a container log at 3am.
+$docRefs# node_modules excluded: scripts/smoke installs Playwright there, and its own
+# docs and error strings are not this repo's promises.
 $docRefs = Get-ChildItem -Recurse -File app/src, core/src, crawl/src, hub/src, scripts |
+    Where-Object { $_.FullName -notmatch 'node_modules' } |
     Select-String -Pattern 'docs/[A-Za-z0-9_.-]+[.]md' -AllMatches |
     ForEach-Object { $_.Matches.Value } | Sort-Object -Unique
 foreach ($d in $docRefs) {
@@ -507,7 +510,7 @@ foreach ($copyLine in (Get-Content hub/Dockerfile | Where-Object { $_ -cmatch '^
 #     table exists for nobody but its author. /join-hub and /leave-hub had
 #     been missing for a whole round before this guard existed.
 $lanApi = Get-Content docs/LAN-API.md -Raw
-$routes = Select-String -Path app/src/main/java/io/yosemitekids/app/data/Pairing.kt -Pattern 'path == "(/[a-z-]+)"' -AllMatches |
+$routes = Select-String -Path app/src/main/java/io/yosemitekids/app/data/Pairing.kt -Pattern 'path == "(/[a-z0-9._-]+)"' -AllMatches |
     ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
 foreach ($r in $routes) {
     if ($lanApi -notmatch "(GET|POST) $([regex]::Escape($r))[^a-z-]") {
@@ -650,7 +653,7 @@ $hubSrvSrc = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt" 
 $deviceOnly = ([regex]::Match($hubSrvSrc, '(?s)val DEVICE_ONLY = setOf\((.*?)\)')).Groups[1].Value
 if (-not $deviceOnly) { Fail-Guard "HubServer.kt declares no DEVICE_ONLY set; guard 22 is blind." }
 $lanRoutes = @([regex]::Matches(
-    (Get-Content "app/src/main/java/io/yosemitekids/app/data/Pairing.kt" -Raw), 'path == "(/[a-z-]+)"') |
+    (Get-Content "app/src/main/java/io/yosemitekids/app/data/Pairing.kt" -Raw), 'path == "(/[a-z0-9._-]+)"') |
     ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
 foreach ($r in $lanRoutes) {
     if ($hubSrvSrc -match [regex]::Escape('createContext("' + $r + '")')) { continue }
@@ -955,7 +958,7 @@ foreach ($word in @("yosemite-kids-backup", "pickwick-backup")) {
 $hubSrvLines = Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt"
 $hubSrvText = ($hubSrvLines -join "`n")
 $lanRoutes29 = @([regex]::Matches(
-    (Get-Content "app/src/main/java/io/yosemitekids/app/data/Pairing.kt" -Raw), 'path == "(/[a-z-]+)"') |
+    (Get-Content "app/src/main/java/io/yosemitekids/app/data/Pairing.kt" -Raw), 'path == "(/[a-z0-9._-]+)"') |
     ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
 foreach ($r in $lanRoutes29) {
     $reg = @($hubSrvLines | Where-Object { $_.Contains('createContext("' + $r + '")') })
@@ -1000,7 +1003,7 @@ if ($hubApiStart -lt 0) {
 }
 $hubDoc = (($hubApiLines[$hubApiStart..($hubApiLines.Count - 1)] |
     Where-Object { $_ -like "| *" }) -join "`n")
-$hubRoutes = @([regex]::Matches($hubSrvText, 'createContext\("(/[a-z/-]*)"') |
+$hubRoutes = @([regex]::Matches($hubSrvText, 'createContext\("(/[a-z0-9._/-]*)"') |
     ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
 if ($hubRoutes.Count -eq 0) {
     Fail-Guard "guard 30 read no createContext(""/..."") routes out of HubServer.kt; it is blind."
@@ -1943,7 +1946,7 @@ $kidQuery = @(Get-ChildItem -Recurse -Filter *.kt hub/src/main |
         $cf = $_
         $rel = $cf.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/")
         Get-Content $cf.FullName |
-            Select-String -Pattern 'kidIn\(|&\)?kid=' |
+            Select-String -Pattern 'kidIn\(|[?&]kid=' |
             ForEach-Object { "${rel}:$($_.LineNumber): $($_.Line.Trim())" }
     })
 if ($kidQuery.Count -gt 0) {

@@ -97,7 +97,7 @@ adb shell am start -S -W -n io.yosemitekids.app/.ui.MainActivity
 ```
 
 These numbers are inherited from upstream's hardware and have never been
-re-taken on this fork's television; Â§9F is where that happens. Take three
+re-taken on this fork's television; §9F is where that happens. Take three
 samples and read `TotalTime` (milliseconds to first frame). Watch
 logcat for `Choreographer: Skipped N frames` and `Displayed ... +Xs` too.
 
