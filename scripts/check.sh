@@ -2163,8 +2163,7 @@ crawl_loops="crawl/src/main/kotlin/io/yosemitekids/app/data/IndexCrawlRun.kt cra
 for f in $crawl_loops crawl/src/test/kotlin/io/yosemitekids/app/CrawlPacingTest.kt; do
   [ -f "$f" ] || guard_fail "$f is gone; guard 72 is blind."
 done
-pace_overrides=$(grep -rnE "(pacingMs|delayMs|pagesPerRun|fetchesPerRun)\s*=" --include=*.kt hub/src/main app/src/main |
-  grep -v "hub/src/main/kotlin/io/yosemitekids/hub/HubCrawl.kt" || true)
+pace_overrides=$(grep -rnE "(pacingMs|delayMs|pagesPerRun|fetchesPerRun)\s*=" --include=*.kt hub/src/main app/src/main | grep -v "hub/src/main/kotlin/io/yosemitekids/hub/HubCrawl.kt" || true)
 [ -z "$pace_overrides" ] ||
   guard_fail "a crawl caller sets its own pace:
 $pace_overrides
