@@ -110,6 +110,11 @@ app/src/main/java/io/yosemitekids/app/
     ├── PlayerActivity.kt     The player: gate, resolve, ExoPlayer, kid controls
     │                         overlay, end card, listen mode, remote keys
     ├── ListenService.kt      Foreground service for screen-off audio
+    ├── LanService.kt         Televisions only: a foreground service that keeps the
+    │                         process, and the LAN server in it, alive after the app
+    │                         is closed; rebuilds the server if the system restarts it
+    ├── LanServers.kt         buildLanServer: the LAN server wired to this device's
+    │                         stores, called by MainActivity and by LanService
     ├── Settings*.kt          Parent settings (PIN/biometric gate, sections)
     ├── KidsSettings.kt       Kid profile editor
     ├── StatsScreen.kt / DigestScreen.kt   Parent dashboards

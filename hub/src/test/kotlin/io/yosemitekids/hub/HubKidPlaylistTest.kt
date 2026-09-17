@@ -33,13 +33,15 @@ class HubKidPlaylistTest {
     private fun pl(id: String, name: String, vararg ids: String) =
         ChannelIndex.IndexedPlaylist(id, "https://www.youtube.com/playlist?list=$id", name, null, ids.size.toLong(), ids.toList())
 
-    private fun home(blocked: Set<String> = emptySet()): HubKidHome {
+    private lateinit var history: HubKidHistory
+
+    private fun home(blocked: Set<String> = emptySet(), picks: List<String> = emptyList()): HubKidHome {
         val dir = tmp.newFolder()
         val store = HubStore(dir)
         val index = ChannelIndex(File(dir, "search-index"))
         store.edit("test", T) {
             Whitelist(
-                sources = listOf(apples, pears),
+                sources = listOf(apples.copy(playlistIds = picks), pears),
                 blockedVideoIds = blocked,
                 homeZone = "Pacific/Auckland",
                 profiles = listOf(Profile(id = leo, name = "Leo"))
@@ -66,7 +68,8 @@ class HubKidPlaylistTest {
             ScreeningStore(File(dir, "screening.json")),
             index
         ) { T }
-        return HubKidHome(policy, store, HubKidHistory(dir) { T }, HubSavedLists(dir)) { T }
+        history = HubKidHistory(dir) { T }
+        return HubKidHome(policy, store, history, HubSavedLists(dir)) { T }
     }
 
     private fun titles(arr: JSONArray) = (0 until arr.length()).map { arr.getJSONObject(it).getString("title") }
@@ -99,5 +102,21 @@ class HubKidPlaylistTest {
         assertNull("empty and unfetched playlists are not pages", home().playlist(leo, "PL3"))
         assertNull(home().playlist(leo, "PL4"))
         assertNull(home().playlist(leo, "PLnope"))
+    }
+
+    @Test
+    fun `the rows above the grid are the picks first, then the channel's own, trimmed like the phone trims them`() {
+        // No picks: the channel's first playlists make the rows, in its order.
+        val plain = home().channel(leo, "UC1")!!.getJSONArray("playlistRows")
+        assertEquals(listOf("Songs", "Stories"), names(plain))
+        assertEquals(listOf("Apple 3", "Apple 1", "Pear 1"), titles(plain.getJSONObject(0).getJSONArray("videos")))
+        // A pick goes first; an unknown pick is skipped, not an error.
+        val picked = home(picks = listOf("PLnope", "PL2")).channel(leo, "UC1")!!.getJSONArray("playlistRows")
+        assertEquals(listOf("Stories", "Songs"), names(picked))
+        // A finished video leaves its row; a row with nothing left is absent.
+        val h = home()
+        history.save(leo, "https://www.youtube.com/watch?v=apple00002", positionMs = 599_000, durationMs = 600_000)
+        val rows = h.channel(leo, "UC1")!!.getJSONArray("playlistRows")
+        assertEquals("Stories held only the finished one", listOf("Songs"), names(rows))
     }
 }

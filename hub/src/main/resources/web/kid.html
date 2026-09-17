@@ -1006,6 +1006,25 @@
     main.appendChild(shelfHead(channel.name, channel.count,
       channel.watchedCount > 0 ? "Watched · " + channel.watchedCount : null,
       function () { openChannelWatched(channel.id); }));
+    // The parent-picked playlists as rows above the grid - the phone's
+    // playlistShelves - each already trimmed by the hub to what this kid has
+    // not finished. Then the strip.
+    (channel.playlistRows || []).forEach(function (r) {
+      main.appendChild(shelfHead(r.name, 0, "See all", function () { openPlaylist(r.id); }));
+      main.appendChild(grid(r.videos));
+    });
+    // The channel's playlists, as the phone's strip above the grid: the hub
+    // indexed them (PlaylistCrawlRun) and says how many videos of each this
+    // kid may see. "See all" is the page with every one.
+    if ((channel.playlists || []).length) {
+      main.appendChild(shelfHead("Playlists", channel.playlistCount,
+        channel.playlistCount > channel.playlists.length ? "See all" : null,
+        function () { openPlaylists(channel.id); }));
+      var pg = el("div", "grid");
+      channel.playlists.forEach(function (p) { pg.appendChild(playlistCard(p)); });
+      main.appendChild(pg);
+      main.appendChild(shelfHead("Videos", channel.count));
+    }
     main.appendChild(g);
     // "Show more", drawn only when the hub says there is more: the parent's
     // "Videos before Show more" is applied on the box, and this page asks for
@@ -1042,7 +1061,7 @@
       img.loading = "lazy";
       poster.appendChild(img);
     }
-    poster.appendChild(el("span", "badge", p.count + " videos"));
+    poster.appendChild(el("span", "badge", p.count + (p.count === 1 ? " video" : " videos")));
     card.appendChild(poster);
     var label = el("div", "label");
     label.appendChild(el("span", "title", p.name));

@@ -2150,6 +2150,32 @@ grep -qE "if \(fresh\.size (>=|>) [0-9]" "$railpage" &&
 grep -q "playlistRowPending(" "$railpage" ||
   guard_fail "YosemiteScreen no longer draws playlistRowPending while the strip loads, so the strip lands a second after the paint in a slot that was not there."
 
+# 72. The crawl runs at the pace the numbers say, on every box.
+#     CRAWL_DELAY_MS (four seconds between fetches), PAGES_PER_RUN (sixty a
+#     run) and the playlist pass's FETCHES_PER_RUN are the anti-ban
+#     mitigation, and CrawlPacingTest pins their values. What a test cannot
+#     see is a caller quietly passing its own: every crawl test runs with
+#     delayMs = 0 to be fast, and a production caller doing the same would
+#     pass the suite. So only the loops themselves and the hub class that
+#     forwards its constructor value may name those parameters; Main.kt, the
+#     worker and everything else take the defaults.
+crawl_loops="crawl/src/main/kotlin/io/yosemitekids/app/data/IndexCrawlRun.kt crawl/src/main/kotlin/io/yosemitekids/app/data/PlaylistCrawlRun.kt"
+for f in $crawl_loops crawl/src/test/kotlin/io/yosemitekids/app/CrawlPacingTest.kt; do
+  [ -f "$f" ] || guard_fail "$f is gone; guard 72 is blind."
+done
+pace_overrides=$(grep -rnE "(pacingMs|delayMs|pagesPerRun|fetchesPerRun)\s*=" --include=*.kt hub/src/main app/src/main |
+  grep -v "hub/src/main/kotlin/io/yosemitekids/hub/HubCrawl.kt" || true)
+[ -z "$pace_overrides" ] ||
+  guard_fail "a crawl caller sets its own pace:
+$pace_overrides
+Only the loops in :crawl and HubCrawl (forwarding its own constructor value) may name delayMs, pagesPerRun, fetchesPerRun or pacingMs. Take the defaults - CRAWL_DELAY_MS and PAGES_PER_RUN are the mitigation against the family's address being walled, and CrawlPacingTest holds their values."
+#     HubCrawl.real() is the production constructor; it must not pass a pace.
+real_pace=$(awk '/fun real\(/ { f = 1 } f { print } f && /^        }$/ { exit }' hub/src/main/kotlin/io/yosemitekids/hub/HubCrawl.kt | grep -E "pacingMs\s*=" || true)
+[ -z "$real_pace" ] ||
+  guard_fail "HubCrawl.real() passes a pacingMs of its own:
+$real_pace
+The production hub crawls at CRAWL_DELAY_MS, full stop; the parameter exists for tests."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 

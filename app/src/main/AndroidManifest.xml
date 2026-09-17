@@ -11,6 +11,10 @@
     <!-- Offline downloads run as a foreground service with a progress notification. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- LanService on a television, Android 14+: "special use" because a data-sync
+         service is capped at six hours a day from Android 15, and the TV's LAN
+         server has to answer the phone all evening. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Listen mode: audio keeps playing while the phone screen is off. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -106,6 +110,18 @@
             android:name=".ui.ListenService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Keeps a television's LAN server answering the parent's phone after the
+             app is closed. Televisions only; MainActivity starts it, and the
+             service refuses to run on anything else. -->
+        <service
+            android:name=".ui.LanService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|dataSync">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the television's LAN pairing server answering a parent's phone while the app is closed" />
+        </service>
 
         <!-- Serves the downloaded update APK to the system installer. -->
         <provider

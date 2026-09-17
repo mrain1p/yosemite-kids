@@ -2008,3 +2008,51 @@ gone-source and Newest cases in `IndexCrawlRunTest` and `SearchOrderTest`);
 both gates; the canary in CI. The channel-page rails, the breaker's card and
 the password screen are Compose and were compiled, not driven: they want a
 finger on the phone before anyone calls them finished.
+
+### The crawl minds its manners, the playlist strip actually draws, and the TV stays reachable (1.10.0)
+
+The housekeeping round after 1.9.0, from the list the owner agreed to.
+
+- **The playlist strip was never drawn.** 1.9.0's kid page defined the
+  playlist card, the See-all page and the playlist page, and the routes were
+  driven on a throwaway hub — but the edit that puts the strip on a channel
+  page had silently missed its anchor, so a browser's channel page showed no
+  playlists at all. It draws now, and above it the **parent-picked rows**
+  (`playlistRows` on `/kid/channel`): the parent's picks first, then the
+  channel's own first playlists to make three, each the playlist's
+  unfinished videos with Shorts dropped — the phone's `playlistShelves`,
+  answered by the hub with the same three rules in the same order.
+- **The crawl stands aside while a child is watching** (roadmap K.2). The
+  hub asks `HubWatchMeter.anyoneWatching` — a beat inside the last two
+  minutes — and skips its tick with "a child is watching", never counted as
+  a failure and never backing off; the phone's worker does the same off
+  `NowPlaying`. A video that stalls is worse than an index finished a
+  quarter of an hour later.
+- **The pacing numbers are held, not merely written.** `CrawlPacingTest`
+  pins four seconds between fetches, sixty pages a run and the playlist
+  pass's twelve; guard 72 refuses any production caller that passes a pace
+  of its own, because every crawl test runs with `delayMs = 0` to be fast
+  and a real caller doing the same would have passed the suite.
+- **A television keeps answering the phone after the app is closed**
+  (`LanService`). The LAN server was always process-wide and outlived its
+  screen; what it did not outlive was the process, which a Chromecast
+  reclaims from a cached app within minutes, so a push, a grant or "Play on
+  TV" sent to a television on its launcher went unanswered until the app
+  was next opened. A foreground service — televisions only, `specialUse`
+  from Android 14 because a data-sync service is capped at six hours a day
+  from Android 15 — keeps the process off that list and rebuilds the server
+  from `buildLanServer` if the system restarts it. The server's wiring moved
+  out of `MainActivity` into `LanServers.kt` for that, unchanged. **Untested
+  on the television**: it compiled and the phone path is the old path, but
+  the service itself wants a real evening on the Chromecast.
+- **The NAS follows CI now.** The running container turned out to be the
+  `latest` image CI publishes from `main`, recreated by the Synology side
+  rather than by the hand-built tags this fork had been deploying; the two
+  were the same tree. The old tags are gone from the NAS and the compose file
+  is left saying `latest`, which is what it should say.
+
+Verified: the JVM suites in `:core`, `:crawl`, `:hub` and `:app` (new:
+`CrawlPacingTest`, `HubKidPlaylistTest`'s rows case, the watching cases in
+`HubCrawlTest` and `HubWatchMeterTest`); both gates; the canary in CI. The
+strip and rows were driven on a throwaway hub against a seeded index, this
+time as the page, not only the routes.

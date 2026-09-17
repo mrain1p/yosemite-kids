@@ -203,8 +203,9 @@ Already in place, and worth not rebuilding:
 Not built, and what this item is for:
 1. ~~**Cache resolved streams.**~~ **Done in 1.9.0** (`PlaybackCache` in `:crawl`,
    in front of `resolvePlayback`; §8C.3 has the shape).
-2. **The crawl stands aside while a child is watching.** Finishing the index
-   a few hours later is worth nothing next to a video that will not start.
+2. ~~**The crawl stands aside while a child is watching.**~~ **Done in 1.10.0**
+   on both boxes: the hub off `HubWatchMeter.anyoneWatching`, the phone off
+   `NowPlaying`; the tick is skipped and said, never counted as a failure.
 3. **A switch to stop crawling**, so a parent who suspects trouble can
    remove the cause without editing a compose file.
 4. **Say what to do when it fails.** The search-index card shows a red dot;
@@ -725,13 +726,15 @@ mapping and its environment line come out of the NAS compose file.
   right now" until a finger presses Try again. Was: `PlayerActivity` skipped to
   the next video when a resolve failed — which resolved again — so the moment
   YouTube started refusing, the player sprinted through the whole queue.
-- **Guard the crawl pacing constants.** `CRAWL_DELAY_MS = 4s` and
-  `PAGES_PER_RUN = 60` *are* the anti-ban mitigation and both are prose that
-  enforces nothing. `HubCrawlTest` passes `pacingMs = 0`, so it would still pass
-  if someone set the real one to zero.
-- **The crawl stands aside while a child is watching** (roadmap K.2). Finishing
-  the index hours later is worth nothing next to a video that will not start.
-  The hub already knows, via `HubWatchMeter.beat`.
+- ~~**Guard the crawl pacing constants.**~~ **Done in 1.10.0**: `CrawlPacingTest`
+  pins the values (four seconds, sixty pages, the playlist pass's twelve) and
+  guard 72 refuses any production caller that passes a pace of its own -
+  `HubCrawl.real()` and the worker take the defaults, and only the loops in
+  `:crawl` and `HubCrawl` (forwarding its constructor value) may name them.
+- ~~**The crawl stands aside while a child is watching**~~ **Done in 1.10.0**:
+  `HubWatchMeter.anyoneWatching` (a beat inside the gap) makes `HubCrawl`
+  skip its tick with "a child is watching" and no backoff; the phone's
+  `IndexCrawlWorker` does the same off `NowPlaying`.
 - ~~**The browser player's three honesty bugs.**~~ Two done in 1.6.0: Back now
   means back (the page pushes one history entry per navigation *into*
   something, and comes out of it), and `KidWords` in `:core` gives a child
@@ -751,9 +754,12 @@ mapping and its environment line come out of the NAS compose file.
     `HubWatchMeter`'s accrual and returning `Remaining[{ms, kind}]` from
     `HubPolicy.clock` on both `/home.time` and `/progress`. Real work, and
     worth it — a fake seconds countdown would be worse than honest minutes.
-- **Keep the LAN server alive while the app is closed** — form-factor-gated
-  foreground service, televisions only. `LanServer` is built in `MainActivity`
-  and dies with the process, so a sleeping TV answers nothing.
+- ~~**Keep the LAN server alive while the app is closed**~~ **Done in 1.10.0,
+  untested on the television**: `LanService`, a foreground service the activity
+  starts on a TV only, holds the process (and the server in it) and rebuilds
+  the server from `buildLanServer` if the system restarts it. The wiring moved
+  out of `MainActivity` into `LanServers.kt` for that. Wants a real evening on
+  the Chromecast before anyone calls it finished.
 - **`FORK-NOTES.md` is a release behind**, and three §2L bullets describe work
   that has shipped.
 
@@ -857,7 +863,7 @@ fires: confirm the work is done, then delete the item and its row.
 
 | Item | Anchor | Kind |
 | --- | --- | --- |
-| §2A reachability | `LanServerHolder.server = LanServer(` | code |
+| §2A reachability | `buildLanServer(` | code |
 | §2C key in backup | `app/src/main/res/xml/backup_rules.xml` | path |
 | §3 hub pages not derived | `HubPage("kids"` | code |
 | §4 stats on hub | `outstandingOnHub` | code |

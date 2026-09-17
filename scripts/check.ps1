@@ -2434,6 +2434,35 @@ if (-not $pageText.Contains("playlistRowPending(")) {
 }
 
 
+# 72. The crawl runs at the pace the numbers say, on every box.
+#     CRAWL_DELAY_MS (four seconds between fetches), PAGES_PER_RUN (sixty a
+#     run) and the playlist pass's FETCHES_PER_RUN are the anti-ban
+#     mitigation, and CrawlPacingTest pins their values. What a test cannot
+#     see is a caller quietly passing its own: every crawl test runs with
+#     delayMs = 0 to be fast, and a production caller doing the same would
+#     pass the suite. So only the loops themselves and the hub class that
+#     forwards its constructor value may name those parameters; Main.kt, the
+#     worker and everything else take the defaults.
+foreach ($f in @("crawl/src/main/kotlin/io/yosemitekids/app/data/IndexCrawlRun.kt", "crawl/src/main/kotlin/io/yosemitekids/app/data/PlaylistCrawlRun.kt", "crawl/src/test/kotlin/io/yosemitekids/app/CrawlPacingTest.kt")) {
+    if (-not (Test-Path $f)) { Fail-Guard "$f is gone; guard 72 is blind." }
+}
+$paceOverrides = @(Get-ChildItem -Recurse -Filter *.kt @("hub/src/main", "app/src/main") |
+    Where-Object { $_.FullName -notlike "*HubCrawl.kt" } |
+    ForEach-Object {
+        $pf = $_
+        $rel = $pf.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/")
+        Get-Content $pf.FullName | Select-String -Pattern '(pacingMs|delayMs|pagesPerRun|fetchesPerRun)\s*=' | ForEach-Object { "$rel`:$($_.LineNumber): $($_.Line.Trim())" }
+    })
+if ($paceOverrides.Count -gt 0) {
+    Fail-Guard "a crawl caller sets its own pace: $($paceOverrides -join '; '). Only the loops in :crawl and HubCrawl (forwarding its own constructor value) may name delayMs, pagesPerRun, fetchesPerRun or pacingMs. Take the defaults - CRAWL_DELAY_MS and PAGES_PER_RUN are the mitigation against the family's address being walled, and CrawlPacingTest holds their values."
+}
+#     HubCrawl.real() is the production constructor; it must not pass a pace.
+$realBody = [regex]::Match((Get-Content "hub/src/main/kotlin/io/yosemitekids/hub/HubCrawl.kt" -Raw), '(?s)fun real\(.*?\r?\n        \}\r?\n').Value
+if ($realBody -match 'pacingMs\s*=') {
+    Fail-Guard "HubCrawl.real() passes a pacingMs of its own. The production hub crawls at CRAWL_DELAY_MS, full stop; the parameter exists for tests."
+}
+
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

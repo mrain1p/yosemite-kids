@@ -7,6 +7,7 @@ import io.yosemitekids.app.data.Whitelist
 import io.yosemitekids.app.data.WhitelistEntry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -117,5 +118,23 @@ class HubCrawlTest {
         val ok = c.runOnce()!!
         assertFalse(ok.failed)
         assertEquals(0L, c.backoffMs)
+    }
+
+    @Test
+    fun `the crawl stands aside while a child is watching, and runs at the next tick`() {
+        config(ME, "UCa")
+        var watching = true
+        var calls = 0
+        val c = HubCrawl(
+            store, index, ME, crawlOnce = { calls++; false },
+            dropSource = { index.dropSource(it) }, pacingMs = 0, watching = { watching }
+        ) { clock }
+        assertNull("a child's video comes first", c.runOnce())
+        assertEquals(0, calls)
+        assertTrue(c.last, c.last.contains("a child is watching"))
+        assertEquals("not a failure: no backoff", 0L, c.backoffMs)
+        watching = false
+        assertNotNull(c.runOnce())
+        assertEquals(1, calls)
     }
 }

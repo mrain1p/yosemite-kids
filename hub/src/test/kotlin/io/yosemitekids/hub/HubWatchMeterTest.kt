@@ -192,4 +192,18 @@ class HubWatchMeterTest {
         // caller cannot file a browser's minutes under a device's token.
         assertFalse(usage.recordWeb(kid, "dev-tv", 99))
     }
+
+    @Test
+    fun `anyoneWatching is a beat inside the gap, and nothing older`() {
+        val m = meter()
+        assertFalse(m.anyoneWatching())
+        m.beat("browser-a", kid)
+        assertTrue("a beat just now is a child watching", m.anyoneWatching())
+        at += HubWatchMeter.MAX_GAP_MS - 1
+        assertTrue(m.anyoneWatching())
+        at += 2
+        assertFalse("a browser silent past the gap is a closed tab, not a viewer", m.anyoneWatching())
+        m.beat("browser-a", kid)
+        assertTrue(m.anyoneWatching())
+    }
 }

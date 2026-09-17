@@ -36,6 +36,8 @@ class HubCrawl(
     /** A channel's playlists and one playlist's first page, for PlaylistCrawlRun; null runs no playlist pass (tests). */
     private val listPlaylists: (suspend (Source) -> List<io.yosemitekids.app.data.PlaylistRef>)? = null,
     private val playlistVideos: (suspend (io.yosemitekids.app.data.PlaylistRef) -> List<io.yosemitekids.app.data.Video>)? = null,
+    /** Is a child watching in a browser right now? The crawl waits (roadmap K.2). Tests leave it false. */
+    private val watching: () -> Boolean = { false },
     private val now: () -> Long = { System.currentTimeMillis() }
 ) {
     companion object {
@@ -57,7 +59,7 @@ class HubCrawl(
         }.getOrDefault(false)
 
         /** The real thing: IndexCrawler over the shared repository. */
-        fun real(store: HubStore, index: ChannelIndex, me: String): HubCrawl {
+        fun real(store: HubStore, index: ChannelIndex, me: String, watching: () -> Boolean = { false }): HubCrawl {
             val yt = YouTubeRepository()
             val crawler = IndexCrawler(yt, index)
             return HubCrawl(
@@ -72,7 +74,8 @@ class HubCrawl(
                         Source(ref.id, ref.url, ref.name, ref.thumbnailUrl, SourceKind.PLAYLIST),
                         background = true
                     ).videos
-                }
+                },
+                watching = watching
             )
         }
     }
@@ -110,6 +113,14 @@ class HubCrawl(
         }
         if (t < notBefore) {
             last = "backing off after failed crawls; next try in ${(notBefore - t) / 60_000} min"
+            return null
+        }
+        // A child watching in a browser has this box's attention: their bytes
+        // come through the same link and YouTube sees the same address.
+        // Finishing the index a quarter of an hour later is worth nothing next
+        // to a video that stalls, so the crawl stands aside and tries next tick.
+        if (watching()) {
+            last = "idle: a child is watching; the crawl waits for the next tick"
             return null
         }
         val outcome = runBlocking {

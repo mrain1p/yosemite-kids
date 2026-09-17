@@ -202,6 +202,7 @@ SETTINGS=core/src/main/kotlin/io/yosemitekids/app/data/SettingsSurface.kt
 KIDSURF=core/src/main/kotlin/io/yosemitekids/app/ui/KidSurface.kt
 HUBWEB=hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt
 RAILS=app/src/main/java/io/yosemitekids/app/ui/PlaylistShelves.kt
+HUBCRAWL=hub/src/main/kotlin/io/yosemitekids/hub/HubCrawl.kt
 # Built from parts so the doc-path guard in check.sh does not look for a plan
 # file that exists only for the length of one canary run.
 PLANFILE=docs/PLAN-canary
@@ -333,6 +334,11 @@ canary 71 "$RAILS" \
   "the playlist strip's placeholder in keys of its own" \
   "wanted key" \
   'sed -i "0,/key = \"pl:row\"/s//key = \"plc:row\"/" "$RAILS"'
+
+canary 72 "$HUBCRAWL" \
+  "the production hub crawling at a pace of its own" \
+  "passes a pacingMs of its own" \
+  'sed -i "s/                dropSource = crawler::dropSource,/                dropSource = crawler::dropSource, pacingMs = 0L,/" "$HUBCRAWL"'
 
 echo
 if [ "$failed" -gt 0 ]; then

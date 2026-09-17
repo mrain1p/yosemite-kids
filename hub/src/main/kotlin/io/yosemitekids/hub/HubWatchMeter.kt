@@ -168,4 +168,14 @@ class HubWatchMeter(
 
     /** Live meters, for a test and for a health line. Never a promise about who. */
     fun liveCount(): Int = synchronized(lock) { meters.size }
+
+    /**
+     * Is a child watching in a browser right now - a beat inside [MAX_GAP_MS]?
+     * What the crawl asks before it takes YouTube's attention: finishing the
+     * index an hour later is worth nothing next to a video that stalls.
+     */
+    fun anyoneWatching(): Boolean = synchronized(lock) {
+        val t = now()
+        meters.values.any { t - it.lastBeatAt < MAX_GAP_MS }
+    }
 }

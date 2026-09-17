@@ -108,120 +108,13 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         // tablet is pairable too (config pushes, grants, index sync). Same
         // token-gated listener as before, just no longer gated on form factor.
         if (LanServerHolder.server == null) {
-            LanServerHolder.server = LanServer(
-                configStore,
-                grantHandler = { minutes, profileId, grant ->
-                    // Route the grant to the named kid's guard; unnamed grants
-                    // (older admin phones) land on whoever this device shows.
-                    // An explicit id stays unvalidated on purpose — a grant can
-                    // arrive moments before the config push that introduces its
-                    // (new) kid.
-                    val here = kidHere(ConfigStore(appContext).load())
-                    val target = profileId ?: here
-                    val guard = SessionGuard(appContext, profileNs.suffixFor(target))
-                    // A tap the config also carries is counted by id, so the
-                    // config landing later adds nothing; a legacy call has no
-                    // id and is applied as it always was.
-                    val fresh = if (grant != null) guard.applyGrant(grant)
-                    else { guard.grantExtraMinutes(minutes); true }
-                    // Only the kid the minutes belong to hears about them —
-                    // a grant aimed at their sibling is not their news.
-                    if (fresh && target == here) KidNotices.post(KidNotices.grant(minutes))
-                },
-                pairingStore,
-                statsProvider = { profileId -> io.yosemitekids.app.data.Stats.build(appContext, profileId) },
-                watchStateProvider = { WatchSync.exportJson(appContext) },
-                watchStateMerger = { json ->
-                    // mergeJson is false for garbage AND for "nothing new";
-                    // a parse check tells the two apart for the 400.
-                    val wellFormed = runCatching { org.json.JSONObject(json) }.isSuccess
-                    if (wellFormed && WatchSync.mergeJson(appContext, json)) {
-                        // Refresh keep-watching / hearts on the TV right away.
-                        ConfigEvents.onConfigChanged?.invoke()
-                    }
-                    wellFormed
-                },
-                looksProvider = { io.yosemitekids.app.data.ProfileLooks(appContext).exportJson() },
-                verdictsProvider = {
-                    io.yosemitekids.app.data.ScreeningStore(appContext)
-                        .exportJson(ConfigStore(appContext).load().ai.rulesVersion)
-                },
-                verdictsMerger = { json ->
-                    val imported = io.yosemitekids.app.data.ScreeningStore(appContext)
-                        .importJson(json, ConfigStore(appContext).load().ai.rulesVersion)
-                    // Imported ALLOWs reveal videos this device hadn't screened yet.
-                    if (imported > 0) ConfigEvents.onConfigChanged?.invoke()
-                    imported >= 0
-                },
-                // The watch ledger. Served on demand rather than on a timer:
-                // this device's own minutes live in SessionGuard's prefs and
-                // are authoritative there, so the honest moment to author a
-                // cell is the moment somebody asks. No scheduler, no wakelock,
-                // and a peer that never asks costs nothing. Both lambdas run
-                // on a LanServer worker thread, which is where the file I/O
-                // belongs.
-                usageProvider = {
-                    val config = ConfigStore(appContext).load()
-                    // Every kid's own tally, not just the one on screen: a
-                    // sibling's minutes are as real when their profile is not
-                    // the active one, and a peer asking now is the only chance
-                    // to say so. UsageSync.recordOwn authors each cell from
-                    // that kid's OWN minutes — never the shared total, which
-                    // the peer would read back and add to its own counter.
-                    io.yosemitekids.app.data.UsageSync.recordOwn(appContext, config)
-                    io.yosemitekids.app.data.WatchLedgerStore(appContext).exportJson()
-                },
-                usageMerger = { json ->
-                    val config = ConfigStore(appContext).load()
-                    val merged = io.yosemitekids.app.data.WatchLedgerStore(appContext).mergeJson(
-                        json,
-                        io.yosemitekids.app.data.UsageSync.today(config)
-                    )
-                    // A peer's minutes have just landed, which for a shared
-                    // budget is the freshest this device will ever be about
-                    // them. Folding them in here rather than at the next read
-                    // keeps enforcement off the network entirely: the player
-                    // asks SessionGuard, and SessionGuard asks a prefs mirror.
-                    if (merged) io.yosemitekids.app.data.UsageSync.mirror(appContext, config)
-                    merged
-                },
-                indexStatusProvider = {
-                    io.yosemitekids.app.data.ChannelIndex(appContext).statusJson()
-                },
-                indexSourceProvider = { sourceId ->
-                    io.yosemitekids.app.data.ChannelIndex(appContext).exportSourceWithState(sourceId)
-                },
-                indexMerger = { sourceId, body ->
-                    io.yosemitekids.app.data.ChannelIndex(appContext).importSourceWithState(sourceId, body)
-                },
-                onConfigApplied = applyConfig,
-                // A hub (or a co-parent's phone) says its copy moved. Run the
-                // ordinary reconcile now instead of at the next tick — off the
-                // server's own threads, so the caller is not held while this
-                // device sweeps every peer it has.
-                onSyncRequested = {
-                    io.yosemitekids.app.data.LanPushScope.scope.launch {
-                        io.yosemitekids.app.data.ConfigSync.reconcile(
-                            configStore, pairingStore,
-                            onConfigApplied = applyConfig,
-                            mergeLooks = { json ->
-                                io.yosemitekids.app.data.ConfigSync.adoptLooks(
-                                    configStore, pairingStore, json
-                                )
-                            },
-                            index = io.yosemitekids.app.data.ChannelIndex(appContext),
-                            context = appContext
-                        )
-                    }
-                },
-                deviceKind = { io.yosemitekids.app.data.DeviceKind.of(appContext) },
-                // "Update now" from a paired phone: check, download, and put
-                // the installer prompt on this screen. Whoever holds the
-                // remote confirms it; the phone only gets to ask.
-                onUpdateRequested = {
-                    io.yosemitekids.app.data.RemoteUpdate.handleBlocking(appContext)
-                }
-            ).also { it.start() }
+            LanServerHolder.server = buildLanServer(appContext, configStore, pairingStore, profileNs).also { it.start() }
+            // A television keeps answering the phone after this screen is gone:
+            // LanService holds the process in the foreground with the server in
+            // it, and rebuilds the server on its own if the system restarts it.
+            // Phones and tablets keep the server for the life of the process, as
+            // before - a foreground notice there would be noise on a lock screen.
+            if (DeviceKind.of(appContext) == DeviceKind.TV) LanService.start(appContext)
         }
         // "Play this on the TV" from a parent's phone. The device applies its
         // own rules: a video blocked for the kid on screen stays blocked no

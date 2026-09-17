@@ -48,6 +48,9 @@ class IndexCrawlWorker(
 
         // Master-only past here: a kid device or co-parent must never crawl.
         if (config.masterDeviceToken != me) return Result.success()
+        // A child watching on this device has its link and YouTube's attention;
+        // the crawl waits for the next period rather than compete (roadmap K.2).
+        if (NowPlaying.current()?.playing == true) return Result.success()
 
         // The loop itself is IndexCrawlRun, in :crawl, because the hub runs
         // the same one. This worker only decides whether to run it and where

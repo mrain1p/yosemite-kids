@@ -114,6 +114,9 @@ class HubServer(
     private val policy = HubPolicy(store, ledger, screening, index, now)
     private val meter = HubWatchMeter(ledger, now)
 
+    /** Is a child watching in a browser right now? The crawl asks before it takes YouTube's attention. */
+    fun anyoneWatching(): Boolean = meter.anyoneWatching()
+
     /**
      * Which browsers may watch, and the codes a parent mints to let one in.
      *

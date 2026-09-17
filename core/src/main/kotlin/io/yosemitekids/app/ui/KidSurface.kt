@@ -371,8 +371,8 @@ object KidSurface {
                 "live extraction on the kid's path, so the crawl indexes them (PlaylistCrawlRun: the " +
                 "first twenty, the first page of each, refreshed daily) and the strip, See all and a " +
                 "playlist's page draw from the index. A kid sees exactly the rows the channel page " +
-                "would. Parent-picked playlists as rows above the grid (playlistShelves) stay the " +
-                "phone's for now."
+                "would, and the parent-picked rows above the grid (playlistShelves) are the same " +
+                "three rules - picks first, Shorts dropped, finished dropped - answered by the hub."
         ),
         KidSurfaceDef(
             id = "watched-videos",

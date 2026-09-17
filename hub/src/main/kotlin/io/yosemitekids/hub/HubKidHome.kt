@@ -30,6 +30,9 @@ import org.json.JSONObject
 /** The channel orders this box can produce: no open counts, no upload dates, so these three. */
 /** Playlists on a channel page before "See all"; the page for all of them has no cap. */
 private const val STRIP_MAX = 12
+/** Rows above a channel's grid, and how long each is: the phone's PLAYLIST_SHELVES_MAX and a shelf's worth. */
+private const val PLAYLIST_ROWS_MAX = 3
+private const val PLAYLIST_ROW_VIDEOS = 12
 
 private val WEB_SORTS = setOf(
     CHANNEL_ORDER_ALPHA, CHANNEL_ORDER_ALPHA_DESC, CHANNEL_ORDER_RANDOM,
@@ -472,6 +475,20 @@ class HubKidHome(
         // how many of its videos THIS kid may see - the same rows the grid is
         // drawn from, so a chip never opens onto less than it promised.
         val playlists = playlistsFor(catalogue, sourceId)
+        // The rows above the grid, the phone's playlistShelves: the parent's
+        // picks first, then the channel's own first playlists to make three,
+        // each row the playlist's unfinished videos with Shorts dropped - the
+        // same three rules the phone applies, in the same order.
+        val rowIds = (source.entry.playlistIds + playlists.map { it.playlist.id }).distinct().take(PLAYLIST_ROWS_MAX)
+        val playlistRows = rowIds.mapNotNull { id -> playlists.firstOrNull { it.playlist.id == id } }.mapNotNull { v ->
+            val items = v.rows.map { it.toVideo() }
+                .filter { it.durationSeconds !in 1..60 }
+                .filter { watched[it.url]?.isFinished != true }
+                .take(PLAYLIST_ROW_VIDEOS)
+                .map { it to (watched[it.url]?.fraction ?: 0f) }
+            if (items.isEmpty()) null
+            else JSONObject().put("id", v.playlist.id).put("name", v.playlist.name).put("videos", videosJson(items, watched, saved))
+        }
         val items = source.videos.map { it.toVideo() }.map { VideoItem(it, watched[it.url]?.fraction) }
         // The channel's finished videos - the phone's Watched screen, its only
         // two-level one - newest-watched first through the phone's own
@@ -495,6 +512,7 @@ class HubKidHome(
             .put("watchedCount", finished.size)
             .put("playlistCount", playlists.size)
             .put("playlists", playlistsJson(playlists.take(STRIP_MAX)))
+            .put("playlistRows", JSONArray(playlistRows))
             .put("videos", videosJson(slice, watched, saved))
     }
 

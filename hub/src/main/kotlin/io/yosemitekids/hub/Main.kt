@@ -63,11 +63,15 @@ fun main() {
     // the phone only once a device has pulled from here (HubTokens.armed)
     // and only if YouTube answers from this box (the probe); until then it
     // serves whatever it has and leaves the crawl to the phone.
-    val crawl = HubCrawl.real(store, index, tokens.selfToken())
+    // The server is built after the crawl and asked through a reference the
+    // crawl reads on every tick: whether a child is watching in a browser.
+    val watching = java.util.concurrent.atomic.AtomicReference<() -> Boolean>({ false })
+    val crawl = HubCrawl.real(store, index, tokens.selfToken(), watching = { watching.get()() })
     val master = HubMaster(store, tokens, probe = HubCrawl::probeYouTube)
     val server = HubServer(
         store, tokens, port, envAdmin, index = index, master = master, crawl = crawl
     )
+    watching.set { server.anyoneWatching() }
 
     val bound = server.start()
     println("Yosemite Kids hub listening on $bound, data in ${dataDir.absolutePath}")
