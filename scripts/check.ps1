@@ -1009,6 +1009,13 @@ if ($hubRoutes.Count -eq 0) {
     Fail-Guard "guard 30 read no createContext(""/..."") routes out of HubServer.kt; it is blind."
 }
 foreach ($r in $hubRoutes) {
+    # A /kid path registered on this listener is guard 57's violation, not a
+    # missing doc row: the kid's routes are documented in their own section and
+    # are registered by HubKidServer. "Add it to the route table" would be the
+    # wrong instruction, and it would fire ahead of the guard that has the right
+    # one. (Before route patterns learned about digits, this was skipped here by
+    # accident rather than on purpose.)
+    if ($r -eq "/kid" -or $r -like "/kid/*") { continue }
     # A prefix context ("/api/") is documented by the routes underneath it, so
     # match on the stem. "/" is the page and the catch-all, and has a row of
     # its own saying exactly that.

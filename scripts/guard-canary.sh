@@ -190,6 +190,9 @@ canary() {
 
 KIDSRV=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
 HUBSRV=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
+# Where both faces baseline headers live since 1.12.0, which is where a CORS
+# header would be added if anyone ever added one.
+HUBHTTP=hub/src/main/kotlin/io/yosemitekids/hub/HubHttp.kt
 KIDPAGE=hub/src/main/resources/web/kid.html
 HOMESTATE=app/src/main/java/io/yosemitekids/app/ui/HomeState.kt
 TILES=app/src/main/java/io/yosemitekids/app/ui/Tiles.kt
@@ -237,10 +240,10 @@ canary 57 "$HUBSRV" \
   "registered from HubServer" \
   'sed -i "/createContext(\"\/login\")/i\        s.createContext(\"\/kid\/canary9\") { ex -> guarded(ex) { login(ex) } }" "$HUBSRV"'
 
-canary 58 "$KIDSRV" \
+canary 58 "$HUBHTTP" \
   "a CORS header letting another site read a kid reply" \
   "the hub sets a CORS header" \
-  'sed -i "/X-Content-Type-Options/i\        ex.responseHeaders.add(\"Access-Control-Allow-Origin\", \"*\")" "$KIDSRV"'
+  'sed -i "/X-Content-Type-Options/i\        ex.responseHeaders.add(\"Access-Control-Allow-Origin\", \"*\")" "$HUBHTTP"'
 
 canary 59 "$KIDSRV" \
   "the kid throttle sharing the parents bucket" \
