@@ -1,6 +1,7 @@
 package io.yosemitekids.app.data
 
 import android.content.Context
+import io.yosemitekids.app.ui.KidWords
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -102,9 +103,15 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         .getSharedPreferences("limits$profileSuffix", Context.MODE_PRIVATE)
 
     companion object {
-        /** Deliberately parent-attributed, so the kid doesn't read it as a bug. */
-        private const val PAUSED_MESSAGE =
-            "A parent paused screen time for today. See you tomorrow 💛"
+        /**
+         * Deliberately grown-up-attributed, so the kid does not read it as a
+         * bug — and taken from :core, so the television, the phone and the
+         * tablet refuse in one vocabulary. They did not: this said "A parent
+         * paused screen time" while a browser said "A grown-up paused
+         * watching", about the same rule, to the same child, in the same
+         * afternoon.
+         */
+        private val PAUSED_MESSAGE = KidWords.refusal("paused")
 
         /**
          * Where a window pass ends after another grant of [minutes]. Grants
@@ -432,7 +439,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
                 spendBreakPass(l)
                 prefs.edit().putLong("lockUntil", 0).putLong("sittingWatchedMs", 0).apply()
             } else {
-                return "Time for a break! You can watch again at ${timeOf(lockUntil)} ⏰"
+                return KidWords.breakUntil(timeOf(lockUntil))
             }
         }
 
@@ -440,7 +447,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
 
         if (multiplierPercent > 0) dailyBudgetMs(l)?.let { budget ->
             if (spentTodayMs(l) >= budget) {
-                return "That's all the watching for today! 🌟"
+                return KidWords.refusal("out-of-time")
             }
         }
         return null
@@ -481,7 +488,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         prefs.edit().putLong("dailyWatchedMs", own).putLong("sittingWatchedMs", sitting).apply()
 
         if (multiplierPercent > 0) dailyBudgetMs(l)?.let { budget ->
-            if (spentMs(own, peerSpentMs(l)) >= budget) return "That's all the watching for today! 🌟"
+            if (spentMs(own, peerSpentMs(l)) >= budget) return KidWords.refusal("out-of-time")
         }
         // No break rule → nothing to arm; the sitting cap only exists to force
         // a rest of the configured length. The daily budget above still caps
@@ -497,7 +504,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
                 return null
             }
             prefs.edit().putLong("lockUntil", now + breakLen * 60_000L).apply()
-            return "Time for a break! Great watching 🎉"
+            return KidWords.breakStarting()
         }
         return null
     }
@@ -589,11 +596,11 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         activeWindow(l)?.let { return windowMessage(l, it) }
         val lockUntil = prefs.getLong("lockUntil", 0)
         if (l.breakMinutes != null && now < lockUntil && !breakPassActive(l)) {
-            return "Time for a break! You can watch again at ${timeOf(lockUntil)} ⏰"
+            return KidWords.breakUntil(timeOf(lockUntil))
         }
         if (multiplierPercent > 0) dailyBudgetMs(l)?.let { budget ->
             if (spentTodayMs(l) >= budget) {
-                return "That's all the watching for today! 🌟"
+                return KidWords.refusal("out-of-time")
             }
         }
         return null

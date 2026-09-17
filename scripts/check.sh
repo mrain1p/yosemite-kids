@@ -1475,6 +1475,29 @@ budget_copies=$(grep -rn "weekendSessions else\|Calendar.SATURDAY" app/src/main 
 $budget_copies
 Call Budget.dayMs / Budget.bonusMs / Budget.isWeekend. Two implementations of this arithmetic is a home screen promising minutes a player will not honour."
 
+# 51. A child meets one vocabulary, not one per face.
+#     KidWords in :core says what a refusal sounds like to a five-year-old,
+#     and its whole KDoc is that the television, the phone and the tablet say
+#     the same thing about the same rule. Only the hub called it. SessionGuard
+#     - which is what the phone and the television actually refuse with - kept
+#     its own sentences, so a child paused at teatime read "A parent paused
+#     screen time" on the TV and "A grown-up paused watching" on the tablet,
+#     about one rule, in one afternoon. A child cannot tell that those are the
+#     same thing; they can only tell that one of the two devices is lying.
+guardsrc=app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt
+[ -f "$guardsrc" ] ||
+  guard_fail "$guardsrc is gone; guard 51 is blind. It is what the phone and the television refuse with."
+grep -qF "KidWords." "$guardsrc" ||
+  guard_fail "$guardsrc no longer renders any refusal through KidWords; guard 51 is blind, and the phone is free to invent its own words again."
+#     The tell is a sentence rather than a call: kid-facing copy in this file
+#     is a quoted string ending in a full stop, an exclamation or an emoji.
+#     Format strings for a clock (timeOf) and the debug lines are not that.
+own_words=$(grep -nE '(return|=) "[A-Z][^"]{14,}"' "$guardsrc" | grep -vE "KidWords|Log\.|Diag\.|println" || true)
+[ -z "$own_words" ] ||
+  guard_fail "$guardsrc writes its own kid-facing sentences:
+$own_words
+Put the words in KidWords (core/.../ui/KidWords.kt) and call it. One rule, one sentence, three faces - which is what that file's KDoc already promises and what nothing was holding it to."
+
 # 52. A channel's own words reach a child with every way out already gone.
 #     A YouTube channel description is a paragraph followed by a list of
 #     places to go: a shop, a Discord, a second channel, an e-mail address.

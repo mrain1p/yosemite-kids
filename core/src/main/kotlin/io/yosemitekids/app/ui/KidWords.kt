@@ -40,9 +40,9 @@ object KidWords {
      * name and not a blank box.
      */
     fun refusal(reason: String): String = when (reason) {
-        "paused" -> "A grown-up paused watching."
+        "paused" -> "A grown-up paused watching for today. See you tomorrow 💛"
         "window" -> "It is not watching time right now."
-        "out-of-time" -> "That is all the watching for today."
+        "out-of-time" -> "That is all the watching for today 🌟"
         "blocked" -> "A grown-up chose to hide this one."
         "not-for-this-kid" -> "This one is not on your list."
         "too-short" -> "That one is too short."
@@ -68,6 +68,24 @@ object KidWords {
         seconds < 120 -> "1 minute left"
         else -> "${seconds / 60} minutes left"
     }
+
+    /**
+     * A break the device is holding, and when it ends.
+     *
+     * The only refusal that carries a number, because it is the only one a
+     * child can wait out: telling them a break is on without telling them
+     * when it lifts is the same sentence as "no", and they will ask an adult
+     * every two minutes until it does.
+     */
+    fun breakUntil(clock: String): String = "Time for a break. You can watch again at $clock ⏰"
+
+    /**
+     * A break that has just begun, where the device has not yet worked out
+     * when it lifts. Warmer than [breakUntil] on purpose: this one arrives at
+     * the moment a child is stopped, and "great watching" is the difference
+     * between being interrupted and being finished.
+     */
+    fun breakStarting(): String = "Time for a break. Great watching 🎉"
 
     /** Under this, the countdown stops being information and becomes a warning. */
     const val LOW_SECONDS = 5 * 60L

@@ -270,6 +270,12 @@ canary 50 "$GUARD" \
   'sed -i "s/private fun isWeekend(): Boolean =/private fun isWeekend(): Boolean = Calendar.SATURDAY == 0 ||/" "$GUARD"'
 
 
+canary 51 "$GUARD" \
+  "the phone writing its own words for a rule the hub already has words for" \
+  "writes its own kid-facing sentences" \
+  'sed -i "s/return KidWords.breakStarting()/return \"Time for a break, canary watching\"/" "$GUARD"'
+
+
 canary 56 "$CHUNKER" \
   "a second copy of the range arithmetic" \
   "wanted exactly one" \

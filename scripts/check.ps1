@@ -1693,6 +1693,34 @@ if ($budgetCopies.Count -gt 0) {
     Fail-Guard "the day's allowance is computed outside Budget.kt:`n$($budgetCopies -join "`n")`nCall Budget.dayMs / Budget.bonusMs / Budget.isWeekend. Two implementations of this arithmetic is a home screen promising minutes a player will not honour."
 }
 
+# 51. A child meets one vocabulary, not one per face.
+#     KidWords in :core says what a refusal sounds like to a five-year-old,
+#     and its whole KDoc is that the television, the phone and the tablet say
+#     the same thing about the same rule. Only the hub called it. SessionGuard
+#     - which is what the phone and the television actually refuse with - kept
+#     its own sentences, so a child paused at teatime read "A parent paused
+#     screen time" on the TV and "A grown-up paused watching" on the tablet,
+#     about one rule, in one afternoon. A child cannot tell that those are the
+#     same thing; they can only tell that one of the two devices is lying.
+$guardSrc = "app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt"
+if (-not (Test-Path $guardSrc)) {
+    Fail-Guard "$guardSrc is gone; guard 51 is blind. It is what the phone and the television refuse with."
+}
+$guardText = Get-Content $guardSrc -Raw
+if (-not $guardText.Contains("KidWords.")) {
+    Fail-Guard "$guardSrc no longer renders any refusal through KidWords; guard 51 is blind, and the phone is free to invent its own words again."
+}
+#     The tell is a sentence rather than a call: kid-facing copy in this file
+#     is a quoted string ending in a full stop, an exclamation or an emoji.
+#     Format strings for a clock (timeOf) and the debug lines are not that.
+$ownWords = @(Get-Content $guardSrc |
+    Select-String -CaseSensitive -Pattern '(return|=) "[A-Z][^"]{14,}"' |
+    Where-Object { $_.Line -notmatch 'KidWords|Log\.|Diag\.|println' } |
+    ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" })
+if ($ownWords.Count -gt 0) {
+    Fail-Guard "$guardSrc writes its own kid-facing sentences:`n$($ownWords -join "`n")`nPut the words in KidWords (core/.../ui/KidWords.kt) and call it. One rule, one sentence, three faces - which is what that file's KDoc already promises and what nothing was holding it to."
+}
+
 # 52. A channel's own words reach a child with every way out already gone.
 #     A YouTube channel description is a paragraph followed by a list of
 #     places to go: a shop, a Discord, a second channel, an e-mail address.
