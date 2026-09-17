@@ -2127,3 +2127,114 @@ backlog).
   still needs a remote in front of the real set.
 - **Housekeeping.** Two em-dashes on `LAN-API.md`'s playlist rows had been
   double-encoded since 1.9.0; fixed.
+
+### The review, and what it found (1.12.0)
+
+A measure-and-harden round rather than a feature one. Three releases in a
+fortnight had added playlists, HD in a browser, rows a parent composes,
+favourites and a television service, and almost none of it had been touched on
+the family's own devices — while two page-level defects had shipped that
+nothing in the repo could have caught. So seven readers went through the
+codebase by dimension (structure, tests, the guards, diagnosability,
+robustness, the docs, the parent console), every finding verified against the
+code. `docs/ROADMAP.md` §9 is the plan and §9G the findings; what follows is
+what was fixed.
+
+The pattern the review found is worth stating, because it is not a scatter of
+unrelated bugs: **a discipline applied on one side of a pair and not the
+other.** The hub reads `KidSurface`; the phone hard-codes the same shelves. The
+hub renders refusals through `KidWords`; the phone writes its own sentences.
+Eleven stores write atomically; the index did not. The kid page reports its own
+errors; the console reported nothing. Guard 57 learned that a route pattern
+must allow digits; guards 14, 22, 29 and 30 did not.
+
+- **The index could lose a channel's back catalogue, permanently.** It had no
+  lock and no atomic write: every mutator built a new map from its own
+  in-memory copy and wrote that whole view to disk, while the crawl worker
+  holds one instance for the length of a run and `POST /index` builds a fresh
+  one per request — so the later write erased the other's source. Then a torn
+  source file read as an empty channel, `addVideos` wrote the new page back
+  *as* the whole source, and the cursor still pointed past the pages that were
+  gone. All of it silent: a source that reads as never-crawled looks exactly
+  like one the crawl has not reached yet. Now one process-wide lock, a
+  read-modify-write that goes to disk for the truth, `writeAtomically` in
+  `:crawl` (temp file, `fsync`, atomic rename, and no delete-first fallback —
+  four stores had grown one, and it takes the only good copy when the second
+  rename fails too), and a file that will not parse is kept as `.corrupt` with
+  its cursor dropped so the crawl rebuilds it from page one. `IndexDurabilityTest`.
+- **The circuit breaker could never trip for the failure it exists for.**
+  `PlaybackBreaker` counts consecutive failures, and the counter was reset
+  when a *resolve* succeeded — before anything played. So a run of decode
+  failures, which is the shape an expired link, a throttled one and YouTube's
+  bot wall all take, walked the whole queue at full speed with a fresh
+  extraction per video: precisely the burst the class was written to stop. It
+  resets on frames now.
+- **The home timezone was a dead end nobody could leave.** The hub fails closed
+  for any kid with a bedtime or a budget while `homeZone` is null, and nothing
+  in the product ever wrote the field — no editor on any face, no default. The
+  first parent to set either rule would have turned the browser into "Something
+  is not set up. Ask a grown-up", with no switch anywhere to fix it and no log
+  line naming it. The phone now stamps its own zone the moment a rule needs one
+  (`Budget.dayMatters`, `HomeZoneTest`), which is what `SettingsSurface` said
+  the field was for all along.
+- **The console could fail in silence, and often did.** `button()` swallowed
+  every rejection — approve, revoke, restore, add a channel, mint a code, pause
+  the crawl — sixteen save paths dropped the promise entirely, and a toggle
+  whose save failed was left disabled and flipped to the value that had *not*
+  been written. The page registered neither `window.onerror` nor
+  `unhandledrejection`, unlike the kid page, so none of it reached a log either.
+  There is one `saving()` wrapper now that restores the control and names the
+  hub's own reason, a banner every failure reaches, and both handlers.
+- **"Download a backup" could never work.** It was the one `/api` call that
+  bypassed the fetch wrapper, so it sent no session header, the hub answered
+  401, and the handler signed the parent out — every time they pressed it.
+- **A hub that did not answer lied to both faces.** The console told a parent
+  their hub was unclaimed, which invites setting a second password on a hub
+  that has one; the kid page showed a signed-in child the sign-in screen, which
+  reads as being thrown out of their own app and which a child cannot fix. Both
+  now distinguish a transport failure from a refusal, and the child's says
+  "Just a moment…" with a Try again.
+- **A refusal reaches a parent.** `HubPolicy.Decision.detail` says in its own
+  KDoc that it is written for a parent's log, and it reached no log at all — so
+  "why will this video not play on the tablet" was answerable by nobody. One
+  line per kid and reason per ten minutes, into the report ring the console
+  already draws.
+- **The kid page's duration was wrong past an hour**: a 1:05:30 video read
+  "1:05" in a browser and "1:05:30" on the phone beside it.
+- **The browser is tested now.** `scripts/smoke/smoke.mjs` drives the kid page
+  in a real browser on every push: it signs in with a child's password, checks
+  the home, the channels tab, a channel page, You and search all draw cards,
+  and then asks for a video that child may not see — which must come back 403
+  with a policy reason, because a 502 would mean the gate let it through and
+  the hub went looking for a stream. The hub it drives is `SmokeHub`, the same
+  `HubServer` with the election and the crawl left null, so the check never
+  touches the network. This is the class of defect that shipped twice: 1.9.0's
+  playlist strip, whose one insert missed its anchor, and 1.11.0's player,
+  which sat at 144p with a full buffer.
+- **A Content-Security-Policy on both origins**, now that the kid page loads a
+  script: `default-src 'none'` and then only what each page uses. Both
+  listeners had kept byte-identical copies of the security-header writer three
+  lines below a KDoc saying a security check must not be copied; there is one
+  `HubHttp` now, which is where the policy went. `/api` replies carry
+  `no-store` as the kid origin's always have — the console's had no cache
+  directive at all, `/api/backup` included, and that is the whole family
+  config.
+- **The gate could not see a route with a digit or a dot.** Four guards read
+  the route lists with a pattern that allowed neither, which is the exact class
+  that made guard 57 fail open once; the lesson had reached 57 alone. Guard 30
+  was additionally blind to every asset route. And the clause that stops a
+  child naming their older sibling in a URL was mistyped identically in both
+  gate scripts, so it caught `&kid=` and missed `?kid=` — the spelling a first
+  query parameter takes. A typo shared by both mirrors is invisible to the
+  mirror check and to the canary, which is the argument for deriving that list
+  rather than keeping it by hand.
+- **Docs.** `budgetScope` was documented as unbuilt in four places and shipped
+  in 1.3.0; §2A described a foreground service that shipped in 1.10.0; the
+  release steps in `CLAUDE.md` omitted the two whose omission shipped a broken
+  1.2.0; the architecture tree was missing twenty files and had two stores in
+  the wrong module; and the map skill could not lead a reader to anything added
+  since 1.9.0. All corrected.
+
+Verified: the JVM suites in `:core`, `:crawl`, `:hub` and `:app` (new:
+`IndexDurabilityTest`, `HomeZoneTest`), both gates, the canary in CI, and the
+new browser walk against a seeded hub.
