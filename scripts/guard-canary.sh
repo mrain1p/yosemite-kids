@@ -208,6 +208,9 @@ RAILS=app/src/main/java/io/yosemitekids/app/ui/PlaylistShelves.kt
 HUBCRAWL=hub/src/main/kotlin/io/yosemitekids/hub/HubCrawl.kt
 # Built from parts so the doc-path guard in check.sh does not look for a plan
 # file that exists only for the length of one canary run.
+HTTP=crawl/src/main/kotlin/io/yosemitekids/app/data/Http.kt
+BACKUP=app/src/main/res/xml/backup_rules.xml
+CONFIGSYNC=app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt
 PLANFILE=docs/PLAN-canary
 
 echo "== breaking things on purpose, one at a time"
@@ -224,6 +227,41 @@ echo "== breaking things on purpose, one at a time"
 # purpose: the working tree is CRLF on Windows, and a `\n` in a slurped regex
 # silently matches nothing there — which the harness now catches, but which is
 # better not to write in the first place.
+
+# --- the older guards -------------------------------------------------
+#
+# Guard 65 demands a case from 56 upward, which is where this file started.
+# Everything below 56 had been negative-tested once, by hand, by whoever wrote
+# it, and never since - and three had gone blind before the canary existed.
+# These five protect the most: the hub's egress, the credential that must
+# never reach a cloud backup, a grant landing on a device that was asleep, an
+# unauthenticated device route, and a reply without its security headers.
+
+canary 7 "$HTTP" \
+  "the hub allowed to reach something that is not YouTube" \
+  "which is not one of YouTube's hosts" \
+  'sed -i "s/\"ytimg.com\"/\"canary.example\"/" "$HTTP"'
+
+canary 9 "$BACKUP" \
+  "the AI API key included in a cloud backup" \
+  "backs up the AI API key store" \
+  'sed -i "/<full-backup-content>/a\    <include domain=\"sharedpref\" path=\"secrets\" \/>" "$BACKUP"'
+
+canary 21 "$CONFIGSYNC" \
+  "a grant that never lands on the device that was asleep" \
+  "no longer applies the config's grants on arrival" \
+  'sed -i "s/guard.applyGrants(/guard.applyGrantsCanary(/" "$CONFIGSYNC"'
+
+canary 29 "$HUBSRV" \
+  "a device route open to every peer on the LAN" \
+  "without calling authorised(ex)" \
+  'sed -i "s/if (!authorised(ex)) return/if (!authorisedCanary(ex)) return/" "$HUBSRV"'
+
+canary 41 "$HUBSRV" \
+  "a console reply that carries no security headers" \
+  "of them call securityHeaders(ex)" \
+  'sed -i "0,/securityHeaders(ex)/s//securityHeadersCanary(ex)/" "$HUBSRV"'
+
 
 canary 56 "$CHUNKER" \
   "a second copy of the range arithmetic" \
