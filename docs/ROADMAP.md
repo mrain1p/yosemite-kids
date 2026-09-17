@@ -865,6 +865,125 @@ Two harness bugs are fixed already and are worth not re-learning:
 ---
 
 
+## 9. The measure-and-harden round — planned 2026-09-17, after 1.11.0
+
+Three releases in a fortnight added playlists, HD in a browser, rows a parent
+composes, favourites and a TV service — and almost none of it has been touched
+on the family's own devices. Every "verified" this month was a desktop browser
+against a throwaway hub, or the emulator. Two page-level defects slipped past
+every guard and route test in that time (the strip that never drew in 1.9.0;
+dash.js sitting at 144p with a full buffer). So the next round measures and
+hardens before it adds. The owner asked for all of it, in this order, with the
+on-device phase last because it needs an evening and a remote; the phases are
+carried out with full autonomy, the NAS and an emulator both available.
+
+### 9A. Phase 0 — a comprehensive review, no code changes
+
+One session of reading, fanned out by module and by dimension, every finding
+verified against the code before it is written down, and the console page in
+scope as well as the kid's. What it asks:
+
+- **Structure.** Where the module boundaries (`:core`, `:crawl`, `:hub`,
+  `:app`) still let two faces decide the same thing separately; the files that
+  have grown past what one person can hold (`kid.html` and `index.html` are
+  single files; `HubKidServer.kt` and `MainViewModel.kt` are each well past a
+  thousand lines); dead code and duplicated helpers.
+- **Tests.** What each module covers against what the gate and CI run. Holes
+  already on record: `LanServer.handle` has no unit tests; `ConfigStore.fromJson`
+  is all-or-nothing; `LanService` has never run on a television; both web pages
+  are exercised only by hand.
+- **Guards and the canary.** Overlaps between the seventy-odd guards; which of
+  1–55 could go blind unnoticed (no canary case); the five-minutes-a-case cost
+  on a Windows bash.
+- **Diagnosability.** What a parent sees when each face fails; what each of hub,
+  phone and TV logs and where it goes; whether every refusal and error carries a
+  stable reason code (`HubPolicy.Decision`, `KidWords`, `HubStream.Unplayable`);
+  whether the twice-daily extractor canary (`extractor-smoke.yml`) reaches the
+  owner when it fires.
+- **Robustness.** Error handling on the hot paths — the media pump, the crawl,
+  the sync merge and its two-TV race (`FORK-NOTES` next-up item 3) — bounded
+  reads on every LAN-facing edge, the hub's pools and every TTL.
+- **Skills and docs.** Whether the seven skills and `ARCHITECTURE.md`'s
+  "where to change what" table still describe the code after three releases;
+  where the docs sprawl.
+
+**Output:** a findings table under §9G — severity, evidence, the fix, its
+size — and the phases below reordered where a finding demands it.
+
+### 9B. Phase 2 — the safety net and the hardening
+
+(Phase 1, the devices, is last; see §9F.)
+
+- **A browser smoke test in CI.** A headless browser against the hub jar with a
+  seeded index, in `build.yml` where Node already is: sign in with the kid's
+  password, the home draws its rails, a channel page shows its strip, the You
+  tab, a search, and a play request that reaches the gate. Guard 61 lints the
+  page; nothing runs it. This is the check that would have caught both
+  page-level defects above, and the project's own rule — a mistake made twice
+  is the signal to build a check — names it.
+- **A Content-Security-Policy on the kid origin** (`securityHeaders(ex)` in
+  `HubKidServer`), now that the page loads a script: same origin only, `blob:`
+  for the media source, nothing else. With a guard 60-style count so a reply
+  cannot ship without it.
+- **Home-load failure honesty.** `loadHome()` in `kid.html` sends a signed-in
+  child to the sign-in screen when the hub does not answer; only a 401 should.
+  The page should say the hub did not answer and try again.
+- **The chip row clips its last item** on You and Search (§2L), from the phone.
+- **Upstream sync first**, per the house rule; the last was 2026-09-14.
+- A release when this lands, because the fixes are kid-visible.
+
+### 9C. Phase 3 — consistency and hygiene
+
+- **The house-style skill** (§8F): the product's voice and its rules of drawing,
+  written once now that there is a full product to describe.
+- **Docs compaction.** The changelog's sections before 1.8.0 move to
+  `docs/archive/`; the roadmap's struck items move to a done appendix so the
+  live half reads as a plan again.
+- **Canary cases for guards 1–55**, in batches across rounds, so the
+  meta-check can one day demand them.
+- **Ops, the owner's:** the release keystore and its password file backed up
+  off-machine; a nightly copy of the hub's data volume on the NAS through DSM's
+  task scheduler (one manual copy from 2026-09-14 exists).
+
+### 9D. Phase 4 — features, in this order
+
+1. Honest seconds on the countdown (§8D): `Remaining[{ms, kind}]` from the
+   hub's clock on `/home.time` and `/progress`, interpolated from
+   `HubWatchMeter`'s accrual, never invented in the page.
+2. Skeleton tiles instead of one spinner while home and a channel load.
+3. Today's screen time as one bar (§8E), with its `KidSurface` row and its
+   numbers in `KidGeometry` first.
+4. A kid-scale search page on the phone, to match what the browser has.
+5. The swipe-down-into-the-floating-player gesture.
+6. Kid → parent requests, and take back a grant — after the four decisions
+   §8E lists are made, and written there first.
+
+### 9E. Sequencing
+
+Phase 0 first, because it can reorder everything after it. Then 2, 3, 4, each
+ending with the full gate, and a release only when something kid-visible
+shipped. The device phase closes the round.
+
+### 9F. Phase 1 — the real devices, last
+
+Needs the owner, the iPad, the Chromecast and a remote; an emulator stands in
+for none of it.
+
+- **iPad.** Whether HD reaches 1080p on the family's Wi‑Fi
+  (`video.videoHeight`); what a block mid-video looks like there; the scrubber
+  and the double-tap seek, which are feel and cannot be judged from a desk.
+- **Chromecast.** Whether the television stays reachable overnight with
+  `LanService`; `wm size` and `wm density` off the real set to settle the
+  provisional factor in `tvUnits`; the D-pad through the end, error and blocked
+  cards.
+- **Phone.** The clipped chip row, before and after §9B's fix.
+
+Output is a fix list, which becomes the next round.
+
+### 9G. Findings of the review
+
+Written by Phase 0. Empty until then.
+
 ## Anchors
 
 Each row names code an item above depends on. **`scripts/check.*` fails if one
@@ -881,3 +1000,7 @@ fires: confirm the work is done, then delete the item and its row.
 | §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |
 | §2K provisional TV dp | `fun tvUnits(` | code |
 | §2M index has no date | `val durationSeconds: Long,` | code |
+| §9B CSP on the kid origin | `securityHeaders(ex)` | code |
+| §9B home-load honesty | `function loadHome()` | code |
+| §9A extractor canary reaches the owner | `.github/workflows/extractor-smoke.yml` | path |
+| §9F TV service on a real TV | `class LanService` | code |
