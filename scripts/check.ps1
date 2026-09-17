@@ -1754,6 +1754,41 @@ if ($aboutStripped -lt 2) {
     Fail-Guard "guard 52 found $aboutStripped stripped description site(s); the extractor and the source cache are both meant to be there. It is blind."
 }
 
+# 53. One key derivation in the product, at one cost.
+#     Pbkdf2 in :core derives the hub's admin password, a kid's web password
+#     and - since 1.12.x - the parent PIN. HubPassword's KDoc has always said
+#     "there is one KDF in the product rather than a hub copy and a phone copy
+#     that drift apart in cost"; there were two, and they had drifted: the PIN
+#     guarding every setting in the house ran at 120,000 iterations beside the
+#     shared 210,000. A second derivation is not a second implementation of a
+#     harmless helper. It is a second answer to "how expensive is guessing".
+$kdfFile = "core/src/main/kotlin/io/yosemitekids/app/data/PasswordRecord.kt"
+if (-not (Test-Path $kdfFile)) {
+    Fail-Guard "$kdfFile is gone; guard 53 is blind. The one derivation lives there."
+}
+if (-not ((Get-Content $kdfFile -Raw).Contains("const val ITERATIONS"))) {
+    Fail-Guard "$kdfFile no longer states an iteration count; guard 53 is blind, and the cost of guessing is no longer written anywhere."
+}
+#     SettingsStore is the one file allowed to name the primitive besides
+#     Pbkdf2 itself, and only to READ the two formats it used to write - a
+#     family whose PIN predates the move must still be able to open their own
+#     settings screen. Nothing may WRITE one: that is what stored() is for.
+$pinStore = "app/src/main/java/io/yosemitekids/app/data/SettingsStore.kt"
+$newKdf = @(Get-ChildItem -Recurse -File -Filter *.kt app/src/main, core/src/main, crawl/src/main, hub/src/main |
+    Where-Object { $_.FullName -notmatch 'PasswordRecord\.kt$' -and $_.FullName -notmatch 'SettingsStore\.kt$' } |
+    Select-String -CaseSensitive -Pattern 'SecretKeyFactory\.getInstance' |
+    ForEach-Object { "$($_.Path):$($_.LineNumber)" })
+if ($newKdf.Count -gt 0) {
+    Fail-Guard "a key derivation outside Pbkdf2:`n$($newKdf -join "`n")`nCall Pbkdf2.record / Pbkdf2.verify (core/.../data/PasswordRecord.kt). Two derivations is two answers to how expensive guessing a family's password is, and the weaker one is the one an attacker uses."
+}
+$legacyWrites = @(Get-Content $pinStore |
+    Select-String -CaseSensitive -Pattern 'putString\("pin"' |
+    Where-Object { $_.Line -notmatch 'stored\(' } |
+    ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" })
+if ($legacyWrites.Count -gt 0) {
+    Fail-Guard "SettingsStore writes a PIN by a path other than stored():`n$($legacyWrites -join "`n")`nThe legacy derivations in that file are read-only, for families whose PIN predates the shared one. Everything written goes through Pbkdf2."
+}
+
 # 55. Every way into the little window asks pipEligible() first, and the
 #     gesture that opens it can be argued with on a laptop.
 #     There are two ways in now — the ⤢ button and the swipe down the finger

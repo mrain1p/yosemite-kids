@@ -1521,6 +1521,34 @@ about_stripped=$(grep -rcE "about[[:space:]]*=[[:space:]]*SafeText" --include=*.
 [ "$about_stripped" -ge 2 ] ||
   guard_fail "guard 52 found $about_stripped stripped description site(s); the extractor and the source cache are both meant to be there. It is blind."
 
+# 53. One key derivation in the product, at one cost.
+#     Pbkdf2 in :core derives the hub's admin password, a kid's web password
+#     and - since 1.12.x - the parent PIN. HubPassword's KDoc has always said
+#     "there is one KDF in the product rather than a hub copy and a phone copy
+#     that drift apart in cost"; there were two, and they had drifted: the PIN
+#     guarding every setting in the house ran at 120,000 iterations beside the
+#     shared 210,000. A second derivation is not a second implementation of a
+#     harmless helper. It is a second answer to "how expensive is guessing".
+kdf=core/src/main/kotlin/io/yosemitekids/app/data/PasswordRecord.kt
+[ -f "$kdf" ] ||
+  guard_fail "$kdf is gone; guard 53 is blind. The one derivation lives there."
+grep -qF "const val ITERATIONS" "$kdf" ||
+  guard_fail "$kdf no longer states an iteration count; guard 53 is blind, and the cost of guessing is no longer written anywhere."
+#     SettingsStore is the one file allowed to name the primitive besides
+#     Pbkdf2 itself, and only to READ the two formats it used to write - a
+#     family whose PIN predates the move must still be able to open their own
+#     settings screen. Nothing may WRITE one: that is what `stored()` is for.
+new_kdf=$(grep -rn "SecretKeyFactory.getInstance" app/src/main core/src/main crawl/src/main hub/src/main --include=*.kt | grep -vF "$kdf" | grep -v "app/src/main/java/io/yosemitekids/app/data/SettingsStore.kt" || true)
+[ -z "$new_kdf" ] ||
+  guard_fail "a key derivation outside Pbkdf2:
+$new_kdf
+Call Pbkdf2.record / Pbkdf2.verify (core/.../data/PasswordRecord.kt). Two derivations is two answers to how expensive guessing a family's password is, and the weaker one is the one an attacker uses."
+legacy_writes=$(grep -n "putString(\"pin\"" app/src/main/java/io/yosemitekids/app/data/SettingsStore.kt | grep -v "stored(" || true)
+[ -z "$legacy_writes" ] ||
+  guard_fail "SettingsStore writes a PIN by a path other than stored():
+$legacy_writes
+The legacy derivations in that file are read-only, for families whose PIN predates the shared one. Everything written goes through Pbkdf2."
+
 # 55. Every way into the little window asks pipEligible() first, and the
 #     gesture that opens it can be argued with on a laptop.
 #     There are two ways in now — the ⤢ button and the swipe down the finger

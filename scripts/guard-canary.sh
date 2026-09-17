@@ -283,6 +283,12 @@ canary 62 "$VM" \
   'sed -i "s/KidSurface/ShelfCatalogueCanary/g" "$VM"'
 
 
+canary 53 "$CONFIGSYNC" \
+  "a second key derivation, at a cost of its own" \
+  "a key derivation outside Pbkdf2" \
+  'sed -i "1a import javax.crypto.SecretKeyFactory\nprivate val canaryKdf = SecretKeyFactory.getInstance(\"PBKDF2WithHmacSHA1\")" "$CONFIGSYNC"'
+
+
 canary 56 "$CHUNKER" \
   "a second copy of the range arithmetic" \
   "wanted exactly one" \
