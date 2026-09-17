@@ -91,6 +91,18 @@ class HubKidHome(
      * index rather than from the request, which is what stops a saved shelf
      * becoming a place to write text a child then reads.
      */
+    /**
+     * One of this kid's channels shaped like a video, for the favourite-channels
+     * list: the url is the channel's, the title its name, the thumbnail its
+     * picture. Null for a channel that is not the kid's, so a heart cannot
+     * name a sibling's channel any more than a saved video can.
+     */
+    fun channelRow(kidId: String, sourceId: String): Video? {
+        val source = policy.catalogueFor(kidId).firstOrNull { it.entry.id == sourceId } ?: return null
+        val art = policy.index.state(sourceId)?.avatarUrl ?: source.videos.firstOrNull()?.thumbnailUrl
+        return Video(source.entry.url, nameOf(source), nameOf(source), art, 0L)
+    }
+
     fun rowFor(kidId: String, videoId: String): Video? =
         policy.catalogueFor(kidId)
             .asSequence()
@@ -371,6 +383,7 @@ class HubKidHome(
         // fallback, and the reply says
         // which order it actually used so the chips agree with the grid.
         val familyOrder = runCatching { store.load().channelOrder }.getOrDefault("")
+        val favourites = lists.urls(kidId, HubSavedLists.Which.CHANNELS)
         val effective = sort?.takeIf { it.isNotBlank() }
             ?: familyOrder.takeIf { it in WEB_SORTS }
             ?: CHANNEL_ORDER_ALPHA
@@ -391,7 +404,8 @@ class HubKidHome(
             // offered here; zero makes it a stable no-op if asked for anyway.
             opens = { 0 },
             latestUpload = { id -> byId[id]?.videos?.take(10)?.mapNotNull { it.publishedAt }?.maxOrNull() },
-            seed = seed
+            seed = seed,
+            favourites = favourites
         )
         val arr = JSONArray()
         for (source in ordered) {
@@ -401,6 +415,7 @@ class HubKidHome(
                     .put("id", source.id)
                     .put("name", source.name)
                     .put("count", row.videos.size)
+                    .put("fav", source.url in favourites)
                     .put("thumb", policy.index.state(source.id)?.avatarUrl ?: row.videos.firstOrNull()?.thumbnailUrl.orEmpty())
             )
         }
@@ -618,6 +633,9 @@ class HubKidHome(
             channelAffinity = watched.entries.sortedByDescending { it.value.lastWatchedAt }
                 .mapNotNull { e -> videos.firstOrNull { it.url == e.key }?.channelName }
                 .groupingBy { it }.eachCount(),
+            // A hearted video ranks higher here as it does on the phone; the
+            // page used to send an empty set (roadmap 2N).
+            favourites = saved.favorites,
             watched = watched.keys
         )
         val ranked = SearchRank.rank(hits, terms, query, signals) {

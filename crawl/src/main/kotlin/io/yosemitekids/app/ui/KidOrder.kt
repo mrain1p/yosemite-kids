@@ -66,14 +66,21 @@ fun orderChannels(
     opens: (String) -> Int,
     latestUpload: (String) -> Long?,
     seed: Long,
-    addedAt: (String) -> Long = { 0L }
-): List<Source> = when (sort) {
-    CHANNEL_ORDER_ALPHA -> channels.sortedBy { it.name.lowercase() }
-    CHANNEL_ORDER_ALPHA_DESC -> channels.sortedByDescending { it.name.lowercase() }
-    CHANNEL_ORDER_RANDOM -> channels.shuffled(kotlin.random.Random(seed))
-    CHANNEL_ORDER_LATEST -> channels.sortedByDescending { latestUpload(it.id) ?: Long.MIN_VALUE }
-    CHANNEL_ORDER_ADDED -> channels.sortedByDescending { addedAt(it.url) }
-    else -> channels.sortedByDescending { opens(it.id) }
+    addedAt: (String) -> Long = { 0L },
+    /** The kid's favourite channels, by url: first under every sort, in that sort's own order among themselves. */
+    favourites: Set<String> = emptySet()
+): List<Source> {
+    val ordered = when (sort) {
+        CHANNEL_ORDER_ALPHA -> channels.sortedBy { it.name.lowercase() }
+        CHANNEL_ORDER_ALPHA_DESC -> channels.sortedByDescending { it.name.lowercase() }
+        CHANNEL_ORDER_RANDOM -> channels.shuffled(kotlin.random.Random(seed))
+        CHANNEL_ORDER_LATEST -> channels.sortedByDescending { latestUpload(it.id) ?: Long.MIN_VALUE }
+        CHANNEL_ORDER_ADDED -> channels.sortedByDescending { addedAt(it.url) }
+        else -> channels.sortedByDescending { opens(it.id) }
+    }
+    // A stable partition: the hearts float up, the chip still decides the
+    // order inside each half, and a kid with no favourites sees no change.
+    return if (favourites.isEmpty()) ordered else ordered.sortedBy { if (it.url in favourites) 0 else 1 }
 }
 
 /**

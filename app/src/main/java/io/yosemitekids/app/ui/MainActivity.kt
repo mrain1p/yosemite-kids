@@ -276,6 +276,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             applicationContext, profileSuffix, SavedListStore.WATCH_LATER
                         ),
                         QueueStore(applicationContext, profileSuffix),
+                        SavedListStore(applicationContext, profileSuffix, SavedListStore.CHANNELS),
                         pairingStore,
                         configStore = configStore,
                         // The same lambda the LAN server gets. A merge this

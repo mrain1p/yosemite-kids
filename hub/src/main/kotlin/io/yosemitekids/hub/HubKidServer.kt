@@ -477,9 +477,24 @@ class HubKidServer(
 
         val which = HubSavedLists.Which.of(json.optString("list"))
             ?: return respond(ex, 400, JSONObject().put("error", "no such list").toString())
+        val on = json.optBoolean("on", true)
+        if (which == HubSavedLists.Which.CHANNELS) {
+            // A heart on a CHANNEL: `c` names one of this kid's own channels, and
+            // the row stored is the channel shaped like a video (its url, name
+            // and picture), the same shape the phone stores - one store, one
+            // convergence, and orderChannels floats it to the front on every face.
+            val sourceId = json.optString("c").take(64)
+            val row = browse.channelRow(browser.kid, sourceId)
+                ?: return respond(ex, 403, JSONObject().put("error", "not-for-this-kid").toString())
+            val nowOn = lists.set(browser.kid, which, row, on)
+            return respond(
+                ex, 200,
+                JSONObject().put("list", which.wire).put("c", sourceId).put("on", nowOn)
+                    .put("count", lists.urls(browser.kid, which).size).toString()
+            )
+        }
         val videoId = json.optString("v").takeIf { HubMedia.looksLikeVideoId(it) }
             ?: return respond(ex, 400, JSONObject().put("error", "bad video").toString())
-        val on = json.optBoolean("on", true)
 
         // The row as the family's own index holds it. Also the check that this
         // child may see it at all: browse.rowFor consults the same catalogue

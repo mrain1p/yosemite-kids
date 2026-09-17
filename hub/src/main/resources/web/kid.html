@@ -615,7 +615,8 @@
    *  - **The click after a hold is swallowed.** `pointerup` fires a click, so
    *    without this the menu opens and the video starts playing behind it.
    */
-  function holdable(card, video) {
+  function holdable(card, video, open) {
+    open = open || openHold;
     card.style.webkitTouchCallout = "none";
     var timer = null, startX = 0, startY = 0, fired = false;
 
@@ -630,7 +631,7 @@
       timer = setTimeout(function () {
         fired = true;
         timer = null;
-        openHold(video);
+        open(video);
       }, HOLD_MS);
     });
     card.addEventListener("pointermove", function (e) {
@@ -694,6 +695,33 @@
     if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
   }
 
+  /**
+   * The hold menu for a CHANNEL: one row, the heart. A favourite channel
+   * floats to the front of every channel order (orderChannels in :crawl),
+   * on this face and the others - the store is the hub's, the rule is shared.
+   */
+  function openChannelHold(channel) {
+    var dlg = document.getElementById("hold-menu");
+    document.getElementById("holdTitle").textContent = channel.name || "";
+    var rows = document.getElementById("holdRows");
+    clear(rows);
+    var b = el("button");
+    b.type = "button";
+    b.appendChild(el("span", "glyph", "❤️"));
+    b.appendChild(el("span", null, channel.fav ? "Remove from favourite channels" : "Add to favourite channels"));
+    b.onclick = function () {
+      post("/kid/list", { list: "channels", c: channel.id, on: !channel.fav }).then(function (r) {
+        if (r) channel.fav = r.on;
+        dlg.close();
+        // Redrawn from the hub in the order the kid had: the heart moves the
+        // channel to the front, and that is the hub's doing, not this page's.
+        if (state.view === "channels") loadChannels(state.channelsSort, state.channelsSeed);
+      });
+    };
+    rows.appendChild(b);
+    if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+  }
+
   function videoCard(video, big) {
     var card = el("button", "card");
     card.type = "button";
@@ -740,6 +768,9 @@
   function channelCard(channel) {
     var card = el("button", "card chan");
     card.type = "button";
+    // A held channel opens its own one-row menu (the "channel-hold-menu"
+    // surface): the heart. The hub says whether it is on (`fav`).
+    holdable(card, channel, openChannelHold);
     var poster = el("div", "poster");
     if (channel.thumb) {
       var img = el("img");
@@ -748,6 +779,7 @@
       img.loading = "lazy";
       poster.appendChild(img);
     }
+    if (channel.fav) poster.appendChild(el("span", "badge", "❤️"));
     card.appendChild(poster);
     var label = el("div", "label");
     label.appendChild(el("span", "title", channel.name));
@@ -969,6 +1001,8 @@
     (payload.channels || []).forEach(function (c) { g.appendChild(channelCard(c)); });
     main.appendChild(g);
     state.view = "channels";
+    state.channelsSort = payload.sort;
+    state.channelsSeed = payload.seed;
   }
 
   function loadChannels(sort, seed) {

@@ -334,7 +334,9 @@ are regressions from the revamp and outrank the rest.**
   holds that. Drawn collapsed to three lines under the channel's name with a
   More/Less toggle. Not built: a parent switch for it, because a switch whose
   "off" position lets links through is not a switch a family should have.
-- **Favourite (subscribe to) a *channel*, not just a video.** Possibly a
+- ~~**Favourite (subscribe to) a *channel*, not just a video.**~~ **Done in
+  1.11.0**: the hold menu on a channel tile on every face, one row, and the
+  hearts float to the front of every channel order (`orderChannels`). Was: possibly a
   parent-set thing rather than a kid-set one. New per-kid state either way, so
   it rides the sectioned merge like pins do.
 
@@ -444,7 +446,8 @@ got to, and every other face keeps its own watch history locally.
   `ChannelIndex.setArt` keeps the avatar and banner from the first page of a
   crawl (`SourceState.avatarUrl`/`bannerUrl`, on the wire too), and the
   browser's channel cards and hero wear them.
-- **No favourites in the browser.** `SearchRank.Signals` takes them and the
+- ~~**No favourites in the browser.**~~ **Done in 1.11.0**: the hub passes the
+  kid's hearted videos to `SearchRank.Signals`. Was: it takes them and the
   page sends an empty set, so a hearted video does not yet rank higher there.
   It waits on the same store the app-side favourite/subscribe work needs
   (§2L).
@@ -771,7 +774,9 @@ mapping and its environment line come out of the NAS compose file.
 - **`publishedAt` through `ChannelIndex`** (§2M) and the Most-recent chip that
   needs it. The edit is small; the delivered feature is not — `addVideos` never
   rewrites a known row, so dates would land only on new uploads.
-- **Favourite / subscribe to a channel.** Real value, but it is new per-kid
+- ~~**Favourite / subscribe to a channel.**~~ **Done in 1.11.0** through the
+  saved-list store the hearts on videos already converge through
+  (`SavedListStore.CHANNELS`), so no new merge. Was: real value, but it is new per-kid
   cross-device state and therefore a full sectioned-merge cycle through the most
   convergence-sensitive code in the repo.
 - ~~**Home shelf order as a config field, and the parent's shelf editor.**~~

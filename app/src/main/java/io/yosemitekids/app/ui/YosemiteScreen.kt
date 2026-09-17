@@ -252,6 +252,17 @@ fun YosemiteScreen(
 
     // The feed's hold menu lives here: the feed cards are not inside a
     // VideoGrid, so they borrow the same menu with the same actions.
+    // A held channel tile: one row, the heart. Its own state beside the
+    // video menu's because a channel is not a video and the rows differ.
+    var channelMenuFor by remember { mutableStateOf<io.yosemitekids.app.data.Source?>(null) }
+    channelMenuFor?.let { source ->
+        ChannelActionMenu(
+            source = source,
+            isFavourite = source.url in state.favouriteChannels,
+            onToggleFavourite = vm::toggleFavouriteChannel,
+            onDismiss = { channelMenuFor = null }
+        )
+    }
     var feedMenuFor by remember { mutableStateOf<VideoItem?>(null) }
     feedMenuFor?.let { item ->
         VideoActionMenu(
@@ -525,7 +536,8 @@ fun YosemiteScreen(
                         onOpenQueue = vm::openQueue,
                         onOpenWatchLater = vm::openWatchLater,
                         onOpenDownloads = vm::openDownloads,
-                        onSort = vm::setChannelSort
+                        onSort = vm::setChannelSort,
+                        onHoldChannel = { channelMenuFor = it }
                     )
                 }
                 s.screen is Screen.You -> Column(Modifier.fillMaxSize()) {

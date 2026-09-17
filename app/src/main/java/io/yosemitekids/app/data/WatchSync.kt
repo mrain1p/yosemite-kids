@@ -115,6 +115,9 @@ object WatchSync {
     /** list name → (entries key, tombstones key) in the payload. */
     private val SAVED_LISTS = listOf(
         SavedListStore.FAVORITES to ("watchlist" to "removed"),
-        SavedListStore.WATCH_LATER to ("watchLater" to "watchLaterRemoved")
+        SavedListStore.WATCH_LATER to ("watchLater" to "watchLaterRemoved"),
+        // Favourite channels ride the same payload as the hearts on videos; a
+        // device from before 1.11.0 finds a key it does not know and merges nothing.
+        SavedListStore.CHANNELS to ("channels" to "channelsRemoved")
     )
 }

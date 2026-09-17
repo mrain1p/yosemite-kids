@@ -184,6 +184,14 @@ class SavedListStore(
 
         /** On-disk name of the queue-for-another-day list. */
         const val WATCH_LATER = "watchlater"
+        /**
+         * The kid's favourite CHANNELS, as rows shaped like a video: the url is
+         * the channel's, the title its name, the thumbnail its picture, the
+         * duration zero. The same store, tombstones and convergence as the
+         * hearts on videos, because a favourite channel is the same kind of
+         * per-kid, cross-device fact and must not grow a second merge.
+         */
+        const val CHANNELS = "channels"
 
         /**
          * Rows kept, and tombstones kept.

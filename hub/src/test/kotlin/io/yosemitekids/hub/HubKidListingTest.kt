@@ -14,6 +14,7 @@ import io.yosemitekids.app.data.WhitelistEntry
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -42,6 +43,7 @@ class HubKidListingTest {
 
     private lateinit var store: HubStore
     private lateinit var index: ChannelIndex
+    private lateinit var lists: HubSavedLists
 
     private fun home(config: (Whitelist) -> Whitelist = { it }): HubKidHome {
         val dir = tmp.newFolder()
@@ -78,7 +80,8 @@ class HubKidListingTest {
             ScreeningStore(File(dir, "screening.json")),
             index
         ) { T }
-        return HubKidHome(policy, store, HubKidHistory(dir) { T }, HubSavedLists(dir)) { T }
+        lists = HubSavedLists(dir)
+        return HubKidHome(policy, store, HubKidHistory(dir) { T }, lists) { T }
     }
 
     private fun names(arr: JSONArray): List<String> = (0 until arr.length()).map { arr.getJSONObject(it).getString("name") }
@@ -181,5 +184,24 @@ class HubKidListingTest {
         index.setArt("UC1", "https://yt3.ggpht.com/apples", "https://yt3.ggpht.com/apples-banner")
         val after = h.channels(leo, sort = CHANNEL_ORDER_ALPHA, seed = 1L).getJSONArray("channels")
         assertEquals("https://yt3.ggpht.com/apples", after.getJSONObject(0).getString("thumb"))
+    }
+
+    @Test
+    fun `a favourite channel floats to the front of every order, and the card says so`() {
+        val h = home { it.copy(channelOrder = CHANNEL_ORDER_ALPHA) }
+        assertEquals(listOf("Apples", "Mangoes", "Zebras"), names(h.channels(leo, sort = null, seed = 1L).getJSONArray("channels")))
+        // The heart, as the browser posts it: the channel shaped like a video, in the kid's own list.
+        val zebras = h.channelRow(leo, "UC2")!!
+        assertEquals("https://youtube.com/channel/UC2", zebras.url)
+        assertEquals("Zebras", zebras.title)
+        lists.set(leo, HubSavedLists.Which.CHANNELS, zebras, true)
+        val hearted = h.channels(leo, sort = null, seed = 1L).getJSONArray("channels")
+        assertEquals(listOf("Zebras", "Apples", "Mangoes"), names(hearted))
+        assertTrue(hearted.getJSONObject(0).getBoolean("fav"))
+        assertFalse(hearted.getJSONObject(1).getBoolean("fav"))
+        // Under Z to A the heart still leads; the rest keep the chip's order.
+        assertEquals(listOf("Zebras", "Mangoes", "Apples"), names(h.channels(leo, sort = CHANNEL_ORDER_ALPHA_DESC, seed = 1L).getJSONArray("channels")))
+        // A sibling's channel cannot be hearted from here.
+        assertNull(h.channelRow(leo, "UC9"))
     }
 }

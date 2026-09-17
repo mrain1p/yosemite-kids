@@ -321,6 +321,18 @@ object KidSurface {
                 "finger long-presses; the rows and their words are the same."
         ),
         KidSurfaceDef(
+            id = "channel-hold-menu",
+            title = "Favourite channel?",
+            kind = SurfaceKind.DIALOG,
+            route = "/list",
+            rules = listOf("orderChannels"),
+            webReady = true,
+            why = "One row, the heart: a favourite channel floats to the front of every channel " +
+                "order through orderChannels in :crawl, and that is all it does. The list is the " +
+                "phone's SavedListStore.CHANNELS and the hub's per-kid copy of the same store.",
+            tvWhy = "Opened by holding OK on a channel tile (dpadLongPress) where a finger long-presses."
+        ),
+        KidSurfaceDef(
             id = "channels",
             title = "Channels",
             kind = SurfaceKind.SCREEN,

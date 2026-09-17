@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -214,6 +215,8 @@ internal fun ChannelsScreen(
     onOpenWatchLater: () -> Unit,
     onOpenDownloads: () -> Unit,
     onSort: ((String) -> Unit)? = null,
+    /** A long press on a channel (a held OK on the remote): the channel's menu. */
+    onHoldChannel: ((Source) -> Unit)? = null,
     formFactor: FormFactor = LocalFormFactor.current
 ) {
     val metrics = channelMetrics(formFactor)
@@ -233,8 +236,8 @@ internal fun ChannelsScreen(
             YosemiteChip("Downloads", selected = false, icon = YosemiteIcons.Download, onClick = onOpenDownloads)
         }
     }
-    if (formFactor.isTv) TvChannelsGrid(state, metrics, onOpen, onSurprise, onSort, shelfChips)
-    else PhoneChannelsList(state, metrics, onOpen, onPlay, onSurprise, onSort, shelfChips)
+    if (formFactor.isTv) TvChannelsGrid(state, metrics, onOpen, onSurprise, onSort, shelfChips, onHoldChannel)
+    else PhoneChannelsList(state, metrics, onOpen, onPlay, onSurprise, onSort, shelfChips, onHoldChannel)
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -246,7 +249,8 @@ private fun PhoneChannelsList(
     onPlay: (VideoItem) -> Unit,
     onSurprise: () -> Unit,
     onSort: ((String) -> Unit)?,
-    shelfChips: @Composable RowScope.() -> Unit
+    shelfChips: @Composable RowScope.() -> Unit,
+    onHold: ((Source) -> Unit)? = null
 ) {
     // No horizontal contentPadding: the sticky bar is full-bleed (it is a
     // surface of its own, like the tab bar) and everything else pays its own
@@ -283,7 +287,9 @@ private fun PhoneChannelsList(
                 metrics = metrics,
                 onOpen = onOpen,
                 onPlay = onPlay,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = 4.dp),
+                isFavourite = channel.url in state.favouriteChannels,
+                onHold = onHold
             )
         }
     }
@@ -296,7 +302,8 @@ private fun TvChannelsGrid(
     onOpen: (Source) -> Unit,
     onSurprise: () -> Unit,
     onSort: ((String) -> Unit)?,
-    shelfChips: @Composable RowScope.() -> Unit
+    shelfChips: @Composable RowScope.() -> Unit,
+    onHold: ((Source) -> Unit)? = null
 ) {
     // Opening focus. This screen had none: a kid pressing "See all" from the
     // home landed on a page where the remote appeared not to work at all,
@@ -353,7 +360,9 @@ private fun TvChannelsGrid(
                 isNew = channel.id in state.newBadges,
                 metrics = metrics,
                 onOpen = onOpen,
-                onPlay = {}
+                onPlay = {},
+                isFavourite = channel.url in state.favouriteChannels,
+                onHold = onHold
             )
         }
     }
@@ -378,12 +387,16 @@ internal fun ChannelCard(
     onOpen: (Source) -> Unit,
     onPlay: (VideoItem) -> Unit,
     modifier: Modifier = Modifier,
-    formFactor: FormFactor = LocalFormFactor.current
+    formFactor: FormFactor = LocalFormFactor.current,
+    /** A heart on the tile: this channel is one of the kid's favourites. */
+    isFavourite: Boolean = false,
+    /** A long press (a held OK on the remote) opens the channel's menu. Null = no menu. */
+    onHold: ((Source) -> Unit)? = null
 ) {
     if (formFactor.isTv) {
-        ChannelPictureTile(channel, isNew, metrics, onOpen, modifier, formFactor)
+        ChannelPictureTile(channel, isNew, metrics, onOpen, modifier, formFactor, isFavourite, onHold)
     } else {
-        ChannelListRow(channel, preview, metrics, onOpen, onPlay, modifier, formFactor)
+        ChannelListRow(channel, preview, metrics, onOpen, onPlay, modifier, formFactor, isFavourite, onHold)
     }
 }
 
@@ -396,6 +409,7 @@ internal fun ChannelCard(
  * places (see [ChannelMetrics.rowTargetGap]).
  */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun ChannelListRow(
     channel: Source,
     preview: ChannelPreview?,
@@ -403,7 +417,9 @@ private fun ChannelListRow(
     onOpen: (Source) -> Unit,
     onPlay: (VideoItem) -> Unit,
     modifier: Modifier,
-    formFactor: FormFactor
+    formFactor: FormFactor,
+    isFavourite: Boolean = false,
+    onHold: ((Source) -> Unit)? = null
 ) {
     val tokens = kidTokens
     val latest = preview?.latest
@@ -421,10 +437,13 @@ private fun ChannelListRow(
                     .pressScale(interaction)
                     .tvFocusHighlight(cornerRadius = 12.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable(
+                    .combinedClickable(
                         interactionSource = interaction,
-                        indication = LocalIndication.current
-                    ) { onOpen(channel) }
+                        indication = LocalIndication.current,
+                        onClick = { onOpen(channel) },
+                        onLongClick = onHold?.let { hold -> { hold(channel) } }
+                    )
+                    .then(if (onHold != null) Modifier.dpadLongPress { onHold(channel) } else Modifier)
                     .padding(horizontal = 4.dp, vertical = 4.dp)
             ) {
                 ChannelArt(channel.avatarUrl, channel.name, size = metrics.art)
@@ -540,13 +559,16 @@ private fun PlayTriangle(size: Dp, color: androidx.compose.ui.graphics.Color) {
  * home screen — one crop rule, not two.
  */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun ChannelPictureTile(
     channel: Source,
     isNew: Boolean,
     metrics: ChannelMetrics,
     onOpen: (Source) -> Unit,
     modifier: Modifier,
-    formFactor: FormFactor
+    formFactor: FormFactor,
+    isFavourite: Boolean = false,
+    onHold: ((Source) -> Unit)? = null
 ) {
     val interaction = remember { MutableInteractionSource() }
     var focused by remember { mutableStateOf(false) }
@@ -558,9 +580,12 @@ private fun ChannelPictureTile(
         modifier
             .pressScale(interaction)
             .tvFocusHighlight(cornerRadius = 18.dp) { focused = it }
-            .clickable(interactionSource = interaction, indication = LocalIndication.current) {
-                onOpen(channel)
-            }
+            .combinedClickable(
+                interactionSource = interaction, indication = LocalIndication.current,
+                onClick = { onOpen(channel) },
+                onLongClick = onHold?.let { hold -> { hold(channel) } }
+            )
+            .then(if (onHold != null) Modifier.dpadLongPress { onHold(channel) } else Modifier)
     ) {
         Box(
             Modifier
@@ -570,6 +595,7 @@ private fun ChannelPictureTile(
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             PosterImage(channel.avatarUrl, channel.name, Modifier.fillMaxSize())
+            if (isFavourite) Text("❤️", Modifier.align(Alignment.TopStart).padding(10.dp))
             if (isNew) Box(
                 Modifier
                     .align(Alignment.TopEnd)

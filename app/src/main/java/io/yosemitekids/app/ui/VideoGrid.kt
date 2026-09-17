@@ -633,3 +633,41 @@ private fun MenuRow(
         }
     }
 }
+
+/**
+ * The hold menu for a CHANNEL tile: one row, the heart. A favourite channel
+ * floats to the front of every channel order on every face (orderChannels
+ * in :crawl), and that is all it does — no feed, no subscription, no badge.
+ * Same gesture and same furniture as [VideoActionMenu] so a child who has
+ * learned one has learned the other.
+ */
+@Composable
+internal fun ChannelActionMenu(
+    source: Source,
+    isFavourite: Boolean,
+    onToggleFavourite: (Source) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val firstAction = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(source) { runCatching { firstAction.requestFocus() } }
+    AlertDialog(
+        onDismissRequest = { onDismiss() },
+        shape = androidx.compose.ui.graphics.RectangleShape,
+        title = { MarqueeTitle(source.name, focused = false) },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.ignoreSelectUntilRelease()
+            ) {
+                MenuRow(
+                    if (isFavourite) "Remove from favourite channels" else "Add to favourite channels",
+                    if (isFavourite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    on = isFavourite,
+                    modifier = Modifier.focusRequester(firstAction)
+                ) { onToggleFavourite(source); onDismiss() }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}

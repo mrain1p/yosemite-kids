@@ -68,6 +68,8 @@ class MainViewModel(
     private val watchlistStore: SavedListStore,
     private val watchLaterStore: SavedListStore,
     private val queueStore: QueueStore,
+    /** The kid's favourite channels (SavedListStore.CHANNELS); null in tests. */
+    private val channelFavStore: SavedListStore? = null,
     private val pairingStore: PairingStore? = null,
     /** Phone role: lets the periodic sync re-push config a device missed while off. */
     private val configStore: ConfigStore? = null,
@@ -764,6 +766,7 @@ class MainViewModel(
         }
         val time = withContext(Dispatchers.IO) { screenTime() }
         val (feed, recent) = withContext(Dispatchers.IO) { buildFeed(tiles) to historyRow() }
+        val favouriteChannels = withContext(Dispatchers.IO) { channelFavStore?.urls().orEmpty() }
         val suggested = withContext(Dispatchers.IO) { suggestionsRow(tiles) }
         // Pins resolve against `tiles`, never against `sources` or the
         // whitelist: `tiles` is what this kid may actually see.
@@ -772,6 +775,7 @@ class MainViewModel(
         val onHome = _state.value.screen == Screen.Home
         _state.value = _state.value.withScreenTime(time).copy(
             channels = tiles,
+            favouriteChannels = favouriteChannels,
             pinned = pins,
             channelPreviews = previews,
             keepWatching = keepWatching,
@@ -1926,6 +1930,27 @@ class MainViewModel(
 
     /** Hold-to-save: toggles a video in the kid's Favorites. */
     fun toggleWatchlist(item: VideoItem) = toggleSaved(item, watchlistStore, Screen.Watchlist)
+
+    /**
+     * A heart on a CHANNEL: the hold menu on a channel tile. The same store
+     * shape as a heart on a video (SavedListStore.CHANNELS, a row whose url
+     * is the channel's), so it converges across devices through the watch
+     * state like every other heart, and orderChannels in :crawl floats it to
+     * the front on every face. Re-published at once: the tile moves now.
+     */
+    fun toggleFavouriteChannel(source: Source) {
+        val store = channelFavStore ?: return
+        viewModelScope.launch {
+            val urls = withContext(Dispatchers.IO) {
+                if (source.url in store.urls()) store.remove(source.url)
+                else store.add(Video(source.url, source.name, source.name, source.avatarUrl, 0L))
+                store.urls()
+            }
+            _state.value = _state.value.copy(favouriteChannels = urls)
+            publishChannels(sources)
+            syncWatchState()
+        }
+    }
 
     /** Hold-to-save: toggles a video in the kid's Watch later list. */
     fun toggleWatchLater(item: VideoItem) = toggleSaved(item, watchLaterStore, Screen.WatchLater)

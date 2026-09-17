@@ -55,7 +55,9 @@ class HubSavedLists(dataDir: File) {
     enum class Which(val wire: String) {
         FAVORITES("favorites"),
         WATCH_LATER("watch-later"),
-        QUEUE("up-next");
+        QUEUE("up-next"),
+        /** Favourite channels: rows shaped like a video whose url is the channel's (SavedListStore.CHANNELS). */
+        CHANNELS("channels");
 
         companion object {
             fun of(wire: String?): Which? = entries.firstOrNull { it.wire == wire }
@@ -68,6 +70,7 @@ class HubSavedLists(dataDir: File) {
         val name = when (which) {
             Which.FAVORITES -> SavedListStore.FAVORITES
             Which.WATCH_LATER -> SavedListStore.WATCH_LATER
+            Which.CHANNELS -> SavedListStore.CHANNELS
             Which.QUEUE -> error("the queue is a QueueStore; see queue()")
         }
         val (file, removed) = SavedListStore.filesIn(dirFor(kid), name)
