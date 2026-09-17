@@ -76,7 +76,7 @@ can still fail (guard 65 requires one from 56 upward).
 | 59 | No credential is ambient across the wall, and a child's wrong password cannot lock their parent out. | - | yes |
 | 60 | A kid route fails closed, and the child it plays as comes from the credential. | `hub/src/main` | yes |
 | 61 | The kid page draws; it does not decide. | `hub/src/main/resources/web/kid.html`, `hub/src/main/kotlin/io/yosemitekids/hub/HubKidHome.kt`, `core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt` | yes |
-| 62 | Every kid-facing surface is declared, and the browser's gaps are named. | `core/src/main/kotlin/io/yosemitekids/app/ui/KidSurface.kt`, `app/src/main/java/io/yosemitekids/app/ui/HomeState.kt`, `hub/src/main/resources/web/kid.html`, `core/src/main`, `crawl/src/main` | yes |
+| 62 | Every kid-facing surface is declared, and the browser's gaps are named. | `core/src/main/kotlin/io/yosemitekids/app/ui/KidSurface.kt`, `app/src/main/java/io/yosemitekids/app/ui/HomeState.kt`, `hub/src/main/resources/web/kid.html`, `core/src/main`, `crawl/src/main`, `app/src/main` | yes |
 | 63 | The two faces draw a card from ONE set of numbers. | `core/src/main/kotlin/io/yosemitekids/app/ui/DesignTokens.kt`, `app/src/main/java/io/yosemitekids/app/ui/Tiles.kt`, `core/src/main/kotlin/io/yosemitekids/app/ui/KidTokensCss.kt`, `app/src/main`, `hub/src/main`, `crawl/src/main`, `core/src/main` | yes |
 | 64 | The page does not move under the child's thumb. | `app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt`, `app/src/main/java/io/yosemitekids/app/ui/VideoGrid.kt` | yes |
 | 65 | A guard is not finished until something proves it can fail. | `scripts/guard-canary.sh`, `scripts/check.sh` | yes |

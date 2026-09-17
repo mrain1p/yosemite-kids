@@ -2158,6 +2158,18 @@ if ($missingWhy.Count -gt 0) {
     Fail-Guard "these kid surfaces are not on both faces, or not yet in the browser, and say nothing about why: $($missingWhy -join ' ')
 A reason is what stops the next session re-deciding it, and what tells the owner whether it is work or a policy."
 }
+#     (f) THE PHONE READS IT TOO. The manifest's own KDoc says a shelf cannot
+#         be described differently on two faces, and HubKidHome builds the You
+#         tab from YOU_SHELVES - but :app had no reference to KidSurface at
+#         all, and spelled the same four shelves, their glyphs and their order
+#         out by hand. A file nobody reads holds nothing: a shelf renamed in
+#         :core would have kept its old name on the phone, and only there.
+$appReadsManifest = @(Get-ChildItem -Recurse -File -Filter *.kt app/src/main |
+    Where-Object { (Get-Content $_.FullName -Raw) -match 'KidSurface' })
+if ($appReadsManifest.Count -eq 0) {
+    Fail-Guard "nothing in app/src/main reads KidSurface. The manifest says which faces draw a surface and what it is called; a face that does not read it is a face free to disagree with it, silently. HubKidHome builds the You tab from KidSurface.YOU_SHELVES - :app does the same."
+}
+
 #     (e) Named, not counted. A number tells you there is work; a list tells you
 #         WHICH child-facing thing is missing on the iPad this week.
 $todo = @()

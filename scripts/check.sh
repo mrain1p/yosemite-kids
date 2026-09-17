@@ -1881,6 +1881,16 @@ for fn in $(grep -oE "${q}[A-Za-z]+\.[a-zA-Z_]+${q}|${q}[a-z][a-zA-Z]+${q}" "$ki
   case "$leaf" in [A-Z]*) continue ;; esac
   grep -rqE "(fun|val|const val) $leaf\b" core/src/main crawl/src/main 2>/dev/null || true
 done
+#     (f) THE PHONE READS IT TOO. The manifest's own KDoc says a shelf cannot
+#         be described differently on two faces, and HubKidHome builds the You
+#         tab from YOU_SHELVES - but :app had no reference to KidSurface at
+#         all, and spelled the same four shelves, their glyphs and their order
+#         out by hand. A file nobody reads holds nothing: a shelf renamed in
+#         :core would have kept its old name on the phone, and only there.
+app_reads_manifest=$(grep -rl "KidSurface" app/src/main --include=*.kt || true)
+[ -n "$app_reads_manifest" ] ||
+  guard_fail "nothing in app/src/main reads KidSurface. The manifest says which faces draw a surface and what it is called; a face that does not read it is a face free to disagree with it, silently. HubKidHome builds the You tab from KidSurface.YOU_SHELVES - :app does the same."
+
 #     (e) Named, not counted. A number tells you there is work; a list tells you
 #         WHICH child-facing thing is missing on the iPad this week.
 todo=$(awk '

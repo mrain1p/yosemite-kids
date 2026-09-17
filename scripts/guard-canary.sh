@@ -212,6 +212,7 @@ HTTP=crawl/src/main/kotlin/io/yosemitekids/app/data/Http.kt
 BACKUP=app/src/main/res/xml/backup_rules.xml
 CONFIGSYNC=app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt
 GUARD=app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt
+VM=app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt
 PLANFILE=docs/PLAN-canary
 
 echo "== breaking things on purpose, one at a time"
@@ -274,6 +275,12 @@ canary 51 "$GUARD" \
   "the phone writing its own words for a rule the hub already has words for" \
   "writes its own kid-facing sentences" \
   'sed -i "s/return KidWords.breakStarting()/return \"Time for a break, canary watching\"/" "$GUARD"'
+
+
+canary 62 "$VM" \
+  "the phone describing a kid shelf without the manifest" \
+  "reads KidSurface" \
+  'sed -i "s/KidSurface.YOU_SHELVES.map/KidSurfaceCanary.YOU_SHELVES.map/; s/val surface = KidSurface.surface(id)/val surface = KidSurfaceCanary.surface(id)/" "$VM"'
 
 
 canary 56 "$CHUNKER" \

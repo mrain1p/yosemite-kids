@@ -880,12 +880,36 @@ class MainViewModel(
         val known = sources.flatMap { videoCache.load(it.id) } + watchlistStore.load() + watchLaterStore.load()
         val historyRow = historyItems(history.all(), known, YOU_PAGE_MAX)
             .filter { it.video.videoId !in blockedVideoIds && !tooShort(it.video) && screener?.isVisible(it.video) != false }
-        return listOf(
-            YouShelf(Screen.Watchlist, "❤️", "Favorites", annotate(watchlistStore.load()).take(YOU_PAGE_MAX)),
-            YouShelf(Screen.WatchLater, "🕒", "Watch later", annotate(watchLaterStore.load()).take(YOU_PAGE_MAX)),
-            YouShelf(Screen.Queue, "📚", "Up next", annotate(queueStore.load()).take(YOU_PAGE_MAX)),
-            YouShelf(Screen.History, "🕘", "History", historyRow),
-            // Downloads were approved by the parent one by one: no re-screening.
+        // The four shelves, their words, their glyphs and their ORDER come
+        // from KidSurface - the manifest whose whole KDoc is that a shelf
+        // cannot be described differently on two faces. The hub has always
+        // built this list from it; this file spelled the same four out by
+        // hand, which is how a shelf renamed in :core would have kept its old
+        // name here and only here. Guard 62 now requires :app to call it.
+        fun itemsFor(id: String): List<VideoItem> = when (id) {
+            "favorites" -> annotate(watchlistStore.load()).take(YOU_PAGE_MAX)
+            "watch-later" -> annotate(watchLaterStore.load()).take(YOU_PAGE_MAX)
+            "up-next" -> annotate(queueStore.load()).take(YOU_PAGE_MAX)
+            "history" -> historyRow
+            else -> emptyList()
+        }
+        fun screenFor(name: String): Screen = when (name) {
+            "Watchlist" -> Screen.Watchlist
+            "WatchLater" -> Screen.WatchLater
+            "Queue" -> Screen.Queue
+            else -> Screen.History
+        }
+        return KidSurface.YOU_SHELVES.map { id ->
+            val surface = KidSurface.surface(id)
+            YouShelf(screenFor(surface.screen), surface.icon, surface.title, itemsFor(id))
+        } + listOf(
+            // Downloads is the one shelf with no surface, and its reason is
+            // written down rather than left to be inferred: KidSurface's
+            // NOT_A_SURFACE says a cached video keeps playing after a parent
+            // blocks it, so a browser must never have this shelf - which
+            // makes it an app-only row by decision, not by omission.
+            //
+            // Approved by the parent one by one, so no re-screening.
             // Whatever is still arriving leads the row, because that is what
             // the kid is waiting on; the design draws it with its own
             // percentage over the poster rather than hiding it until it lands.
