@@ -22,10 +22,10 @@ can still fail (guard 65 requires one from 56 upward).
 | 3 | The hub serves exactly the pages the phone navigates. | - | - |
 | 4 | The reconcile stays runnable without a UI. | `app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt` | - |
 | 5 | One copy of what happens when a config arrives. | `app/src/main/java` | - |
-| 7 | The hub may reach exactly two things: YouTube, for the crawl, and the devices' /sync-now, for the nudge. | `hub/src`, `hub/src/main/kotlin`, `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt`, `crawl/src/main/kotlin`, `hub/src/main/kotlin/io/yosemitekids/hub/Main.kt`, `crawl/src/main/kotlin/io/yosemitekids/app/data/Http.kt` | - |
+| 7 | The hub may reach exactly two things: YouTube, for the crawl, and the devices' /sync-now, for the nudge. | `hub/src`, `hub/src/main/kotlin`, `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt`, `crawl/src/main/kotlin`, `hub/src/main/kotlin/io/yosemitekids/hub/Main.kt`, `crawl/src/main/kotlin/io/yosemitekids/app/data/Http.kt` | yes |
 | 6 | A worker that nothing schedules is dead code that reads as shipped. | `app/src/main/java/io/yosemitekids/app/ui/MainActivity.kt` | - |
 | 8 | The roadmap must not outlive the code it points at. | `docs/ROADMAP.md`, `app/src`, `core/src`, `crawl/src`, `hub/src` | - |
-| 9 | The AI API key must never reach cloud backup. | `app/src/main/res/xml/backup_rules.xml`, `app/src/main/res/xml/data_extraction_rules.xml`, `app/src/main/java/io/yosemitekids/app/data/SecretStore.kt` | - |
+| 9 | The AI API key must never reach cloud backup. | `app/src/main/res/xml/backup_rules.xml`, `app/src/main/res/xml/data_extraction_rules.xml`, `app/src/main/java/io/yosemitekids/app/data/SecretStore.kt` | yes |
 | 10 | The two gate scripts must declare the same guards. | `scripts/check.sh`, `scripts/check.ps1` | - |
 | 11 | Every page the hub serves must have something to render. | `hub/src/main/resources/web/index.html`, `app/src/test/java/io/yosemitekids/app`, `core/src/test/kotlin/io/yosemitekids/app`, `crawl/src/test/kotlin/io/yosemitekids/app` | - |
 | 12 | MainViewModel's working init block sits below every property. | `app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt` | - |
@@ -37,7 +37,7 @@ can still fail (guard 65 requires one from 56 upward).
 | 18 | The mirror must at least parse. | `scripts/check.ps1` | - |
 | 19 | The hub's service worker caches the shell and never the family. | `hub/src/main/resources/web/sw.js` | - |
 | 20 | Every asset the GUI names is actually served. | `hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt`, `hub/src/main/resources/web/manifest.webmanifest`, `hub/src/main/resources/web/index.html` | - |
-| 21 | A grant that arrives in the config has to be applied by the device that receives it. | `app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt`, `app/src/main/java` | - |
+| 21 | A grant that arrives in the config has to be applied by the device that receives it. | `app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt`, `app/src/main/java` | yes |
 | 22 | The hub answers a device's routes, or refuses them by name. | `hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt`, `app/src/main/java/io/yosemitekids/app/data/Pairing.kt` | - |
 | 23 | The browser mints no identifiers. | `hub/src/main/resources/web/index.html`, `hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt` | - |
 | 24 | A device tells the hub who it is, and the hub reads the same header. | `app/src/main/java/io/yosemitekids/app/data/Pairing.kt`, `hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt` | - |
@@ -45,7 +45,7 @@ can still fail (guard 65 requires one from 56 upward).
 | 26 | Parity per CONTROL, not per group. | `core/src/main/kotlin/io/yosemitekids/app/data/Whitelist.kt`, `app/src/main/java/io/yosemitekids/app/ui` | - |
 | 27 | The hub reads the family's calendar, and never its own. | `hub/src`, `hub/src/main` | - |
 | 28 | One backup envelope, because two faces write it and two faces read it. | `core/src/main/kotlin/io/yosemitekids/app/data/BackupFile.kt`, `app/src/main`, `core/src/main`, `crawl/src/main`, `hub/src/main` | - |
-| 29 | A device route the hub answers is authenticated, every time. | `hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt`, `app/src/main/java/io/yosemitekids/app/data/Pairing.kt` | - |
+| 29 | A device route the hub answers is authenticated, every time. | `hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt`, `app/src/main/java/io/yosemitekids/app/data/Pairing.kt` | yes |
 | 30 | Every route the HUB registers has a row in docs/LAN-API.md too. | `hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt`, `docs/LAN-API.md` | - |
 | 31 | The form factor is decided in exactly one place. | `app/src/main`, `app/src/main/java/io/yosemitekids/app/data/Pairing.kt`, `app/src/main/java/io/yosemitekids/app/ui/FormFactor.kt` | - |
 | 32 | Containers read LocalFormFactor; leaves take a parameter. | `app/src/main` | - |
@@ -57,7 +57,7 @@ can still fail (guard 65 requires one from 56 upward).
 | 38 | Every unit ConfigStamp can mint is a unit ConfigMerge.merge decides. | `core/src/test`, `core/src/main/kotlin/io/yosemitekids/app/data/ConfigStamp.kt`, `core/src/main/kotlin/io/yosemitekids/app/data/ConfigMerge.kt` | - |
 | 39 | The hub advertises the project's version, not one of its own. | `.github/workflows/hub-image.yml`, `hub/build.gradle.kts`, `app/build.gradle.kts` | - |
 | 40 | The hub's service worker evicts only the caches it owns. | `hub/src/main/resources/web/sw.js` | - |
-| 41 | Every response the hub makes carries the baseline security headers. | `hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt` | - |
+| 41 | Every response the hub makes carries the baseline security headers. | `hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt` | yes |
 | 42 | One place mints a pinned card, and one number is the row's ceiling. | `app/src/main`, `hub/src/main`, `core/src/main/kotlin/io/yosemitekids/app/ui/HomeSections.kt`, `hub/src/main/kotlin/io/yosemitekids/hub/HubWeb.kt` | - |
 | 43 | One spelling of a family day. | `core/src/main/kotlin/io/yosemitekids/app/data/FamilyDay.kt`, `core/src/main`, `app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt`, `app/src/main/java/io/yosemitekids/app/data/Stats.kt` | - |
 | 44 | The watch ledger is a counter, and a counter is not curation. | `.claude/skills/yosemite-kids-sync`, `core/src/main/kotlin/io/yosemitekids/app/data`, `core/src/main/kotlin/io/yosemitekids/app/data/UsageLedger.kt`, `hub/src/main/kotlin/io/yosemitekids/hub/HubStore.kt` | - |
