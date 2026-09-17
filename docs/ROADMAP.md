@@ -973,7 +973,7 @@ row below is one half of something already right.
     mirror check and exempt from the canary — several of them the security
     family (the clockless merge rule, the Android-in-`:core` ban, the secretless
     export, the atomic-write count).
-17. **Fifty-one guards have no canary case** (1–49, 52, 55): most of the
+17. **Forty-five guards have no canary case** (7, 9, 21, 29, 41, 50, 51 and 53 now have one): most of the
     security surface, the whole settings-parity family, the entire sync merge.
     The review names the ten worth doing first and the one-line mutation each.
 18. **Step 0's cost is fork overhead, not greps**: two per-file loops spawn ~150
@@ -983,19 +983,19 @@ row below is one half of something already right.
 
 #### The rules each face decides for itself
 
-20. **`:app` never reads `KidSurface`** — zero references — so the phone's You
+20. ✅ **`:app` never reads `KidSurface`** — zero references — so the phone's You
     tab hard-codes the ids, titles, emoji and order the hub takes from the
     manifest, and adds a fifth shelf the manifest does not know.
-21. **Every kid-facing refusal sentence exists twice**, as literals in
+21. ✅ **Every kid-facing refusal sentence exists twice**, as literals in
     `SessionGuard` and as `KidWords.refusal`, and they say different things
     about the same rule. Only the hub calls `KidWords`.
-22. **Two PBKDF2 costs.** The parent PIN carries its own at 120,000 iterations
+22. ✅ **Two PBKDF2 costs.** The parent PIN carries its own at 120,000 iterations
     in its own record format, beside `:core`'s shared one at 210,000 that the hub
     and the kid password use — three lines below a KDoc asserting there is one.
-23. **The browser's duration clock is wrong over an hour**: a re-implementation
+23. ✅ **The browser's duration clock is wrong over an hour**: a re-implementation
     in JavaScript drops the seconds, so 1:05:30 reads 1:05 beside a phone
     showing it correctly.
-24. **`SessionGuard` re-implements `Budget`'s three functions**, and two comments
+24. ✅ **`SessionGuard` re-implements `Budget`'s three functions**, and two comments
     cite a guard number that does not exist to claim it does not.
 25. ✅ **Both hub listeners kept byte-identical copies of the security-header
     writer**, three lines below a KDoc saying a security check must not be
@@ -1013,7 +1013,7 @@ row below is one half of something already right.
   eleven atomic-write implementations in three variants ✅ (one now shared);
   the phone's ledger file and the hub's written twice; two spellings of "time
   left"; two constants re-typed from `KidCap`; two different megabytes; 17 dead
-  declarations.
+  declarations ✅ (thirteen deleted; two kept, with reasons).
 - **Medium, tests (11):** `-Quick` does not compile unit tests; the `:app` test
   list is a non-recursive glob in three places, so a test in a subpackage is
   never run and nothing says so; the live-YouTube exclusion list is duplicated
@@ -1045,12 +1045,36 @@ row below is one half of something already right.
 
 #### What this changed in the plan
 
-The safety net in §9B stands, and four things move ahead of it (done above:
-the index, the breaker, the timezone, the console's silence). Two new items
-join §9C: **the gate's blind spots** (12–19, which is a round of its own) and
-**the one-sided disciplines** (20–24). The console's rule-deciding and its
-split into files join §9D behind the features already there. Nothing found
-argues for a change of direction.
+The safety net in §9B stands, and four things moved ahead of it (done: the
+index, the breaker, the timezone, the console's silence). Two new items joined
+§9C: the gate's blind spots (12–19) and the one-sided disciplines (20–24).
+Nothing found argued for a change of direction.
+
+**As of 1.12.0 and the round after it**, everything in the first two groups is
+closed, along with the one-sided disciplines and the dead code. What remains,
+in rough order of what it costs:
+
+- **The gate's own reach** (12, 15, 16, 18, 19): the Windows gate has still
+  never been negative-tested, ~18 checks carry no number and so are invisible
+  to every meta-guard, guard 62(d) still asserts nothing, step 0 still pays
+  ~150 process spawns in two per-file loops, and the bash gate still fails
+  open on eight guards under a CRLF checkout. Forty-five guards still have no
+  canary case, though the eight that protect the most now do.
+- **The hub's degraded read** (8) and **the per-entry config parse** (9): both
+  are "a damaged document reads as an empty family", which the phone already
+  solves and the hub does not.
+- **The extractor canary's honesty** (10): a run that tested nothing can close
+  its own breakage issue, and it tests a path the hub does not use.
+- **`LanClient`'s silence** (11) and **the unread `Diag` ring**: a device
+  cannot say why a push failed, and nothing on a device ever shows what it
+  recorded.
+- **The console's medium list** (14 rows), of which the rule-deciding and the
+  split into files are the two with any size to them.
+- **The robustness list** (12 rows): the per-chunk gate re-parsing the whole
+  config, no single-flight on stream resolution, `/kid/thumb` unmetered, the
+  device server's missing request deadline, the playlist pass with no
+  gone-handling.
+- **The test list** (11 rows), led by `LanServer.handle` having no test at all.
 
 ## Anchors
 
