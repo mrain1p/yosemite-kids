@@ -949,18 +949,7 @@ object HubWeb {
         return true
     }
 
-    /** Kinds the page may show, so an unknown one from a newer build is visible. */
-    fun kindLabel(kind: String): String = when (kind) {
-        SourceKind.CHANNEL.name -> "Channel"
-        SourceKind.PLAYLIST.name -> "Playlist"
-        else -> kind
-    }
 
-    /** Which manifest groups this page is expected to cover, by page id. */
-    internal fun groupsFor(pageId: String): List<String> =
-        SettingsSurface.forHub()
-            .filter { pageIdOf(it.page) == pageId }
-            .map { it.id }
 
     internal fun pageIdOf(page: Page): String = when (page) {
         Page.KIDS -> "kids"

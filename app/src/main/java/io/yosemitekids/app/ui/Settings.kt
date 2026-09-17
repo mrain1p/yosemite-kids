@@ -2216,67 +2216,6 @@ internal fun SettingsCard(padded: Boolean = true, content: @Composable ColumnSco
     }
 }
 
-/**
- * What "More like what you watch" actually does, in the parent's words.
- *
- * Worth the space: a suggestion row is the one part of this app that decides
- * something on its own, and a parent who curated every channel by hand is owed
- * a plain answer to "what is it doing, and where does it get the videos". The
- * claims here are the code — see `HomeState.suggestionsFor`; if that changes,
- * this changes with it.
- */
-@Composable
-private fun SuggestionExplainer() {
-    var open by remember { mutableStateOf(false) }
-    if (!open) {
-        CompactButton(onClick = { open = true }) { Text("How this works") }
-        return
-    }
-    val points = listOf(
-        "What it reads" to
-            "The titles of videos this kid has opened on this device. Nothing else — " +
-            "not their age, not the time of day, not what other kids watch.",
-        "How it matches" to
-            "It looks for words shared between those titles and videos the kid has " +
-            "never opened. The more words in common, the higher a video ranks. What " +
-            "they watched most recently counts for more than what they watched weeks " +
-            "ago, so the row follows them as their interests move.",
-        "Where the videos come from" to
-            "Only the channels on your list. Turning this on cannot introduce a " +
-            "channel you have not added, and blocked videos and screening still " +
-            "apply exactly as they do everywhere else.",
-        "What it ignores" to
-            "View counts, likes, trending, and anything YouTube itself recommends. " +
-            "Popularity is not part of the ranking.",
-        "Keeping it varied" to
-            "At most two videos per channel, so one busy channel cannot fill the row. " +
-            "It reaches back through a channel's older videos, which is the point — " +
-            "the rest of the home screen is newest-first.",
-        "When it is empty" to
-            "A kid who has not watched anything yet gets no row at all, and neither " +
-            "does one whose titles have nothing in common with anything unwatched. " +
-            "It fills in on its own as they watch.",
-        "Where it runs" to
-            "On the device, from that device's own history. Nothing about what your " +
-            "kid watches is sent anywhere to build it, and each device works out its " +
-            "own row rather than sharing one."
-    )
-    // The card spaces its children evenly, which left a heading as far from
-    // its own paragraph as from the previous one — seven headings and seven
-    // bodies with no visible grouping. Each pair is one child instead.
-    points.forEach { (heading, body) ->
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(heading, style = MaterialTheme.typography.labelLarge)
-            Text(
-                body,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-    CompactButton(onClick = { open = false }) { Text("Show less") }
-}
-
 @Composable
 internal fun SettingsDivider() {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

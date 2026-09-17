@@ -28,8 +28,6 @@ private const val HISTORY_ROW_MAX = KidHome.HISTORY_ROW_MAX
 private const val SUGGEST_ROW_MAX = KidHome.SUGGEST_ROW_MAX
 /** Playlists shown in a channel page row. */
 private const val PLAYLIST_ROW_MAX = 30
-/** Videos per row on the You tab and per parent-picked playlist row. */
-private const val YOU_ROW_MAX = 12
 /** Videos a You shelf carries (its row shows the first dozen; "See all" unfolds the rest in place). */
 private const val YOU_PAGE_MAX = 60
 /** Parent-picked playlist rows fetched per channel visit (each is one page request when uncached). */
@@ -1361,7 +1359,6 @@ class MainViewModel(
      * one — so sinking watched videos there would scramble what a parent
      * deliberately lined up.
      */
-    private fun sinksWatched(source: Source): Boolean = source.kind == SourceKind.CHANNEL
 
     /**
      * Publishes the channel screen (or its Watched shelf) from [rawVideos].

@@ -863,8 +863,4 @@ class HubKidHome(
     /** One spelling for every face: `homeShelfTitle` in `:core`, never words of this page's own. */
     private fun titleOf(id: String): String = homeShelfTitle(id)
 
-    internal companion object {
-        /** Every shelf id the page must be able to draw, for the guard's benefit. */
-        val SHELVES = HOME_SHELVES
-    }
 }

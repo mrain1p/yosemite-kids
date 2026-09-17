@@ -395,7 +395,6 @@ val SettingsSuccess = Color(0xFF7FC8A9)
 val SettingsAccentTint = Color(0x298FCFBE)
 /** The neutral square an avatar is previewed on while it is being picked —
  *  the kid's own colour would make the grid a colour picker twice over. */
-val AvatarTile = Color(0xFF25242C)
 
 /**
  * The device chips on Devices & sync: HUB, PARENT, TV, TABLET.

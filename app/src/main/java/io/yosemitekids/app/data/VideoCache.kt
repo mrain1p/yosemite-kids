@@ -55,8 +55,6 @@ class VideoCache(context: Context) {
     companion object {
         private val MEMO = ConcurrentHashMap<String, Pair<Pair<Long, Long>, List<Video>>>()
 
-        /** Test hook / memory relief. */
-        fun clearMemo() = MEMO.clear()
 
         /**
          * One row: url, title, channel, thumb, seconds, and (new) view count —

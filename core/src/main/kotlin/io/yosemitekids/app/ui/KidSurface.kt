@@ -431,13 +431,6 @@ object KidSurface {
     fun surface(id: String): KidSurfaceDef =
         byId[id] ?: error("no kid surface called \"$id\" — see KidSurface")
 
-    /** Surfaces a browser should have and does not. What the gate names on every run. */
-    fun outstandingOnWeb(): List<KidSurfaceDef> =
-        surfaces.filter { it.face == KidFace.BOTH && !it.webReady }
-
-    /** What the browser draws today. */
-    fun forWeb(): List<KidSurfaceDef> =
-        surfaces.filter { it.face != KidFace.APP && it.webReady }
 
     /** What the television draws. Everything the app draws, less what [KidSurfaceDef.onTv] rules out. */
     fun forTv(): List<KidSurfaceDef> =

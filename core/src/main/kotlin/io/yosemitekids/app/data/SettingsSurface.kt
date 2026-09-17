@@ -662,16 +662,11 @@ object SettingsSurface {
     fun outstandingOnHub(): List<SettingsSection> =
         sections.filter { it.where == Where.BOTH && !it.hubReady }
 
-    /** Every id the hub's page registry is allowed to use. */
-    fun hubIds(): Set<String> =
-        sections.filter { it.where != Where.PHONE }.map { it.id }.toSet()
 
     /** Groups the hub serves, in the phone's own page order. */
     fun forHub(): List<SettingsSection> =
         sections.filter { it.where != Where.PHONE && it.hubReady }
 
-    /** Every config field this manifest claims to cover. */
-    fun coveredFields(): Set<String> = sections.flatMap { it.fields }.toSet()
 
     /** Every control, in page order. */
     val controls: List<SettingsControl> = sections.flatMap { it.controls }

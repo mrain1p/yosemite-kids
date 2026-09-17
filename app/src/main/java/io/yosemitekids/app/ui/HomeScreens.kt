@@ -152,15 +152,6 @@ internal fun KeepWatchingRow(
     }
 }
 
-/** A quiet rule between two home sections. */
-@Composable
-internal fun SectionDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(top = 6.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-    )
-}
-
 /** Label and icon for a video-list order, one spelling for chips on both form factors. */
 internal fun videoFilterLabel(filter: String): Pair<String, androidx.compose.ui.graphics.vector.ImageVector> =
     when (filter) {
@@ -272,98 +263,6 @@ internal fun ChannelSortChips(
             YosemiteChip(label, selected = selected == value, icon = icon, onClick = { onSelect(value) })
         }
         extras?.invoke(this)
-    }
-}
-
-@Composable
-internal fun ChannelGrid(
-    channels: List<Source>,
-    newBadges: Set<String> = emptySet(),
-    keepWatching: List<VideoItem> = emptyList(),
-    onPlay: (VideoItem) -> Unit = {},
-    onDismissKeepWatching: (VideoItem) -> Unit = {},
-    onOpen: (Source) -> Unit,
-    onSurprise: () -> Unit,
-    onOpenWatchlist: () -> Unit,
-    hasWatchLater: Boolean = false,
-    onOpenWatchLater: () -> Unit = {},
-    hasQueue: Boolean = false,
-    onOpenQueue: () -> Unit = {},
-    hasDownloads: Boolean = false,
-    onOpenDownloads: () -> Unit = {},
-    onOpenSettings: () -> Unit = {},
-    activeProfile: io.yosemitekids.app.data.Profile? = null,
-    onSwitchProfile: (() -> Unit)? = null,
-    onSearch: (String) -> Unit = {},
-    timeLeft: androidx.compose.runtime.State<Long?> = NoTimeLeft,
-    blockReason: String? = null,
-    allHeld: Boolean = false
-) {
-    if (channels.isEmpty()) {
-        EmptyHome(onOpenSettings, allHeld)
-        return
-    }
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 160.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        // Room for the focus glow on edge tiles.
-        contentPadding = PaddingValues(8.dp)
-    ) {
-        // Branding + settings scroll away like everything else — content is king.
-        item(key = "app-header", span = { GridItemSpan(maxLineSpan) }) {
-            HomeHeader(onOpenSettings, activeProfile, onSwitchProfile, onSearch, timeLeft, blockReason)
-        }
-        // Keep-watching scrolls away with the rest — not sticky.
-        if (keepWatching.isNotEmpty()) {
-            item(key = "kw-title", span = { GridItemSpan(maxLineSpan) }) {
-                Text(
-                    "Keep watching",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                    )
-                )
-            }
-            item(key = "kw-row", span = { GridItemSpan(maxLineSpan) }) {
-                KeepWatchingRow(keepWatching, onPlay = onPlay, onDismiss = onDismissKeepWatching)
-            }
-        }
-        // First tile: Surprise — same size and shape as a channel tile.
-        item(key = "surprise-tile") {
-            SurpriseTile(onClick = onSurprise)
-        }
-        // The lined-up videos, only while there are any — an empty queue tile
-        // would just be a dead end for the kid.
-        if (hasQueue) {
-            item(key = "queue-tile") {
-                QueueTile(onClick = onOpenQueue)
-            }
-        }
-        // Second tile: the kid's hearted videos.
-        item(key = "watchlist-tile") {
-            WatchlistTile(onClick = onOpenWatchlist)
-        }
-        // Watch later earns its tile only once something is in it — an empty
-        // shelf is a dead end for the kid, same reasoning as the queue tile.
-        if (hasWatchLater) {
-            item(key = "watch-later-tile") {
-                WatchLaterTile(onClick = onOpenWatchLater)
-            }
-        }
-        // The offline shelf appears once the first download lands.
-        if (hasDownloads) {
-            item(key = "downloads-tile") {
-                SpecialTile(
-                    emoji = "⬇️",
-                    label = "Downloads",
-                    circleColor = DownloadsTileTeal,
-                    onClick = onOpenDownloads
-                )
-            }
-        }
-        items(channels, key = { it.id }) { channel ->
-            ChannelTile(channel, isNew = channel.id in newBadges, onOpen = onOpen)
-        }
     }
 }
 
