@@ -121,11 +121,8 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
          * when no limit is set. Pure, so a JVM test can hold a config-carried
          * grant against the budget without a Context.
          */
-        internal fun budgetMs(l: Limits, weekend: Boolean, bonusMs: Long): Long? {
-            val perSession = l.sessionMinutes ?: return null
-            val count = (if (weekend) l.weekendSessions else l.weekdaySessions) ?: return null
-            return perSession * count * 60_000L + bonusMs
-        }
+        internal fun budgetMs(l: Limits, weekend: Boolean, bonusMs: Long): Long? =
+            Budget.dayMs(l, weekend, bonusMs)
 
         /**
          * Today's extra time from both places it can come from: the legacy
@@ -134,7 +131,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
          * stats screen and the enforcement paths cannot disagree about it.
          */
         internal fun bonusMs(legacyBonusMs: Long, grants: List<Grant>): Long =
-            legacyBonusMs + grants.sumOf { it.minutes } * 60_000L
+            Budget.bonusMs(legacyBonusMs, grants)
 
         /**
          * What this kid has spent today: this device's own minutes, plus what
@@ -781,10 +778,8 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         )
     }
 
-    private fun isWeekend(): Boolean {
-        val day = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-        return day == Calendar.SATURDAY || day == Calendar.SUNDAY
-    }
+    private fun isWeekend(): Boolean =
+        Budget.isWeekend(Calendar.getInstance().get(Calendar.DAY_OF_WEEK))
 
     /**
      * Windows still in force: a parent's pass takes one out for its occurrence,

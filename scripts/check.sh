@@ -1450,6 +1450,31 @@ $bad
 A cell carries this device's own minutes — SessionGuard.ownWatchedTodayMin(). The shared figure is what peers add their own minutes to."
 done
 
+# 50. The day's allowance is computed in exactly one place.
+#     `Budget` in :core answers three questions - how long today is, what the
+#     bonus adds up to, and whether today is a weekend - and the hub, the
+#     phone and the television all have to reach the same numbers, because a
+#     child told forty minutes on the home screen and stopped at ten is the
+#     failure the whole screen-time chain exists to avoid. SessionGuard kept
+#     its own copies of all three for a season; Budget.kt and HubPolicy.kt
+#     both cited "guard 50" while no such guard existed, which is what a
+#     claimed invariant looks like when nothing enforces it.
+budget=core/src/main/kotlin/io/yosemitekids/app/data/Budget.kt
+[ -f "$budget" ] ||
+  guard_fail "$budget is gone; guard 50 is blind. The day's allowance lives there so three faces cannot disagree about it."
+for want in "fun dayMs(" "fun bonusMs(" "fun isWeekend("; do
+  grep -qF "$want" "$budget" ||
+    guard_fail "$budget no longer declares $want; guard 50 is blind, and whatever replaced it is now free to be copied."
+done
+#     The three shapes, each distinctive enough that a second implementation
+#     cannot avoid them: picking the weekday or weekend sitting count, summing
+#     a grant's minutes into a bonus, and naming the two weekend days.
+budget_copies=$(grep -rn "weekendSessions else\|Calendar.SATURDAY" app/src/main core/src/main crawl/src/main hub/src/main --include=*.kt | grep -vF "$budget" || true)
+[ -z "$budget_copies" ] ||
+  guard_fail "the day's allowance is computed outside Budget.kt:
+$budget_copies
+Call Budget.dayMs / Budget.bonusMs / Budget.isWeekend. Two implementations of this arithmetic is a home screen promising minutes a player will not honour."
+
 # 52. A channel's own words reach a child with every way out already gone.
 #     A YouTube channel description is a paragraph followed by a list of
 #     places to go: a shop, a Discord, a second channel, an e-mail address.

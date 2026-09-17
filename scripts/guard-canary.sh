@@ -211,6 +211,7 @@ HUBCRAWL=hub/src/main/kotlin/io/yosemitekids/hub/HubCrawl.kt
 HTTP=crawl/src/main/kotlin/io/yosemitekids/app/data/Http.kt
 BACKUP=app/src/main/res/xml/backup_rules.xml
 CONFIGSYNC=app/src/main/java/io/yosemitekids/app/data/ConfigSync.kt
+GUARD=app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt
 PLANFILE=docs/PLAN-canary
 
 echo "== breaking things on purpose, one at a time"
@@ -261,6 +262,12 @@ canary 41 "$HUBSRV" \
   "a console reply that carries no security headers" \
   "of them call securityHeaders(ex)" \
   'sed -i "0,/securityHeaders(ex)/s//securityHeadersCanary(ex)/" "$HUBSRV"'
+
+
+canary 50 "$GUARD" \
+  "the day's allowance worked out a second time" \
+  "computed outside Budget.kt" \
+  'sed -i "s/private fun isWeekend(): Boolean =/private fun isWeekend(): Boolean = Calendar.SATURDAY == 0 ||/" "$GUARD"'
 
 
 canary 56 "$CHUNKER" \

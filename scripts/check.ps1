@@ -1663,6 +1663,36 @@ Get-ChildItem -Recurse -Include *.kt -Path app/src/main | ForEach-Object {
     }
 }
 
+# 50. The day's allowance is computed in exactly one place.
+#     Budget in :core answers three questions - how long today is, what the
+#     bonus adds up to, and whether today is a weekend - and the hub, the
+#     phone and the television all have to reach the same numbers, because a
+#     child told forty minutes on the home screen and stopped at ten is the
+#     failure the whole screen-time chain exists to avoid. SessionGuard kept
+#     its own copies of all three for a season; Budget.kt and HubPolicy.kt
+#     both cited "guard 50" while no such guard existed, which is what a
+#     claimed invariant looks like when nothing enforces it.
+$budgetFile = "core/src/main/kotlin/io/yosemitekids/app/data/Budget.kt"
+if (-not (Test-Path $budgetFile)) {
+    Fail-Guard "$budgetFile is gone; guard 50 is blind. The day's allowance lives there so three faces cannot disagree about it."
+}
+$budgetText = Get-Content $budgetFile -Raw
+foreach ($want in @("fun dayMs(", "fun bonusMs(", "fun isWeekend(")) {
+    if (-not $budgetText.Contains($want)) {
+        Fail-Guard "$budgetFile no longer declares $want; guard 50 is blind, and whatever replaced it is now free to be copied."
+    }
+}
+#     The three shapes, each distinctive enough that a second implementation
+#     cannot avoid them: picking the weekday or weekend sitting count, summing
+#     a grant's minutes into a bonus, and naming the two weekend days.
+$budgetCopies = @(Get-ChildItem -Recurse -File -Filter *.kt app/src/main, core/src/main, crawl/src/main, hub/src/main |
+    Where-Object { $_.FullName -notmatch 'Budget\.kt$' } |
+    Select-String -CaseSensitive -Pattern 'weekendSessions else|Calendar\.SATURDAY' |
+    ForEach-Object { "$($_.Path):$($_.LineNumber)" })
+if ($budgetCopies.Count -gt 0) {
+    Fail-Guard "the day's allowance is computed outside Budget.kt:`n$($budgetCopies -join "`n")`nCall Budget.dayMs / Budget.bonusMs / Budget.isWeekend. Two implementations of this arithmetic is a home screen promising minutes a player will not honour."
+}
+
 # 52. A channel's own words reach a child with every way out already gone.
 #     A YouTube channel description is a paragraph followed by a list of
 #     places to go: a shop, a Discord, a second channel, an e-mail address.
