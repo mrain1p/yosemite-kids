@@ -810,6 +810,14 @@ size — and the phases below reordered where a finding demands it.
 
 ### 9C. Phase 3 — consistency and hygiene
 
+Added by the round itself, found while clearing the review's list:
+
+- **A kid removed from the family keeps their searches.** `HubKidSearches`
+  has a `forgetKid` written for exactly this and nothing calls it, so the
+  recent-search chips of a child who is gone sit on the volume until somebody
+  edits the file. Small, and the sort of thing a parent would assume already
+  happened.
+
 - **The house-style skill** (§8F): the product's voice and its rules of drawing,
   written once now that there is a full product to describe.
 - **Docs compaction.** The changelog's sections before 1.8.0 move to
