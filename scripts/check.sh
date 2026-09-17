@@ -2175,6 +2175,29 @@ real_pace=$(awk '/fun real\(/ { f = 1 } f { print } f && /^        }$/ { exit }'
 $real_pace
 The production hub crawls at CRAWL_DELAY_MS, full stop; the parameter exists for tests."
 
+# 73. A heart pressed on the You tab redraws the You tab, on every face.
+#     The lists persist and every visit re-reads them, which hid the gap: a
+#     toggle from the hold menu on one of the You tab's OWN shelves updated
+#     the store and the badge but not the shelves, so a video removed from
+#     Favourites stayed on the Favourites shelf until the kid left and came
+#     back. Found on both faces on the same day, which is the signal.
+vm_you=app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt
+kid_you=hub/src/main/resources/web/kid.html
+[ -f "$vm_you" ] && [ -f "$kid_you" ] ||
+  guard_fail "MainViewModel.kt or kid.html is gone; guard 73 is blind."
+for fn in toggleSaved toggleQueue; do
+  body=$(awk -v f="fun $fn(" 'index($0, f) { inside = 1 } inside { print; if (inside && /^    }$/) exit }' "$vm_you")
+  [ -n "$body" ] ||
+    guard_fail "guard 73 cannot find $fn in $vm_you; it is blind."
+  grep -q "reloadYou()" <<<"$body" ||
+    guard_fail "$fn in MainViewModel no longer reloads the You shelves. A heart pressed on a You shelf must redraw that shelf now, not when the kid next comes back to the tab."
+done
+list_toggle=$(awk '/post\("\/kid\/list", \{ list: row\.list/ { f = 1 } f { print } f && /^        \}\);$/ { exit }' "$kid_you")
+[ -n "$list_toggle" ] ||
+  guard_fail "guard 73 cannot find the hold menu's /kid/list toggle in $kid_you; it is blind."
+grep -q 'showTab("you")' <<<"$list_toggle" ||
+  guard_fail "the kid page's list toggle no longer redraws the You tab when it is the page on screen. Removing a video from Favourites on the Favourites shelf must take it off the shelf now."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 

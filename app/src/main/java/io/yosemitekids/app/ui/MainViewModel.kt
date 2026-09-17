@@ -1949,6 +1949,9 @@ class MainViewModel(
                 rawVideos = listVideos
                 _state.value = _state.value.copy(videos = annotated(includeFinished = false), held = heldByScreening())
             }
+            // A heart pressed on the You tab's own shelf: redraw the shelves now,
+            // not when the kid next leaves and comes back (guard 73).
+            if (_state.value.screen == Screen.You) reloadYou()
             syncWatchState() // saves propagate promptly
         }
     }
@@ -2015,6 +2018,7 @@ class MainViewModel(
                 rawVideos = listVideos
                 _state.value = _state.value.copy(videos = annotated(includeFinished = true), held = heldByScreening())
             }
+            if (_state.value.screen == Screen.You) reloadYou()
             // No syncWatchState(): the queue is device-local by design.
         }
     }

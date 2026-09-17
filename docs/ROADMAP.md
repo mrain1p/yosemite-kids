@@ -206,11 +206,12 @@ Not built, and what this item is for:
 2. ~~**The crawl stands aside while a child is watching.**~~ **Done in 1.10.0**
    on both boxes: the hub off `HubWatchMeter.anyoneWatching`, the phone off
    `NowPlaying`; the tick is skipped and said, never counted as a failure.
-3. **A switch to stop crawling**, so a parent who suspects trouble can
-   remove the cause without editing a compose file.
-4. **Say what to do when it fails.** The search-index card shows a red dot;
-   it should say "check for an extractor update" rather than leaving a
-   parent guessing between a ban, an outage and a broken build.
+3. ~~**A switch to stop crawling**~~ **Done in 1.11.0**: Pause the crawl on the
+   console's Devices page (`POST /api/crawl`, a file on the volume so it holds
+   across restarts).
+4. ~~**Say what to do when it fails.**~~ **Done in 1.11.0**: the index card on
+   the console and the phone say, under a failed run, that it is usually the
+   extractor needing an update, and what to do if the newest build still fails.
 5. **Never route the hub through a VPN — written down 2026-09-08**, in
    `HUB.md` under "Never route the hub through a VPN". `gluetun` is on this
    NAS and putting the hub behind it is a two-line change that looks like a
@@ -234,9 +235,8 @@ home as a section list, the pinned hero, the TV rail with Search, the
 restyled player, the live time number). Four things were deliberately left
 for the next round rather than rushed:
 
-- **`TvTopChips` still draws beside the rail.** Its UP-from-first-row
-  behaviour is documented in place; it comes out once a real-TV pass has
-  proven the rail's focus model. Deleting it finishes this bullet.
+- ~~**`TvTopChips` still draws beside the rail.**~~ **Deleted in 1.11.0**, the
+  rail having run a season on the family's television as the only menu.
 - **Every TV dp is provisional.** Derived as design-units × 0.75 through
   `tvUnits`, never measured. Read `adb shell wm size` and `wm density` off
   the real Chromecast (and once with the display-size setting stepped) and
@@ -258,8 +258,9 @@ for the next round rather than rushed:
   every face through `homeRowsFor`, edited only through
   `HomeRows.withOrder` (guard 70), with the console's editor (`cardRows`) and
   the phone's Listing page on top. "Reset to default" stores no rows at all.
-- **The hero uses the channel avatar as artwork**, upscaled. Real channel
-  banners would fix the weakest thing on the home screen.
+- ~~**The hero uses the channel avatar as artwork**, upscaled.~~ **Done in
+  1.11.0**: `Source.bannerUrl` from the channel's own banner, drawn by the
+  phone's hero and, through the index (`SourceState.bannerUrl`), the browser's.
 
 Also out of scope by decision: the kid-to-parent request flow (§2E), the
 "simple mode" density, and the per-device watch budget (§2J) — which the
@@ -439,10 +440,10 @@ got to, and every other face keeps its own watch history locally.
 
 **Still to do here, small and stated rather than left to be discovered.**
 
-- **The hub indexes videos, not channel avatars**, so a channel card wears its
-  newest video instead of the channel's picture. The app has the avatar because
-  it resolves the channel; the crawl throws it away. Worth carrying in
-  `ChannelIndex.SourceState` the next time that file is open.
+- ~~**The hub indexes videos, not channel avatars**~~ **Done in 1.11.0**:
+  `ChannelIndex.setArt` keeps the avatar and banner from the first page of a
+  crawl (`SourceState.avatarUrl`/`bannerUrl`, on the wire too), and the
+  browser's channel cards and hero wear them.
 - **No favourites in the browser.** `SearchRank.Signals` takes them and the
   page sends an empty set, so a hearted video does not yet rank higher there.
   It waits on the same store the app-side favourite/subscribe work needs
@@ -779,8 +780,9 @@ mapping and its environment line come out of the NAS compose file.
   device in the house is past 1.1.0. A device older than this build drops a
   saved arrangement on its own round trip; update every device before
   arranging a home.
-- **Delete `TvTopChips`; measure the real Chromecast.** Both need a remote in
-  front of the real television, and both fail silently from an emulator.
+- **~~Delete `TvTopChips`~~; measure the real Chromecast.** The chips are
+  gone (1.11.0). The measurement still needs a remote in front of the real
+  television, and fails silently from an emulator.
 - **MSE/HLS above 360p.** The largest remaining web-player piece, and 360p on a
   tablet held close is a smaller problem than a tablet that cannot go Back.
 - **Kid → parent requests.** Worth building; a new cross-device store and a new
@@ -868,6 +870,5 @@ fires: confirm the work is done, then delete the item and its row.
 | §3 hub pages not derived | `HubPage("kids"` | code |
 | §4 stats on hub | `outstandingOnHub` | code |
 | §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |
-| §2K top chips | `fun TvTopChips(` | code |
 | §2K provisional TV dp | `fun tvUnits(` | code |
 | §2M index has no date | `val durationSeconds: Long,` | code |

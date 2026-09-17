@@ -550,7 +550,11 @@ twelve fetches a run at the same four-second pacing, so a family's channels
 are covered over a few runs. Its line is appended to the crawl's in the log.
 While a child is watching in a browser (a beat inside the last two minutes)
 the whole pass skips its tick and says so — a video that stalls is worse
-than an index finished a quarter of an hour later.
+than an index finished a quarter of an hour later. The Devices page has a
+**Pause the crawl** switch (a file on the volume, so it holds across
+restarts) and, when the last run failed, says what to do about it: usually
+the extractor needs an update, so pull a newer image; if the newest image
+still fails on every run, pause for a day.
 
 The container reaches exactly two things on the network: YouTube, through a
 client whose host allow-list is armed at startup, and the devices' `/sync-now`.

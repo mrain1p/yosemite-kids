@@ -43,7 +43,16 @@ class ChannelIndex(private val dir: File) {
          * console and the phone say so beside it.
          */
         val gone: String? = null,
-        val goneAt: Long = 0L
+        val goneAt: Long = 0L,
+        /**
+         * The channel's picture and banner, from the first page of its last
+         * crawl. The app resolves a channel and has them for free; the hub
+         * never resolved one, so a browser's channel card wore the newest
+         * video and the hero was a thumbnail upscaled. Null until crawled on
+         * a build that keeps them.
+         */
+        val avatarUrl: String? = null,
+        val bannerUrl: String? = null
     ) {
         /** Cheap change fingerprint: count+newest catches both deltas and
          *  rebuilds. Shared by statusJson and the master's push comparison. */
@@ -275,7 +284,9 @@ class ChannelIndex(private val dir: File) {
         states = states + (sourceId to SourceState(
             count = merged.size,
             newestVideoId = merged.firstOrNull()?.videoId ?: prev?.newestVideoId,
-            complete = resolvedComplete
+            complete = resolvedComplete,
+            avatarUrl = prev?.avatarUrl,
+            bannerUrl = prev?.bannerUrl
         ))
         saveManifest()
     }
@@ -286,6 +297,15 @@ class ChannelIndex(private val dir: File) {
      * YouTube refused this source outright. Kept beside the crawl state so the
      * run loop skips it and every face can say why. Whatever was indexed stays.
      */
+    /** The channel's art as its first page carried it; written only when it changed. */
+    fun setArt(sourceId: String, avatarUrl: String?, bannerUrl: String?) {
+        val prev = states[sourceId] ?: SourceState(count = 0, newestVideoId = null, complete = false)
+        val next = prev.copy(avatarUrl = avatarUrl ?: prev.avatarUrl, bannerUrl = bannerUrl ?: prev.bannerUrl)
+        if (next == prev) return
+        states = states + (sourceId to next)
+        saveManifest()
+    }
+
     fun markGone(sourceId: String, reason: String, at: Long) {
         val prev = states[sourceId] ?: SourceState(count = 0, newestVideoId = null, complete = false)
         states = states + (sourceId to prev.copy(gone = reason.take(160), goneAt = at))
@@ -305,7 +325,9 @@ class ChannelIndex(private val dir: File) {
                 newestVideoId = s.optString("newest").ifEmpty { null },
                 complete = s.optBoolean("complete", false),
                 gone = s.optString("gone").ifEmpty { null },
-                goneAt = s.optLong("goneAt", 0L)
+                goneAt = s.optLong("goneAt", 0L),
+                avatarUrl = s.optString("avatar").ifEmpty { null },
+                bannerUrl = s.optString("banner").ifEmpty { null }
             )
         }
     }.getOrDefault(emptyMap())
@@ -319,6 +341,8 @@ class ChannelIndex(private val dir: File) {
                 s.newestVideoId?.let { put("newest", it) }
                 put("complete", s.complete)
                 s.gone?.let { put("gone", it); put("goneAt", s.goneAt) }
+                s.avatarUrl?.let { put("avatar", it) }
+                s.bannerUrl?.let { put("banner", it) }
             })
         }
         manifestFile.writeText(o.toString())
@@ -399,6 +423,8 @@ class ChannelIndex(private val dir: File) {
             put("count", s.count)
             s.newestVideoId?.let { put("newest", it) }
             put("complete", s.complete)
+            s.avatarUrl?.let { put("avatar", it) }
+            s.bannerUrl?.let { put("banner", it) }
         }
         return head.toString() + "\n" + videos
     }
@@ -417,7 +443,9 @@ class ChannelIndex(private val dir: File) {
                 newestVideoId = head.optString("newest").ifEmpty { null },
                 complete = head.optBoolean("complete", false),
                 gone = head.optString("gone").ifEmpty { null },
-                goneAt = head.optLong("goneAt", 0L)
+                goneAt = head.optLong("goneAt", 0L),
+                avatarUrl = head.optString("avatar").ifEmpty { null },
+                bannerUrl = head.optString("banner").ifEmpty { null }
             )
         )
         return true

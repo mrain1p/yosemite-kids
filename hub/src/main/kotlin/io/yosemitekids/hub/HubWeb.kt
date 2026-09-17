@@ -190,6 +190,7 @@ object HubWeb {
                 .put("lastPullAt", tokens.devices().maxOfOrNull { it.pulledAt } ?: 0L)
                 .put("election", master?.last ?: "")
                 .put("crawl", crawl?.last ?: "")
+                .put("paused", crawl?.paused ?: false)
         }
 
         val devices = JSONArray()

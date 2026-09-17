@@ -54,6 +54,12 @@ class IndexCrawler(
         val exhausted = page.nextPage == null &&
             (page.videos.size < FULL_PAGE || !isFirstPage)
 
+        // The channel's own art rides page 1, and the index keeps it so the
+        // browser's card and hero can wear the channel rather than a video.
+        if (isFirstPage && (page.avatarUrl != null || page.bannerUrl != null)) {
+            index.setArt(source.id, page.avatarUrl, page.bannerUrl)
+        }
+
         if (page.videos.isNotEmpty()) {
             index.addVideos(
                 source.id,

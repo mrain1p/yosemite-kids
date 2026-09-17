@@ -2463,6 +2463,32 @@ if ($realBody -match 'pacingMs\s*=') {
 }
 
 
+# 73. A heart pressed on the You tab redraws the You tab, on every face.
+#     The lists persist and every visit re-reads them, which hid the gap: a
+#     toggle from the hold menu on one of the You tab's OWN shelves updated
+#     the store and the badge but not the shelves, so a video removed from
+#     Favourites stayed on the Favourites shelf until the kid left and came
+#     back. Found on both faces on the same day, which is the signal.
+$vmYou = "app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt"
+$kidYou = "hub/src/main/resources/web/kid.html"
+if (-not (Test-Path $vmYou) -or -not (Test-Path $kidYou)) {
+    Fail-Guard "MainViewModel.kt or kid.html is gone; guard 73 is blind."
+}
+$vmText = Get-Content $vmYou -Raw
+foreach ($fn in @("toggleSaved", "toggleQueue")) {
+    $body = [regex]::Match($vmText, "(?s)fun $fn\(.*?\r?\n    \}\r?\n").Value
+    if (-not $body) { Fail-Guard "guard 73 cannot find $fn in $vmYou; it is blind." }
+    if (-not $body.Contains("reloadYou()")) {
+        Fail-Guard "$fn in MainViewModel no longer reloads the You shelves. A heart pressed on a You shelf must redraw that shelf now, not when the kid next comes back to the tab."
+    }
+}
+$listToggle = [regex]::Match((Get-Content $kidYou -Raw), '(?s)post\("/kid/list", \{ list: row\.list.*?\r?\n        \}\);\r?\n').Value
+if (-not $listToggle) { Fail-Guard "guard 73 cannot find the hold menu's /kid/list toggle in $kidYou; it is blind." }
+if (-not $listToggle.Contains('showTab("you")')) {
+    Fail-Guard "the kid page's list toggle no longer redraws the You tab when it is the page on screen. Removing a video from Favourites on the Favourites shelf must take it off the shelf now."
+}
+
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

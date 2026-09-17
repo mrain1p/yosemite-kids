@@ -2726,6 +2726,26 @@
         ? "Last crawl " + new Date(ix.lastRun.at).toLocaleString() + ", " + ix.lastRun.pages + " pages" + (ix.lastRun.failed ? " (failed)" : "")
         : "No crawl from this hub yet",
       ix.crawl));
+    // What a red dot means, said where the parent is looking: nine times in
+    // ten a failing crawl is the video extractor needing an update, not a ban.
+    if (ix.lastRun && ix.lastRun.failed) {
+      sul.appendChild(ixRow("What to do about a failing crawl",
+        "Usually the video extractor needs an update, not a ban: pull a newer hub image (docker compose pull) and let it try again. " +
+        "If the newest image still fails on every run, YouTube may be walling this address for a while - pause the crawl below for a day, then resume it."));
+    }
+    // The switch. A file on the volume, so it holds across restarts; the
+    // line under it is the crawl's own last word.
+    var sw = el("li");
+    var swBox = el("div", "grow");
+    swBox.appendChild(el("div", "name", ix.paused ? "The crawl is paused" : "The crawl is running on its own"));
+    swBox.appendChild(el("div", "sub", ix.paused
+      ? "Nothing is fetched from YouTube until you resume it. The index stays as it is."
+      : "Pause it if you suspect this address is being walled; it also stops the playlist pass."));
+    sw.appendChild(swBox);
+    sw.appendChild(button(ix.paused ? "Resume the crawl" : "Pause the crawl", "quiet", function () {
+      return api("/api/crawl", { paused: !ix.paused }).then(refresh);
+    }));
+    sul.appendChild(sw);
     sul.appendChild(ixRow(
       ix.armed ? "Devices are pulling the index from this hub" : "No device has pulled the index from this hub in the last day",
       ix.lastPullAt

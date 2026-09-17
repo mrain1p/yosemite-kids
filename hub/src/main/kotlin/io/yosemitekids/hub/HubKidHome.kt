@@ -183,12 +183,17 @@ class HubKidHome(
             videoCount = { byId[it.id]?.videos?.size ?: 0 }
         )) {
             val source = byId[item.source.id] ?: continue
+            val art = policy.index.state(source.entry.id)
             pins.put(
                 JSONObject()
                     .put("id", source.entry.id)
                     .put("name", nameOf(source))
                     .put("meta", item.meta)
-                    .put("thumb", source.videos.firstOrNull()?.thumbnailUrl.orEmpty())
+                    // The channel's own picture, and its banner for the hero, from
+                    // the crawl (ChannelIndex.setArt); a video thumbnail only for a
+                    // channel crawled before the index kept them.
+                    .put("thumb", art?.avatarUrl ?: source.videos.firstOrNull()?.thumbnailUrl.orEmpty())
+                    .put("banner", art?.bannerUrl.orEmpty())
             )
         }
         out.put("pinned", pins)
@@ -201,12 +206,9 @@ class HubKidHome(
                     .put("id", source.entry.id)
                     .put("name", nameOf(source))
                     .put("count", source.videos.size)
-                    // The hub indexes videos, not channel avatars, so a channel
-                    // wears its newest video. That is also what the app's
-                    // Channels row draws on its play button, so the two faces
-                    // agree by accident of the same absence rather than by
-                    // design — see the roadmap's note about indexing avatars.
-                    .put("thumb", source.videos.firstOrNull()?.thumbnailUrl.orEmpty())
+                    // The channel's picture since 1.11.0 (the crawl keeps it); its
+                    // newest video only for a channel indexed before that.
+                    .put("thumb", policy.index.state(source.entry.id)?.avatarUrl ?: source.videos.firstOrNull()?.thumbnailUrl.orEmpty())
             )
         }
         out.put("channels", channels)
@@ -399,7 +401,7 @@ class HubKidHome(
                     .put("id", source.id)
                     .put("name", source.name)
                     .put("count", row.videos.size)
-                    .put("thumb", row.videos.firstOrNull()?.thumbnailUrl.orEmpty())
+                    .put("thumb", policy.index.state(source.id)?.avatarUrl ?: row.videos.firstOrNull()?.thumbnailUrl.orEmpty())
             )
         }
         return JSONObject()

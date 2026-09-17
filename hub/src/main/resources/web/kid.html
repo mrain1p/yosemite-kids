@@ -683,6 +683,9 @@
             else video.queued = r.on;
           }
           dlg.close();
+          // Toggled from the You tab's own shelf: draw it again now, from the
+          // hub, rather than when the kid next comes back to it (guard 73).
+          if (state.view === "you") showTab("you");
         });
       };
       rows.appendChild(b);
@@ -757,9 +760,10 @@
     var card = el("button", "card");
     card.type = "button";
     var poster = el("div", "poster");
-    if (pin.thumb) {
+    // The channel's banner when the crawl has one - a hero is wide - else its picture.
+    if (pin.banner || pin.thumb) {
       var img = el("img");
-      img.src = thumbSrc(pin.thumb);
+      img.src = thumbSrc(pin.banner || pin.thumb);
       img.alt = "";
       poster.appendChild(img);
     }

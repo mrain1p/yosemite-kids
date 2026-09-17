@@ -93,6 +93,23 @@ class HubCrawl(
     var last: String = "not yet run"
         private set
 
+    /**
+     * A parent's switch: the crawl, the playlist pass and nothing else. A file
+     * rather than a config field because it is about this box, not the family
+     * - the phone that takes the index over must not inherit it - and a file
+     * survives a restart, which a flag in memory would not. The console's
+     * Devices page flips it (POST /api/crawl); "docker compose pull" is the
+     * cure for the usual cause and this is the tourniquet while you find out.
+     */
+    private val pausedFile = java.io.File(store.dataDir, "crawl-paused")
+
+    val paused: Boolean get() = pausedFile.exists()
+
+    fun pause(on: Boolean) {
+        if (on) { pausedFile.parentFile?.mkdirs(); pausedFile.writeText("paused by a parent") }
+        else pausedFile.delete()
+    }
+
     /** One scheduled pass. Null when nothing was crawled: not master, or backing off. */
     fun runOnce(): IndexCrawlRun.Outcome? {
         val t = now()
@@ -109,6 +126,10 @@ class HubCrawl(
 
         if (config.masterDeviceToken != me) {
             last = "idle: not building the index (another peer holds it, or nobody does)"
+            return null
+        }
+        if (paused) {
+            last = "paused by a parent; resume it on the Devices page"
             return null
         }
         if (t < notBefore) {

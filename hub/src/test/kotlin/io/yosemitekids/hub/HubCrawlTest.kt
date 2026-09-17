@@ -137,4 +137,21 @@ class HubCrawlTest {
         assertNotNull(c.runOnce())
         assertEquals(1, calls)
     }
+
+    @Test
+    fun `a parent's pause holds across restarts and stops the crawl until resumed`() {
+        config(ME, "UCa")
+        var calls = 0
+        val c = crawl { calls++; false }
+        c.pause(true)
+        assertTrue(c.paused)
+        assertNull(c.runOnce())
+        assertEquals(0, calls)
+        assertTrue(c.last, c.last.contains("paused"))
+        // A fresh HubCrawl over the same data dir - a restarted container - is still paused.
+        assertTrue("the switch is a file on the volume", crawl { false }.paused)
+        c.pause(false)
+        assertNotNull(c.runOnce())
+        assertEquals(1, calls)
+    }
 }

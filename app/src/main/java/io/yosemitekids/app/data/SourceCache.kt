@@ -28,7 +28,9 @@ class SourceCache(context: Context) {
                     parts.getOrNull(5)?.toIntOrNull() ?: 100,
                     // Through the stripper on the way out as well as the way
                     // in: a row written by an older build predates the rule.
-                    about = SafeText.forKids(parts.getOrNull(6))
+                    about = SafeText.forKids(parts.getOrNull(6)),
+                    // Eighth column since 1.11.0; a row from before has none.
+                    bannerUrl = parts.getOrNull(7)?.ifEmpty { null }
                 )
             }
             ?.toList()
@@ -41,7 +43,8 @@ class SourceCache(context: Context) {
                 s.timeMultiplierPercent.toString(),
                 // tsvCell flattens the paragraph breaks: this row is one line
                 // and a description is the one field here that has newlines.
-                s.about.orEmpty().tsvCell()
+                s.about.orEmpty().tsvCell(),
+                s.bannerUrl.orEmpty()
             ).joinToString("\t")
         }
         prefs.edit().putString("sources", text).apply()

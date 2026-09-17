@@ -863,6 +863,16 @@ class HubServer(
              * like the rest, so the phone verifies what the hub set and the
              * hub verifies what the phone set. Bounded off the wire.
              */
+            // The crawl switch: a parent who suspects trouble stops the cause
+            // without touching a compose file. Sticks across restarts (HubCrawl.pause).
+            "/api/crawl" -> mutate(ex) { body ->
+                val c = crawl
+                if (c == null || !body.has("paused")) null
+                else {
+                    c.pause(body.optBoolean("paused"))
+                    JSONObject().put("paused", c.paused)
+                }
+            }
             "/api/kid-password" -> mutate(ex) { body ->
                 val kid = body.optString("kid").take(64)
                 if (!body.has("kid") || !body.has("password")) null

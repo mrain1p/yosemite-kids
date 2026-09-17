@@ -41,11 +41,12 @@ class HubKidListingTest {
     private val mangoes = WhitelistEntry("UC3", "https://youtube.com/channel/UC3", "Mangoes", SourceKind.CHANNEL)
 
     private lateinit var store: HubStore
+    private lateinit var index: ChannelIndex
 
     private fun home(config: (Whitelist) -> Whitelist = { it }): HubKidHome {
         val dir = tmp.newFolder()
         store = HubStore(dir)
-        val index = ChannelIndex(File(dir, "search-index"))
+        index = ChannelIndex(File(dir, "search-index"))
         store.edit("test", T) {
             config(
                 Whitelist(
@@ -170,5 +171,15 @@ class HubKidListingTest {
         val whole = home().channel(leo, "UC1")!!
         assertEquals(12, whole.getJSONArray("videos").length())
         assertFalse(whole.getBoolean("more"))
+    }
+
+    @Test
+    fun `a channel card wears the channel's picture once the crawl has kept it, and its newest video until then`() {
+        val h = home()
+        val before = h.channels(leo, sort = CHANNEL_ORDER_ALPHA, seed = 1L).getJSONArray("channels")
+        assertEquals("a channel crawled before the index kept art wears its newest video", "", before.getJSONObject(0).getString("thumb"))
+        index.setArt("UC1", "https://yt3.ggpht.com/apples", "https://yt3.ggpht.com/apples-banner")
+        val after = h.channels(leo, sort = CHANNEL_ORDER_ALPHA, seed = 1L).getJSONArray("channels")
+        assertEquals("https://yt3.ggpht.com/apples", after.getJSONObject(0).getString("thumb"))
     }
 }

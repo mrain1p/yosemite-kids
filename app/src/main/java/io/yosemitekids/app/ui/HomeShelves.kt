@@ -778,7 +778,9 @@ private fun PinnedHeroCard(
                 onOpen(item.source)
             }
     ) {
-        PosterImage(item.source.avatarUrl, item.source.name, Modifier.fillMaxSize())
+        // The channel's banner is the hero's artwork where YouTube has one; the
+        // avatar, upscaled, was the weakest thing on the home screen.
+        PosterImage(item.source.bannerUrl ?: item.source.avatarUrl, item.source.name, Modifier.fillMaxSize())
         // The wash that makes white text legible on any artwork — bottom-up,
         // because that is where the name is.
         Box(

@@ -48,7 +48,7 @@ import androidx.compose.ui.unit.dp
 // THE TEN-FOOT NAV RAIL — the television's whole chrome.
 //
 // Before this, a page below home carried two chips in its title row
-// ([TvTopChips]) and the home carried a header with the mark, the greeting,
+// (TvTopChips, deleted in 1.11.0) and the home carried a header with the mark, the greeting,
 // the time pill and a search icon. Neither was a place: the chips appeared on
 // some screens and not others, and there was nowhere a kid could look to
 // answer "where am I and where else can I go". The rail is that place, on

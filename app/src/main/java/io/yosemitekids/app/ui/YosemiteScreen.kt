@@ -159,16 +159,6 @@ private fun tabFor(screen: Screen): Tab? = when (screen) {
 private fun isTabRoot(screen: Screen): Boolean =
     screen == Screen.Home || screen == Screen.Channels || screen == Screen.You
 
-/** The TV's top menu on every page below home: Home and You (the kid's shelves), as focusable chips. */
-@Composable
-private fun TvTopChips(screen: Screen, vm: MainViewModel) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        YosemiteChip("Home", selected = false, icon = Icons.Filled.Home, onClick = vm::goHome)
-        YosemiteChip("You", selected = tabFor(screen) == Tab.You, icon = Icons.Filled.Person, onClick = vm::openYou)
-    }
-    Spacer(Modifier.width(8.dp))
-}
-
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun YosemiteScreen(
@@ -539,15 +529,8 @@ fun YosemiteScreen(
                     )
                 }
                 s.screen is Screen.You -> Column(Modifier.fillMaxSize()) {
-                    if (isTv) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
-                        ) {
-                            Spacer(Modifier.weight(1f))
-                            TvTopChips(s.screen, vm)
-                        }
-                    }
+                    // The television's menu is the rail; the two chips that used to
+                    // sit up here came out in 1.11.0 once the rail had run a season.
                     YouScreen(
                         state = s,
                         profile = activeProfile,
@@ -716,12 +699,6 @@ fun YosemiteScreen(
                             if (phone && s.screen !is Screen.SearchResults) vm::openSearch else null,
                             busy = s.refreshing || s.syncing
                         )
-                        // TV has no tabs and no back arrow, so a page below home
-                        // used to be a title and a grid with nothing above it.
-                        // These chips are the ten-foot menu: where you are, and
-                        // the three places a kid goes from anywhere. Up from the
-                        // grid's first row lands on them.
-                        if (isTv) TvTopChips(s.screen, vm)
                     }
                     // Play / Continue goes on its own line, never in the header
                     // row: with a display-scaled phone the chip, the art and two

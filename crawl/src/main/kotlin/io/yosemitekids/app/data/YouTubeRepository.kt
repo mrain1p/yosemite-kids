@@ -47,7 +47,9 @@ data class Source(
      * Stripped here, at the boundary, rather than where it is drawn, so no
      * future screen can render it by accident (guard 52).
      */
-    val about: String? = null
+    val about: String? = null,
+    /** The channel's banner, for a hero; null for a playlist and for a cache row from before 1.11.0. */
+    val bannerUrl: String? = null
 ) : io.yosemitekids.app.ui.PinnableSource
 
 data class Video(
@@ -225,6 +227,9 @@ class YouTubeRepository {
      * Smallest image that's still sharp at tile size — full-res thumbnails
      * (1280×720) are needlessly slow to fetch and decode on a TV.
      */
+    /** A hero is wide: the smallest banner still sharp across a phone's width, and never the 2560 one a TV would decode. */
+    private val BANNER_MIN_WIDTH = 1060
+
     private fun List<org.schabi.newpipe.extractor.Image>.pick(minWidth: Int): String? {
         val known = filter { it.width > 0 }.sortedBy { it.width }
         return known.firstOrNull { it.width >= minWidth }?.url
@@ -241,7 +246,15 @@ class YouTubeRepository {
     data class UploadsPage(
         val videos: List<Video>,
         val handle: FeedHandle?,
-        val nextPage: Page?
+        val nextPage: Page?,
+        /**
+         * The channel's own picture and banner, when the page came from a
+         * channel: the crawl keeps them in the index (ChannelIndex.setArt) so a
+         * browser's channel card and hero wear the channel rather than its
+         * newest video. Null for a playlist and for a page past the first.
+         */
+        val avatarUrl: String? = null,
+        val bannerUrl: String? = null
     )
 
     suspend fun source(entry: WhitelistEntry, background: Boolean = false): Source =
@@ -260,7 +273,8 @@ class YouTubeRepository {
                     Source(id, entry.url, entry.label ?: info.name,
                         info.avatars.pick(QualityTargets.avatarMinWidth), entry.kind,
                         entry.timeMultiplierPercent,
-                        about = SafeText.forKids(info.description))
+                        about = SafeText.forKids(info.description),
+                        bannerUrl = info.banners.pick(BANNER_MIN_WIDTH))
                 }
                 SourceKind.PLAYLIST -> {
                     val info = playlistInfo(entry.id, entry.url, limiter)
@@ -299,7 +313,9 @@ class YouTubeRepository {
                     UploadsPage(
                         videos = tab.relatedItems.filterIsInstance<StreamInfoItem>().map { it.toVideo() },
                         handle = FeedHandle.ChannelTab(videosTab),
-                        nextPage = tab.nextPage
+                        nextPage = tab.nextPage,
+                        avatarUrl = info.avatars.pick(QualityTargets.avatarMinWidth),
+                        bannerUrl = info.banners.pick(BANNER_MIN_WIDTH)
                     )
                 }
                 SourceKind.PLAYLIST -> {

@@ -340,6 +340,11 @@ canary 72 "$HUBCRAWL" \
   "passes a pacingMs of its own" \
   'sed -i "s/                dropSource = crawler::dropSource,/                dropSource = crawler::dropSource, pacingMs = 0L,/" "$HUBCRAWL"'
 
+canary 73 "$KIDPAGE" \
+  "the kid page forgetting to redraw the You tab after a heart" \
+  "no longer redraws the You tab" \
+  'sed -i "s/          if (state.view === \"you\") showTab(\"you\");/          \/\/ canary/" "$KIDPAGE"'
+
 echo
 if [ "$failed" -gt 0 ]; then
   echo "${RED}$failed of $((passed + failed)) canaries did not fire.${OFF}"

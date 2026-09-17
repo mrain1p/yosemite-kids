@@ -2840,6 +2840,18 @@ private fun SearchIndexSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                if (run.failed) {
+                    // What the red dot means, said here rather than left to a guess
+                    // between a ban, an outage and a broken build.
+                    Text(
+                        "Failing runs usually mean the video extractor needs an update: check for " +
+                            "an app update on this phone. If the newest build still fails on every run, " +
+                            "YouTube may be walling this network for a while.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
             } ?: Text(
                 "No background run yet",
                 style = MaterialTheme.typography.bodySmall,
