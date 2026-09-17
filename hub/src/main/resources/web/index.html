@@ -266,6 +266,17 @@
       token is printed there on every restart.
       <div class="line"><button class="primary" id="nopassGo">Set a password</button></div>
     </div>
+    <!--
+      Where a failure goes. Every save, every button and every uncaught error
+      writes here, because the alternative this replaced was a control that
+      flipped back and said nothing - a parent cannot act on a change that did
+      not happen and did not say so.
+    -->
+    <div class="warn" id="trouble" hidden>
+      <strong>Something did not save.</strong>
+      <span id="troubleWhat"></span>
+      <div class="line"><button id="troubleGo">Reload</button></div>
+    </div>
     <div id="page"></div>
   </main>
 </div>
@@ -289,7 +300,9 @@
   // So /setup, /login, /password and /recovery go to the network exactly as if
   // the worker did not exist — which matters, because Cache Storage outlives
   // the session, the sign-out and the tab.
-  var setup = { password: false };
+  // `reachable` stays false until /setup actually answers, so the boot chain
+  // can tell "this hub says it has no password" from "no hub answered".
+  var setup = { password: false, reachable: false };
   // The one-time reveal's continuation, held only while its card is up.
   var revealThen = null;
   // What the password card should say when it is next built. See cardPassword.
@@ -359,9 +372,14 @@
     if (body) opts.body = JSON.stringify(body);
     return fetch(path, opts).then(function (r) {
       if (r.status === 401) { setSession(""); signedOut(); throw new Error("sign in"); }
-      return r.json().then(function (j) {
-        if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
-        return j;
+      // Not every refusal is JSON - 405, 413 and the catch-all 500 answer in
+      // bare words - and `r.json()` on those threw a parse error in place of
+      // the hub's reason.
+      return r.text().then(function (text) {
+        var j = null;
+        try { j = text ? JSON.parse(text) : null; } catch (e) { j = null; }
+        if (!r.ok) throw new Error((j && j.error) || text || ("HTTP " + r.status));
+        return j || {};
       });
     });
   }
@@ -389,12 +407,22 @@
 
   function loadSetup() {
     return fetch("/setup", { credentials: "same-origin" })
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        // A transport failure is not an answer. Telling a parent their hub is
+        // unclaimed - which is what the old catch did - invites them to set a
+        // second password on a hub that already has one and is merely
+        // unreachable for a moment.
+        setup.reachable = true;
+        return r.json();
+      })
       .then(function (j) { setup.password = !!j.password; })
       // A hub too old to have the route answers the page's HTML with a 200,
       // which is not JSON: that build has no password to have, so the
       // unclaimed wording is the honest one.
-      .catch(function () { setup.password = false; });
+      .catch(function (e) {
+        if (setup.reachable) { setup.password = false; return; }
+        throw e;
+      });
   }
 
   /** Why the hub refused a secret, in the words the hub itself used. */
@@ -571,7 +599,12 @@
     i.type = "checkbox";
     i.className = "switch";
     i.checked = !!checked;
-    i.onchange = function () { i.disabled = true; onChange(i.checked).then(function () { i.disabled = false; }); };
+    i.onchange = function () {
+      var was = !i.checked;
+      i.disabled = true;
+      saving(onChange(i.checked), function () { i.checked = was; })
+        .then(function () { i.disabled = false; });
+    };
     l.appendChild(i);
     return l;
   }
@@ -612,11 +645,53 @@
     return wrap;
   }
 
+  /**
+   * Say that something failed, in the hub's own words where it gave any.
+   *
+   * The console had no path for this at all: `button()` swallowed every
+   * rejection, sixteen save paths dropped the promise, and a toggle that
+   * failed to save left the control disabled and flipped to the value that
+   * was NOT written. Nothing reached the container log either, because the
+   * console - unlike the kid page - registered no error handlers.
+   */
+  function trouble(what) {
+    var box = document.getElementById("trouble");
+    var line = document.getElementById("troubleWhat");
+    if (!box || !line) return;
+    line.textContent = String(what || "The hub did not answer.");
+    box.hidden = false;
+  }
+
+  function troubleClear() {
+    var box = document.getElementById("trouble");
+    if (box) box.hidden = true;
+  }
+
+  /** What a rejection or a refusal is called, for a person. */
+  function reasonOf(e) {
+    if (!e) return "The hub did not answer.";
+    if (e.message === "sign in") return "";
+    return e.message ? String(e.message) : String(e);
+  }
+
+  /**
+   * Wrap a save so a failure is visible and the control is usable again.
+   * Returns the promise, so a caller that wants to chain still can.
+   */
+  function saving(promise, undo) {
+    return promise.then(function (v) { troubleClear(); return v; }, function (e) {
+      if (typeof undo === "function") undo();
+      var say = reasonOf(e);
+      if (say) trouble(say);
+      throw e;
+    }).catch(function () {});
+  }
+
   function button(label, cls, onClick) {
     var b = el("button", cls, label);
     b.onclick = function () {
       b.disabled = true;
-      onClick().catch(function () {}).then(function () { b.disabled = false; });
+      saving(onClick()).then(function () { b.disabled = false; });
     };
     return b;
   }
@@ -829,8 +904,10 @@
       var raw = i.value.trim();
       var n = raw === "" ? null : parseInt(raw, 10);
       if (n !== null && isNaN(n)) return;
+      var was = i.value;
       i.disabled = true;
-      commit(n).then(function () { i.disabled = false; });
+      saving(commit(n), function () { i.value = was; })
+        .then(function () { i.disabled = false; });
     };
     l.appendChild(i);
     if (c.unit) l.appendChild(el("span", "sub", c.unit));
@@ -2998,7 +3075,13 @@
     var row = el("div", "line");
     row.appendChild(button("Download a backup", "primary", function () {
       err.textContent = "";
-      return fetch("/api/backup", { credentials: "same-origin" }).then(function (r) {
+      return fetch("/api/backup", {
+        // The session is a header, never a cookie (HubSessions), so an /api
+        // call without it is a 401 - which signed the parent out and handed
+        // them no file, every time they pressed this.
+        headers: authHeaders(),
+        credentials: "same-origin"
+      }).then(function (r) {
         if (r.status === 401) { signedOut(); return; }
         if (r.status === 404) {
           err.textContent = "There are no settings on this hub yet.";
@@ -3208,6 +3291,7 @@
     revealThen = null;
     if (then) then();
   };
+  $("troubleGo").onclick = function () { location.reload(); };
   $("nopassGo").onclick = function () { go("#/backup"); showApp(); };
 
   // The system Back button, which on an installed page is the only navigation
@@ -3220,7 +3304,28 @@
   // A live session survives a reload, so try the data first and fall back to
   // the signed-out cards only when the hub says no. /setup first, because it
   // is what decides which of those two cards that is.
-  loadSetup().then(refresh).then(showApp).catch(signedOut);
+  loadSetup().then(refresh).then(showApp).catch(function (e) {
+    // 401 and a refusal the hub voiced land on the sign-in cards; a hub that
+    // could not be reached at all says so, because "sign in" is the wrong
+    // instruction for a parent whose wifi dropped or whose NAS is restarting.
+    if (setup.reachable === false) {
+      signedOut();
+      var note = document.getElementById("loginHint");
+      if (note) note.textContent = "This hub did not answer. Check it is running, then reload.";
+      return;
+    }
+    signedOut();
+  });
+
+  // The kid page has reported its own errors since it was written; the
+  // console never did, so a silent failure was invisible on both ends.
+  window.addEventListener("error", function (e) {
+    trouble((e && e.message) || "Something went wrong on this page.");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var say = reasonOf(e && e.reason);
+    if (say) trouble(say);
+  });
 
   // Only on a secure origin: on plain http the API does not exist and
   // registering would throw in the console on every load for no gain. The

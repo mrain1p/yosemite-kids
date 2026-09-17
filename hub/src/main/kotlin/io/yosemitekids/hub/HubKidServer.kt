@@ -912,7 +912,7 @@ class HubKidServer(
         val viewer = meter.ledgerId(browser.token)
 
         val verdict = policy.mayPlay(kidId, videoId, viewer)
-        if (!verdict.allowed) return refused(ex, verdict)
+        if (!verdict.allowed) { noteRefusal(kidId, verdict); return refused(ex, verdict) }
 
         val resolved = try {
             if (itag != null) streams.stream(videoId, itag) else streams.resolve(videoId)
@@ -981,6 +981,40 @@ class HubKidServer(
     }
 
     /** A refusal a page can read — the code, and the sentence behind it. */
+    /**
+     * When this hub last said each thing to each child, so a rule that
+     * refuses every tap does not fill the ring with one sentence.
+     */
+    private val refusalsSaid = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /**
+     * Put a refusal where a parent will find it.
+     *
+     * `Decision.detail` says in its own KDoc that it is written for a parent's
+     * log - and until this it reached no log at all: it was placed in the 403
+     * body, the page read only the child's half of it, and nobody could answer
+     * "why will this video not play on the tablet" without reading the rules
+     * by hand. One line per kid and reason per [REFUSAL_QUIET_MS], because a
+     * child at bedtime taps a great many cards.
+     */
+    private fun noteRefusal(kidId: String, verdict: HubPolicy.Decision) {
+        val key = kidId + "|" + verdict.reason
+        val at = now()
+        val last = refusalsSaid[key]
+        if (last != null && at - last < REFUSAL_QUIET_MS) return
+        refusalsSaid[key] = at
+        if (refusalsSaid.size > REFUSALS_REMEMBERED) refusalsSaid.clear()
+        reports.record(
+            from = "hub", who = "hub", kind = "hub", version = null,
+            entries = org.json.JSONArray().put(
+                JSONObject()
+                    .put("at", at)
+                    .put("level", "info")
+                    .put("msg", "refused " + verdict.reason + " for " + kidId + ": " + verdict.detail)
+            )
+        )
+    }
+
     private fun refused(ex: HttpExchange, verdict: HubPolicy.Decision) = respond(
         ex, 403,
         JSONObject()
@@ -1164,7 +1198,7 @@ class HubKidServer(
         val videoId = HubMedia.videoIdIn(ex.requestURI.rawQuery)
             ?: return respond(ex, 400, JSONObject().put("error", "bad video").toString())
         val verdict = policy.mayPlay(browser.kid, videoId, meter.ledgerId(browser.token))
-        if (!verdict.allowed) return refused(ex, verdict)
+        if (!verdict.allowed) { noteRefusal(browser.kid, verdict); return refused(ex, verdict) }
         val mpd = try {
             streams.dash(videoId)
         } catch (e: HubStream.Unplayable) {
@@ -1271,11 +1305,8 @@ class HubKidServer(
      * other, and one permissive header here is the wall coming down without
      * anything failing. Guard 58 greps the whole module for the string.
      */
-    private fun securityHeaders(ex: HttpExchange) {
-        ex.responseHeaders.add("X-Content-Type-Options", "nosniff")
-        ex.responseHeaders.add("X-Frame-Options", "DENY")
-        ex.responseHeaders.add("Referrer-Policy", "no-referrer")
-    }
+    /** The shared baseline - see [HubHttp]. Kept here so the gate can count them. */
+    private fun securityHeaders(ex: HttpExchange) = HubHttp.securityHeaders(ex, kidOrigin = true)
 
     /**
      * Every route runs inside this. An exception escaping a handler leaves the
@@ -1339,6 +1370,12 @@ class HubKidServer(
          * The media pool is sized to exactly this, so the refusal is decided
          * by [slots] on the control pool and never by a full queue.
          */
+        /** How long one kid's one refusal stays quiet after it has been recorded. */
+        private const val REFUSAL_QUIET_MS = 10 * 60_000L
+
+        /** Kid-and-reason pairs remembered for that quiet period. Small, and cleared whole. */
+        private const val REFUSALS_REMEMBERED = 64
+
         const val MAX_CONCURRENT_STREAMS = 3
 
         /**

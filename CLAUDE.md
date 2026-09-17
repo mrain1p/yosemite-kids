@@ -96,7 +96,9 @@ measure a warm launch and get `TotalTime: 0`:
 adb shell am start -S -W -n io.yosemitekids.app/.ui.MainActivity
 ```
 
-Take three samples and read `TotalTime` (milliseconds to first frame). Watch
+These numbers are inherited from upstream's hardware and have never been
+re-taken on this fork's television; Â§9F is where that happens. Take three
+samples and read `TotalTime` (milliseconds to first frame). Watch
 logcat for `Choreographer: Skipped N frames` and `Displayed ... +Xs` too.
 
 ## Releasing (self-update)
@@ -104,11 +106,22 @@ logcat for `Choreographer: Skipped N frames` and `Displayed ... +Xs` too.
 The app polls `version.json` at the repo root of `main` (URL is baked into
 `BuildConfig.UPDATE_MANIFEST_URL`).
 
-1. Bump **both** `versionCode` and `versionName` in `app/build.gradle.kts`. A
-   device only offers an update when `versionCode` is strictly higher than the
-   installed one — forgetting this silently ships nothing.
-2. `gradlew assembleRelease`, attach the APK to a GitHub Release tagged `vX.Y.Z`.
-3. Update `version.json` to point at that asset.
+**Use `/yosemite-kids-release`**, not this outline: the skill carries the two
+steps whose omission has already shipped a broken release — `hubVersion` in
+`hub/build.gradle.kts` moves with the app's version (guard 39 fails the gate
+otherwise, and 1.2.0 shipped a hub advertising 1.1.0), and the gate is run
+*after* the bump rather than before it.
+
+1. Upstream first (`/yosemite-kids-upstream`), then bump **all three**:
+   `versionCode` and `versionName` in `app/build.gradle.kts`, and `hubVersion`
+   in `hub/build.gradle.kts`. A device only offers an update when `versionCode`
+   is strictly higher than the installed one — forgetting it ships nothing.
+2. Gate (read the output for `all green`; the exit code is not the check),
+   commit, fast-forward `main`, push, and let CI publish the hub image.
+3. `gradlew assembleRelease`, attach the APK to a GitHub Release tagged
+   `vX.Y.Z` **with `-R mrain1p/yosemite-kids`** — without it the command
+   resolves to upstream and fails with a misleading 403 — then point
+   `version.json` at that asset.
 
 Always publish the release APK. Self-updating a family's TV onto a debug build
 would hand them the 10-second cold start.
@@ -122,7 +135,7 @@ would hand them the 10-second cold start.
   once Developer options → debugging is enabled on the TV. That toggle often
   resets after a reboot or system update.
 - Transport ids from `adb devices -l` change between sessions. Re-read them; do
-  not hardcode. The TV reports `model:Chromecast`, the phone `model:Pixel_7_Pro`.
+  not hardcode — and re-read the models too, which have changed once already.
 - `install -r` preserves app data, so pairing and curation survive an upgrade.
   A signature mismatch means the installed build was signed with a different
   key (e.g. an old debug-keystore install from before the release key existed);
@@ -202,7 +215,9 @@ rail: consistent and adapted, never forked.
 - Comments explain constraints and *why*, not what the line does. Match the
   density already in the file; several non-obvious decisions are documented
   in-place and are worth preserving.
-- Colors live in `ui/Theme.kt`. Watched/played progress is
+- Kid-facing colour lives in `:core`'s `DesignTokens`, which the browser's
+  stylesheet is generated from and which guard 48 holds `:app` to; `ui/Theme.kt`
+  binds those and owns the parent-facing palette. Watched/played progress is
   `WatchedProgressRed` (YouTube convention) — deliberately not the brand teal.
 - `LaunchedEffect` and composable bodies run on the **main thread**. Disk I/O,
   SharedPreferences and JSON parsing must go through

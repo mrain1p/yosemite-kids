@@ -1,6 +1,7 @@
 package io.yosemitekids.app.ui
 
 import io.yosemitekids.app.data.AiConfig
+import io.yosemitekids.app.data.Budget
 import io.yosemitekids.app.data.ConfigStore
 import io.yosemitekids.app.data.Limits
 import io.yosemitekids.app.data.Pin
@@ -93,6 +94,17 @@ internal data class SettingsForm(
             },
             blockedVideoIds = blockedVideoIds,
             limits = limits,
+            // Stamped by the phone that first sets a bedtime or a budget, and
+            // never changed afterwards. Before this nothing in the product
+            // wrote the field at all, so the first parent to set either rule
+            // turned the browser into a dead end: the hub fails closed without
+            // a household timezone, and the child was told "Something is not
+            // set up. Ask a grown-up" about a switch no face offered. See
+            // Budget.dayMatters and HubPolicy.NEEDS_HOME_ZONE.
+            homeZone = baseline.homeZone
+                ?: java.util.TimeZone.getDefault().id.takeIf {
+                    Budget.dayMatters(limits, profiles.map { p -> p.limits })
+                },
             ai = finalAi,
             aiAllowedVideoIds = aiAllowedVideoIds,
             profiles = profiles,

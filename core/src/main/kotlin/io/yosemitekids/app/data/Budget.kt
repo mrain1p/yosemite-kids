@@ -56,6 +56,24 @@ object Budget {
      * knows the family's zone. Through [dayMs] rather than by re-testing the
      * fields, so it cannot answer yes to a rule [dayMs] would call incomplete.
      */
+    /**
+     * Whether any rule in this family depends on what day it is here.
+     *
+     * A bedtime window and a daily budget both do: "today" has to mean one
+     * thing on the television, the phone and the hub, or a child's evening
+     * ends at a different moment on each. That is what `Whitelist.homeZone`
+     * is for - and until a rule of this kind exists there is nothing for it
+     * to decide, which is why it is filled in at the moment one appears
+     * rather than offered as a switch nobody would go looking for
+     * (SettingsSurface's own note on the field).
+     *
+     * The hub fails closed without it (HubPolicy.NEEDS_HOME_ZONE) because a
+     * container's clock is not a household's; a phone knows its own zone, so
+     * the phone is what stamps it.
+     */
+    fun dayMatters(family: Limits, perKid: List<Limits>): Boolean =
+        (listOf(family) + perKid).any { it.windows.isNotEmpty() || configured(it) }
+
     fun configured(l: Limits): Boolean =
         dayMs(l, weekend = false, bonusMs = 0L) != null || dayMs(l, weekend = true, bonusMs = 0L) != null
 

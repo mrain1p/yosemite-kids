@@ -44,7 +44,9 @@ upstream's builds.
    Never print the password into a transcript.
 4. `gradlew assembleRelease` -> `app/build/outputs/apk/release/yosemite-kids.apk`.
    Always the release build: debug is ~10 s cold start on a TV.
-5. `gh release create vX.Y.Z app/build/outputs/apk/release/yosemite-kids.apk --title vX.Y.Z --notes "..."`
+5. `gh release create vX.Y.Z -R mrain1p/yosemite-kids app/build/outputs/apk/release/yosemite-kids.apk --title vX.Y.Z --notes "..."`
+   (the `-R` is not optional — see the trap below — and `--target` takes a
+   branch, never a short SHA, which GitHub refuses as an invalid commitish)
 6. Update `version.json` (`versionCode`, `versionName`, `apkUrl`) and push to `main`.
 
 Ask the user before steps 5-6: they publish.

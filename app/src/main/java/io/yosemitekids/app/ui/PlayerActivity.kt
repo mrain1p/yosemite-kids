@@ -656,6 +656,14 @@ class PlayerActivity : ComponentActivity() {
                         // isPlaying, not playWhenReady: a buffering stall spends
                         // no budget, and the countdown must not say it did.
                         playClock.setPlaying(isPlaying)
+                        // Frames are what clears the breaker, not a resolve.
+                        // A URL that resolves and then will not decode - an
+                        // expired link, a throttled one, YouTube's bot wall -
+                        // used to reset the count before anything played, so
+                        // the breaker could never trip on the failure it was
+                        // built for and the player sprinted through the whole
+                        // queue extracting as it went (PlaybackBreaker).
+                        if (isPlaying) consecutiveFailures = 0
                     }
 
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
@@ -1962,8 +1970,6 @@ class PlayerActivity : ComponentActivity() {
             }
             currentTitle = pb.title
             currentPlayback = pb
-            // A video played: whatever went wrong before was that video's.
-            consecutiveFailures = 0
             errorStalled.value = false
             ListenService.title = pb.title
             ListenService.channelName = currentChannel

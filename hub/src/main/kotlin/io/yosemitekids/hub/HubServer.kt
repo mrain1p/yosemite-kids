@@ -711,6 +711,12 @@ class HubServer(
     }
 
     private fun api(ex: HttpExchange) {
+        // The family's document, their kids' names, their channels and the
+        // device list: none of it may sit in a shared browser's disk cache
+        // after the parent signs out. The kid origin has said this on every
+        // reply since it was written; this origin never did, and `/api/backup`
+        // is the whole config with no directive at all.
+        ex.responseHeaders.add("Cache-Control", "no-store")
         if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
         if (!sessions.valid(sessionOf(ex))) {
             return respond(ex, 401, JSONObject().put("error", "sign in").toString())
@@ -1352,7 +1358,7 @@ class HubServer(
     }
 
     /**
-     * The three headers every response carries, whatever it is.
+     * The baseline headers every response carries, whatever it is.
      *
      * They used to be on the admin page alone, which is backwards: the page
      * is the one response that is plainly HTML and plainly ours, while a JSON
@@ -1367,9 +1373,6 @@ class HubServer(
      * LAN. DENY rather than SAMEORIGIN because nothing on this origin frames
      * anything.
      */
-    private fun securityHeaders(ex: HttpExchange) {
-        ex.responseHeaders.add("X-Content-Type-Options", "nosniff")
-        ex.responseHeaders.add("X-Frame-Options", "DENY")
-        ex.responseHeaders.add("Referrer-Policy", "no-referrer")
-    }
+    /** The shared baseline - see [HubHttp]. Kept here so the gate can count them. */
+    private fun securityHeaders(ex: HttpExchange) = HubHttp.securityHeaders(ex, kidOrigin = false)
 }

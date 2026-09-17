@@ -61,7 +61,7 @@ class ChannelIndex(private val dir: File) {
 
     /** In-memory copy of the manifest; disk is the source of truth. Loaded on
      *  first access (off-main), and seeds the shared flow as a side effect. */
-    private var statesBacking: Map<String, SourceState>? = null
+    @Volatile private var statesBacking: Map<String, SourceState>? = null
     private var states: Map<String, SourceState>
         get() = statesBacking ?: loadManifest().also {
             statesBacking = it
@@ -167,7 +167,7 @@ class ChannelIndex(private val dir: File) {
                 p.videoIds?.let { put("v", JSONArray(it)) }
             })
         }
-        playlistsFile(sourceId).writeText(o.put("playlists", arr).toString())
+        playlistsFile(sourceId).writeAtomically(o.put("playlists", arr).toString())
     }
 
     // ---- query -----------------------------------------------------------
@@ -215,7 +215,7 @@ class ChannelIndex(private val dir: File) {
                 v.publishedAt?.let { put("p", it) }
             })
         }
-        sourceFile(sourceId).writeText(arr.toString())
+        sourceFile(sourceId).writeAtomically(arr.toString())
     }
 
     /** Whitelist edit removed a source — its index and crawl cursor go with it. */
@@ -224,8 +224,7 @@ class ChannelIndex(private val dir: File) {
         playlistsFile(sourceId).delete()
         dropCursor(sourceId)
         dropProbeCount(sourceId)
-        states = states - sourceId
-        saveManifest()
+        mutateStates { it - sourceId }
     }
 
     /**
@@ -241,7 +240,16 @@ class ChannelIndex(private val dir: File) {
         append: Boolean = false
     ) {
         if (videos.isEmpty() && complete == null) return
-        val existing = loadSource(sourceId)
+        synchronized(LOCK) { addVideosLocked(sourceId, videos, complete, append) }
+    }
+
+    private fun addVideosLocked(
+        sourceId: String,
+        videos: List<IndexedVideo>,
+        complete: Boolean?,
+        append: Boolean
+    ) {
+        val existing = loadSourceForWrite(sourceId)
         val known = existing.mapTo(HashSet()) { it.videoId }
         val fresh = videos.filter { it.videoId !in known }
         // A known row learns what this crawl knows about it: the count moves
@@ -264,7 +272,7 @@ class ChannelIndex(private val dir: File) {
         if (fresh.isEmpty() && complete == null && !learned) return
         val merged = if (append) refreshed + fresh else fresh + refreshed
         saveSource(sourceId, merged)
-        val prev = states[sourceId]
+        val prev = loadManifest()[sourceId]
         // A harvest append (complete unset — the crawler always passes it
         // explicitly) that finds videos we didn't know, on a source marked
         // complete, is proof the backward crawl stopped early: unknown videos
@@ -281,14 +289,15 @@ class ChannelIndex(private val dir: File) {
         }
         // Built fresh rather than copied: a page that arrives is proof the
         // source is back, so a `gone` mark does not survive it.
-        states = states + (sourceId to SourceState(
-            count = merged.size,
-            newestVideoId = merged.firstOrNull()?.videoId ?: prev?.newestVideoId,
-            complete = resolvedComplete,
-            avatarUrl = prev?.avatarUrl,
-            bannerUrl = prev?.bannerUrl
-        ))
-        saveManifest()
+        mutateStates {
+            it + (sourceId to SourceState(
+                count = merged.size,
+                newestVideoId = merged.firstOrNull()?.videoId ?: prev?.newestVideoId,
+                complete = resolvedComplete,
+                avatarUrl = prev?.avatarUrl,
+                bannerUrl = prev?.bannerUrl
+            ))
+        }
     }
 
     fun state(sourceId: String): SourceState? = states[sourceId]
@@ -299,17 +308,18 @@ class ChannelIndex(private val dir: File) {
      */
     /** The channel's art as its first page carried it; written only when it changed. */
     fun setArt(sourceId: String, avatarUrl: String?, bannerUrl: String?) {
-        val prev = states[sourceId] ?: SourceState(count = 0, newestVideoId = null, complete = false)
-        val next = prev.copy(avatarUrl = avatarUrl ?: prev.avatarUrl, bannerUrl = bannerUrl ?: prev.bannerUrl)
-        if (next == prev) return
-        states = states + (sourceId to next)
-        saveManifest()
+        mutateStates { all ->
+            val prev = all[sourceId] ?: SourceState(count = 0, newestVideoId = null, complete = false)
+            val next = prev.copy(avatarUrl = avatarUrl ?: prev.avatarUrl, bannerUrl = bannerUrl ?: prev.bannerUrl)
+            if (next == prev) all else all + (sourceId to next)
+        }
     }
 
     fun markGone(sourceId: String, reason: String, at: Long) {
-        val prev = states[sourceId] ?: SourceState(count = 0, newestVideoId = null, complete = false)
-        states = states + (sourceId to prev.copy(gone = reason.take(160), goneAt = at))
-        saveManifest()
+        mutateStates { all ->
+            val prev = all[sourceId] ?: SourceState(count = 0, newestVideoId = null, complete = false)
+            all + (sourceId to prev.copy(gone = reason.take(160), goneAt = at))
+        }
     }
     fun allStates(): Map<String, SourceState> = states
 
@@ -332,10 +342,32 @@ class ChannelIndex(private val dir: File) {
         }
     }.getOrDefault(emptyMap())
 
-    private fun saveManifest() {
+    /**
+     * Read-modify-write the manifest with every other instance held off, and
+     * from DISK rather than from this instance's copy.
+     *
+     * A ChannelIndex is constructed per call in places - the LAN server builds
+     * one for each `POST /index` - while the crawl worker holds one for the
+     * five minutes of a run. Two instances over one directory are two views of
+     * one file, so a write that trusted a stale in-memory map would erase
+     * whatever the other instance had just recorded: the worker's later write
+     * silently dropping a pushed source, or the push dropping a run's work.
+     * Neither shows up as an error; the source simply reads as never crawled.
+     */
+    private fun mutateStates(edit: (Map<String, SourceState>) -> Map<String, SourceState>) {
+        synchronized(LOCK) {
+            val next = edit(loadManifest())
+            statesBacking = next
+            sharedStates.value = next
+            saveManifest(next)
+        }
+    }
+
+    /** Callers hold [LOCK] and pass the map they just derived from disk. */
+    private fun saveManifest(snapshot: Map<String, SourceState>) {
         dir.mkdirs()
         val o = JSONObject()
-        states.forEach { (id, s) ->
+        snapshot.forEach { (id, s) ->
             o.put(id, JSONObject().apply {
                 put("count", s.count)
                 s.newestVideoId?.let { put("newest", it) }
@@ -345,8 +377,8 @@ class ChannelIndex(private val dir: File) {
                 s.bannerUrl?.let { put("banner", it) }
             })
         }
-        manifestFile.writeText(o.toString())
-        sharedStates.value = states
+        manifestFile.writeAtomically(o.toString())
+        sharedStates.value = snapshot
     }
 
     /**
@@ -356,7 +388,7 @@ class ChannelIndex(private val dir: File) {
      * refresh icon calls this.
      */
     fun refresh() {
-        states = loadManifest()
+        synchronized(LOCK) { states = loadManifest() }
         sharedStates.value = states
         lastRun.value = lastRunInfo()
     }
@@ -371,7 +403,7 @@ class ChannelIndex(private val dir: File) {
     fun recordRun(pages: Int, failed: Boolean) {
         runCatching {
             dir.mkdirs()
-            runFile.writeText(
+            runFile.writeAtomically(
                 JSONObject()
                     .put("at", System.currentTimeMillis())
                     .put("pages", pages)
@@ -410,9 +442,10 @@ class ChannelIndex(private val dir: File) {
 
     /** Apply a pushed source file (from the master). Replaces ours wholesale. */
     fun importSource(sourceId: String, json: String, state: SourceState) {
-        saveSource(sourceId, parseSource(json, sourceId))
-        states = states + (sourceId to state)
-        saveManifest()
+        synchronized(LOCK) {
+            saveSource(sourceId, parseSource(json, sourceId))
+            mutateStates { it + (sourceId to state) }
+        }
     }
 
     /** Wire format for a LAN push: state line, then the video array. */
@@ -473,6 +506,19 @@ class ChannelIndex(private val dir: File) {
     }
 
     private fun parseSource(json: String, sourceId: String): List<IndexedVideo> =
+        parseSourceOrNull(json, sourceId) ?: emptyList()
+
+    /**
+     * The rows in [json], or null when it will not parse.
+     *
+     * Read paths treat null as an empty channel, which is survivable - a search
+     * misses it until the next crawl. The WRITE path must not: `addVideos`
+     * writes back what it read plus the new page, so one torn file read as
+     * empty becomes a channel whose whole back catalogue is replaced by
+     * whatever page the crawl happened to be on, with the cursor still pointing
+     * past it. See [loadSourceForWrite].
+     */
+    private fun parseSourceOrNull(json: String, sourceId: String): List<IndexedVideo>? =
         runCatching {
             val arr = JSONArray(json)
             (0 until arr.length()).map { i ->
@@ -488,7 +534,30 @@ class ChannelIndex(private val dir: File) {
                     publishedAt = if (o.has("p")) o.getLong("p") else null
                 )
             }
-        }.getOrDefault(emptyList())
+        }.getOrNull()
+
+    /**
+     * What `addVideos` reads before it writes. A file that is there and will
+     * not parse is renamed aside and its crawl cursor dropped, so the next run
+     * rebuilds the channel from its first page instead of writing a stump over
+     * it. The quarantined copy stays on the volume: it is the only evidence of
+     * what was lost, and it costs one file.
+     */
+    private fun loadSourceForWrite(sourceId: String): List<IndexedVideo> {
+        val f = sourceFile(sourceId)
+        if (!f.exists()) return emptyList()
+        val text = f.readText()
+        if (text.isBlank()) return emptyList()
+        parseSourceOrNull(text, sourceId)?.let { return it }
+        val bad = File(dir, f.name + ".corrupt")
+        bad.delete()
+        f.renameTo(bad)
+        dropCursor(sourceId)
+        System.err.println(
+            "index for  would not parse; kept it as  and ordered a fresh crawl"
+        )
+        return emptyList()
+    }
 
     // ---- crawl cursors ----------------------------------------------------
 
@@ -509,12 +578,12 @@ class ChannelIndex(private val dir: File) {
 
     fun dropCursor(sourceId: String) = updateCursors { it.remove(sourceId) }
 
-    private fun updateCursors(mutate: (JSONObject) -> Unit) {
+    private fun updateCursors(mutate: (JSONObject) -> Unit) = synchronized(LOCK) {
         runCatching {
             val o = if (cursorsFile.exists()) JSONObject(cursorsFile.readText()) else JSONObject()
             mutate(o)
             dir.mkdirs()
-            cursorsFile.writeText(o.toString())
+            cursorsFile.writeAtomically(o.toString())
         }
     }
 
@@ -540,16 +609,26 @@ class ChannelIndex(private val dir: File) {
 
     fun dropProbeCount(sourceId: String) = updateProbes { it.remove(sourceId) }
 
-    private fun updateProbes(mutate: (JSONObject) -> Unit) {
+    private fun updateProbes(mutate: (JSONObject) -> Unit) = synchronized(LOCK) {
         runCatching {
             val o = if (probesFile.exists()) JSONObject(probesFile.readText()) else JSONObject()
             mutate(o)
             dir.mkdirs()
-            probesFile.writeText(o.toString())
+            probesFile.writeAtomically(o.toString())
         }
     }
 
     companion object {
+        /**
+         * One lock for every instance over every directory.
+         *
+         * A process only ever has one family's index open, so a single monitor
+         * costs nothing and removes the question of which directory a caller
+         * meant. It is held across a read-modify-write of the manifest, a
+         * source file, the cursors and the probes - see [mutateStates].
+         */
+        internal val LOCK = Any()
+
         /**
          * Process-wide live view of every instance's states, so the settings
          * screen (its own ChannelIndex instance) watches the ViewModel/worker

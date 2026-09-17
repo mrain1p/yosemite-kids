@@ -26,8 +26,14 @@ only after this page has said which one, and open a slice, not the whole.
 | A colour, size or word a child sees | `core/.../ui/DesignTokens.kt`, `KidWords.kt` | Never a literal in `:app` or `kid.html` (guards 36, 48, 61, 63) |
 | A config field | `.claude/skills/yosemite-kids-sync` §4, then `core/.../data/Whitelist.kt`, `ConfigJson.kt`, `ConfigStamp.kt`, `ConfigMerge.kt` | The four canonical tests in `core/src/test` |
 | A LAN or hub route | `docs/LAN-API.md` (the contract) | `app/.../data/Pairing.kt` `LanServer.handle`, `hub/.../HubServer.kt`; guards 14, 22, 29, 30, 41 |
+| A route the kid's browser calls | `docs/LAN-API.md` "The kid's routes" | `hub/.../HubKidServer.kt` registers it, `HubKidHome.kt` answers it; every one calls `watching(ex)`. Guards 57 (the route list), 59 (the cookie), 60 (fails closed), 61 (the page draws, it does not decide) |
+| The crawl | `docs/ARCHITECTURE.md` "Where to change what" | `crawl/.../IndexCrawlRun.kt` (a channel's videos, gone-handling, backoff), `PlaylistCrawlRun.kt` (its playlists), `hub/.../HubCrawl.kt` (the loop, the pause file, standing aside while a child watches). Guard 72 holds the pace |
+| A playlist | `crawl/.../PlaylistCrawlRun.kt` + `ChannelIndex.savePlaylists` | `hub/.../HubKidHome.kt` `playlistsFor`, the `/kid/playlists` and `/kid/playlist` routes, `app/.../ui/PlaylistShelves.kt` |
+| A saved list, or a heart | `crawl/.../SavedListStore.kt` (FAVORITES, WATCH_LATER, CHANNELS) | `hub/.../HubSavedLists.kt` is the hub's copy, `POST /kid/list` the route, `WatchSync` what carries it between devices. No new merge: it rides the one that exists |
+| HD, or the browser's player | `hub/.../HubDash.kt` writes the manifest | `HubStream.dash`/`stream` resolve it, `/kid/dash` serves it, `kid.html` `attachStream` plays it through vendored dash.js and falls back to `/kid/media` |
+| A store that writes a file | `crawl/.../AtomicWrite.kt` | Every document is written temp-then-rename; a torn file read as an empty family or an empty channel is how the damage arrives, never as an error |
 | Screen time | `docs/ARCHITECTURE.md` "Screen time in one table" | `app/.../data/SessionGuard.kt`, `core/.../data/UsageLedger.kt` |
-| The player | `app/.../ui/PlayerActivity.kt` (4,300 lines: grep for the function, read that) | `hub/.../HubStream.kt` + the player half of `kid.html` for the browser |
+| The player | `app/.../ui/PlayerActivity.kt` (4,285 lines: grep for the function, read that) | `hub/.../HubStream.kt` + the player half of `kid.html` for the browser |
 | A guard | `docs/GUARDS.md` (the index: number, rule, files it reads) | `scripts/check.sh` at `# <n>.` for the paragraph; mirror it in `check.ps1`; a case in `scripts/guard-canary.sh` |
 | Docs | `docs/ROADMAP.md` is the only forward-looking doc; `docs/ARCHITECTURE.md` the map; `docs/archive/` is finished history and is never updated | |
 

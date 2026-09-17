@@ -173,6 +173,15 @@ crawl/src/main/kotlin/io/yosemitekids/app/data/    network, disk, clock — plai
 ├── Http.kt             The one OkHttpClient, and restrictTo() — the hub arms it
 │                       at startup so the crawler can reach YouTube and nothing else
 ├── YouTubeRepository.kt / Extractor.kt / OkHttpDownloader.kt   NewPipeExtractor
+├── SavedListStore.kt / QueueStore.kt   the kid's lists and lineup, here rather
+│                                       than in :app since R3 so the hub shares
+│                                       the merge (AndroidStores.kt is the
+│                                       phone's factory)
+├── PlaylistCrawlRun.kt   a channel's playlists, indexed daily after the index pass
+├── PlaybackCache.kt / PlaybackBreaker.kt   resolved streams held 20 min, and the
+│                                           stop after two failures in a row
+├── AtomicWrite.kt        writeAtomically - temp file, fsync, atomic rename: the
+│                         one way every store in the product writes a document
 ├── ChannelIndex.kt / IndexCrawler.kt / IndexCrawlRun.kt / IndexPull.kt
 │                       The index keeps each video's date and view count (roadmap
 │                       2M); a source YouTube refuses is marked gone, skipped for
@@ -195,6 +204,16 @@ hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container
 │                       see docs/LAN-API.md, and guard 30. The parents'
 │                       session is a header, never a cookie (guard 59). It
 │                       builds HubKidServer and registers its routes on itself
+├── HubDash.kt          The DASH manifest a browser plays HD through
+├── HubHttp.kt          The headers (and the CSP) every reply on either face carries
+├── HubKidHome.kt       What every kid route answers: home, channels, search, You
+├── HubKidHistory.kt    Where a browser got to in each video
+├── HubMedia.kt         Ranges, content types, the stream and segment slots
+├── HubPolicy.kt        The one answer to "may this child play this video"
+├── HubQr.kt            The claim QR the console draws
+├── HubSavedLists.kt    The kid's four lists, over :crawl's store
+├── HubStream.kt        Resolved URLs, the DASH renditions, and the chunk pump
+├── HubWatchMeter.kt    Minutes for a browser, and whether anyone is watching
 ├── HubKidServer.kt     The kid app: the page at /kid and every route under
 │                       /kid/, a JSON 404 for everything else there, and no
 │                       CORS header anywhere. The wall between it and the
@@ -336,8 +355,9 @@ the same day. The raw counter has exactly one reader (`ownWatchedMs`) and guard
 45 holds it there, because seven enforcement sites and half a dozen screens all
 deriving from it is precisely how a home screen ends up promising forty minutes
 in front of a player that stops at ten. The peers' half is zero for every family
-today: the ledger and its routes exist, the switch that makes a budget shared
-(`Limits.budgetScope`) does not yet.
+today unless a parent has shared a budget: `Limits.budgetScope` is the switch
+that does it, it has shipped since 1.3.0, and `UsageSync` is what carries the
+peers' halves between devices (`SessionGuard.peerMs`).
 
 The **day** those counters bucket into is `FamilyDay`'s, and only ever moves
 forward: `FamilyDay.rollover` keeps the later of the stored day and the clock's,

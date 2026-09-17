@@ -1535,7 +1535,13 @@
   function get(path) {
     return fetch(path, { credentials: "same-origin" }).then(function (r) {
       if (r.status === 401) { showClaim(); return null; }
-      if (!r.ok) throw new Error(path + " " + r.status);
+      if (!r.ok) {
+        // A 5xx is the hub failing, and it is what a parent needs to see on
+        // the console. The page used to throw it into whatever .catch the
+        // caller had, most of which quietly drew the home screen again.
+        if (r.status >= 500) report("error", "GET " + path + " answered " + r.status);
+        throw new Error(path + " " + r.status);
+      }
       return r.json();
     });
   }
@@ -1553,7 +1559,10 @@
       body: JSON.stringify(body)
     }).then(function (r) {
       if (r.status === 401) { showClaim(); return null; }
-      if (!r.ok) return null;
+      if (!r.ok) {
+        if (r.status >= 500) report("error", "POST " + path + " answered " + r.status);
+        return null;
+      }
       return r.json();
     }).catch(function () { return null; });
   }
@@ -1561,7 +1570,7 @@
   function openChannel(id) {
     get("/kid/channel?id=" + encodeURIComponent(id)).then(function (channel) {
       if (channel) goInto(function () { renderChannel(channel); });
-    }).catch(function () { renderHome(); });
+    }).catch(function (e) { showTrouble(sayOf(e)); });
   }
 
   function runSearch(q, remember) {
@@ -1650,6 +1659,47 @@
     try { return localStorage.getItem("yk-look") || "colour"; } catch (e) { return "colour"; }
   }
 
+  /**
+   * The hub did not answer. NOT the sign-in screen: a child who is claimed
+   * and whose hub is restarting, or whose wifi dropped for a second, was
+   * being shown the code box - which reads as having been thrown out of
+   * their own app, and which they cannot fix, because the box wants a code
+   * nobody is going to give them.
+   *
+   * Says so, and tries again on a tap. Only a 401 - a claim actually revoked
+   * or expired - reaches [showClaim].
+   */
+  function showTrouble(what) {
+    stopBeating();
+    releaseStream();
+    var main = document.getElementById("main");
+    if (!main) return;
+    document.getElementById("claim").hidden = true;
+    document.getElementById("app").hidden = false;
+    document.getElementById("tabs").hidden = true;
+    document.getElementById("searchrow").hidden = true;
+    document.getElementById("back").hidden = true;
+    clear(main);
+    var box = el("div", "empty");
+    // The one child-facing sentence the page owns rather than the hub:
+    // every other one arrives from KidWords, and this is the case where
+    // nothing arrived.
+    box.appendChild(el("h1", null, "Just a moment…"));
+    box.appendChild(el("div", "sub", what || ""));
+    var again = el("button", "primary", "Try again");
+    again.onclick = function () { loadHome().catch(function (e) { showTrouble(sayOf(e)); }); };
+    box.appendChild(again);
+    main.appendChild(box);
+    report("warn", "kid page could not reach the hub: " + (what || "no answer"));
+  }
+
+  /** What went wrong, in words a child is allowed to read. */
+  function sayOf(e) {
+    return e && e.message && e.message.indexOf(" 5") > 0
+      ? "The hub had a problem."
+      : "We could not reach the hub.";
+  }
+
   function showClaim() {
     stopBeating();
     document.getElementById("app").hidden = true;
@@ -1717,6 +1767,9 @@
           var b = document.createElement("button");
           b.type = "button";
           b.className = "whoTile" + (k.id === whoIs ? " picked" : "");
+          // A stable handle for the browser smoke test, which signs in the way
+          // a family does rather than by poking at the routes underneath.
+          b.dataset.kid = k.id;
           var face = document.createElement("span");
           face.className = "whoFace";
           face.textContent = k.avatar || "";
@@ -1895,10 +1948,7 @@
   if (scanned) {
     redeem({ code: scanned }, "That code did not work. Ask for a new one.");
   } else {
-    loadHome().catch(function () {
-      showClaim();
-      document.getElementById("claimWhy").textContent = "";
-    });
+    loadHome().catch(function (e) { showTrouble(sayOf(e)); });
   }
 })();
 </script>

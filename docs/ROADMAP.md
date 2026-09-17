@@ -74,14 +74,11 @@ samples), and until then treat those numbers as inherited rather than observed.
 
 ## 2. Highest value for a family, ranked
 
-**A. A device is not reachable while Yosemite Kids is closed.** `LanServer` is built
-in `MainActivity` and dies with the process. A sleeping TV reads as unreachable
-on the parent's phone, "Play on TV" cannot wake it, and the hub's nudge does not
-land. Both layers underneath are built (`POST /sync-now` for awake devices,
-`ConfigSyncWorker`'s 15-minute floor for sleeping ones) — this is the middle.
-Needs a foreground service: `dataSync` is the honest type and is already declared
-for downloads. Gate on form factor; a persistent notification is defensible on a
-mains-powered TV and a real cost on a phone. *Medium.*
+~~**A. A device is not reachable while Yosemite Kids is closed.**~~ **Done in
+1.10.0**: `LanService`, a foreground service the activity starts on a television
+only, holds the process and rebuilds the server from `buildLanServer` if the
+system restarts it; the wiring moved out of `MainActivity` into `LanServers.kt`.
+**Untested on a real television** - that is Â§9F's evening, not an open design.
 
 *To review when A is built: should the device hold the connection open instead?*
 Rather than the hub nudging a device it may not be able to reach, the device
@@ -557,7 +554,8 @@ shared budget (§J), which the owner tabled, so nobody owns the push today. The
 ## 6. The gate
 
 - **CI runs `bash scripts/check.sh --guards`** as its first step, before the
-  toolchain, since 2026-09-04 (`35df387`). Thirty guards, on every push and
+  toolchain, since 2026-09-04 (`35df387`). Seventy-odd guards (`docs/GUARDS.md`
+is the index, generated), on every push and
   every PR. That entry read "CI runs neither script" until 1.0.7, which is the
   same failure it describes: the audit found the gap, the next round closed it,
   and nobody came back for the sentence. `check.sh` was additionally dead from
@@ -774,9 +772,6 @@ mapping and its environment line come out of the NAS compose file.
 
 - **The shared-budget chain.** Carried, stamped, merged and enforced end to end;
   only the control is missing, and no family has asked.
-- **`publishedAt` through `ChannelIndex`** (§2M) and the Most-recent chip that
-  needs it. The edit is small; the delivered feature is not — `addVideos` never
-  rewrites a known row, so dates would land only on new uploads.
 - ~~**Favourite / subscribe to a channel.**~~ **Done in 1.11.0** through the
   saved-list store the hearts on videos already converge through
   (`SavedListStore.CHANNELS`), so no new merge. Was: real value, but it is new per-kid
@@ -982,7 +977,190 @@ Output is a fix list, which becomes the next round.
 
 ### 9G. Findings of the review
 
-Written by Phase 0. Empty until then.
+Seven readers, one per dimension, 2026-09-17: structure and duplication, tests,
+the guards and the canary, diagnosability, robustness and concurrency, the docs
+and skills, and the parent console. Every finding below was verified against
+the code before it was written down, and where a document and the code
+disagreed the code was taken as right. About 190 findings in all; what follows
+is every **high** one, the **medium** ones in a line each, and a count of the
+rest. ✅ marks what this round has already closed.
+
+**The shape of it.** Nothing is structurally wrong. The hard sharing — the play
+gate, the home assembly, the orders, the token tables — is done and done well,
+and the hub is the best-tested module in the repo. What the review found is a
+pattern rather than a scatter: **a discipline applied on one side of a pair and
+not the other.** The hub reads `KidSurface`; the phone hard-codes the same
+shelves. The hub renders refusals through `KidWords`; the phone writes its own
+sentences. Eleven stores write atomically; the index does not. The kid page
+reports its own errors; the console reports nothing. Guard 57 learned that a
+route regex must allow digits; guards 14, 22, 29 and 30 did not. Almost every
+row below is one half of something already right.
+
+#### The eleven that can lose or hide a family's data
+
+1. ✅ **The index had no lock and no atomic write** — and so could lose a
+   channel's back catalogue permanently. Every mutator did `states = states +
+   …` then wrote its whole in-memory view, while the crawl worker holds one
+   instance for the length of a run and `POST /index` builds a fresh one per
+   request: the later write erased the other's source. A torn source file then
+   read as an empty channel, `addVideos` wrote the new page back *as* the whole
+   source, and the cursor still pointed past the pages that were gone. Fixed:
+   one process-wide lock, `writeAtomically` in `:crawl` (temp file, `fsync`,
+   `ATOMIC_MOVE`), disk-truth read-modify-write, and a torn file quarantined as
+   `.corrupt` with its cursor dropped so the crawl rebuilds. `IndexDurabilityTest`.
+2. ✅ **`PlaybackBreaker` could never trip for the failure it exists for.** The
+   counter reset when a resolve *succeeded*, before anything played, so a run of
+   decode failures — an expired link, a throttled one, YouTube's bot wall — walked
+   the whole queue at full speed extracting as it went. It now resets on frames.
+3. ✅ **The home timezone was a dead end nobody could leave.** The hub fails
+   closed for any kid with a bedtime or a budget while `homeZone` is null, and
+   **nothing in the product ever wrote the field**: no editor on any face, no
+   default. The first parent to set either rule would have turned the browser
+   into "Something is not set up. Ask a grown-up," with no switch anywhere to
+   fix it, and no log line naming it. The phone now stamps its own zone the
+   moment a rule needs one (`Budget.dayMatters`, `HomeZoneTest`).
+4. ✅ **Every console save could fail in silence.** `button()` swallowed every
+   rejection (~25 actions), sixteen save paths dropped the promise entirely, and
+   a toggle that failed left the control disabled and flipped to the value that
+   was *not* written. The console also registered no `window.onerror` and no
+   `unhandledrejection` — unlike the kid page — so none of it reached a log
+   either. Fixed: one `saving()` wrapper that restores the control and names the
+   reason, a banner every failure reaches, and both global handlers.
+5. ✅ **"Download a backup" could never work.** The one `/api` call that
+   bypassed the fetch wrapper sent no session header, so the hub answered 401
+   and the handler signed the parent out — every time they pressed it.
+6. ✅ **An unreachable hub told a parent their hub was unclaimed**, inviting
+   them to set a second password on a hub that already had one; and it told a
+   signed-in child they were signed out, which reads as being thrown out of
+   their own app and which a child cannot fix. Both now distinguish a transport
+   failure from a refusal, and the kid page offers Try again.
+7. ✅ **A refusal reached no log and no parent.** `Decision.detail` says in its
+   own KDoc that it is written for a parent's log; it was placed in the 403 body,
+   the page read only the child's half, and nobody could answer "why will this
+   video not play on the tablet". Now recorded in the report ring, one line per
+   kid and reason per ten minutes.
+8. **A corrupt `config.json` shows the console an empty family.** `HubStore.load`
+   correctly refuses to serve emptiness and rethrows — and five callers swallow
+   it into plausible-but-wrong answers: zero kids, "idle: no config yet", a
+   fingerprint of `""` published on `/status` so peers sync against a hub that
+   cannot read its own document, an election on an empty config, and kid routes
+   that drop every parent setting. The phone already has the right shape
+   (`ConfigStore.degraded`); the hub needs it, plus a red banner.
+9. **`ConfigJson.fromJson` is all-or-nothing per entry.** One malformed source
+   or profile throws and the whole document falls back to last-good or empty.
+   The same file already drops a bad *pin* or *grant* alone; sources and profiles
+   should too. No test anywhere covers a valid-JSON, bad-element config.
+10. **The extractor canary can close its own breakage issue after testing
+    nothing.** A run whose tests all skip on a bot wall *succeeds*, and the
+    `if: success()` step then comments "Canary is green again". It also tests a
+    path the hub does not use: it asserts muxed **or** adaptive streams while
+    `HubStream.resolve` requires muxed, so YouTube dropping itag 18 leaves the
+    canary green while every browser video 502s. And it notifies nobody by name.
+11. **`LanClient` discards every push and pull failure.** Seven methods are
+    `runCatching { … }.getOrDefault(false)`, so a 403 (approval dropped, and
+    re-pairing the only fix) is indistinguishable from a sleeping TV, and
+    nothing reaches `Diag` — which is itself never read on a device, because
+    `Diag.entries()` has no caller and the ring drains only to a hub.
+
+#### The gate's own blind spots
+
+12. **`check.ps1` has never been negative-tested.** Every canary case shells out
+    to the bash gate, and guard 65 reads bash's headings — so the only gate that
+    runs on Windows, and the one the author runs before committing, is the half
+    with no canary.
+13. **Guards 14, 22, 29 and 30 cannot see a route with a digit or a dot.** This
+    is the exact regex class that made guard 57 fail open once; the lesson was
+    applied to 57 alone. Guard 30 additionally misses every asset route,
+    including the stylesheet another guard requires.
+14. **Guard 60's handler list has drifted** — two routes that answer with the
+    family's catalogue are unchecked — and its query-parameter clause is
+    mistyped identically in both scripts, so it catches `&kid=` and misses
+    `?kid=`, which is how a first parameter is written. A shared typo is
+    invisible to the mirror check and to the canary.
+15. **Guard 62(d) enforces nothing**: twenty-four recursive greps whose result is
+    discarded, reading in the file as a clause.
+16. **~18 checks carry no number**, so they are in no index, exempt from the
+    mirror check and exempt from the canary — several of them the security
+    family (the clockless merge rule, the Android-in-`:core` ban, the secretless
+    export, the atomic-write count).
+17. **Fifty-one guards have no canary case** (1–49, 52, 55): most of the
+    security surface, the whole settings-parity family, the entire sync merge.
+    The review names the ten worth doing first and the one-line mutation each.
+18. **Step 0's cost is fork overhead, not greps**: two per-file loops spawn ~150
+    processes; one full-tree grep is 0.63 s. That is the five minutes.
+19. **Under WSL the bash gate fails open on eight guards**, because the awk
+    terminators assume LF and the working tree is CRLF.
+
+#### The rules each face decides for itself
+
+20. **`:app` never reads `KidSurface`** — zero references — so the phone's You
+    tab hard-codes the ids, titles, emoji and order the hub takes from the
+    manifest, and adds a fifth shelf the manifest does not know.
+21. **Every kid-facing refusal sentence exists twice**, as literals in
+    `SessionGuard` and as `KidWords.refusal`, and they say different things
+    about the same rule. Only the hub calls `KidWords`.
+22. **Two PBKDF2 costs.** The parent PIN carries its own at 120,000 iterations
+    in its own record format, beside `:core`'s shared one at 210,000 that the hub
+    and the kid password use — three lines below a KDoc asserting there is one.
+23. **The browser's duration clock is wrong over an hour**: a re-implementation
+    in JavaScript drops the seconds, so 1:05:30 reads 1:05 beside a phone
+    showing it correctly.
+24. **`SessionGuard` re-implements `Budget`'s three functions**, and two comments
+    cite a guard number that does not exist to claim it does not.
+25. ✅ **Both hub listeners kept byte-identical copies of the security-header
+    writer**, three lines below a KDoc saying a security check must not be
+    copied. Now one `HubHttp`, with each server keeping its one-line call so the
+    gate's per-file counts still read what they read.
+
+#### Everything else, by theme
+
+- **Medium, structure (16):** five files past what one person holds
+  (`PlayerActivity` 4285, `index.html` 3235, `Settings` 3058, `MainViewModel`
+  2445, `Pairing` 1888), each with its seams named; `HubStream` keeps a second
+  copy of `PlaybackCache`; the `/status` contract authored twice; the console
+  re-derives `homeSections` in JavaScript; the hold menu typed twice in
+  different orders; the kid's look decided twice with different defaults;
+  eleven atomic-write implementations in three variants ✅ (one now shared);
+  the phone's ledger file and the hub's written twice; two spellings of "time
+  left"; two constants re-typed from `KidCap`; two different megabytes; 17 dead
+  declarations.
+- **Medium, tests (11):** `-Quick` does not compile unit tests; the `:app` test
+  list is a non-recursive glob in three places, so a test in a subpackage is
+  never run and nothing says so; the live-YouTube exclusion list is duplicated
+  in three files and already wrong; one test runs nowhere at all; four tests
+  turn on wall-clock sleeps or mtime granularity; the fixture that seeds a hub
+  asserts nothing and runs on every gate.
+- **Medium, robustness (12):** the per-chunk gate re-parses the whole config
+  twice and every channel's index before every 2 MB; no single-flight on stream
+  resolution, so an expired URL mid-video means eight simultaneous extractions;
+  `/kid/thumb` is an unmetered YouTube fetcher for any claimed browser; the
+  device's HTTP server has no overall request deadline; `LanClient` reads peer
+  responses unbounded; the two-TV `peerBehind` race; the playlist pass has no
+  gone-handling and refetches a dead playlist every fifteen minutes for ever.
+- **Medium, console (14):** removing a channel has no confirmation though every
+  other destructive action does; two error messages are written onto nodes the
+  re-render throws away; per-kid rulings are one-way but drawn as toggles; the
+  page never refreshes itself; `/api/state` ships every kid's plaintext PIN and
+  password record to the browser; the manifest's declared ranges are enforced
+  only by HTML attributes; ✅ no `Content-Security-Policy` and ✅ no `no-store`
+  on `/api`; touch targets below the 44px floor the kid page enforces.
+- **Medium, docs (18):** `budgetScope` is documented as unbuilt in four places
+  and shipped eight releases ago; §2A describes work that shipped in 1.10.0 and
+  its anchor can never fire; `CLAUDE.md`'s release steps omit the two that broke
+  1.2.0; the architecture tree is missing nine hub files, eleven others, and puts
+  two stores in the wrong module; a session with only `CLAUDE.md` and the map
+  skill can find the entry point for almost nothing added in 1.9.0–1.11.0.
+- **Low, all dimensions (about 40):** listed in the per-dimension notes; none
+  changes what a family sees.
+
+#### What this changed in the plan
+
+The safety net in §9B stands, and four things move ahead of it (done above:
+the index, the breaker, the timezone, the console's silence). Two new items
+join §9C: **the gate's blind spots** (12–19, which is a round of its own) and
+**the one-sided disciplines** (20–24). The console's rule-deciding and its
+split into files join §9D behind the features already there. Nothing found
+argues for a change of direction.
 
 ## Anchors
 
@@ -993,13 +1171,11 @@ fires: confirm the work is done, then delete the item and its row.
 
 | Item | Anchor | Kind |
 | --- | --- | --- |
-| §2A reachability | `buildLanServer(` | code |
 | §2C key in backup | `app/src/main/res/xml/backup_rules.xml` | path |
 | §3 hub pages not derived | `HubPage("kids"` | code |
 | §4 stats on hub | `outstandingOnHub` | code |
 | §4 guard 7 | `hub/src/main/kotlin/io/yosemitekids/hub/HubNudge.kt` | path |
 | §2K provisional TV dp | `fun tvUnits(` | code |
-| §2M index has no date | `val durationSeconds: Long,` | code |
 | §9B CSP on the kid origin | `securityHeaders(ex)` | code |
 | §9B home-load honesty | `function loadHome()` | code |
 | §9A extractor canary reaches the owner | `.github/workflows/extractor-smoke.yml` | path |
