@@ -206,4 +206,38 @@ class HubWatchMeterTest {
         m.beat("browser-a", kid)
         assertTrue(m.anyoneWatching())
     }
+
+    // --- the seconds the ledger has not written down --------------------
+
+    @Test
+    fun `the unsettled remainder is what makes the last minute honest`() {
+        val m = meter()
+        val id = m.ledgerId("session-a")
+        m.beat("session-a", kid)
+        assertEquals("nothing accrued at the first beat", 0L, m.unsettledMs(id, kid))
+
+        at += 90_000
+        assertEquals("one whole minute is credited", 1, m.beat("session-a", kid))
+        assertEquals(
+            "and the other thirty seconds are known but unwritten",
+            30_000L, m.unsettledMs(id, kid)
+        )
+        assertEquals("the ledger is never ahead of what was watched", 1, usage.minutesFor(kid, "2026-09-07"))
+
+        at += 30_000
+        assertEquals(2, m.beat("session-a", kid))
+        assertEquals("a whole minute settles to nothing outstanding", 0L, m.unsettledMs(id, kid))
+    }
+
+    @Test
+    fun `the remainder belongs to one child on one day and nobody else`() {
+        val m = meter()
+        val id = m.ledgerId("session-a")
+        m.beat("session-a", kid)
+        at += 30_000
+        m.beat("session-a", kid)
+        assertEquals(30_000L, m.unsettledMs(id, kid))
+        assertEquals("a sibling's countdown is not this one's", 0L, m.unsettledMs(id, "bbbb2222"))
+        assertEquals("nor is a viewer this hub has never seen", 0L, m.unsettledMs("nobody", kid))
+    }
 }

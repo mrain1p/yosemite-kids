@@ -77,6 +77,13 @@ class HubKidHome(
     private val history: HubKidHistory,
     private val lists: HubSavedLists,
     private val searches: HubKidSearches? = null,
+    /**
+     * Only for the countdown's seconds: the meter knows about up to 59
+     * seconds of watching the ledger has not recorded yet, and a countdown
+     * that ignores them rounds. Null in the tests that have no meter, which
+     * then get the whole-minute figure the ledger holds.
+     */
+    private val meter: HubWatchMeter? = null,
     private val now: () -> Long = System::currentTimeMillis
 ) {
 
@@ -781,15 +788,30 @@ class HubKidHome(
      * Straight from [HubPolicy.timeFor] — the same numbers the play route will
      * refuse on, so the page cannot promise minutes the hub will not honour.
      */
-    private fun timeJson(kidId: String, viewer: String?): Any {
+    /**
+     * The countdown block, for /kid/home and for every beat on /kid/progress.
+     *
+     * Internal rather than private because the progress route built its own
+     * copy of these six fields, three lines under a comment saying "two shapes
+     * for one pill is how a countdown comes to say different things on the
+     * same screen a minute apart". There were two shapes, and when the seconds
+     * arrived only one of them got them.
+     */
+    internal fun timeJson(kidId: String, viewer: String?): Any {
         val verdict = policy.timeFor(kidId, viewer)
         val budget = verdict.budgetMinutes ?: return JSONObject.NULL
         val spent = verdict.spentMinutes ?: 0
         val left = (budget - spent).coerceAtLeast(0)
+        // The seconds the ledger has not written down yet. Without them the
+        // last minute is a lie: a child reads "1 minute left" for sixty
+        // seconds and then stops mid-sentence.
+        val unsettled = viewer?.let { meter?.unsettledMs(it, kidId) } ?: 0L
+        val leftSeconds = (left * 60L - unsettled / 1000L).coerceAtLeast(0L)
         return JSONObject()
             .put("budgetMinutes", budget)
             .put("spentMinutes", spent)
             .put("leftMinutes", left)
+            .put("leftSeconds", leftSeconds)
             // The sentence, from :core, so the tablet and the television count
             // down in the same words. Minutes rather than seconds, and that is
             // honest rather than lazy: UsageLedger counts in whole minutes, so

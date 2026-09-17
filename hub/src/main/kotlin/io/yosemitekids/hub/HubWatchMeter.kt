@@ -166,6 +166,26 @@ class HubWatchMeter(
         return credited
     }
 
+    /**
+     * Watched time this hub has seen but not yet written to the ledger.
+     *
+     * The ledger counts whole minutes, rounded down, so at any instant a
+     * child has been watching for up to 59 seconds the box knows about and
+     * has not recorded. Ignoring that is what made the countdown round: a
+     * child told "1 minute left" watched it say so for a whole minute and
+     * then stopped mid-sentence, which is the ending happening TO them
+     * rather than one they could see coming.
+     *
+     * Read-only and derived - it credits nothing, moves no clock and takes
+     * the same lock the accrual does, so a countdown can be honest without
+     * the ledger ever being ahead of what was actually watched.
+     */
+    fun unsettledMs(ledgerId: String, kidId: String?): Long = synchronized(lock) {
+        val m = meters[ledgerId] ?: return 0L
+        if (m.day != usage.today() || m.kid != kidId) return 0L
+        (m.accruedMs - m.creditedMinutes * 60_000L).coerceIn(0L, 59_999L)
+    }
+
     /** Live meters, for a test and for a health line. Never a promise about who. */
     fun liveCount(): Int = synchronized(lock) { meters.size }
 

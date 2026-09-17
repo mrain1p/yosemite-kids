@@ -3,6 +3,7 @@ package io.yosemitekids.hub
 import io.yosemitekids.app.data.ChannelIndex
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.KidPassword
+import io.yosemitekids.app.data.Limits
 import io.yosemitekids.app.data.Profile
 import io.yosemitekids.app.data.SourceKind
 import io.yosemitekids.app.data.SyncMeta
@@ -63,7 +64,10 @@ object SmokeHub {
         seedFamily(store, now)
         seedIndex(index)
 
-        val server = HubServer(store, HubTokens(dir), port, ADMIN, index = index) { now }
+        // A real clock, not the seeded `now`: the countdown is the one thing
+        // here that only means something if time passes. The seeded document
+        // keeps its fixed stamps, so what a page DRAWS stays deterministic.
+        val server = HubServer(store, HubTokens(dir), port, ADMIN, index = index)
         val bound = server.start()
         println("SMOKE port=$bound kid=$KID_ADA password=$ADA_PASSWORD hidden=$HIDDEN_VIDEO")
         System.out.flush()
@@ -85,7 +89,10 @@ object SmokeHub {
             profiles = listOf(
                 Profile(
                     id = KID_ADA, name = "Ada", avatar = "🦦",
-                    webPassword = KidPassword.record(ADA_PASSWORD, now)
+                    webPassword = KidPassword.record(ADA_PASSWORD, now),
+                    // A budget, so the countdown is something the smoke test can
+                    // see: a pill that never renders is a pill never checked.
+                    limits = Limits(sessionMinutes = 15, weekdaySessions = 2, weekendSessions = 2)
                 ),
                 Profile(id = KID_SAM, name = "Sam", avatar = "🦊")
             ),

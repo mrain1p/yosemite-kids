@@ -102,7 +102,7 @@ class HubKidServer(
      * What the page is shown. Shape only: every rule it draws on is the app's,
      * in `:core` or `:crawl`. See [HubKidHome].
      */
-    private val browse = HubKidHome(policy, store, history, lists, searches, now)
+    private val browse = HubKidHome(policy, store, history, lists, searches, meter, now)
 
     /**
      * Resolving a video to one playable URL, and carrying its bytes. Built
@@ -716,26 +716,23 @@ class HubKidServer(
         // The countdown comes back on every beat, so a page that has been open
         // since breakfast is never showing this morning's number — and so the
         // sentence a child reads when their time runs out is the hub's.
-        val time = policy.timeFor(browser.kid, meter.ledgerId(browser.token))
+        // The same block /kid/home sends, from the same builder rather than a
+        // second copy of it. The copy that used to live here carried a comment
+        // saying "two shapes for one pill is how a countdown comes to say
+        // different things on the same screen a minute apart" - and when the
+        // seconds arrived, only one of the two shapes got them.
+        val time = browse.timeJson(browser.kid, meter.ledgerId(browser.token))
         respond(
             ex, 200,
             JSONObject()
                 .put("minutes", minutes)
-                .put("allowed", time.allowed)
-                .put("reason", time.reason)
+                .put("time", time)
                 .apply {
-                    time.spentMinutes?.let { put("spentMinutes", it) }
-                    time.budgetMinutes?.let { put("budgetMinutes", it) }
-                    // The same three fields /home sends, so the pill reads
-                    // identically whether it was painted on load or on a beat.
-                    // Two shapes for one pill is how a countdown comes to say
-                    // different things on the same screen a minute apart.
-                    val budget = time.budgetMinutes
-                    if (budget != null) {
-                        val left = (budget - (time.spentMinutes ?: 0)).coerceAtLeast(0)
-                        put("leftMinutes", left)
-                        put("say", io.yosemitekids.app.ui.KidWords.timeLeft(left * 60L))
-                        put("low", left * 60L <= io.yosemitekids.app.ui.KidWords.LOW_SECONDS)
+                    // Flattened beside it for the pages that read the old
+                    // shape: a tablet left open across an update is a tablet
+                    // running last week's script against this week's hub.
+                    (time as? JSONObject)?.let { t ->
+                        t.keys().forEach { k -> put(k, t.get(k)) }
                     }
                 }
                 .toString()

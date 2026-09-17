@@ -632,13 +632,16 @@ mapping and its environment line come out of the NAS compose file.
     getting them right needs a real finger on a real iPad. Building them from a
     desktop browser would be guessing at the one part of the player that cannot
     be reasoned about.
-  - *The second-precision countdown.* `UsageLedger` counts **whole minutes**,
-    so seconds in the page would be inventing precision the box does not have —
-    a child told "1 minute left" watches it say that for sixty seconds and then
-    stop mid-sentence. Making it real means interpolating from
-    `HubWatchMeter`'s accrual and returning `Remaining[{ms, kind}]` from
-    `HubPolicy.clock` on both `/home.time` and `/progress`. Real work, and
-    worth it — a fake seconds countdown would be worse than honest minutes.
+  - ~~*The second-precision countdown.*~~ **Done.** It was deferred because
+    `UsageLedger` counts whole minutes, so seconds in the page would have been
+    invented precision — a child told "1 minute left" watched it say so for
+    sixty seconds and then stopped mid-sentence. The sub-minute time was in
+    `HubWatchMeter` all along: it accrues in milliseconds and credits only
+    whole minutes, so up to 59 seconds are known and unwritten at any instant.
+    `unsettledMs` exposes that remainder, read-only, and `/kid/home`'s `time`
+    block carries `leftSeconds` beside the minutes. `KidWords.timeLeft` could
+    already count seconds under the last minute; it simply had nothing to
+    count with.
 - ~~**Keep the LAN server alive while the app is closed**~~ **Done in 1.10.0,
   untested on the television**: `LanService`, a foreground service the activity
   starts on a TV only, holds the process (and the server in it) and rebuilds
