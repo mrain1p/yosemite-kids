@@ -176,4 +176,32 @@ class HomeRowsConfigTest {
         assertTrue(removed.homeRows.isEmpty())
         assertTrue(removed.sync.gone.containsKey(ConfigStamp.row("k2", HomeShelf.HISTORY)))
     }
+
+    @Test
+    fun `a row the parent added - a playlist or a channel - is kept where they put it, and an unknown kind is dropped`() {
+        val order = listOf(
+            HomeSection(HomeShelf.PINNED),
+            HomeSection(io.yosemitekids.app.ui.HomeRowKind.playlistRow("PLabc")),
+            HomeSection(HomeShelf.CHANNELS),
+            HomeSection(io.yosemitekids.app.ui.HomeRowKind.channelRow("UC1"), enabled = false),
+            HomeSection("mystery:zzz"),
+            HomeSection(HomeShelf.KEEP_WATCHING), HomeSection(HomeShelf.SUGGESTED), HomeSection(HomeShelf.VIDEOS), HomeSection(HomeShelf.HISTORY)
+        )
+        val rows = HomeRows.withOrder(emptyList(), "k1", order)
+        assertEquals(
+            listOf("pinned", "playlist:PLabc", "channels", "channel:UC1", "keep-watching", "suggested", "videos", "history"),
+            HomeRows.rowsOf(rows, "k1").map { it.id }
+        )
+        val drawn = HomeRows.sections(rows, "k1")
+        assertEquals("playlist:PLabc", drawn[1].id)
+        assertEquals(false, drawn[3].enabled)
+        assertEquals("a kind no face can draw is not carried", null, drawn.firstOrNull { it.id.startsWith("mystery") })
+        // And it survives the document, unit and all.
+        val json = ConfigJson.toJson(Whitelist(sources = emptyList(), blockedVideoIds = emptySet(), homeRows = rows))
+        val back = ConfigJson.fromJson(json)
+        assertEquals(rows.map { it.id }, HomeRows.ordered(back.homeRows).map { it.id })
+        // And the hash sees it: a home without the row is a different home to push.
+        val without = back.copy(homeRows = back.homeRows.filterNot { it.id == "playlist:PLabc" })
+        assertNotEquals(ConfigJson.fingerprint(back), ConfigJson.fingerprint(without))
+    }
 }

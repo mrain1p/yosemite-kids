@@ -589,7 +589,10 @@ object ConfigJson {
                     val o = arr.getJSONObject(i)
                     val id = o.getString("id")
                     val kid = o.optString("kid").ifEmpty { null }
-                    if (!o.has("rank") || !PIN_PART.matches(id) || kid == ConfigStamp.PIN_FAMILY ||
+                    // A shelf id, or a parent-added row (HomeRowKind) whose ref is one.
+                    val idOk = PIN_PART.matches(id) ||
+                        (io.yosemitekids.app.ui.HomeRowKind.isCustom(id) && io.yosemitekids.app.ui.HomeRowKind.refOf(id)?.let { PIN_PART.matches(it) } == true)
+                    if (!o.has("rank") || !idOk || kid == ConfigStamp.PIN_FAMILY ||
                         (kid != null && !PIN_PART.matches(kid))
                     ) return@runCatching null
                     HomeRow(kidId = kid, id = id, rank = o.getInt("rank"), enabled = o.optBoolean("on", true))

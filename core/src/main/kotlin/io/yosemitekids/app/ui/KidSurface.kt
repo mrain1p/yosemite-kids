@@ -228,6 +228,10 @@ object KidSurface {
             rules = listOf("KidHome.FINISHED_FRACTION"),
             route = "/media",
             webReady = true,
+            why = "HD is two tracks merged at playback. The app merges them in ExoPlayer; the browser " +
+                "plays the manifest /kid/dash writes (HubDash) through dash.js, every segment through " +
+                "/kid/media and its per-chunk gate, and falls back to the muxed 360p stream on any error. " +
+                "One video, three faces, one gate.",
             tvWhy = "The stage only: no portrait scaffold, no picture-in-picture, no gestures, and " +
                 "the transport is the remote's keys (PlayerActivity.onKeyDown) with a state glyph " +
                 "in place of the phone's overlay. The end card, the countdown and every refusal " +

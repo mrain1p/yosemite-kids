@@ -79,7 +79,7 @@ class KidSortFilterTest {
         val added = mapOf(src("UCc", "Curious George").url to 5_000L)
         assertEquals(
             listOf("UCc", "UCb", "UCa"),
-            orderChannels(channels, CHANNEL_ORDER_ADDED, { 0 }, { null }, 1L) { added[it] ?: 0L }
+            orderChannels(channels, CHANNEL_ORDER_ADDED, { 0 }, { null }, 1L, addedAt = { added[it] ?: 0L })
                 .map { it.id }
         )
         // With nothing stamped at all the order is exactly the list's.

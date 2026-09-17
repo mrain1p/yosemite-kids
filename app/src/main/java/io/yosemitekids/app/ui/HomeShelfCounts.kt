@@ -30,4 +30,4 @@ internal fun homeShelfCounts(state: UiState): Map<String, Int> = mapOf(
     HomeShelf.SUGGESTED to state.suggested.size,
     HomeShelf.VIDEOS to state.feed.size,
     HomeShelf.HISTORY to state.recentHistory.size
-)
+) + state.customRows.mapValues { it.value.size }

@@ -1972,7 +1972,8 @@
   }
 
   function shelfLabel(id) {
-    var hit = (state.shelves || []).filter(function (s) { return s.id === id; })[0];
+    var hit = (state.shelves || []).filter(function (s) { return s.id === id; })[0]
+      || (state.rowOptions || []).filter(function (s) { return s.id === id; })[0];
     return hit ? hit.label : id;
   }
 
@@ -2039,10 +2040,40 @@
           return cur.map(function (r) { return r.id === row.id ? { id: r.id, on: !r.on } : r; });
         }).then(refresh);
       }));
+      // A row the parent added can go entirely; a shelf can only be hidden.
+      if (row.id.indexOf("playlist:") === 0 || row.id.indexOf("channel:") === 0) {
+        line.appendChild(button("Remove", "quiet", function () {
+          return editRows(kidId, function (cur) {
+            return cur.filter(function (r) { return r.id !== row.id; });
+          }).then(refresh);
+        }));
+      }
       li.appendChild(line);
       ul.appendChild(li);
     });
     c.appendChild(ul);
+    // Add a row: a channel, or a playlist the crawl has indexed, from the
+    // hub's own list (state.rowOptions). It lands at the bottom, on; the
+    // arrows above move it. Every face draws it (HomeRowKind).
+    var have = {};
+    rows.forEach(function (r) { have[r.id] = true; });
+    var options = (state.rowOptions || []).filter(function (o) { return !have[o.id]; });
+    if (options.length) {
+      var add = el("div", "line");
+      var sel = el("select");
+      options.forEach(function (o) {
+        var opt = el("option", null, o.label);
+        opt.value = o.id;
+        sel.appendChild(opt);
+      });
+      add.appendChild(el("span", "sub", "Add a row"));
+      add.appendChild(sel);
+      add.appendChild(button("Add", "quiet", function () {
+        var id = sel.value;
+        return editRows(kidId, function (cur) { return cur.concat([{ id: id, on: true }]); }).then(refresh);
+      }));
+      c.appendChild(add);
+    }
     // The same two sentences the phone's editor uses, and Reset only when
     // there is something to reset: no saved row for this home IS the default.
     var isDefault = !rowsAll().filter(function (r) { return (r.kid || null) === kidId; }).length;

@@ -1558,8 +1558,8 @@ kidsrv=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
 #         browser. Digits included in the class, so a path with a number in
 #         it cannot slip past unmatched (that happened; the guard failed OPEN).
 kid_routes=$(grep -oE "createContext\((KID_PATH|${q}/[a-z0-9/.-]*${q})" "$kidsrv" | sed "s/createContext(//; s/KID_PATH/\/kid/; s/${q}//g" | sort -u | tr "\n" " " || true)
-[ "$kid_routes" = "/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/playlist /kid/playlists /kid/progress /kid/report /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you " ] ||
-  guard_fail "HubKidServer registers [$kid_routes] and guard 57 expects [/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/playlist /kid/playlists /kid/progress /kid/report /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you ]. Adding one is a decision: it must fail closed to the sign-in screen (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
+[ "$kid_routes" = "/kid /kid/channel /kid/channels /kid/claim /kid/dash /kid/dash.js /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/playlist /kid/playlists /kid/progress /kid/report /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you " ] ||
+  guard_fail "HubKidServer registers [$kid_routes] and guard 57 expects [/kid /kid/channel /kid/channels /kid/claim /kid/dash /kid/dash.js /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/playlist /kid/playlists /kid/progress /kid/report /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you ]. Adding one is a decision: it must fail closed to the sign-in screen (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 for r in $kid_routes; do
   case "$r" in
     /kid|/kid/*) ;;
@@ -1668,7 +1668,7 @@ fi
 #     route did while it was a placeholder on the admin origin, lets a child
 #     name their older sibling and watch on their bedtime, their budget and
 #     their block list.
-for fn in whoami media home channel search progress thumb report list you playlists playlist; do
+for fn in whoami media home channel search progress thumb report list you playlists playlist dash; do
   body=$(awk -v f="    private fun $fn(ex: HttpExchange)" 'index($0, f) == 1 { inside = 1 } inside { print; if (inside && /^    }$/) exit }' "$kidsrv")
   [ -n "$body" ] ||
     guard_fail "guard 60 cannot find $fn(ex: HttpExchange) in $kidsrv; it is blind."

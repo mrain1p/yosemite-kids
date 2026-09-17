@@ -86,6 +86,18 @@ object HubMedia {
     const val MAX_RESPONSE_BYTES = io.yosemitekids.app.data.StreamChunker.CHUNK_BYTES
 
     /**
+     * The most one reply to a rendition request (`s=`, the HD path) carries.
+     *
+     * A media-source player asks for a whole segment by the byte range its
+     * index gave it, and appends what comes back AS that segment - so a reply
+     * cut at one chunk is a truncated segment and a stall, where a `<video>`
+     * on the muxed stream simply asks again from where the reply stopped.
+     * The gate still runs between the 2 MB chunks the pump fetches; this is
+     * only the ceiling a hand-rolled request cannot exceed in one reply.
+     */
+    const val MAX_SEGMENT_BYTES = 32L * 1024 * 1024
+
+    /**
      * What to answer a caller whose `Range:` header was [header], for a stream
      * of [total] bytes, carrying at most [maxSpan] bytes. Null means
      * **unsatisfiable** — a 416, with [unsatisfiable] as the `Content-Range`.
@@ -162,7 +174,8 @@ object HubMedia {
         return if (MIME.matches(decoded)) decoded else fallback
     }
 
-    private val MIME = Regex("video/[A-Za-z0-9][A-Za-z0-9.+-]{0,62}")
+    // Audio too: the HD path proxies audio-only renditions (HubDash).
+    private val MIME = Regex("(?:video|audio)/[A-Za-z0-9][A-Za-z0-9.+-]{0,62}")
 
     /**
      * `v=` — a YouTube id and nothing else, because it names a fetch.
@@ -179,6 +192,16 @@ object HubMedia {
         VIDEO.find(query.orEmpty())?.groupValues?.get(1)
 
     /**
+     * `s=` - which rendition, as the itag YouTube names one, and only on the
+     * HD path: the manifest `/kid/dash` writes puts one on every BaseURL
+     * (HubDash). Absent on the muxed stream a plain `<video>` plays. Digits
+     * only, because it picks from a set the hub itself resolved and never
+     * names a URL.
+     */
+    fun itagIn(query: String?): Int? =
+        ITAG.find(query.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
+
+    /**
      * A YouTube id and nothing else — for a route that takes one from a JSON
      * body rather than from a query string.
      *
@@ -190,4 +213,5 @@ object HubMedia {
 
     private val VIDEO = Regex("(?:^|&)v=([A-Za-z0-9_-]{11})(?:&|$)")
     private val ID = Regex("[A-Za-z0-9_-]{11}")
+    private val ITAG = Regex("(?:^|&)s=([0-9]{1,4})(?:&|$)")
 }

@@ -474,9 +474,12 @@ under 3 ms with three streams in flight.
    television's `ChunkedStreamDataSource` gives up and reads progressively in
    exactly this case, and nobody has measured what that costs.
 
-**The ceiling is about 360p** and will stay there until someone builds MSE or
-HLS: HD on YouTube is separate video and audio tracks merged at playback, which
-ExoPlayer does and a plain `<video>` cannot.
+~~**The ceiling is about 360p** and will stay there until someone builds MSE or
+HLS.~~ Done in 1.11.0: `HubDash` writes a DASH manifest by hand from the
+renditions' byte ranges, `GET /kid/dash` serves it behind the same gate, and
+the kid page plays it through vendored dash.js with every segment fetched
+through `/kid/media?s=<itag>` — the proxy and its per-chunk gate, never a
+redirect. mp4 up to 1080p; the muxed stream is the fallback on any error.
 
 **Known gaps, stated rather than left to be discovered.**
 
@@ -788,8 +791,9 @@ mapping and its environment line come out of the NAS compose file.
 - **~~Delete `TvTopChips`~~; measure the real Chromecast.** The chips are
   gone (1.11.0). The measurement still needs a remote in front of the real
   television, and fails silently from an emulator.
-- **MSE/HLS above 360p.** The largest remaining web-player piece, and 360p on a
-  tablet held close is a smaller problem than a tablet that cannot go Back.
+- ~~**MSE/HLS above 360p.**~~ Done in 1.11.0 (`HubDash`, `/kid/dash`, dash.js in
+  `kid.html`). What is left is measuring it on the family's iPad: `video.videoHeight`
+  above 360 on a 1080p upload, and what a block mid-segment looks like there.
 - **Kid → parent requests.** Worth building; a new cross-device store and a new
   kid-writable LAN route.
 - **Take back a grant** (upstream 4e0d328, 2026-09-14 sync). A tap too many on

@@ -88,7 +88,12 @@ object HomeRows {
     ): List<HomeRow> {
         val others = all.filterNot { it.kidId == kidId }
         val known = catalogue.toSet()
-        val want = order.filter { it.id in known }.distinctBy { it.id }
+        // A row the parent added by hand (a playlist or a channel, HomeRowKind)
+        // is as welcome as a shelf; an id that is neither is a shelf this build
+        // cannot draw, and is dropped as before.
+        val want = order.filter {
+            it.id in known || (io.yosemitekids.app.ui.HomeRowKind.isCustom(it.id) && io.yosemitekids.app.ui.HomeRowKind.refOf(it.id) != null)
+        }.distinctBy { it.id }
         val isDefault = want.map { it.id } == catalogue && want.all { it.enabled }
         if (want.isEmpty() || isDefault) return others
 

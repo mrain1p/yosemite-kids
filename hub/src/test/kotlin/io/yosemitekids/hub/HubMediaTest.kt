@@ -180,6 +180,21 @@ class HubMediaTest {
         assertNull(HubMedia.videoIdIn(null))
     }
 
+    @Test
+    fun `the rendition is an itag or nothing, and only the HD path sends one`() {
+        assertEquals(137, HubMedia.itagIn("v=dQw4w9WgXcQ&s=137"))
+        assertEquals(140, HubMedia.itagIn("s=140"))
+        assertNull("the muxed stream names no rendition", HubMedia.itagIn("v=dQw4w9WgXcQ"))
+        assertNull("digits only: it picks from a set the hub resolved", HubMedia.itagIn("s=../x"))
+        assertNull(HubMedia.itagIn("s=12345"))
+        assertNull(HubMedia.itagIn(null))
+    }
+
+    @Test
+    fun `an audio rendition is called audio`() {
+        assertEquals("audio/mp4", HubMedia.contentTypeFor("https://r.googlevideo.com/videoplayback?mime=audio%2Fmp4&itag=140"))
+    }
+
     // --- how many at once -----------------------------------------------
 
     @Test

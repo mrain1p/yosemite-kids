@@ -154,6 +154,65 @@ class HubMediaRouteTest {
 
     // --- plumbing -------------------------------------------------------
 
+    // --- the HD path ----------------------------------------------------
+
+    @Test
+    fun `the manifest is refused without a claim, like the bytes`() {
+        val (code, body) = get("/kid/dash?v=$VIDEO")
+        assertEquals(401, code)
+        assertEquals("claim", JSONObject(body).getString("error"))
+    }
+
+    @Test
+    fun `the manifest asks the gate before it resolves anything`() {
+        seed(blocked = setOf(VIDEO))
+        val cookie = claim()
+        val (code, body) = get("/kid/dash?v=$VIDEO", cookie = cookie)
+        assertEquals(403, code)
+        assertEquals(HubPolicy.BLOCKED, JSONObject(body).getString("error"))
+        assertEquals(400, get("/kid/dash?v=nope", cookie = cookie).first)
+        assertEquals(405, get("/kid/dash?v=$VIDEO", method = "POST", cookie = cookie).first)
+    }
+
+    @Test
+    fun `a rendition is gated exactly as the muxed stream is`() {
+        seed(blocked = setOf(VIDEO))
+        val (code, body) = get("/kid/media?v=$VIDEO&s=137", cookie = claim())
+        assertEquals(403, code)
+        assertEquals(HubPolicy.BLOCKED, JSONObject(body).getString("error"))
+    }
+
+    @Test
+    fun `a segment is not a stream, so the stream cap does not count it`() {
+        seed(blocked = setOf(VIDEO))
+        val cookie = claim()
+        val slots = server.mediaSlots()
+        repeat(HubKidServer.MAX_CONCURRENT_STREAMS) { assertTrue(slots.take()) }
+        try {
+            // Every stream slot held, and a rendition request still reaches the
+            // gate (403, the block) rather than the busy answer: dash.js opens
+            // the index of every rendition at once, and a segment holds a
+            // thread for a moment, not for the length of a video.
+            val (code, body) = get("/kid/media?v=$VIDEO&s=137", cookie = cookie)
+            assertEquals(403, code)
+            assertEquals(HubPolicy.BLOCKED, JSONObject(body).getString("error"))
+            assertEquals(503, get("/kid/media?v=$VIDEO", cookie = cookie).first)
+        } finally {
+            repeat(HubKidServer.MAX_CONCURRENT_STREAMS) { slots.release() }
+        }
+    }
+
+    @Test
+    fun `the player library is served from this origin and cached`() {
+        val c = raw("/kid/dash.js?v=4.7.4")
+        assertEquals(200, c.responseCode)
+        assertTrue(c.getHeaderField("Content-Type").startsWith("text/javascript"))
+        assertEquals("public, max-age=604800", c.getHeaderField("Cache-Control"))
+        assertEquals("nosniff", c.getHeaderField("X-Content-Type-Options"))
+        assertTrue(c.inputStream.readBytes().size > 100_000)
+        c.disconnect()
+    }
+
     private fun seed(blocked: Set<String> = emptySet()) {
         val json = ConfigJson.toJson(
             Whitelist(

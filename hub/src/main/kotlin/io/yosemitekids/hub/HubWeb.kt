@@ -272,6 +272,23 @@ object HubWeb {
                     }
                 }
             )
+            // The rows a parent may ADD to a home beside the catalogue: every channel
+            // of the family, and every playlist the crawl has indexed for one
+            // (HomeRowKind). Labels resolved here, once, so the page names none.
+            .put(
+                "rowOptions",
+                JSONArray().also { arr ->
+                    config.sources.forEach { e ->
+                        val name = e.label ?: e.id
+                        arr.put(JSONObject().put("id", io.yosemitekids.app.ui.HomeRowKind.channelRow(e.id)).put("label", name))
+                        index?.loadPlaylists(e.id)?.playlists?.forEach { p ->
+                            if (p.videoIds?.isNotEmpty() == true) {
+                                arr.put(JSONObject().put("id", io.yosemitekids.app.ui.HomeRowKind.playlistRow(p.id)).put("label", "${p.name} · $name"))
+                            }
+                        }
+                    }
+                }
+            )
             // The document itself, minus its bookkeeping. The page renders from
             // this, so a control is only ever as stale as the last fetch.
             .put("config", raw.apply { remove("sync") })

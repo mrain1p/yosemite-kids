@@ -177,7 +177,17 @@ class HubKidHome(
         out.put("kid", kidJson(kidId))
         out.put("theme", themeJson(kidId))
         out.put("time", timeJson(kidId, viewer))
-        out.put("sections", sectionsJson(kidId))
+        // The rows a parent added by hand (HomeRowKind: a playlist or a channel
+        // as a home row), each resolved to a name and its first videos this kid
+        // may see; the section list borrows the name so the page draws it.
+        val custom = customRowsJson(kidId, catalogue, watched, saved)
+        val sections = sectionsJson(kidId)
+        for (i in 0 until sections.length()) {
+            val s = sections.getJSONObject(i)
+            custom.optJSONObject(s.getString("id"))?.let { s.put("title", it.getString("title")) }
+        }
+        out.put("sections", sections)
+        out.put("custom", custom)
 
         // --- the hero ---------------------------------------------------
         val pinnedIds = config?.pinsFor(kidId)?.map { it.sourceId }.orEmpty()
@@ -799,6 +809,43 @@ class HubKidHome(
      * [homeSections] in `:core`. The ordering rule was never written here,
      * which is why the row editor reached the browser the day the field did.
      */
+    /**
+     * A parent-added row per custom section: `playlist:<id>` is that playlist's
+     * rows this kid may see (the same rows the playlist page draws), and
+     * `channel:<id>` that channel's newest. Finished videos leave the row and
+     * the row is capped like a shelf; a row with nothing left is absent, and
+     * the page then draws nothing for it - the same rule every shelf keeps.
+     */
+    private fun customRowsJson(
+        kidId: String,
+        catalogue: List<HubPolicy.VisibleSource>,
+        watched: Map<String, KidHome.WatchPoint>,
+        saved: Saved
+    ): JSONObject {
+        val obj = JSONObject()
+        val sections = runCatching { store.load().homeRowsFor(kidId) }.getOrDefault(emptyList())
+        for (section in sections) {
+            if (!section.enabled || !io.yosemitekids.app.ui.HomeRowKind.isCustom(section.id)) continue
+            val ref = io.yosemitekids.app.ui.HomeRowKind.refOf(section.id) ?: continue
+            val found: Pair<String, List<ChannelIndex.IndexedVideo>>? =
+                if (section.id.startsWith(io.yosemitekids.app.ui.HomeRowKind.PLAYLIST)) {
+                    catalogue.firstNotNullOfOrNull { src ->
+                        playlistsFor(catalogue, src.entry.id).firstOrNull { it.playlist.id == ref }?.let { it.playlist.name to it.rows }
+                    }
+                } else {
+                    catalogue.firstOrNull { it.entry.id == ref }?.let { nameOf(it) to it.videos }
+                }
+            val (title, rows) = found ?: continue
+            val items = rows.map { it.toVideo() }
+                .filter { watched[it.url]?.isFinished != true }
+                .take(PLAYLIST_ROW_VIDEOS)
+                .map { it to (watched[it.url]?.fraction ?: 0f) }
+            if (items.isEmpty()) continue
+            obj.put(section.id, JSONObject().put("title", title).put("videos", videosJson(items, watched, saved)))
+        }
+        return obj
+    }
+
     private fun sectionsJson(kidId: String): JSONArray {
         val arr = JSONArray()
         val saved = runCatching { store.load().homeRowsFor(kidId) }.getOrDefault(homeSections(emptyList()))

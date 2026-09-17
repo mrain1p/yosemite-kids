@@ -41,6 +41,27 @@ object HomeShelf {
 }
 
 /** One shelf's place on the home: which shelf, and whether it is drawn at all. */
+/**
+ * A row the parent added rather than a shelf this build ships: a playlist or
+ * a channel as a home row, keyed by a prefix so every face can tell them from
+ * the catalogue and resolve the name from what it holds. Not in HOME_SHELVES
+ * - a catalogue is what every home has - and kept by homeSections and
+ * HomeRows.withOrder because the parent asked for them by hand.
+ */
+object HomeRowKind {
+    const val PLAYLIST = "playlist:"
+    const val CHANNEL = "channel:"
+    fun isCustom(id: String): Boolean = id.startsWith(PLAYLIST) || id.startsWith(CHANNEL)
+    fun playlistRow(playlistId: String): String = PLAYLIST + playlistId
+    fun channelRow(sourceId: String): String = CHANNEL + sourceId
+    /** The playlist or channel id behind a custom row id, or null for a shelf. */
+    fun refOf(id: String): String? = when {
+        id.startsWith(PLAYLIST) -> id.removePrefix(PLAYLIST).ifEmpty { null }
+        id.startsWith(CHANNEL) -> id.removePrefix(CHANNEL).ifEmpty { null }
+        else -> null
+    }
+}
+
 data class HomeSection(val id: String, val enabled: Boolean = true)
 
 /**
@@ -73,7 +94,9 @@ fun homeSections(
     catalogue: List<String> = HOME_SHELVES
 ): List<HomeSection> {
     val known = catalogue.toSet()
-    val kept = saved.filter { it.id in known }.distinctBy { it.id }
+    // A row the parent added (HomeRowKind) is kept where they put it; a shelf
+    // this build has not got is dropped, as before.
+    val kept = saved.filter { it.id in known || (HomeRowKind.isCustom(it.id) && HomeRowKind.refOf(it.id) != null) }.distinctBy { it.id }
     val named = kept.mapTo(HashSet()) { it.id }
     return kept + catalogue.filterNot { it in named }.map { HomeSection(it) }
 }

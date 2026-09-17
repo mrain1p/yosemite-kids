@@ -282,6 +282,25 @@ private fun HomePage.drawShelves(
                     )
                 }
             }
+            else -> if (HomeRowKind.isCustom(section.id)) {
+                // A row the parent added (a playlist or a channel as a home row):
+                // the ViewModel resolved its name and videos (customRows), and
+                // the hub does the same for the browser from its index.
+                rule()
+                block("${section.id}-head") {
+                    ShelfHeader(state.customRowTitles[section.id] ?: "Playlist", count)
+                }
+                block(section.id) {
+                    KeepWatchingRow(
+                        state.customRows[section.id].orEmpty(),
+                        onPlay = actions.onPlay,
+                        onDismiss = null,
+                        rounded = true,
+                        width = metrics.railCard,
+                        firstFocus = focus
+                    )
+                }
+            }
         }
     }
 }

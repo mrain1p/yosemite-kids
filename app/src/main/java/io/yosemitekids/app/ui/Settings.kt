@@ -1255,11 +1255,25 @@ private fun AdminScreen(
                     // Then the rows themselves, for the same kid: which
                     // shelves their home shows and in what order. Its own
                     // card for the reason the hero has one.
+                    // What a parent may add as a row: every channel, and the playlists
+                    // this phone has listed (a channel page lists them for a day).
+                    val rowContext = androidx.compose.ui.platform.LocalContext.current
+                    val rowOptions by produceState<List<Pair<String, String>>>(emptyList(), entries) {
+                        value = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            val cache = io.yosemitekids.app.data.ChannelPlaylistsCache(rowContext)
+                            entries.flatMap { e ->
+                                val name = e.label ?: e.id
+                                listOf(HomeRowKind.channelRow(e.id) to name) +
+                                    cache.load(e.id).orEmpty().map { HomeRowKind.playlistRow(it.id) to "${it.name} · $name" }
+                            }
+                        }
+                    }
                     SettingsCard(padded = false) {
                         HomeRowsEditor(
                             profiles = profiles,
                             homeRows = homeRows,
-                            onRows = { homeRows = it }
+                            onRows = { homeRows = it },
+                            rowOptions = rowOptions
                         )
                     }
                     Spacer(Modifier.height(12.dp))

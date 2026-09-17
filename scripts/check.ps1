@@ -1811,7 +1811,7 @@ $kidRoutes = @(Get-Content $kidSrv |
     ForEach-Object { $_.Matches } |
     ForEach-Object { if ($_.Groups[1].Value -eq "KID_PATH") { "/kid" } else { $_.Groups[2].Value } } |
     Sort-Object -Unique)
-$expected = "/kid /kid/channel /kid/channels /kid/claim /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/playlist /kid/playlists /kid/progress /kid/report /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you"
+$expected = "/kid /kid/channel /kid/channels /kid/claim /kid/dash /kid/dash.js /kid/home /kid/icon /kid/kids /kid/list /kid/manifest.webmanifest /kid/media /kid/playlist /kid/playlists /kid/progress /kid/report /kid/search /kid/surprise /kid/thumb /kid/whoami /kid/you"
 if (($kidRoutes -join " ") -ne $expected) {
     Fail-Guard "HubKidServer registers [$($kidRoutes -join ' ')] and guard 57 expects [$expected]. Adding one is a decision: it must fail closed to the sign-in screen (guard 60), get a row in docs/LAN-API.md's kid section, and be named here."
 }
@@ -1929,7 +1929,7 @@ if ($hubText.Contains("`"$kidCookie`"")) {
 #     route did while it was a placeholder on the admin origin, lets a child
 #     name their older sibling and watch on their bedtime, their budget and
 #     their block list.
-foreach ($fn in @("whoami", "media", "home", "channel", "search", "progress", "thumb", "report", "list", "you", "playlists", "playlist")) {
+foreach ($fn in @("whoami", "media", "home", "channel", "search", "progress", "thumb", "report", "list", "you", "playlists", "playlist", "dash")) {
     $kidFn = [regex]::Match($kidText, "(?ms)^    private fun $fn\(ex: HttpExchange\).*?^    \}").Value
     if (-not $kidFn) {
         Fail-Guard "guard 60 cannot find $fn(ex: HttpExchange) in $kidSrv; it is blind."

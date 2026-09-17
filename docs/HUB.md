@@ -684,13 +684,21 @@ admitted every Google API there is. That list is still the whole statement of
 what this box on your network may dial, and widening it stays a decision
 somebody makes on purpose.
 
-**The ceiling: about 360p in a browser, HD in the app.** This serves the muxed
-progressive stream. HD on YouTube means separate video-only and audio-only
-tracks merged at playback, which ExoPlayer does and a plain `<video>` cannot
-without MSE or HLS. Nobody has built that here, so the honest number is 360p —
-and a video with no muxed stream at all is refused with a named reason
-(`no-muxed-stream`, `no-stream-length`, `age-restricted`, `resolve-failed`)
-rather than served as something that will not decode.
+**HD in a browser, since 1.11.0; 360p as the floor.** HD on YouTube means
+separate video-only and audio-only tracks merged at playback. ExoPlayer does
+that in the app; a plain `<video>` cannot, and Media Source Extensions can
+given a manifest, so the hub writes one (`HubDash`, `GET /kid/dash`) and the
+kid page plays it through dash.js, served from the hub's own origin. Every
+URL inside that manifest is `/kid/media?v=…&s=<itag>` — the same proxy, the
+same per-chunk gate, so a block still lands mid-video at 1080p. mp4 renditions
+only (Safari plays no WebM), up to 1080p (`HubDash.MAX_HEIGHT`): on a tablet
+held close 1080p is plenty and above it the bytes double for nothing. A
+browser without media sources, a video with no mp4 pair
+(`502 no-dash-streams`), or any error at all falls back to the muxed
+progressive stream, which YouTube caps around 360p — the same video,
+smaller, never nothing. A video with no muxed stream either is refused with a
+named reason (`no-muxed-stream`, `no-stream-length`, `age-restricted`,
+`resolve-failed`) rather than served as something that will not decode.
 
 **Three streams at once**, on threads of their own. A proxied stream holds its
 thread for as long as the browser reads, so on the small pool the rest of a
@@ -698,6 +706,9 @@ listener answers on, two children watching would starve everything else it
 does. `/media` therefore has its own executor and a hard cap
 (`HubKidServer.MAX_CONCURRENT_STREAMS`); a fourth stream gets `503` with
 `Retry-After`, never a queue.
+A rendition request on the HD path (`s=`) is not a stream: it holds a thread
+for a moment, so it runs on a wider pool and slots of its own
+(`HubKidServer.MAX_CONCURRENT_SEGMENTS`) and never counts against the three.
 
 **One reply carries 2 MB.** Not a throttle — a browser simply asks for the next
 span, which is how every segmented server works. It is there because
@@ -719,7 +730,7 @@ curl -s -o /dev/null -w '%{speed_download} B/s  %{http_code}\n' \
   http://<nas>:8765/kid/media?v=<video id>
 ```
 
-A 360p stream needs roughly 0.5–1 Mbit/s (60–125 kB/s) sustained.
+A 360p stream needs roughly 0.5–1 Mbit/s (60–125 kB/s) sustained; 720p about 2.5 Mbit/s and 1080p about 4–6, and dash.js drops a step when the link cannot keep up.
 
 Measured on a development machine (not the NAS) against a 28.5 MB muxed
 stream, 2026-09-08: **10.1–11.3 MB/s per 2 MB span** and 10.2 MB/s for the

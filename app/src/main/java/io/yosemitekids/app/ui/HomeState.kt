@@ -142,6 +142,9 @@ data class UiState(
     val watchlisted: Set<String> = emptySet(),
     /** Channel URLs the kid has hearted: first in every channel order, and the hold-menu row label. */
     val favouriteChannels: Set<String> = emptySet(),
+    /** The rows a parent added to this home (HomeRowKind): section id to its videos, and to its name. */
+    val customRows: Map<String, List<VideoItem>> = emptyMap(),
+    val customRowTitles: Map<String, String> = emptyMap(),
     /** Video URLs saved for another day (drives the hold-menu row label and the Watch later tile). */
     val watchLater: Set<String> = emptySet(),
     /** Video URLs lined up to play next (drives the hold-menu row label and the Up next tile). */

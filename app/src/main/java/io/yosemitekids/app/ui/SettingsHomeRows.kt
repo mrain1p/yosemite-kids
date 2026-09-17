@@ -52,7 +52,9 @@ import io.yosemitekids.app.data.Profile
 internal fun HomeRowsEditor(
     profiles: List<Profile>,
     homeRows: List<HomeRow>,
-    onRows: (List<HomeRow>) -> Unit
+    onRows: (List<HomeRow>) -> Unit,
+    /** What a parent may add as a row: (HomeRowKind id, label) - the family's channels and the playlists this phone has listed. */
+    rowOptions: List<Pair<String, String>> = emptyList()
 ) {
     // Whose home. Resolved rather than trusted, and remembered without a key,
     // for the reason PinnedHeroEditor gives.
@@ -62,6 +64,8 @@ internal fun HomeRowsEditor(
 
     val sections = HomeRows.sections(homeRows, forKid)
     val isDefault = HomeRows.rowsOf(homeRows, forKid).isEmpty()
+    val labels = rowOptions.toMap()
+    var adding by remember { mutableStateOf(false) }
 
     fun set(order: List<HomeSection>) =
         onRows(HomeRows.withOrder(homeRows, forKid, order))
@@ -124,7 +128,41 @@ internal fun HomeRowsEditor(
                 }) {
                     Text(if (section.enabled) "Hide" else "Show", style = MaterialTheme.typography.labelMedium)
                 }
+                // A row the parent added can go entirely; a shelf can only be hidden.
+                if (HomeRowKind.isCustom(section.id)) {
+                    CompactButton(onClick = { set(sections.filterNot { it.id == section.id }) }) {
+                        Text("Remove", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
             }
+        }
+
+        // Add a row: a channel, or a playlist this phone has listed, at the
+        // bottom and on; the arrows above move it. Every face draws it.
+        val addable = rowOptions.filter { (id, _) -> sections.none { it.id == id } }
+        if (addable.isNotEmpty()) {
+            TextButton(modifier = Modifier.tvFocusHighlight(), onClick = { adding = true }) {
+                Text("Add a row…")
+            }
+        }
+        if (adding) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { adding = false },
+                title = { Text("Add a row") },
+                text = {
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        items(addable.size) { i ->
+                            val (id, label) = addable[i]
+                            TextButton(
+                                modifier = Modifier.fillMaxWidth().tvFocusHighlight(),
+                                onClick = { set(sections + HomeSection(id)); adding = false }
+                            ) { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } }
+            )
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {

@@ -84,6 +84,8 @@ class HubStream(
         const val NO_LENGTH = "no-stream-length"
         const val AGE_RESTRICTED = "age-restricted"
         const val RESOLVE_FAILED = "resolve-failed"
+        /** No mp4 video-and-audio pair a browser's media source plays; the page falls back to the muxed stream. */
+        const val NO_DASH = "no-dash-streams"
     }
 
     /** A muxed stream, and how long it is. */
@@ -170,6 +172,68 @@ class HubStream(
      * Returns the number of bytes written, which is short of the span exactly
      * when the gate closed mid-video.
      */
+
+    // --- HD: the DASH manifest and its renditions --------------------------
+
+    /** A video's DASH-capable renditions, held as the muxed URL is held. */
+    private class DashHeld(val set: YouTubeRepository.DashSet, val at: Long)
+
+    private val dashCache = LinkedHashMap<String, DashHeld>()
+
+    /**
+     * The manifest for [videoId] (see HubDash), from cache while fresh. The
+     * same twenty-minute life as a muxed URL, because the renditions inside
+     * it expire with it.
+     *
+     * @throws Unplayable when the video has no mp4 video-and-audio pair a
+     *   browser's media source can play; the page then falls back to /media.
+     */
+    fun dash(videoId: String): String {
+        val set = dashSet(videoId)
+        return try {
+            HubDash.mpd(videoId, set)
+        } catch (e: IllegalArgumentException) {
+            throw Unplayable(NO_DASH, e.message.orEmpty())
+        }
+    }
+
+    /**
+     * One rendition of [videoId] by its itag - what the manifest's BaseURLs
+     * name - with its length, for the proxy's Range answers. The length is
+     * what the player response said when it said, else a HEAD.
+     */
+    fun stream(videoId: String, itag: Int): Resolved {
+        val set = dashSet(videoId)
+        val s = (set.video + set.audio).firstOrNull { it.itag == itag }
+            ?: throw Unplayable(RESOLVE_FAILED, "no rendition $itag for $videoId")
+        val total = s.contentLength.takeIf { it > 0 }
+            ?: lengthOf(s.url)
+            ?: throw Unplayable(NO_LENGTH, "rendition $itag has no length")
+        return Resolved(s.url, total, set.title, now())
+    }
+
+    private fun dashSet(videoId: String): YouTubeRepository.DashSet {
+        synchronized(lock) {
+            dashCache[videoId]?.let { if (now() - it.at < URL_TTL_MS) return it.set }
+        }
+        val set = try {
+            runBlocking { repo.dashStreams("https://www.youtube.com/watch?v=" + videoId, HubDash.MAX_HEIGHT) }
+        } catch (e: Exception) {
+            val m = e.message.orEmpty()
+            throw when {
+                m.contains("age-restricted") -> Unplayable(AGE_RESTRICTED, m)
+                else -> Unplayable(RESOLVE_FAILED, m.ifEmpty { e.javaClass.simpleName })
+            }
+        }
+        synchronized(lock) {
+            dashCache.remove(videoId)
+            dashCache[videoId] = DashHeld(set, now())
+            while (dashCache.size > MAX_CACHED) dashCache.remove(dashCache.keys.first())
+        }
+        return set
+    }
+
+
     fun pump(
         out: OutputStream,
         url: String,

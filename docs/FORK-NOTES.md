@@ -2056,3 +2056,74 @@ Verified: the JVM suites in `:core`, `:crawl`, `:hub` and `:app` (new:
 `HubCrawlTest` and `HubWatchMeterTest`); both gates; the canary in CI. The
 strip and rows were driven on a throwaway hub against a seeded index, this
 time as the page, not only the routes.
+
+### HD in a browser, a home the parent composes, and a channel to keep (1.11.0)
+
+The round after 1.10.0, from the list the owner agreed to ("do all except
+3 and 5" — kid-to-parent requests and taking back a grant stay on the
+backlog).
+
+- **HD in a browser.** The kid page played the muxed progressive stream,
+  which YouTube caps around 360p, because HD on YouTube is a video-only
+  track and an audio-only track merged at playback — ExoPlayer's job in the
+  app, and beyond a plain `<video>`. Media Source Extensions can do it given
+  a manifest, so the hub writes one by hand (`HubDash`, `GET /kid/dash`)
+  from the renditions' init and index byte ranges — every mp4 rendition up
+  to 1080p, the best original-language mp4 audio, mp4 only because Safari
+  plays no WebM and an iPad is the browser this exists for — and the page
+  plays it through dash.js 4.7.4, vendored into the jar and served from the
+  hub's own origin (`/kid/dash.js`), never a CDN. **Every URL in the
+  manifest is `/kid/media?v=…&s=<itag>`**: the same proxy, the same
+  per-chunk `mayPlay` gate, so a block still lands mid-video at 1080p and a
+  browser never holds a googlevideo URL. A rendition reply carries a whole
+  segment (`HubMedia.MAX_SEGMENT_BYTES`) rather than one chunk, because a
+  media-source player appends what it gets as the segment it asked for. A
+  browser without media sources, a video with no mp4 pair, or any error at
+  all falls back to the muxed stream — the same video, smaller, never
+  nothing, with the same refusal words. `HubDashTest` holds the manifest's
+  shape; `HubMediaRouteTest` holds the gate on the new route and on `s=`.
+  Two things the first drive taught: a segment request runs on a pool and
+  slots of its own (`MAX_CONCURRENT_SEGMENTS`), because dash.js opens every
+  rendition's index at once and three stream slots meant four `503`s before
+  the first frame; and dash.js discards any video response faster than
+  50 ms as a browser-cache hit, which through a LAN hub is every 144p
+  segment, so it had played 144p for a minute with fifteen seconds buffered
+  — the page sets that threshold to zero and starts at a watchable bitrate.
+- **Rows a parent adds to the home.** The rows editor — console and phone —
+  could only reorder and hide the fixed shelves. It can now **add a row**:
+  a channel, or a playlist the crawl has listed, as `HomeRowKind` ids
+  (`playlist:<id>`, `channel:<id>`) in the same `HomeRow` list, with a
+  Remove where a shelf only has Hide. The hub answers them in `/kid/home`'s
+  `custom` map (the playlist's or channel's unfinished videos, `PLAYLIST_ROW_VIDEOS`
+  each) and the page draws them as rails; the phone fetches its own
+  (`MainViewModel.customRows`, `HomeState.customRows`) and draws them among
+  the shelves. `ConfigJson.rowsFromJson` accepts the new ids (it was
+  dropping them at the door, which `HomeRowsConfigTest`'s new case caught)
+  and the fingerprint sees them, so a row added on the phone reaches the TV.
+- **A heart on a channel, on every face.** The hold menu on a channel tile —
+  a long press, or OK held on the remote — favourites it; favourites float
+  to the front of every channel order through one rule in `:crawl`
+  (`orderChannels`, favourites first) and wear a heart on the tile. Stored as
+  the hearts on videos are (`SavedListStore.CHANNELS`, `POST /kid/list` with
+  list `channels`), so it converges across devices through the payload that
+  already exists. The hub also feeds hearted videos to `SearchRank`, so they
+  rank higher in the browser's search as they do on the phone.
+- **The You tab redraws on a heart.** A heart pressed on the You tab's own
+  shelf now redraws the shelf, on the phone and in the browser; the lists
+  always persisted and every visit re-read them, which is what hid the gap.
+  Guard 73, with a canary.
+- **The console can pause the crawl**, and says what a failure means. A
+  Pause-the-crawl switch on the Devices page (`POST /api/crawl`, a file on
+  the volume so it holds across restarts; the playlist pass stops with it),
+  and under a failed run both the console and the phone say what a red dot
+  usually means — the extractor needs an update — and what to do if the
+  newest build still fails.
+- **Channels wear their own art.** The crawl keeps a channel's picture and
+  banner from the first page it fetches (`ChannelIndex.setArt`); a browser's
+  channel cards wear the channel, its hero wears the banner, and the phone's
+  hero does too. `ChannelIndexArtTest`.
+- **TV polish.** `TvTopChips` is deleted — the rail has been the
+  television's only menu for a season. The Chromecast start-up measurement
+  still needs a remote in front of the real set.
+- **Housekeeping.** Two em-dashes on `LAN-API.md`'s playlist rows had been
+  double-encoded since 1.9.0; fixed.

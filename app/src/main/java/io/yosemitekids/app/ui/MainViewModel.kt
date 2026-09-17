@@ -34,6 +34,8 @@ private const val YOU_ROW_MAX = 12
 private const val YOU_PAGE_MAX = 60
 /** Parent-picked playlist rows fetched per channel visit (each is one page request when uncached). */
 private const val PLAYLIST_SHELVES_MAX = 3
+/** A parent-added home row (HomeRowKind) is a shelf's worth, like the browser's. */
+private const val CUSTOM_ROW_MAX = 12
 
 /**
  * One authoritative screen-time read: everything the chrome and the kid's own
@@ -755,6 +757,63 @@ class MainViewModel(
     )
 
     /** Update home-screen tiles without ever disturbing the screen the kid is on. */
+    /** Playlist rows whose first page this session already asked YouTube for, so a row never fetches twice. */
+    private val requestedPlaylistRows = HashSet<String>()
+
+    /**
+     * The rows a parent added to this home (HomeRowKind), from what this
+     * device already holds: a channel row is that channel's cached newest, a
+     * playlist row the playlist's cached first page - the same cache a
+     * playlist page fills - fetched once in the background when it is empty,
+     * after which the next publish draws it. Trimmed like every shelf: the
+     * kid's rules, finished videos out, a shelf's worth at most. The hub
+     * answers the browser the same way from its index.
+     */
+    private fun customRows(channels: List<Source>): Pair<Map<String, List<VideoItem>>, Map<String, String>> {
+        val rows = LinkedHashMap<String, List<VideoItem>>()
+        val titles = LinkedHashMap<String, String>()
+        for (section in _state.value.homeSections) {
+            if (!section.enabled || !HomeRowKind.isCustom(section.id)) continue
+            val ref = HomeRowKind.refOf(section.id) ?: continue
+            val title: String
+            val videos: List<Video>
+            if (section.id.startsWith(HomeRowKind.CHANNEL)) {
+                val channel = channels.firstOrNull { it.id == ref } ?: continue
+                title = channel.name
+                videos = videoCache.load(channel.id)
+            } else {
+                title = channels.firstNotNullOfOrNull { ch ->
+                    playlistsCache?.load(ch.id)?.firstOrNull { it.id == ref }?.name
+                } ?: "Playlist"
+                videos = videoCache.load(ref)
+                if (videos.isEmpty() && requestedPlaylistRows.add(ref)) fetchPlaylistRow(ref, title)
+            }
+            val items = videos.asSequence()
+                .filter { it.videoId !in blockedVideoIds && !tooShort(it) && screener?.isVisible(it) != false }
+                .map { VideoItem(it, history.progress(it.url)?.fraction) }
+                .filter { !it.isFinished() }
+                .take(CUSTOM_ROW_MAX)
+                .toList()
+            if (items.isEmpty()) continue
+            rows[section.id] = items
+            titles[section.id] = title
+        }
+        return rows to titles
+    }
+
+    /** One page of a playlist a parent made a home row of, into the cache a playlist page would fill; then a republish draws it. */
+    private fun fetchPlaylistRow(playlistId: String, name: String) {
+        viewModelScope.launch {
+            val source = Source(playlistId, "https://www.youtube.com/playlist?list=$playlistId", name, null, SourceKind.PLAYLIST)
+            val page = runCatching { yt.uploadsPage(source, background = true) }
+                .onFailure { Diag.w("home row for playlist $playlistId failed", it) }
+                .getOrNull()?.videos.orEmpty()
+            if (page.isEmpty()) return@launch
+            withContext(Dispatchers.IO) { videoCache.save(playlistId, page.take(500)) }
+            publishChannels(sources)
+        }
+    }
+
     private suspend fun publishChannels(channels: List<Source>) {
         // distinctBy: two whitelist entries (URL form + UC id) can canonicalize
         // to the same channel — duplicate grid keys crash Compose.
@@ -772,10 +831,13 @@ class MainViewModel(
         // whitelist: `tiles` is what this kid may actually see.
         val pins = withContext(Dispatchers.IO) { pinnedRow(tiles) }
         val previews = withContext(Dispatchers.IO) { channelPreviews(tiles) }
+        val custom = withContext(Dispatchers.IO) { customRows(tiles) }
         val onHome = _state.value.screen == Screen.Home
         _state.value = _state.value.withScreenTime(time).copy(
             channels = tiles,
             favouriteChannels = favouriteChannels,
+            customRows = custom.first,
+            customRowTitles = custom.second,
             pinned = pins,
             channelPreviews = previews,
             keepWatching = keepWatching,

@@ -596,4 +596,81 @@ class YouTubeRepository {
         publishedAt = runCatching { uploadDate?.offsetDateTime()?.toInstant()?.toEpochMilli() }
             .getOrNull()
     )
+
+    /**
+     * One rendition of a video as DASH needs it: a URL with the init and
+     * index byte ranges that let a browser's media source play it a segment
+     * at a time. Only streams YouTube serves that way qualify (progressive
+     * DASH: init and index ranges present); everything else is left out.
+     */
+    data class DashStream(
+        val itag: Int,
+        val url: String,
+        val mimeType: String,
+        val codec: String,
+        val bitrate: Int,
+        val width: Int,
+        val height: Int,
+        val fps: Int,
+        val initStart: Int,
+        val initEnd: Int,
+        val indexStart: Int,
+        val indexEnd: Int,
+        /** Bytes in the whole stream when the player response said; -1 otherwise (a HEAD tells). */
+        val contentLength: Long
+    )
+
+    /** Every DASH-capable rendition of one video, video-only sorted best first and audio best first. */
+    data class DashSet(val title: String, val durationSeconds: Long, val video: List<DashStream>, val audio: List<DashStream>)
+
+    /**
+     * The video-only and audio-only renditions of [videoPageUrl] a browser can
+     * play through Media Source Extensions - the hub's HD path (HubDash).
+     * Video renditions up to [maxHeight], mp4 first because Safari plays no
+     * WebM; audio in the original language first. Age-restricted videos are
+     * refused as they are for playback.
+     */
+    suspend fun dashStreams(videoPageUrl: String, maxHeight: Int): DashSet =
+        withContext(Dispatchers.IO) {
+            val info = interactiveFetches.withPermit {
+                retrying("dash $videoPageUrl") { StreamInfo.getInfo(youtube, videoPageUrl) }
+            }
+            check(info.ageLimit == 0) { "This video is age-restricted and can't be played here." }
+            fun mime(format: org.schabi.newpipe.extractor.MediaFormat?): String? = when (format) {
+                org.schabi.newpipe.extractor.MediaFormat.MPEG_4 -> "video/mp4"
+                org.schabi.newpipe.extractor.MediaFormat.M4A -> "audio/mp4"
+                org.schabi.newpipe.extractor.MediaFormat.WEBM -> "video/webm"
+                org.schabi.newpipe.extractor.MediaFormat.WEBMA -> "audio/webm"
+                else -> null
+            }
+            val video = info.videoOnlyStreams.mapNotNull { s ->
+                val item = s.itagItem ?: return@mapNotNull null
+                val m = mime(s.format) ?: return@mapNotNull null
+                if (s.content == null || s.height !in 1..maxHeight) return@mapNotNull null
+                if (item.initStart < 0 || item.indexEnd <= 0) return@mapNotNull null
+                DashStream(
+                    itag = s.itag, url = s.content, mimeType = m, codec = s.codec.orEmpty(),
+                    bitrate = if (s.bitrate > 0) s.bitrate else s.height * 2000,
+                    width = s.width, height = s.height, fps = s.fps,
+                    initStart = item.initStart, initEnd = item.initEnd,
+                    indexStart = item.indexStart, indexEnd = item.indexEnd,
+                    contentLength = item.contentLength
+                )
+            }.sortedWith(compareBy<DashStream> { it.mimeType != "video/mp4" }.thenByDescending { it.height }.thenByDescending { it.bitrate })
+            val audio = info.audioStreams.mapNotNull { s ->
+                val item = s.itagItem ?: return@mapNotNull null
+                val m = mime(s.format) ?: return@mapNotNull null
+                if (s.content == null || item.initStart < 0 || item.indexEnd <= 0) return@mapNotNull null
+                DashStream(
+                    itag = s.itag, url = s.content, mimeType = m, codec = s.codec.orEmpty(),
+                    bitrate = if (s.averageBitrate > 0) s.averageBitrate * 1000 else 128_000,
+                    width = 0, height = 0, fps = 0,
+                    initStart = item.initStart, initEnd = item.initEnd,
+                    indexStart = item.indexStart, indexEnd = item.indexEnd,
+                    contentLength = item.contentLength
+                ) to (s.audioTrackType == org.schabi.newpipe.extractor.stream.AudioTrackType.ORIGINAL)
+            }.sortedWith(compareBy<Pair<DashStream, Boolean>> { it.first.mimeType != "audio/mp4" }.thenByDescending { it.second }.thenByDescending { it.first.bitrate })
+                .map { it.first }
+            DashSet(info.name, info.duration, video, audio)
+        }
 }

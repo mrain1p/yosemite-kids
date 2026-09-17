@@ -155,6 +155,17 @@ class HubKidServer(
     private val slots = HubMedia.Slots(MAX_CONCURRENT_STREAMS)
 
     /**
+     * The HD path's segment requests (`s=`) have slots and threads of their
+     * own. A segment is a few megabytes and done in well under a second, so
+     * the argument for the stream cap - a thread held for the length of a
+     * video - does not apply; and dash.js opens the index of every rendition
+     * at once when it starts, which on three stream slots was four 503s and
+     * a second's retry before the first frame.
+     */
+    private val segmentSlots = HubMedia.Slots(MAX_CONCURRENT_SEGMENTS)
+    private var segmentPool: ExecutorService? = null
+
+    /**
      * The stream counter, so a test can fill it and ask over a socket what a
      * fourth child gets. Proving the 503 any other way means three real videos
      * and a network.
@@ -240,7 +251,25 @@ class HubKidServer(
             Thread(r, "yosemite-kids-kid-media").apply { isDaemon = true }
         }
         mediaPool = media
-        s.createContext("/kid/media") { ex -> dispatchMedia(ex, media) }
+        val segments = Executors.newFixedThreadPool(MAX_CONCURRENT_SEGMENTS) { r ->
+            Thread(r, "yosemite-kids-kid-segment").apply { isDaemon = true }
+        }
+        segmentPool = segments
+        // One route, two pools: a rendition request is a segment, a request
+        // without `s=` is a stream held for the length of a video. See
+        // [segmentSlots].
+        s.createContext("/kid/media") { ex ->
+            if (HubMedia.itagIn(ex.requestURI.rawQuery) != null) dispatchMedia(ex, segments, segmentSlots, MAX_CONCURRENT_SEGMENTS)
+            else dispatchMedia(ex, media)
+        }
+        // The HD path. The manifest a browser's media source plays from is
+        // built on the stream pool, because building it resolves the video
+        // (HubDash, HubStream.dash); the library that reads it is served
+        // from THIS origin and no CDN, because the kid page loads nothing
+        // from the internet and a script fetched from elsewhere is a script
+        // on a child's page this build never reviewed.
+        s.createContext("/kid/dash") { ex -> dispatchMedia(ex, media, handler = ::dash) }
+        s.createContext("/kid/dash.js") { ex -> guarded(ex) { dashJs(ex) } }
         // Thumbnails get a pool of their own, and not the media one: a grid of
         // forty posters would otherwise fill the three stream slots and a child
         // pressing play would be told the hub is busy by their own home screen.
@@ -270,6 +299,8 @@ class HubKidServer(
         // the container's shutdown for the length of it.
         mediaPool?.shutdownNow()
         mediaPool = null
+        segmentPool?.shutdownNow()
+        segmentPool = null
         thumbPool?.shutdownNow()
         thumbPool = null
     }
@@ -793,29 +824,35 @@ class HubKidServer(
      * nothing, and gives a child nothing to read — where a 503 is a sentence
      * the page can put on screen.
      */
-    private fun dispatchMedia(ex: HttpExchange, pool: ExecutorService) {
-        if (!slots.take()) return guarded(ex) { busy(ex) }
+    private fun dispatchMedia(
+        ex: HttpExchange,
+        pool: ExecutorService,
+        slots: HubMedia.Slots = this.slots,
+        cap: Int = MAX_CONCURRENT_STREAMS,
+        handler: (HttpExchange) -> Unit = ::media
+    ) {
+        if (!slots.take()) return guarded(ex) { busy(ex, cap) }
         try {
             pool.execute {
                 try {
-                    guarded(ex) { media(ex) }
+                    guarded(ex) { handler(ex) }
                 } finally {
                     slots.release()
                 }
             }
         } catch (e: RejectedExecutionException) {
             slots.release()
-            guarded(ex) { busy(ex) }
+            guarded(ex) { busy(ex, cap) }
         }
     }
 
-    private fun busy(ex: HttpExchange) {
+    private fun busy(ex: HttpExchange, cap: Int = MAX_CONCURRENT_STREAMS) {
         ex.responseHeaders.add("Retry-After", MEDIA_RETRY_AFTER_SECONDS.toString())
         respond(
             ex, 503,
             JSONObject()
                 .put("error", "busy")
-                .put("streams", MAX_CONCURRENT_STREAMS)
+                .put("streams", cap)
                 .toString()
         )
     }
@@ -866,6 +903,9 @@ class HubKidServer(
         val videoId = HubMedia.videoIdIn(query)
             ?: return respond(ex, 400, JSONObject().put("error", "bad video").toString())
         val kidId = browser.kid
+        // One rendition of the HD path, or the muxed stream. Which is a
+        // property of the request, and the gate below is the same for both.
+        val itag = HubMedia.itagIn(query)
         // Never taken from the page. The cell a browser's minutes are filed
         // under is derived from the token this hub minted at claim time, so a
         // tablet cannot claim a fresh viewer every morning to reset a budget.
@@ -875,7 +915,7 @@ class HubKidServer(
         if (!verdict.allowed) return refused(ex, verdict)
 
         val resolved = try {
-            streams.resolve(videoId)
+            if (itag != null) streams.stream(videoId, itag) else streams.resolve(videoId)
         } catch (e: HubStream.Unplayable) {
             // Distinguishable on purpose. "This hub could not find a stream a
             // browser can play" and "YouTube would not answer" send a parent
@@ -887,7 +927,10 @@ class HubKidServer(
             )
         }
 
-        val answer = HubMedia.rangeFor(ex.requestHeaders.getFirst("Range"), resolved.total)
+        val answer = HubMedia.rangeFor(
+            ex.requestHeaders.getFirst("Range"), resolved.total,
+            if (itag != null) HubMedia.MAX_SEGMENT_BYTES else HubMedia.MAX_RESPONSE_BYTES
+        )
         if (answer == null) {
             ex.responseHeaders.add("Content-Range", HubMedia.unsatisfiable(resolved.total))
             return respond(ex, 416, JSONObject().put("error", "bad range").toString())
@@ -913,6 +956,12 @@ class HubKidServer(
         // [HubMedia.MAX_RESPONSE_BYTES]). No browser reaches it: `<video>`
         // always sends a Range. Anything hand-rolled that does not is still
         // *stopped* — it just gets an untidy end rather than a clean one.
+        // A rendition reply (`s=`) is the exception the other way: a whole
+        // segment, up to [HubMedia.MAX_SEGMENT_BYTES], because a media-source
+        // player appends what it gets AS the segment it asked for. The gate
+        // still runs between the chunks the pump fetches, so a block lands
+        // mid-segment - with the untidy end described above, and then a 403
+        // on the next segment, which is what the page shows.
         try {
             ex.responseBody.use { out ->
                 // Named, not trailing: `fetch` sits after `gate`, so a
@@ -1095,6 +1144,62 @@ class HubKidServer(
         ex.responseBody.use { it.write(bytes) }
     }
 
+    /**
+     * `GET /kid/dash?v=<id>` - the manifest a browser plays HD through.
+     *
+     * The same gate as `/media`, asked before anything is resolved, for the
+     * same reason: a refused child must not be able to make this box ask
+     * YouTube. What comes back is [HubDash]'s MPD, every BaseURL of which is
+     * `/kid/media` with the rendition's `s=`, so the per-chunk gate holds on
+     * HD exactly as it does at 360p and a redirect never hands the browser
+     * a googlevideo URL. `no-store`: the renditions inside expire with the
+     * URLs they name, and a cached manifest is a video that keeps playing
+     * after a block. A video with no mp4 pair is `502 no-dash-streams`, and
+     * the page plays the muxed stream instead - smaller, never nothing.
+     */
+    private fun dash(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        if (!sameOrigin(ex)) return respond(ex, 403, "cross-site")
+        val browser = watching(ex) ?: return
+        val videoId = HubMedia.videoIdIn(ex.requestURI.rawQuery)
+            ?: return respond(ex, 400, JSONObject().put("error", "bad video").toString())
+        val verdict = policy.mayPlay(browser.kid, videoId, meter.ledgerId(browser.token))
+        if (!verdict.allowed) return refused(ex, verdict)
+        val mpd = try {
+            streams.dash(videoId)
+        } catch (e: HubStream.Unplayable) {
+            return respond(
+                ex, 502,
+                JSONObject().put("error", e.reason).put("detail", e.message.orEmpty()).toString()
+            )
+        }
+        val bytes = mpd.toByteArray(Charsets.UTF_8)
+        ex.responseHeaders.add("Content-Type", "application/dash+xml; charset=utf-8")
+        ex.responseHeaders.add("Cache-Control", "no-store")
+        securityHeaders(ex)
+        ex.sendResponseHeaders(200, bytes.size.toLong())
+        ex.responseBody.use { it.write(bytes) }
+    }
+
+    /** dash.js, read from the jar once: three quarters of a megabyte a page asks for on every load it cannot cache. */
+    private val dashJsBytes: ByteArray? by lazy { javaClass.getResourceAsStream("/web/dash.all.min.js")?.readBytes() }
+
+    /**
+     * `GET /kid/dash.js` - the player library, vendored (see the LICENSE
+     * beside it in the jar). Unauthenticated like the icon: it says nothing
+     * about the family. Cached a week; the page names the library's version
+     * in its query, so an upgrade is a new URL and never a stale copy.
+     */
+    private fun dashJs(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") return respond(ex, 405, "no")
+        val bytes = dashJsBytes ?: return respond(ex, 404, "missing from this build")
+        ex.responseHeaders.add("Content-Type", "text/javascript; charset=utf-8")
+        ex.responseHeaders.add("Cache-Control", "public, max-age=604800")
+        securityHeaders(ex)
+        ex.sendResponseHeaders(200, bytes.size.toLong())
+        ex.responseBody.use { it.write(bytes) }
+    }
+
     // --- plumbing -------------------------------------------------------
 
     /**
@@ -1235,6 +1340,15 @@ class HubKidServer(
          * by [slots] on the control pool and never by a full queue.
          */
         const val MAX_CONCURRENT_STREAMS = 3
+
+        /**
+         * Segment requests in flight at once, on the HD path. dash.js holds
+         * two per viewer (a video segment and an audio one) and opens every
+         * rendition's index at once at the start - seven for a 1080p video -
+         * so three viewers fit with room for a start-up burst. Past it the
+         * same 503, which dash.js retries after a second.
+         */
+        const val MAX_CONCURRENT_SEGMENTS = 8
         const val MEDIA_RETRY_AFTER_SECONDS = 5
 
         /**

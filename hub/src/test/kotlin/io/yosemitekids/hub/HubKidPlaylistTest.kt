@@ -34,10 +34,11 @@ class HubKidPlaylistTest {
         ChannelIndex.IndexedPlaylist(id, "https://www.youtube.com/playlist?list=$id", name, null, ids.size.toLong(), ids.toList())
 
     private lateinit var history: HubKidHistory
+    private lateinit var store: HubStore
 
     private fun home(blocked: Set<String> = emptySet(), picks: List<String> = emptyList()): HubKidHome {
         val dir = tmp.newFolder()
-        val store = HubStore(dir)
+        store = HubStore(dir)
         val index = ChannelIndex(File(dir, "search-index"))
         store.edit("test", T) {
             Whitelist(
@@ -118,5 +119,31 @@ class HubKidPlaylistTest {
         history.save(leo, "https://www.youtube.com/watch?v=apple00002", positionMs = 599_000, durationMs = 600_000)
         val rows = h.channel(leo, "UC1")!!.getJSONArray("playlistRows")
         assertEquals("Stories held only the finished one", listOf("Songs"), names(rows))
+    }
+
+    @Test
+    fun `a row the parent added draws a playlist or a channel on the home, named and trimmed like a shelf`() {
+        val h = home()
+        val plain = h.home(leo, null)
+        assertEquals("no rows added: nothing custom", 0, plain.getJSONObject("custom").length())
+        // The parent adds Songs and the Pears channel to Leo's home, on the console or the phone.
+        store.edit("test", T) { w ->
+            w.copy(homeRows = io.yosemitekids.app.data.HomeRows.withOrder(
+                emptyList(), leo,
+                listOf(io.yosemitekids.app.ui.HomeSection(io.yosemitekids.app.ui.HomeRowKind.playlistRow("PL1")),
+                    io.yosemitekids.app.ui.HomeSection(io.yosemitekids.app.ui.HomeRowKind.channelRow("UC2"))) +
+                    io.yosemitekids.app.ui.HOME_SHELVES.map { io.yosemitekids.app.ui.HomeSection(it) }
+            ))
+        }
+        val page = h.home(leo, null)
+        val custom = page.getJSONObject("custom")
+        assertEquals("Songs", custom.getJSONObject("playlist:PL1").getString("title"))
+        assertEquals(listOf("Apple 3", "Apple 1", "Pear 1"), titles(custom.getJSONObject("playlist:PL1").getJSONArray("videos")))
+        assertEquals("Pears", custom.getJSONObject("channel:UC2").getString("title"))
+        assertEquals(listOf("Pear 1"), titles(custom.getJSONObject("channel:UC2").getJSONArray("videos")))
+        // The section list carries the resolved name, so the page draws it without a second lookup.
+        val sections = page.getJSONArray("sections")
+        assertEquals("Songs", sections.getJSONObject(0).getString("title"))
+        assertEquals("Pears", sections.getJSONObject(1).getString("title"))
     }
 }

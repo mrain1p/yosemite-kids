@@ -554,6 +554,7 @@
   </nav>
 </div>
 
+<script defer src="/kid/dash.js?v=4.7.4"></script>
 <script>
 (function () {
   "use strict";
@@ -565,6 +566,9 @@
 
   var state = {
     kid: null, home: null, view: "home", beat: null, warned: false, look: null,
+    // The dash.js player behind the <video> while HD plays; null on the
+    // muxed stream. Released on every way out of the player (releaseStream).
+    dash: null,
     // Which You-tab shelf is unfolded, by KidSurface id. Null is all folded.
     openShelf: null,
     tab: "home"
@@ -881,6 +885,10 @@
         node = grid(home.videos);
       } else if (section.id === "history" && home.history.length) {
         node = rail(home.history, videoCard);
+      } else if (home.custom && home.custom[section.id] && home.custom[section.id].videos.length) {
+        // A row the parent added (a playlist or a channel as a home row): the
+        // hub resolved its name into the section and its videos into `custom`.
+        node = rail(home.custom[section.id].videos, videoCard);
       }
       if (node) {
         main.appendChild(shelf(section.title, node));
@@ -1296,6 +1304,7 @@
 
   function play(video) {
     stopBeating();
+    releaseStream();
     state.warned = false;
     // Opening a video is going INTO something, so Back comes out of it rather
     // than out of the app. See goInto.
@@ -1314,7 +1323,7 @@
     v.autoplay = true;
     v.playsInline = true;
     v.setAttribute("playsinline", "");
-    v.src = "/kid/media?v=" + encodeURIComponent(video.id);
+    attachStream(v, video);
     wrap.appendChild(v);
 
     var meta = el("div", "meta");
@@ -1331,7 +1340,7 @@
     // device store (HubKidHistory) -- and it sends the POSITION rather than a
     // fraction to compare, so "barely started" and "finished" stay one rule in
     // one place instead of two thresholds spelled here in JavaScript.
-    if (video.resumeMs > 0) v.currentTime = video.resumeMs / 1000;
+    if (video.resumeMs > 0 && !state.dash) v.currentTime = video.resumeMs / 1000;
 
     v.onplaying = function () { startBeating(v, video); };
     v.onpause = stopBeating;
@@ -1366,6 +1375,60 @@
           why.textContent = (body && body.say) || "That will not play right now.";
         });
     };
+  }
+
+  // --- HD in a browser -------------------------------------------------
+  // The muxed stream /kid/media serves caps around 360p; HD on YouTube is a
+  // video track and an audio track merged at playback, which ExoPlayer does
+  // on the phone and a plain <video> cannot. dash.js does it through Media
+  // Source Extensions from the manifest /kid/dash writes (HubDash), whose
+  // every URL points back at /kid/media - so a block still lands mid-video.
+  // A browser without media sources, a video the hub has no manifest for, or
+  // any error at all falls back to the muxed stream: the same video, smaller,
+  // never nothing - and a refusal reads the same on both, because the muxed
+  // request is refused the same way and <video>.onerror asks it why.
+
+  function attachStream(v, video) {
+    var muxed = "/kid/media?v=" + encodeURIComponent(video.id);
+    var canDash = window.dashjs && (window.MediaSource || window.ManagedMediaSource);
+    if (!canDash) { v.src = muxed; return; }
+    var player = dashjs.MediaPlayer().create();
+    var fell = false;
+    player.on(dashjs.MediaPlayer.events.ERROR, function () {
+      if (fell) return;
+      fell = true;
+      var at = v.currentTime;
+      releaseStream();
+      v.src = muxed;
+      if (at > 0) v.currentTime = at;
+      else if (video.resumeMs > 0) v.currentTime = video.resumeMs / 1000;
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {});
+    });
+    // Safari with only a managed media source (an iPhone) refuses one on an
+    // element that can be sent to a television; nothing here is AirPlayed.
+    if (!window.MediaSource && window.ManagedMediaSource) v.disableRemotePlayback = true;
+    player.updateSettings({ streaming: {
+      buffer: { fastSwitchEnabled: true },
+      // dash.js drops any video response faster than 50 ms as a browser-cache
+      // hit and learns nothing from it. Through the hub on a LAN a 144p
+      // segment arrives in 30, so with the default it never measured a
+      // thing and played 144p to the end with fifteen seconds buffered.
+      // Nothing here is ever cached (no-store), so nothing is dropped.
+      cacheLoadThresholds: { video: 0, audio: 0 },
+      // Start at a watchable size rather than the smallest and climb from
+      // there; the first real segments settle it within seconds.
+      abr: { initialBitrate: { video: 2000 } }
+    } });
+    player.initialize(v, "/kid/dash?v=" + encodeURIComponent(video.id), true,
+      video.resumeMs > 0 ? video.resumeMs / 1000 : NaN);
+    state.dash = player;
+  }
+
+  function releaseStream() {
+    if (!state.dash) return;
+    try { state.dash.reset(); } catch (e) {}
+    state.dash = null;
   }
 
   function startBeating(video, meta) {
@@ -1722,6 +1785,7 @@
 
   function showTab(name) {
     state.tab = name;
+    releaseStream();
     ["home", "channels", "you"].forEach(function (t) {
       document.getElementById("tab-" + t).setAttribute("aria-selected", name === t ? "true" : "false");
     });
@@ -1769,6 +1833,7 @@
     // A sheet is the first thing Back should close — it is on top.
     if (dlg && dlg.open) { dlg.close(); return; }
     stopBeating();
+    releaseStream();
     document.getElementById("q").value = "";
     showTab("home");
   });
@@ -1784,6 +1849,7 @@
 
   document.getElementById("back").onclick = function () {
     stopBeating();
+    releaseStream();
     document.getElementById("q").value = "";
     // Reloaded rather than redrawn from the copy in memory: a video just
     // watched belongs in Keep watching, and a home screen that still says
