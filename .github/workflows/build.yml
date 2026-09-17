@@ -8,15 +8,20 @@ name: Build
 # bearing on whether the app compiles. Everything else, including gradle and
 # manifest files, still runs.
 on:
+  # Only the marketing site is ignored. Markdown used to be ignored too, and
+  # it should not be: the gate reads the docs. Guard 8 holds ROADMAP's anchor
+  # table to code that exists, guards 14, 30 and 57 hold the route tables in
+  # LAN-API to the routes actually registered, and guard 67 regenerates
+  # GUARDS.md from the guards themselves. Each of those has failed on a
+  # documentation change - and with markdown ignored, the fix for one of them
+  # could not be verified here at all, because the fix is itself a .md file.
   push:
     branches: [main]
     paths-ignore:
       - "site/**"
-      - "**.md"
   pull_request:
     paths-ignore:
       - "site/**"
-      - "**.md"
 
 permissions:
   contents: read
