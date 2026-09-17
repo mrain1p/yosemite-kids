@@ -280,7 +280,7 @@ canary 51 "$GUARD" \
 canary 62 "$VM" \
   "the phone describing a kid shelf without the manifest" \
   "reads KidSurface" \
-  'sed -i "s/KidSurface.YOU_SHELVES.map/KidSurfaceCanary.YOU_SHELVES.map/; s/val surface = KidSurface.surface(id)/val surface = KidSurfaceCanary.surface(id)/" "$VM"'
+  'sed -i "s/KidSurface/ShelfCatalogueCanary/g" "$VM"'
 
 
 canary 56 "$CHUNKER" \
