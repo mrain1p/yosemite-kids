@@ -639,13 +639,22 @@ object ConfigJson {
             val entries = mutableListOf<WhitelistEntry>()
             val arr = root.optJSONArray("entries") ?: JSONArray()
             for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
+                // Per-entry lenient, like the pins and the grants below it and
+                // like the home rows above. A channel this build cannot read -
+                // one field short, one field a newer build added and wrote
+                // differently - used to throw out of the whole parse, and a
+                // document that will not parse is a family with no children
+                // and no channels everywhere it is read. One bad row costs
+                // that row.
+                val o = runCatching { arr.getJSONObject(i) }.getOrNull() ?: continue
                 val kind = runCatching { SourceKind.valueOf(o.getString("kind")) }
                     .getOrDefault(SourceKind.CHANNEL)
                 val pidArr = o.optJSONArray("profiles")
+                val id = runCatching { o.getString("id") }.getOrNull()?.takeIf { it.isNotBlank() } ?: continue
+                val url = runCatching { o.getString("url") }.getOrNull()?.takeIf { it.isNotBlank() } ?: continue
                 entries += WhitelistEntry(
-                    id = o.getString("id"),
-                    url = o.getString("url"),
+                    id = id,
+                    url = url,
                     label = o.optString("label").ifEmpty { null },
                     kind = kind,
                     timeMultiplierPercent = o.optInt("time", 100),
@@ -688,9 +697,14 @@ object ConfigJson {
             val profiles = mutableListOf<Profile>()
             root.optJSONArray("profiles")?.let { arr2 ->
                 for (i in 0 until arr2.length()) {
-                    val o = arr2.getJSONObject(i)
+                    // Same rule as the channels: one kid this build cannot
+                    // read costs that kid, not the family. A profile with no
+                    // id is not a kid at all - every overlay, every saved
+                    // list and every stamp is keyed on it.
+                    val o = runCatching { arr2.getJSONObject(i) }.getOrNull() ?: continue
+                    val pid = runCatching { o.getString("id") }.getOrNull()?.takeIf { it.isNotBlank() } ?: continue
                     profiles += Profile(
-                        id = o.getString("id"),
+                        id = pid,
                         name = o.optString("name").ifEmpty { "Kid ${i + 1}" },
                         colorArgb = o.optLong("color", PROFILE_COLORS.first()),
                         avatar = o.optString("avatar").ifEmpty { PROFILE_AVATARS.first() },

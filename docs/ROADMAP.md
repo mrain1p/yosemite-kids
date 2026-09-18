@@ -943,7 +943,7 @@ row below is one half of something already right.
    cannot read its own document, an election on an empty config, and kid routes
    that drop every parent setting. The phone already has the right shape
    (`ConfigStore.degraded`); the hub needs it, plus a red banner.
-9. **`ConfigJson.fromJson` is all-or-nothing per entry.** One malformed source
+9. ✅ **`ConfigJson.fromJson` is all-or-nothing per entry.** One malformed source
    or profile throws and the whole document falls back to last-good or empty.
    The same file already drops a bad *pin* or *grant* alone; sources and profiles
    should too. No test anywhere covers a valid-JSON, bad-element config.
