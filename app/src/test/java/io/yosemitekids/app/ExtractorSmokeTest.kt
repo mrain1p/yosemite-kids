@@ -104,14 +104,37 @@ class ExtractorSmokeTest {
         val audio = info.audioStreams.filter { it.content != null }
         println("muxed=${muxed.size} videoOnly=${videoOnly.size} audio=${audio.size}")
 
-        // Same combinations resolvePlayback accepts: video+audio merged, or a muxed fallback.
+        // The app's path: ExoPlayer merges a video track and an audio track, or
+        // falls back to a muxed one.
         check(muxed.isNotEmpty() || (videoOnly.isNotEmpty() && audio.isNotEmpty())) {
             "No playable stream combination returned"
+        }
+        // The HUB's path, which is a different requirement and was not checked.
+        // A browser plays either the muxed progressive stream (HubStream.resolve
+        // REQUIRES one - no muxed stream is a 502 no-muxed-stream, not a
+        // fallback) or the DASH manifest built from adaptive renditions with
+        // byte ranges (HubDash). YouTube dropping itag 18 would have left this
+        // canary green while every video in every browser in the house 502'd.
+        check(muxed.isNotEmpty()) {
+            "No muxed progressive stream: the hub's /kid/media has nothing to serve"
+        }
+        val dashable = (videoOnly + audio).filter { s ->
+            val item = s.itagItem
+            item != null && item.initStart >= 0 && item.indexEnd > 0
+        }
+        check(dashable.isNotEmpty()) {
+            "No renditions carry init/index byte ranges: the hub's /kid/dash has nothing to build from"
         }
         val sample = (muxed + videoOnly + audio).first()
         check(sample.content.startsWith("http")) {
             "Stream content is not a URL: ${sample.content?.take(80)}"
         }
+        // The marker the workflow greps for. A run whose every test skipped on
+        // a bot wall SUCCEEDS, and a success used to close the breakage issue
+        // with "canary is green again" — a green light from a run that tested
+        // nothing. This line is printed only once an assertion has actually
+        // been reached, so the close step can tell the two apart.
+        println("CANARY-CONCLUSIVE: streams")
     }
 
     @Test

@@ -31,9 +31,29 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      # The output is kept so the step below can tell a run that PASSED from
+      # a run that TESTED NOTHING. Every test here skips itself when YouTube
+      # answers a datacenter IP with a bot wall, and a job whose tests all
+      # skip succeeds - which used to close the breakage issue saying the
+      # canary was green again. A green light from a run that never reached
+      # an assertion is worse than a red one: nobody checks a green light.
       - name: Run extractor smoke tests against live YouTube
         id: test
-        run: ./gradlew :app:testDebugUnitTest --tests "io.yosemitekids.app.ExtractorSmokeTest"
+        run: |
+          set -o pipefail
+          ./gradlew :app:testDebugUnitTest --tests "io.yosemitekids.app.ExtractorSmokeTest" -i 2>&1 \
+            | tee "$RUNNER_TEMP/canary.log"
+
+      - name: Was the run conclusive?
+        id: conclusive
+        if: always()
+        run: |
+          if grep -q "CANARY-CONCLUSIVE" "$RUNNER_TEMP/canary.log" 2>/dev/null; then
+            echo "value=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::Every check skipped - YouTube bot-walled this runner. Nothing was proved either way."
+          fi
 
       - name: Upload test report
         if: failure()
@@ -43,6 +63,9 @@ jobs:
           path: app/build/reports/tests/
           if-no-files-found: ignore
 
+      # Assigned by name. A label plus a default watch setting is how a breakage
+      # issue sits unread for a week, and this is the one alert in the product
+      # that says playback is about to stop for every family.
       - name: Open or update breakage issue
         if: failure()
         env:
@@ -58,6 +81,7 @@ jobs:
             gh issue create \
               --title "Extractor canary failing — YouTube extraction may be broken" \
               --label extractor-breakage \
+              --assignee "${{ github.repository_owner }}" \
               --body "$(cat <<EOF
           The scheduled \`ExtractorSmokeTest\` run against live YouTube failed: $run_url
 
@@ -75,7 +99,9 @@ jobs:
           fi
 
       - name: Close breakage issues on recovery
-        if: success()
+        # Only when something was actually checked. See "Was the run
+        # conclusive?" above: a bot-walled run succeeds and proves nothing.
+        if: success() && steps.conclusive.outputs.value == 'yes'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

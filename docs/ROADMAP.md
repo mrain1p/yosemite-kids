@@ -947,7 +947,7 @@ row below is one half of something already right.
    or profile throws and the whole document falls back to last-good or empty.
    The same file already drops a bad *pin* or *grant* alone; sources and profiles
    should too. No test anywhere covers a valid-JSON, bad-element config.
-10. **The extractor canary can close its own breakage issue after testing
+10. ✅ **The extractor canary can close its own breakage issue after testing
     nothing.** A run whose tests all skip on a bot wall *succeeds*, and the
     `if: success()` step then comments "Canary is green again". It also tests a
     path the hub does not use: it asserts muxed **or** adaptive streams while
