@@ -763,7 +763,7 @@ class HubServer(
              * `HubVersions`' own KDoc for the four separate arguments with the
              * merge a byte restore loses, silently, on the next sync.
              */
-            "/api/restore" -> mutate(ex) { body ->
+            "/api/restore" -> mutate(ex, allowDegraded = true) { body ->
                 JSONObject().put(
                     "restored",
                     HubVersions.restoreFile(store, WHO, now(), body.toString())
@@ -871,7 +871,7 @@ class HubServer(
              */
             // The crawl switch: a parent who suspects trouble stops the cause
             // without touching a compose file. Sticks across restarts (HubCrawl.pause).
-            "/api/crawl" -> mutate(ex) { body ->
+            "/api/crawl" -> mutate(ex, allowDegraded = true) { body ->
                 val c = crawl
                 if (c == null || !body.has("paused")) null
                 else {
@@ -901,7 +901,7 @@ class HubServer(
                 }
             }
 
-            "/api/versions" -> mutate(ex) { body ->
+            "/api/versions" -> mutate(ex, allowDegraded = true) { body ->
                 if (!body.has("restore")) null
                 else JSONObject().put(
                     "restored",
@@ -1010,8 +1010,36 @@ class HubServer(
     }
 
     /** POST-only and body-bounded. A null result from [block] is a 400. */
-    private fun mutate(ex: HttpExchange, block: (JSONObject) -> JSONObject?) {
+    private fun mutate(
+        ex: HttpExchange,
+        /**
+         * True for the two routes that REPAIR an unreadable config — restoring
+         * a backup and restoring a version — and for the crawl switch, which
+         * writes a file of its own and never touches the document. Blocking
+         * those would be blocking the way out.
+         */
+        allowDegraded: Boolean = false,
+        block: (JSONObject) -> JSONObject?
+    ) {
         if (ex.requestMethod != "POST") return respond(ex, 405, "no")
+        // Nothing is written while the document on disk cannot be read. Every
+        // edit is read-modify-write, so a save here would write whatever this
+        // hub could make of an unreadable file — and that is what every device
+        // merges next. The console draws the reason rather than a failed save.
+        if (!allowDegraded && store.degraded()) {
+            return respond(
+                ex, 503,
+                JSONObject()
+                    .put("error", "config-unreadable")
+                    .put(
+                        "detail",
+                        "This hub's config.json is there and will not parse, so nothing can be " +
+                            "saved over it. Restore a version from the Backup page, or replace " +
+                            "the file on the volume."
+                    )
+                    .toString()
+            )
+        }
         val body = readBody(ex) ?: return respond(ex, 413, "too large")
         val json = runCatching { JSONObject(body) }.getOrNull()
             ?: return respond(ex, 400, JSONObject().put("error", "bad request").toString())
@@ -1113,7 +1141,13 @@ class HubServer(
         if (ex.requestMethod != "GET") return respond(ex, 405, "no")
         respond(
             ex, 200,
-            JSONObject().put("ok", true).put("version", HubBuild.VERSION).toString()
+            JSONObject()
+                .put("ok", true)
+                .put("version", HubBuild.VERSION)
+                // Says nothing about the family, and answers the one question
+                // a parent on the LAN cannot otherwise ask without ssh.
+                .put("configOk", !store.degraded())
+                .toString()
         )
     }
 

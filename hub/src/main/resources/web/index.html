@@ -260,6 +260,20 @@
     <button class="quiet" id="signout">Sign out</button>
   </header>
   <main>
+    <!--
+      The one state in which nothing on this page should be believed. A
+      config.json that is there and will not parse reads as a family with no
+      children and no channels, and a parent adding them back would write that
+      emptiness over it - which is what every device merges next. The hub
+      refuses every save until it is restored; this says why, before they try.
+    -->
+    <div class="warn" id="badconfig" hidden>
+      <strong>This hub cannot read its settings.</strong>
+      Its <code>config.json</code> is there and will not parse, so what is shown
+      below is not your family and nothing can be saved over it. Restore the
+      most recent version, or replace the file on the volume.
+      <div class="line"><button class="primary" id="badconfigGo">Restore a version</button></div>
+    </div>
     <div class="warn" id="nopass" hidden>
       <strong>No password is set.</strong>
       Anyone who can read this hub's container log can administer it, and the
@@ -500,6 +514,10 @@
     hideAll();
     $("app").hidden = false;
     $("nopass").hidden = !!setup.password;
+    // Only once the state has been fetched: `configOk` absent (a hub too old
+    // to send it, or a page shown before the first refresh) must not read as
+    // "unreadable" and frighten a parent whose hub is fine.
+    $("badconfig").hidden = !(state && state.hub && state.hub.configOk === false);
   }
 
   /**
@@ -3292,6 +3310,7 @@
     if (then) then();
   };
   $("troubleGo").onclick = function () { location.reload(); };
+  $("badconfigGo").onclick = function () { go("#/backup"); showApp(); };
   $("nopassGo").onclick = function () { go("#/backup"); showApp(); };
 
   // The system Back button, which on an installed page is the only navigation

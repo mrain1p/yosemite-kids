@@ -78,6 +78,26 @@ class HubStore(
         }
     }
 
+    /**
+     * A config.json that is there and will not parse.
+     *
+     * `load()` refuses to serve that file as an empty family, and every caller
+     * then swallows the refusal into a plausible answer: the console draws
+     * zero kids and zero channels, the crawl says "idle: no config yet", and
+     * `/status` publishes a fingerprint of nothing. None of those is wrong to
+     * do - a hub that cannot read its rules must not act on them - but all of
+     * them are indistinguishable from a family that has not set anything up,
+     * and one of them is dangerous: a parent looking at an empty console and
+     * adding their channels back writes that emptiness over the file.
+     *
+     * The phone has had this since it was written (`ConfigStore.degraded`).
+     * The hub had one line on stderr.
+     */
+    fun degraded(): Boolean = synchronized(lock) {
+        val text = raw() ?: return false
+        runCatching { ConfigJson.fromJson(text) }.isFailure
+    }
+
     /** The bytes on disk, exactly as they will be served. Null before the first write. */
     fun raw(): String? = synchronized(lock) {
         if (file.exists()) file.readText().takeIf { it.isNotBlank() } else null
@@ -276,7 +296,12 @@ class HubStore(
         refresh: Set<String> = emptySet(),
         transform: (Whitelist) -> Whitelist
     ): Outcome = synchronized(lock) {
-        val current = runCatching { load() }.getOrElse { Whitelist(emptyList(), emptySet()) }
+        // NOT an empty family on a failed read. A parent saving one setting on
+        // a hub whose config.json will not parse would otherwise write an
+        // empty document over it - and that emptiness is what every device
+        // merges next. The refusal reaches the console as a 503; the phone
+        // refuses its own writes for the same reason (ConfigStore.degraded).
+        val current = load()
         val beforeHash = ConfigJson.fingerprint(current)
         val beforeSync = ConfigMerge.syncHash(current.sync)
 

@@ -321,6 +321,13 @@ object HubWeb {
                     // number to read back when a setting will not stick.
                     .put("version", HubBuild.VERSION)
                     .put("dataDir", dataDir)
+                    // The one state in which the console must not be believed:
+                    // a config.json that is there and will not parse reads as
+                    // a family with no children and no channels, and a parent
+                    // adding them back would write that emptiness over it.
+                    // Every save is refused with this reason until it is
+                    // restored (HubServer.mutate).
+                    .put("configOk", !store.degraded())
                     // Whether this box holds the AI key, and the most the page
                     // may ever be shown of it. Never the value: a field that
                     // rendered it back would put a credential into a browser,

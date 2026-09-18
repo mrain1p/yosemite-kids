@@ -970,4 +970,46 @@ class HubServerTest {
         c.disconnect()
         return got
     }
+
+    // --- a config this hub cannot read -----------------------------------
+
+    @Test
+    fun `nothing is saved over a config that will not parse, and the way out stays open`() {
+        // A family, then a file that is there and is not JSON. This is what a
+        // half-written save, a truncated copy or an edited-by-hand volume
+        // leaves behind, and every reader in the hub turns it into a plausible
+        // emptiness: zero kids, zero channels, "idle: no config yet".
+        val s = session(ADMIN)
+        val headers = mapOf(HubServer.SESSION_HEADER to s)
+        assertEquals(200, post("/api/channels", JSONObject().put("add", "https://www.youtube.com/channel/UC1").toString(), headers).first)
+        File(store.dataDir, "config.json").writeText("{ this is not json")
+
+        assertTrue("the hub knows it cannot read its own document", store.degraded())
+
+        // The dangerous one: a parent looking at an empty console and adding
+        // their channels back would write that emptiness over the file, and
+        // that emptiness is what every device merges next.
+        val (code, body) = post("/api/channels", JSONObject().put("add", "https://www.youtube.com/channel/UC2").toString(), headers)
+        assertEquals(503, code)
+        assertEquals("config-unreadable", JSONObject(body).getString("error"))
+        assertTrue(JSONObject(body).getString("detail").isNotEmpty())
+        assertEquals(
+            "and the file is untouched, so a restore still has something to compare against",
+            "{ this is not json", File(store.dataDir, "config.json").readText()
+        )
+
+        // The way out must not be blocked by the thing it repairs.
+        val (restored, _) = post("/api/restore", JSONObject().put("json", "{}").toString(), headers)
+        assertTrue("restore is reachable while degraded (got $restored)", restored != 503)
+    }
+
+    @Test
+    fun `health says whether the config can be read, and nothing about the family`() {
+        val (code, body) = call("/health")
+        assertEquals(200, code)
+        assertEquals(true, JSONObject(body).getBoolean("configOk"))
+        File(store.dataDir, "config.json").writeText("{ not json either")
+        assertEquals(false, JSONObject(call("/health").second).getBoolean("configOk"))
+        assertFalse("still says nothing about who is in the family", JSONObject(call("/health").second).has("kids"))
+    }
 }

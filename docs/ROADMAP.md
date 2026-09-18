@@ -936,7 +936,7 @@ row below is one half of something already right.
    the page read only the child's half, and nobody could answer "why will this
    video not play on the tablet". Now recorded in the report ring, one line per
    kid and reason per ten minutes.
-8. **A corrupt `config.json` shows the console an empty family.** `HubStore.load`
+8. ✅ **A corrupt `config.json` shows the console an empty family.** `HubStore.load`
    correctly refuses to serve emptiness and rethrows — and five callers swallow
    it into plausible-but-wrong answers: zero kids, "idle: no config yet", a
    fingerprint of `""` published on `/status` so peers sync against a hub that
