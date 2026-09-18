@@ -422,19 +422,24 @@ fun YosemiteScreen(
         ) { s ->
         Column(modifier = Modifier.fillMaxSize()) {
             when {
-                s.loading && phone && s.screen != Screen.Home -> {
-                    // Skeleton grid: the shape of what's coming.
+                // The home has a shape of its own - a hero, then rails - and a
+                // grid of cards would be a second layout the child watches
+                // rearrange itself. Both faces: a television showed a spinner
+                // in the middle of a 55-inch screen.
+                s.loading && s.screen is Screen.Home -> SkeletonHome()
+                s.loading && s.screen != Screen.Home -> {
+                    // Skeleton grid: the shape of what's coming. On the
+                    // television too, since 1.12.x - the argument for saying
+                    // what is coming does not stop at a form factor.
                     androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
-                        columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(170.dp),
+                        columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(if (phone) 170.dp else 210.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         contentPadding = PaddingValues(8.dp),
                         userScrollEnabled = false
-                    ) { items(6) { SkeletonCard() } }
+                    ) { items(if (phone) 6 else 9) { SkeletonCard() } }
                 }
-                s.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+
                 s.error != null -> FriendlyError(s.error, onRetry = vm::retryCurrent)
                 s.screen is Screen.Home -> {
                     // One home, both shapes: the shelves and their order are

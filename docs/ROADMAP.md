@@ -837,7 +837,12 @@ Added by the round itself, found while clearing the review's list:
 1. Honest seconds on the countdown (§8D): `Remaining[{ms, kind}]` from the
    hub's clock on `/home.time` and `/progress`, interpolated from
    `HubWatchMeter`'s accrual, never invented in the page.
-2. Skeleton tiles instead of one spinner while home and a channel load.
+2. ~~Skeleton tiles instead of one spinner while home and a channel load.~~
+   Done: `SkeletonHome` draws the home's own shape (a hero, then two rails)
+   rather than a grid of cards, and the grid skeleton the phone already had
+   now serves the television too. The spinner is gone from both faces — it
+   said "something is happening somewhere", where a skeleton says what is
+   coming and where, so nothing moves under a finger when it lands.
 3. Today's screen time as one bar (§8E), with its `KidSurface` row and its
    numbers in `KidGeometry` first.
 4. A kid-scale search page on the phone, to match what the browser has.

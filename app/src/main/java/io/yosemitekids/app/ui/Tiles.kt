@@ -683,6 +683,72 @@ internal fun SkeletonCard(modifier: Modifier = Modifier) {
     }
 }
 
+
+/**
+ * The home, before it has anything in it.
+ *
+ * A spinner says "something is happening somewhere"; this says what is coming
+ * and where it will be, so nothing moves under a finger when it arrives. It is
+ * the same argument guard 71 makes about the playlist strip's placeholder and
+ * guard 64 about the grid's scroll position: a rail that is sometimes there
+ * reads as breakage, and a page that rearranges itself on load reads as one a
+ * child cannot trust.
+ *
+ * The shape is the home's own - a hero the width of the page, then two rails -
+ * because a skeleton of the wrong shape is a second layout the child sees.
+ */
+@Composable
+internal fun SkeletonHome(formFactor: FormFactor = LocalFormFactor.current) {
+    val phone = !formFactor.isTv
+    val tone = MaterialTheme.colorScheme.surfaceVariant
+    val pulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "skeletonHome")
+    val alpha by pulse.animateFloat(
+        initialValue = 0.35f, targetValue = 0.75f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(900),
+            androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "skeletonHomeAlpha"
+    )
+    val cardWidth = if (phone) 170.dp else 210.dp
+    Column(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer { this.alpha = alpha }
+            .padding(horizontal = 8.dp)
+    ) {
+        // The hero. Its aspect is the pinned hero's, not a card's.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(if (phone) 16f / 7f else 16f / 5f)
+                .background(tone, RoundedCornerShape(16.dp))
+        )
+        repeat(2) {
+            Spacer(Modifier.height(18.dp))
+            // A shelf heading, at a heading's height rather than a card's.
+            Box(Modifier.fillMaxWidth(0.45f).height(20.dp).background(tone, RoundedCornerShape(6.dp)))
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                repeat(3) {
+                    Column(Modifier.width(cardWidth)) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .background(tone, RoundedCornerShape(12.dp))
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Box(Modifier.fillMaxWidth(0.9f).height(14.dp).background(tone, RoundedCornerShape(4.dp)))
+                        Spacer(Modifier.height(6.dp))
+                        Box(Modifier.fillMaxWidth(0.6f).height(14.dp).background(tone, RoundedCornerShape(4.dp)))
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** Big, rounded section heading with an optional trailing action ("Show all"). */
 @Composable
 internal fun SectionRow(
