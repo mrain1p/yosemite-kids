@@ -1903,15 +1903,38 @@ missing_why=$(awk '
 [ -z "$missing_why" ] ||
   guard_fail "these kid surfaces are not on both faces, or not yet in the browser, and say nothing about why: $missing_why
 A reason is what stops the next session re-deciding it, and what tells the owner whether it is work or a policy."
-#     (d) A RULE A DRAWN SURFACE CLAIMS IS ACTUALLY SHARED. Only for surfaces
-#         the browser really draws: an unbuilt one is allowed to name a rule
-#         still stranded in :app, and (e) below reports those instead. The day
-#         it flips to webReady, this turns into a hard failure - which is
-#         exactly when the extraction has to have happened.
-for fn in $(grep -oE "${q}[A-Za-z]+\.[a-zA-Z_]+${q}|${q}[a-z][a-zA-Z]+${q}" "$kidmanifest" | tr -d "$q" | grep -vE "^(id|title|why)$" | sort -u || true); do
-  leaf=${fn##*.}
-  case "$leaf" in [A-Z]*) continue ;; esac
-  grep -rqE "(fun|val|const val) $leaf\b" core/src/main crawl/src/main 2>/dev/null || true
+#     (d) A DRAWN SURFACE'S RULES ARE SHARED. Every name in a `rules` list is
+#         a function or constant the surface's contents are decided by, and for
+#         a surface the BROWSER draws it must live in :core or :crawl - that is
+#         the whole claim the manifest makes, and the hub cannot call anything
+#         in :app. A surface not yet in a browser is allowed to name a rule
+#         still stranded there, and (e) below reports those.
+#
+#         This clause used to grep for each name and throw the result away -
+#         twenty-four recursive searches asserting nothing, reading in the file
+#         as a check. It was deliberate scaffolding for the day a surface flips
+#         to webReady, and the day came: eleven of seventeen surfaces are drawn
+#         in a browser now.
+for id in $(grep -oE "id = ${q}[a-z-]+${q}," "$kidmanifest" | sed -E "s/id = ${q}//; s/${q},//" || true); do
+  block=$(awk -v want="id = ${q}$id${q}," '
+    index($0, want) { found = 1 }
+    found { print; if (/^        \),?$/) exit }
+  ' "$kidmanifest")
+  case "$block" in
+    *"webReady = true"*) ;;
+    *) continue ;;
+  esac
+  rules=$(printf '%s\n' "$block" | grep -oE "rules = listOf\([^)]*\)" | grep -oE "${q}[A-Za-z][A-Za-z0-9_.]*${q}" | tr -d "$q" || true)
+  for fn in $rules; do
+    leaf=${fn##*.}
+    # Every shape a rule can take. The generic arm matters - `fun <S :
+    # PinnableSource> resolvePins(` puts a type parameter between the keyword
+    # and the name - and so does `object`: a rule may name a whole module of
+    # them (RecentSearches, SearchRank), and the old clause skipped every
+    # capitalised name rather than look for one.
+    grep -rqE "(fun|val|const val|object|class|interface) (<[^>]+> )?$leaf\b" core/src/main crawl/src/main 2>/dev/null ||
+      guard_fail "KidSurface says \"$id\" is drawn in a browser and decided by $fn, and no fun/val called $leaf exists in :core or :crawl. The hub cannot call anything in :app, so either that rule has not moved yet - in which case the surface is not webReady - or the name is wrong and the manifest is describing a rule nobody runs."
+  done
 done
 #     (f) THE PHONE READS IT TOO. The manifest's own KDoc says a shelf cannot
 #         be described differently on two faces, and HubKidHome builds the You

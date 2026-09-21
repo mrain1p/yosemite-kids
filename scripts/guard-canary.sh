@@ -446,6 +446,15 @@ canary 62 "$KIDSURF" \
   "not drawn on the television and say nothing" \
   'sed -i "s/tvWhy = \"Reached from the rail/onTv = false, tvWhyX = \"Reached from the rail/" "$KIDSURF"'
 
+# The clause this case proves was scaffolding for a year of surfaces: it
+# grepped for every rule name and threw the answer away. Eleven surfaces are
+# drawn in a browser now, so a rule still stranded in :app is a page the hub
+# cannot build - and the manifest was the only thing claiming it could.
+canary 62 "$KIDSURF" \
+  "a drawn surface decided by a rule the hub cannot reach" \
+  "no fun/val called forKidsCanary exists in :core or :crawl" \
+  'sed -i "s/listOf(\"SafeText.forKids\")/listOf(\"SafeText.forKidsCanary\")/" "$KIDSURF"'
+
 canary 70 "$HUBWEB" \
   "a browser's row ranks taken as sent" \
   "HomeRows.withOrder" \

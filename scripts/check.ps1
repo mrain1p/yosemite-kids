@@ -2196,6 +2196,32 @@ if ($missingWhy.Count -gt 0) {
     Fail-Guard "these kid surfaces are not on both faces, or not yet in the browser, and say nothing about why: $($missingWhy -join ' ')
 A reason is what stops the next session re-deciding it, and what tells the owner whether it is work or a policy."
 }
+#     (d) A DRAWN SURFACE'S RULES ARE SHARED. Every name in a `rules` list is
+#         a function or constant the surface's contents are decided by, and for
+#         a surface the BROWSER draws it must live in :core or :crawl - the hub
+#         cannot call anything in :app. A surface not yet in a browser is
+#         allowed to name a rule still stranded there, and (e) reports those.
+$sharedRuleText = (@(Get-ChildItem -Recurse -File -Filter *.kt core/src/main, crawl/src/main) |
+    ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n"
+foreach ($blk in $surfaceBlocks) {
+    $body = $blk.Groups[1].Value
+    if ($body -notmatch 'webReady = true') { continue }
+    $idMatch = [regex]::Match($body, 'id = "([a-z-]+)"')
+    if (-not $idMatch.Success) { continue }
+    $id = $idMatch.Groups[1].Value
+    $rulesMatch = [regex]::Match($body, 'rules = listOf\(([^)]*)\)')
+    if (-not $rulesMatch.Success) { continue }
+    foreach ($m in [regex]::Matches($rulesMatch.Groups[1].Value, '"([A-Za-z][A-Za-z0-9_.]*)"')) {
+        $fn = $m.Groups[1].Value
+        $leaf = $fn.Split('.')[-1]
+        # The generic arm matters - `fun <S : PinnableSource> resolvePins(` puts
+        # a type parameter between the keyword and the name - and so does
+        # `object`: a rule may name a whole module of them (RecentSearches).
+        if ($sharedRuleText -notmatch "(fun|val|const val|object|class|interface) (<[^>]+> )?$([regex]::Escape($leaf))\b") {
+            Fail-Guard "KidSurface says `"$id`" is drawn in a browser and decided by $fn, and no fun/val called $leaf exists in :core or :crawl. The hub cannot call anything in :app, so either that rule has not moved yet - in which case the surface is not webReady - or the name is wrong and the manifest is describing a rule nobody runs."
+        }
+    }
+}
 #     (f) THE PHONE READS IT TOO. The manifest's own KDoc says a shelf cannot
 #         be described differently on two faces, and HubKidHome builds the You
 #         tab from YOU_SHELVES - but :app had no reference to KidSurface at
