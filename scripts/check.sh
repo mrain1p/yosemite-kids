@@ -1716,7 +1716,11 @@ The kid origin and the admin origin exist precisely so they cannot read each oth
 #     own object: with one shared counter, a six-year-old mistyping their
 #     password locks the console for fifteen minutes, then thirty, then an
 #     hour - a throttle causing the exact failure it exists to prevent.
-grep -q "HubRate(" "$kidsrv" ||
+#     Matched on the CLAIM bucket specifically. A second HubRate in this file
+#     — the poster meter — satisfied a bare "HubRate(" and left this clause
+#     answering a question nobody asked. The canary caught it on the push that
+#     added the second one, which is exactly what that harness is for.
+grep -q "HubRate(MAX_CLAIMS_PER_WINDOW" "$kidsrv" ||
   guard_fail "$kidsrv has no HubRate of its own. /kid/claim is unauthenticated and must be throttled - in ITS OWN bucket, never on HubSessions' counter, which is what a parent signs in against."
 grep -q "HubKidLock(" "$kidsrv" ||
   guard_fail "$kidsrv has no HubKidLock. A password is guessable in a way a one-shot code is not; the per-kid lock is what bounds that, and it must never be HubSessions."

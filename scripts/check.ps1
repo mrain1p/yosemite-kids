@@ -1989,7 +1989,10 @@ if ($cors.Count -gt 0) {
 #     The parents' session is a HEADER the console attaches, never a cookie;
 #     the kid's cookie is scoped to /kid/ and the console never reads it; and
 #     the kid's throttle is its own object, never HubSessions.
-if (-not $kidText.Contains("HubRate(")) {
+#     Matched on the CLAIM bucket specifically. A second HubRate in this file
+#     — the poster meter — satisfied a bare "HubRate(" and left this clause
+#     answering a question nobody asked.
+if (-not $kidText.Contains("HubRate(MAX_CLAIMS_PER_WINDOW")) {
     Fail-Guard "$kidSrv has no HubRate of its own. /kid/claim is unauthenticated and must be throttled - in ITS OWN bucket, never on HubSessions' counter, which is what a parent signs in against."
 }
 if (-not $kidText.Contains("HubKidLock(")) {
