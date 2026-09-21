@@ -2680,6 +2680,44 @@ foreach ($page in @("hub/src/main/resources/web/kid.html", "hub/src/main/resourc
     }
 }
 
+
+# 75. A reply from somewhere else is read with a limit on it.
+#     `ResponseBody.string()` reads whatever arrives. The LAN server half of
+#     Pairing.kt has bounded every read since it was written — request line,
+#     header count, body, discard — with a comment saying why, because it
+#     faces the whole LAN before any token is checked. The CLIENT half faced
+#     the same LAN and read without a limit at fifteen call sites, and the
+#     hub enrolment at two more: a peer that answers with an endless body
+#     takes the phone down with it, and the phone is where a parent goes to
+#     fix things.
+#
+#     The exemptions are the clients that talk to the internet rather than to
+#     the house, and they are NAMED rather than pattern-matched away, so the
+#     gate prints them on every run and the list can only shrink on purpose.
+$bodyExempt = @("Captions.kt", "Directory.kt", "DirectorySubmitter.kt", "SponsorBlock.kt",
+    "Updater.kt", "AiScreener.kt", "OkHttpDownloader.kt", "YouTubeRepository.kt")
+$bodySeen = @()
+foreach ($hit in @(Get-ChildItem -Recurse -File -Filter *.kt app/src/main, crawl/src/main, core/src/main, hub/src/main |
+        Select-String -Pattern 'body\?\.string\(\)|body!!\.string\(\)')) {
+    $base = Split-Path $hit.Path -Leaf
+    if ($bodyExempt -contains $base) { $bodySeen += $base; continue }
+    Fail-Guard "unbounded body read in ${base}: $($hit.Line.Trim())
+A reply from a device on the LAN is read into memory whole by body.string(), and
+what answered is whatever was on the port a QR once named. Use peekBody(cap) with
+a cap the other end would not have exceeded — LanClient.REPLY_CAP is the pattern.
+If this client talks to the internet rather than to the house, add it to
+`$bodyExempt in both gates and say so."
+}
+$bodySeen = @($bodySeen | Sort-Object -Unique)
+foreach ($base in $bodyExempt) {
+    if ($bodySeen -notcontains $base) {
+        Fail-Guard "$base no longer reads a body unbounded: take it out of guard 75's exemption list in check.sh and check.ps1. An exemption that outlives its reason is how the list stops meaning anything."
+    }
+}
+if ($bodySeen.Count -gt 0) {
+    Write-Host "   guard 75: still reading a reply unbounded (internet clients, each wants a cap): $($bodySeen -join ' ')"
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

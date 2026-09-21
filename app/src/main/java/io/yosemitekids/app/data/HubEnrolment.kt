@@ -241,6 +241,21 @@ object HubEnrolment {
     /** What to tell a parent when a 429 carries no number of its own. */
     private const val DEFAULT_RETRY_AFTER_SECONDS = 15 * 60
 
+    /**
+     * At most this much of the hub's reply is ever read into memory.
+     *
+     * The same rule the LAN client is held to, for the same reason: `root`
+     * is an address a parent typed or a QR carried, and whatever answers on
+     * it has said what it is and been believed. Nothing this file asks for is
+     * larger than a claim outcome or a refusal; a body past the cap arrives
+     * truncated and fails to parse, which is the right answer for a reply
+     * that long.
+     */
+    private val REPLY_CAP = 256L * 1024
+
+    private fun okhttp3.Response.text(): String =
+        runCatching { peekBody(REPLY_CAP).string() }.getOrDefault("")
+
     private fun post(root: String, path: String, body: String, adminToken: String?): Pair<Int, String> {
         val req = okhttp3.Request.Builder()
             .url("$root$path")
@@ -251,14 +266,14 @@ object HubEnrolment {
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
         client.newCall(req).execute().use { resp ->
-            return resp.code to (resp.body?.string().orEmpty())
+            return resp.code to resp.text()
         }
     }
 
     private fun get(root: String, path: String): Pair<Int, String> {
         val req = okhttp3.Request.Builder().url("$root$path").get().build()
         client.newCall(req).execute().use { resp ->
-            return resp.code to (resp.body?.string().orEmpty())
+            return resp.code to resp.text()
         }
     }
 }

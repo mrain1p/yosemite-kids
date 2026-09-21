@@ -2370,6 +2370,49 @@ for page in hub/src/main/resources/web/kid.html hub/src/main/resources/web/index
     guard_fail "$(basename "$page") no longer declares a 44px floor under its tap targets. Both pages are used by a hand in a hurry - a child's on a tablet, a parent's on a phone - and 44 is the one figure Android and iOS agree on. If a control genuinely cannot be that tall, say so beside it rather than dropping the rule for the page."
 done
 
+
+# 75. A reply from somewhere else is read with a limit on it.
+#     `ResponseBody.string()` reads whatever arrives. The LAN server half of
+#     Pairing.kt has bounded every read since it was written - request line,
+#     header count, body, discard - with a comment saying why, because it
+#     faces the whole LAN before any token is checked. The CLIENT half faced
+#     the same LAN and read without a limit at fifteen call sites, and the
+#     hub enrolment at two more: a peer that answers with an endless body
+#     takes the phone down with it, and the phone is where a parent goes to
+#     fix things.
+#
+#     `peekBody(cap)` is the bound, and it is one call.
+#
+#     The exemptions are the clients that talk to the internet rather than to
+#     the house, and they are NAMED here rather than pattern-matched away, so
+#     the gate prints them on every run and the list can only shrink on
+#     purpose. Each still deserves a cap; none of them is a device a QR code
+#     once pointed at.
+bodyreads=$(grep -rn "body?\.string()\|body!!\.string()" --include=*.kt app/src/main crawl/src/main core/src/main hub/src/main || true)
+body_exempt="Captions.kt Directory.kt DirectorySubmitter.kt SponsorBlock.kt Updater.kt AiScreener.kt OkHttpDownloader.kt YouTubeRepository.kt"
+body_seen=""
+while IFS= read -r hit; do
+  [ -n "$hit" ] || continue
+  base=$(basename "${hit%%:*}")
+  case " $body_exempt " in
+    *" $base "*) case " $body_seen " in *" $base "*) ;; *) body_seen="$body_seen $base" ;; esac ;;
+    *) guard_fail "unbounded body read in $base: $hit
+A reply from a device on the LAN is read into memory whole by body.string(), and
+what answered is whatever was on the port a QR once named. Use peekBody(cap) with
+a cap the other end would not have exceeded - LanClient.REPLY_CAP is the pattern.
+If this client talks to the internet rather than to the house, add it to
+body_exempt in both gates and say so." ;;
+  esac
+done <<< "$bodyreads"
+for base in $body_exempt; do
+  case " $body_seen " in
+    *" $base "*) ;;
+    *) guard_fail "$base no longer reads a body unbounded: take it out of guard 75's body_exempt in check.sh and check.ps1. An exemption that outlives its reason is how the list stops meaning anything." ;;
+  esac
+done
+[ -z "$body_seen" ] ||
+  echo "   guard 75: still reading a reply unbounded (internet clients, each wants a cap):$body_seen"
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 

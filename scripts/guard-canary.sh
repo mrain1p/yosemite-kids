@@ -254,6 +254,7 @@ HUBSRV=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 HUBHTTP=hub/src/main/kotlin/io/yosemitekids/hub/HubHttp.kt
 KIDPAGE=hub/src/main/resources/web/kid.html
 CONSOLE=hub/src/main/resources/web/index.html
+PAIRING=app/src/main/java/io/yosemitekids/app/data/Pairing.kt
 HOMESTATE=app/src/main/java/io/yosemitekids/app/ui/HomeState.kt
 TILES=app/src/main/java/io/yosemitekids/app/ui/Tiles.kt
 CHUNKER=crawl/src/main/kotlin/io/yosemitekids/app/data/StreamChunker.kt
@@ -486,6 +487,12 @@ canary 74 "$CONSOLE" \
   "the parent console dropping the floor under a tap target" \
   "no longer declares a 44px floor" \
   'sed -i "s/min-height: 44px/min-height: 33px/" "$CONSOLE"'
+
+
+canary 75 "$PAIRING" \
+  "the phone reading a peer reply with no limit on it" \
+  "unbounded body read in Pairing.kt" \
+  'sed -i "s/if (resp.isSuccessful) resp.text() else null/if (resp.isSuccessful) resp.body?.string() else null/" "$PAIRING"'
 
 echo
 if [ "$failed" -gt 0 ]; then

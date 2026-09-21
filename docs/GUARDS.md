@@ -90,3 +90,4 @@ can still fail (guard 65 requires one from 56 upward).
 | 72 | The crawl runs at the pace the numbers say, on every box. | `crawl/src/main/kotlin/io/yosemitekids/app/data/IndexCrawlRun.kt`, `crawl/src/main/kotlin/io/yosemitekids/app/data/PlaylistCrawlRun.kt`, `crawl/src/test/kotlin/io/yosemitekids/app/CrawlPacingTest.kt`, `hub/src/main`, `app/src/main`, `hub/src/main/kotlin/io/yosemitekids/hub/HubCrawl.kt` | yes |
 | 73 | A heart pressed on the You tab redraws the You tab, on every face. | `app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt`, `hub/src/main/resources/web/kid.html` | yes |
 | 74 | Both pages a family touches declare the same floor under a tap target. | `hub/src/main/resources/web/kid.html`, `hub/src/main/resources/web/index.html` | yes |
+| 75 | A reply from somewhere else is read with a limit on it. | `app/src/main`, `crawl/src/main`, `core/src/main`, `hub/src/main` | yes |

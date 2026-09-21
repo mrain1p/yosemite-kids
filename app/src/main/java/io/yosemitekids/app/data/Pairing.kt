@@ -1285,6 +1285,42 @@ object DeviceKind {
 object LanClient {
 
     /**
+     * At most this much of a peer's reply is ever read into memory.
+     *
+     * `ResponseBody.string()` reads whatever arrives. What is at the other
+     * end of these calls is a device on a home LAN that said what it was and
+     * was believed: a television, a NAS, or whatever else answered on the
+     * port a QR code once named.
+     *
+     * The SERVER half of this file has bounded every read since it was
+     * written - the request line, the header count, the body, the discard -
+     * with a comment saying why, because it faces the LAN before any token is
+     * checked. The client half faces the same LAN and read without a limit at
+     * fifteen call sites. A peer that answers with an endless body takes the
+     * phone down with it, and the phone is where a parent goes to fix things.
+     *
+     * The numbers are the server's own ([MAX_BODY_BYTES], and
+     * [MAX_INDEX_BODY_BYTES] for the one route that carries a whole channel's
+     * video list), so this side accepts no more than the other side would
+     * have sent.
+     */
+    private const val REPLY_CAP = 1024L * 1024
+
+    /** For `/index`, which is a deep channel's whole listing. */
+    private const val INDEX_REPLY_CAP = 8L * 1024 * 1024
+
+    /**
+     * A peer's reply, bounded; null when it could not be read at all.
+     *
+     * `peekBody` reads at most [cap] bytes and no more. A body past the cap
+     * arrives truncated, which then fails to parse - and failing to parse is
+     * the right answer for a reply that long, because nothing this client
+     * asks for is that big.
+     */
+    private fun okhttp3.Response.text(cap: Long = REPLY_CAP): String? =
+        runCatching { peekBody(cap).string() }.getOrNull()
+
+    /**
      * This device's own pairing token, stamped on every outbound call as
      * `X-Device-Id`.
      *
@@ -1457,7 +1493,7 @@ object LanClient {
                         .build()
                 ).execute().use { resp ->
                     if (resp.isSuccessful) {
-                        val json = JSONObject(resp.body?.string().orEmpty())
+                        val json = JSONObject(resp.text().orEmpty())
                         return (host to port) to json.optString("token").ifEmpty { null }
                     }
                     // Answered but refused us (403: another family's device, or
@@ -1550,7 +1586,7 @@ object LanClient {
                         resp.code == 404 -> UpdateAnswer(NO_ROUTE, null, null)
                         !resp.isSuccessful -> null
                         else -> {
-                            val json = JSONObject(resp.body?.string().orEmpty())
+                            val json = JSONObject(resp.text().orEmpty())
                             UpdateAnswer(
                                 json.getString("status"),
                                 json.optString("versionName").ifEmpty { null },
@@ -1574,7 +1610,7 @@ object LanClient {
                     )
                     return@withContext null
                 }
-                val json = JSONObject(resp.body?.string().orEmpty())
+                val json = JSONObject(resp.text().orEmpty())
                 DeviceStatus(
                     json.getString("hash"),
                     json.optLong("updatedAt", 0L),
@@ -1674,7 +1710,7 @@ object LanClient {
     suspend fun fetchConfig(device: PairedDevice): String? = withContext(Dispatchers.IO) {
         runCatching {
             request(device, "GET", "/config", null).use { resp ->
-                if (resp.isSuccessful) resp.body?.string() else null
+                if (resp.isSuccessful) resp.text() else null
             }
         }.getOrNull()
     }
@@ -1712,7 +1748,7 @@ object LanClient {
                     JSONObject().put("name", myName).put("token", myToken).toString(), null
                 ).use { resp ->
                     if (!resp.isSuccessful) null
-                    else JSONObject(resp.body?.string().orEmpty()).optString("status").ifEmpty { null }
+                    else JSONObject(resp.text().orEmpty()).optString("status").ifEmpty { null }
                 }
             }.getOrNull()
         }
@@ -1723,7 +1759,7 @@ object LanClient {
             runCatching {
                 raw(host, port, "GET", "/pair-status?me=$myToken", null, null).use { resp ->
                     if (!resp.isSuccessful) null
-                    else JSONObject(resp.body?.string().orEmpty()).optString("status").ifEmpty { null }
+                    else JSONObject(resp.text().orEmpty()).optString("status").ifEmpty { null }
                 }
             }.getOrNull()
         }
@@ -1734,7 +1770,7 @@ object LanClient {
             runCatching {
                 request(device, "GET", "/pair-pending", null).use { resp ->
                     if (!resp.isSuccessful) return@withContext emptyList()
-                    val arr = org.json.JSONArray(resp.body?.string().orEmpty())
+                    val arr = org.json.JSONArray(resp.text().orEmpty())
                     (0 until arr.length()).map { i ->
                         val o = arr.getJSONObject(i)
                         o.getString("name") to o.getString("token")
@@ -1748,7 +1784,7 @@ object LanClient {
         withContext(Dispatchers.IO) {
             runCatching {
                 request(device, "GET", "/looks", null).use { resp ->
-                    if (resp.isSuccessful) resp.body?.string() else null
+                    if (resp.isSuccessful) resp.text() else null
                 }
             }.getOrNull()
         }
@@ -1759,7 +1795,7 @@ object LanClient {
             val query = profileId?.let { "?profile=$it" } ?: ""
             runCatching {
                 request(device, "GET", "/stats$query", null).use { resp ->
-                    if (resp.isSuccessful) resp.body?.string() else null
+                    if (resp.isSuccessful) resp.text() else null
                 }
             }.getOrNull()
         }
@@ -1794,7 +1830,7 @@ object LanClient {
     suspend fun fetchWatchState(device: PairedDevice): String? = withContext(Dispatchers.IO) {
         runCatching {
             request(device, "GET", "/watchstate", null).use { resp ->
-                if (resp.isSuccessful) resp.body?.string() else null
+                if (resp.isSuccessful) resp.text() else null
             }
         }.getOrNull()
     }
@@ -1810,7 +1846,7 @@ object LanClient {
     suspend fun fetchVerdicts(device: PairedDevice): String? = withContext(Dispatchers.IO) {
         runCatching {
             request(device, "GET", "/verdicts", null).use { resp ->
-                if (resp.isSuccessful) resp.body?.string() else null
+                if (resp.isSuccessful) resp.text() else null
             }
         }.getOrNull()
     }
@@ -1834,7 +1870,7 @@ object LanClient {
     suspend fun fetchUsage(device: PairedDevice): String? = withContext(Dispatchers.IO) {
         runCatching {
             request(device, "GET", "/usage", null).use { resp ->
-                if (resp.isSuccessful) resp.body?.string() else null
+                if (resp.isSuccessful) resp.text() else null
             }
         }.getOrNull()
     }
@@ -1860,7 +1896,7 @@ object LanClient {
             runCatching {
                 val headers = if (pull) mapOf("X-Index-Pull" to "1") else emptyMap()
                 request(device, "GET", "/index-status", null, headers).use { resp ->
-                    if (resp.isSuccessful) resp.body?.string() else null
+                    if (resp.isSuccessful) resp.text() else null
                 }
             }.getOrNull()
         }
@@ -1875,7 +1911,8 @@ object LanClient {
         withContext(Dispatchers.IO) {
             runCatching {
                 request(device, "GET", "/index?source=$sourceId", null).use { resp ->
-                    if (resp.isSuccessful) resp.body?.string() else null
+                    // The one route that carries a whole channel listing.
+                    if (resp.isSuccessful) resp.text(INDEX_REPLY_CAP) else null
                 }
             }.getOrNull()
         }
@@ -1894,7 +1931,7 @@ object LanClient {
             runCatching {
                 request(device, "GET", "/admins", null).use { resp ->
                     if (!resp.isSuccessful) return@withContext emptyList()
-                    val arr = org.json.JSONArray(resp.body?.string().orEmpty())
+                    val arr = org.json.JSONArray(resp.text().orEmpty())
                     (0 until arr.length()).map { i ->
                         val o = arr.getJSONObject(i)
                         o.getString("name") to o.getString("token")
