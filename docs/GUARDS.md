@@ -93,3 +93,4 @@ can still fail (guard 65 requires one from 56 upward).
 | 75 | A reply from somewhere else is read with a limit on it. | `app/src/main`, `crawl/src/main`, `core/src/main`, `hub/src/main` | yes |
 | 76 | The map names every file it is a map of. | `docs/ARCHITECTURE.md`, `app/src/main`, `core/src/main`, `crawl/src/main`, `hub/src/main` | yes |
 | 77 | A test that reaches real YouTube says so in its own first lines. | `app/src/test/java` | yes |
+| 78 | Neither page works out a day for itself. | `hub/src/main/resources/web/kid.html`, `hub/src/main/resources/web/index.html` | yes |

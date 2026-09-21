@@ -138,7 +138,22 @@ object HubWeb {
          */
         browsers: HubBrowsers? = null,
         /** What the clients have reported going wrong, for the Devices page. Null in tests that have none. */
-        reports: HubReports? = null
+        reports: HubReports? = null,
+        /**
+         * Today's screen time per kid, from the hub's own clock and the
+         * family's own zone. Null on a hub built without a policy, which the
+         * page renders as no bar rather than as an empty one.
+         *
+         * It is here because the console had started answering the question
+         * itself: `bonusToday()` in index.html re-implemented `Grants.forKid`
+         * plus `Budget.bonusMs` in JavaScript, bucketed by `new Date()` — the
+         * PARENT's clock, in whatever zone that phone is in, where every
+         * other face buckets by `homeZone`. index.html contains no mention of
+         * homeZone at all. A parent travelling, or opening the console either
+         * side of local midnight, was reading a bonus for a different day than
+         * the one the hub was enforcing.
+         */
+        policy: HubPolicy? = null
     ): String {
         val config = runCatching { store.load() }.getOrElse { Whitelist(emptyList(), emptySet()) }
         // Keyless, and explicitly so. `config` comes off the hub's own disk,
@@ -302,6 +317,8 @@ object HubWeb {
             // bookkeeping, and until now nothing rendered it anywhere but the
             // phone. See [changesJson].
             .put("changes", changesJson(config))
+            // Today, per kid, decided where every other face's day is decided.
+            .put("today", todayJson(config, policy))
             // What the AI is holding back, and what it blocked. Null on a hub
             // built without a verdict store at all, which the page renders as
             // "nothing here yet" rather than as an error.
@@ -546,6 +563,44 @@ object HubWeb {
      * profile it was given, so what is withheld here must not read as a
      * removal on the way back.
      */
+    /**
+     * Each kid's day, as the console may draw it.
+     *
+     * **The figure is the whole family's, not one screen's.** `timeFor` with
+     * no viewer counts every device under the default per-device budget,
+     * which is the strictest reading and the right one for a parent: the
+     * question a console answers is "how much has Ada watched today", not
+     * "what is left on the iPad in her hands". A child's own bar, on their
+     * own tablet, is the per-browser figure and will legitimately differ —
+     * so `shared` rides along, because a page that drew the two as the same
+     * number would be lying to whichever parent compared them.
+     *
+     * Absent for a kid with no budget: null is not zero, and a family with no
+     * rule gets no bar rather than an empty one.
+     */
+    private fun todayJson(config: Whitelist, policy: HubPolicy?): JSONObject {
+        val out = JSONObject()
+        policy ?: return out
+        config.profiles.forEach { p ->
+            val verdict = runCatching { policy.timeFor(p.id, viewer = null) }.getOrNull() ?: return@forEach
+            val today = verdict.today ?: return@forEach
+            out.put(
+                p.id,
+                JSONObject()
+                    .put("baseMinutes", (today.baseMs / 60_000L).toInt())
+                    .put("bonusMinutes", (today.bonusMs / 60_000L).toInt())
+                    .put("budgetMinutes", (today.budgetMs / 60_000L).toInt())
+                    .put("spentMinutes", (today.spentMs / 60_000L).toInt())
+                    .put("leftMinutes", (today.leftMs / 60_000L).toInt())
+                    .put("spentFraction", today.spentFraction)
+                    .put("bonusFraction", today.bonusFraction)
+                    .put("shared", config.limitsFor(p.id).sharesBudget)
+                    .put("day", verdict.day ?: "")
+            )
+        }
+        return out
+    }
+
     private fun withoutCredentials(raw: JSONObject): JSONObject {
         raw.remove("master")
         raw.remove("deviceProfiles")

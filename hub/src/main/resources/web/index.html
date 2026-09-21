@@ -1097,6 +1097,11 @@
    * Same reason as endOfTodayLocal, and the same division of labour: the day
    * a grant counts on is the family's, which this container does not know, so
    * the browser sends it and the hub only refuses one nowhere near its own.
+   *
+   * **Only for stamping a grant on the way out, and for naming a downloaded
+   * file.** No number this page DRAWS may be bucketed by it: a day this page
+   * decides is a day nothing else in the product agrees with. What today
+   * holds is `todayFor`, which is the hub's answer.
    */
   function todayLocal() {
     var d = new Date();
@@ -1108,16 +1113,27 @@
   var BONUS_PRESETS = [5, 15, 30, 60];
 
   /**
-   * Minutes already given today, read out of the config itself: a co-parent's
-   * tap on their phone counts here as soon as it has synced, which is the
-   * point of grants being merged config rather than a LAN call.
+   * One kid's day, as the hub is enforcing it.
+   *
+   * This used to be `bonusToday`, which re-implemented `Grants.forKid` plus
+   * `Budget.bonusMs` in JavaScript and bucketed them by `todayLocal()` — the
+   * PARENT's clock, in whatever zone that phone is in, where every other face
+   * buckets by the family's `homeZone`. This file contains no mention of
+   * homeZone at all. A parent travelling, or opening the console either side
+   * of local midnight, was reading a bonus for a different day than the one
+   * the hub was enforcing, with nothing on the page to say so.
+   *
+   * The hub answers it now (`/api/state`'s `today` block, built by the same
+   * `Budget.today` the kid page's countdown comes from), so the console and
+   * the child cannot disagree about a day. Undefined for a kid with no
+   * budget, which is not zero: a family with no rule gets no figure at all.
+   *
+   * Note what it counts: every screen, not one. Under the default per-device
+   * budget a child's own tablet shows a smaller number, and `shared` says
+   * which kind of day this is.
    */
-  function bonusToday(kidId) {
-    var today = todayLocal();
-    return (cfg().grants || []).reduce(function (sum, g) {
-      var mine = !g.kid || g.kid === kidId;
-      return sum + (g.date === today && mine ? (g.minutes || 0) : 0);
-    }, 0);
+  function todayFor(kidId) {
+    return (state.today || {})[kidId];
   }
 
   /**
@@ -1175,7 +1191,7 @@
     }));
     box.appendChild(line);
 
-    var already = bonusToday(kidId);
+    var already = (todayFor(kidId) || {}).bonusMinutes || 0;
     if (already > 0) {
       box.appendChild(el("p", "sub", already + " bonus minutes today already, from every parent and every phone."));
     }
@@ -1453,7 +1469,7 @@
     }
     var windows = (lim.windows || []).length;
     if (windows) parts.push(windows === 1 ? "1 blocked time" : windows + " blocked times");
-    var bonus = bonusToday(k.id);
+    var bonus = (todayFor(k.id) || {}).bonusMinutes || 0;
     if (bonus > 0) parts.push("+" + bonus + " min today");
     return parts.length ? parts.join(" · ") : "No limits set";
   }

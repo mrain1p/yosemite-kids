@@ -508,6 +508,12 @@ canary 77 "$PROBE" \
   "carries no LIVE-YOUTUBE marker" \
   'sed -i "s/LIVE-YOUTUBE/LIVE-SOMETHING/" "$PROBE"'
 
+
+canary 78 "$CONSOLE" \
+  "the console working out a day for itself again" \
+  "reads the grant list" \
+  'sed -i "s/var BONUS_PRESETS = /var canaryGrants = state.config.grants; var BONUS_PRESETS = /" "$CONSOLE"'
+
 echo
 if [ "$failed" -gt 0 ]; then
   echo "${RED}$failed of $((passed + failed)) canaries did not fire.${OFF}"

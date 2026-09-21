@@ -2785,6 +2785,45 @@ if ($liveMarked.Count -eq 0) {
     Fail-Guard "no test carries a LIVE-YOUTUBE marker any more, so the exclusion every gate derives from it now excludes nothing. If the live tests are gone, take the derivation out too rather than leaving a mechanism that reads as working."
 }
 
+
+# 78. Neither page works out a day for itself.
+#     Guard 50 holds the hub to :core's Budget and greps `--include=*.kt`, so
+#     it never looked at the two files a family actually reads. And guard 61
+#     inspects kid.html alone, so the parent console was unpoliced entirely.
+#
+#     Both gaps were already being used. index.html had `bonusToday()`, a
+#     JavaScript re-implementation of Grants.forKid plus Budget.bonusMs,
+#     bucketed by `new Date()` — the PARENT's clock, in whatever zone that
+#     phone happens to be in, where every other face buckets by the family's
+#     homeZone. The file contains no mention of homeZone at all.
+#
+#     A page may DISPLAY a number the hub sent, and may stamp a grant with the
+#     parent's own day (the hub refuses one nowhere near its own). It may not
+#     read the grant list, and it may not multiply a session length by a
+#     session count.
+foreach ($page in @("hub/src/main/resources/web/kid.html", "hub/src/main/resources/web/index.html")) {
+    $base = Split-Path $page -Leaf
+    $lines = @(Get-Content $page | Select-String -Pattern '(cfg\(\)|config|state)\.grants|"grants"|''grants''' |
+        Where-Object { $_.Line -notmatch '^\s*[*/]' })
+    if ($lines.Count -gt 0) {
+        Fail-Guard "$base reads the grant list:
+$($lines -join "`n")
+Summing grants is Budget.bonusMs, and which grants are today's is Grants.forKid
+— both in :core, both keyed on the family's homeZone, neither of which a browser
+knows. Read the hub's answer instead (/api/state's ``today`` block, or the kid
+page's time block), which is built by the same Budget.today the countdown is."
+    }
+    $mult = @(Get-Content $page | Select-String -Pattern '(weekdaySessions|weekendSessions|sessionMinutes)[^)]*\*|\*[^;]*(weekdaySessions|weekendSessions)' |
+        Where-Object { $_.Line -notmatch '^\s*[*/]' })
+    if ($mult.Count -gt 0) {
+        Fail-Guard "$base multiplies a session length by a session count:
+$($mult -join "`n")
+That is Budget.dayMs, which also decides that BOTH halves are required and that
+a missing one means no rule rather than a limit of zero. A page that guessed the
+missing half would invent a limit a parent never set."
+    }
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

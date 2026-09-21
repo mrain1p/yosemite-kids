@@ -727,7 +727,7 @@ class HubServer(
                 ex, 200,
                 HubWeb.state(
                     store, tokens, dataDir, now(), index, screening, master, crawl, startedAt,
-                    browsers = browsers, reports = reports
+                    browsers = browsers, reports = reports, policy = policy
                 )
             )
 
