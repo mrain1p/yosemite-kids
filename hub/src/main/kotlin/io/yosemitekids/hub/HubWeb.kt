@@ -6,6 +6,7 @@ import io.yosemitekids.app.data.ChannelIndex
 
 import io.yosemitekids.app.data.AiScreener
 import io.yosemitekids.app.data.ConfigJson
+import io.yosemitekids.app.data.ControlKind
 import io.yosemitekids.app.data.Grant
 import io.yosemitekids.app.data.FamilyDay
 import io.yosemitekids.app.data.Page
@@ -601,7 +602,7 @@ object HubWeb {
             keys.forEach { if (patch.isNull(it)) doc.remove(it) else doc.put(it, patch.get(it)) }
             mintKidIds(doc)
             refuseDistantPauses(doc, current, now)
-            val next = ConfigJson.fromJson(scrubPatch(doc, current).toString())
+            val next = ConfigJson.fromJson(withDeclaredRanges(scrubPatch(doc, current)).toString())
             // Only when the patch actually named `home`. Running it on every
             // patch would re-derive a row nobody touched, and a row four cards
             // long from a build that allows four would be trimmed by an edit
@@ -847,6 +848,56 @@ object HubWeb {
      * restart — and worse, it would ride out to every device in the next push
      * before vanishing, which is a credential travelling for no reason.
      */
+    /**
+     * Every NUMBER control's declared range, by the JSON path it writes.
+     *
+     * `SettingsControl.min`/`max` carry the words "the range the phone
+     * enforces, mirrored by the hub". The phone does enforce them. The hub
+     * did not: the console put them on the `<input>` as min/max attributes,
+     * which stop a spinner and nothing else. A typed number, a paste, an
+     * older build, a co-parent's tab, a script - anything that was not this
+     * page being used the way it was drawn went onto the disk unchecked, and
+     * from there to every device in the house.
+     *
+     * A session of 100000 minutes is not a session, a break of 0 is a break
+     * that never ends, and a child aged 0 is a screening prompt with a
+     * nonsense in it.
+     */
+    private val DECLARED_RANGES: List<Pair<String, IntRange>> =
+        SettingsSurface.controls
+            .filter { it.kind == ControlKind.NUMBER && it.min != null && it.max != null }
+            .map { it.json to (it.min!!..it.max!!) }
+
+    /**
+     * Hold a patch to those ranges, at the family level and for every kid.
+     *
+     * Clamped rather than refused: the rest of the patch is usually fine, the
+     * console redraws from what was stored, and a parent who typed 500 then
+     * sees 240 - which is the number that is actually in force. Refusing the
+     * whole edit would lose the four fields beside it and say so in a banner.
+     *
+     * Only an actual number is touched. A missing field, a null and a string
+     * are left exactly as they arrived, for ConfigJson's own lenient parse to
+     * decide about: guessing here would turn "this build does not know that
+     * field" into a value the family never chose.
+     */
+    private fun withDeclaredRanges(doc: JSONObject): JSONObject {
+        fun clampIn(root: JSONObject?) {
+            root ?: return
+            DECLARED_RANGES.forEach { (path, range) ->
+                val parts = path.split('.')
+                val holder = if (parts.size == 1) root else root.optJSONObject(parts.first()) ?: return@forEach
+                val leaf = parts.last()
+                val n = (holder.opt(leaf) as? Number)?.toInt() ?: return@forEach
+                if (n !in range) holder.put(leaf, n.coerceIn(range))
+            }
+        }
+        clampIn(doc)
+        val profiles = doc.optJSONArray("profiles") ?: return doc
+        for (i in 0 until profiles.length()) clampIn(profiles.optJSONObject(i))
+        return doc
+    }
+
     private fun scrubPatch(doc: JSONObject, current: Whitelist): JSONObject {
         doc.optJSONObject("ai")?.remove("apiKey")
         // Everything [withoutCredentials] withheld, taken from what is stored

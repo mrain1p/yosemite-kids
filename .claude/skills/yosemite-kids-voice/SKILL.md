@@ -107,6 +107,38 @@ Ask, in order:
    difference with no reason recorded is indistinguishable from an omission,
    and the next person will "fix" it or copy it.
 
+## A control says what it does, and undoes it
+
+A control that draws a state can change that state back. This is about
+honesty rather than convenience: a chip with `aria-pressed`, a switch, a
+filled heart, a highlighted chip in a row — each of them is a sentence about
+what is true, and a reader who can see a state and cannot change it has been
+shown a lie about who is in charge.
+
+Two have shipped in this product, both for months, both invisible in review
+because the code reads perfectly:
+
+- The console's per-kid rulings were drawn with `aria-pressed` and only ever
+  **added** the kid to the list. Pressing a pressed chip removed them and put
+  them straight back, so a parent who blocked the wrong child could not take
+  it back from that page at all — they had to edit the document.
+- The console's number fields carried the manifest's `min` and `max` as HTML
+  attributes, which stop a spinner and nothing else. The range was drawn and
+  not enforced, so the page described a rule the box did not have.
+
+So, before shipping a control:
+
+1. **Can the reader get back to where they were?** Press it twice. If the
+   second press is a no-op, either it is not a toggle and must not be drawn
+   as one, or it is a toggle and is missing half its code.
+2. **Is the state it draws the state that is in force?** Two lists that
+   overlap (`allowedFor` and `blockedFor`) can both say yes while the rule
+   that wins says no. Turning one on clears the other.
+3. **Is the limit it draws enforced where the value lands?** A range in the
+   markup is a hint to one browser. The hub takes patches from older builds,
+   other tabs and anything that is not this page; if the range matters, it
+   is enforced on the box, from the same manifest the page drew it from.
+
 ## Words this product uses
 
 | Say | Not |

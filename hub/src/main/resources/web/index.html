@@ -2394,14 +2394,43 @@
     return patch(body);
   }
 
-  /** The same ruling for one child. "Fine for the older one, not the younger." */
+  /** One overlay map, with one kid added to or taken off one video's list. */
+  function overlayWith(key, id, kidId, on) {
+    var map = Object.assign({}, cfg()[key] || {});
+    var next = (map[id] || []).filter(function (k) { return k !== kidId; });
+    if (on) next = next.concat([kidId]);
+    // The key goes away with its last kid: an empty list and no list mean the
+    // same thing to Whitelist.isBlockedFor, and the shorter one is what the
+    // document said before anyone ruled.
+    if (next.length) map[id] = next; else delete map[id];
+    return map;
+  }
+
+  /**
+   * The same ruling for one child. "Fine for the older one, not the younger."
+   *
+   * A toggle, because that is how it is drawn. `kidRuleRow` has always set
+   * aria-pressed on these chips so a parent can see what they decided last
+   * time - and pressing a pressed one took the kid out of the list and put
+   * them straight back, so the answer could not be taken back from this page
+   * at all. A parent who blocked the wrong child had to go and edit the
+   * document, or ask someone who could.
+   *
+   * And the two lists are not independent. `isBlockedFor` is a hard rule
+   * while `allowedFor` only feeds the screener, so a kid in both is blocked
+   * while a chip on this page says "fine for". Turning one on therefore
+   * clears the other - exactly what ruleFamily already does with `blocked`
+   * and `aiAllowed`, one row up.
+   */
   function ruleForKid(id, kidId, allow) {
     var key = allow ? "allowedFor" : "blockedFor";
-    var map = Object.assign({}, cfg()[key] || {});
-    var had = (map[id] || []).filter(function (k) { return k !== kidId; });
-    map[id] = had.concat([kidId]);
+    var other = allow ? "blockedFor" : "allowedFor";
+    var on = ((cfg()[key] || {})[id] || []).indexOf(kidId) >= 0;
     var body = {};
-    body[key] = map;
+    body[key] = overlayWith(key, id, kidId, !on);
+    if (!on && ((cfg()[other] || {})[id] || []).indexOf(kidId) >= 0) {
+      body[other] = overlayWith(other, id, kidId, false);
+    }
     return patch(body);
   }
 
