@@ -35,7 +35,7 @@ function Fail-Guard($message) {
 # sense - and see guard 44, which counts merge()'s parameters, because a
 # `today: String` argument would sail straight past the match below while
 # being precisely the clock this rule exists to keep out.
-foreach ($clockless in @("ConfigMerge", "MasterElection", "UsageLedger")) {
+foreach ($clockless in @("Budget", "ConfigMerge", "MasterElection", "UsageLedger")) {
     $src = Get-Content "core\src\main\kotlin\io\yosemitekids\app\data\$clockless.kt" -Raw
     if ($src -match "currentTimeMillis|Instant\.now|System\.nanoTime") {
         Fail-Guard "$clockless.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."

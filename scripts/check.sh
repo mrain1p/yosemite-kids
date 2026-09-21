@@ -28,14 +28,20 @@ guard_fail() { echo "guard FAILED: $1" >&2; exit 1; }
 q='"'
 
 # The merge must read no clock: that is what makes idempotence and
-# associativity structural rather than test artifacts. The master election
+# associativity structural rather than test artifacts.
+#
+# Budget joined the list the day it grew Budget.today(): its own KDoc has
+# claimed to be "deliberately clockless" since it was written, and nothing
+# checked. A System.currentTimeMillis() in there is a rule that answers
+# differently on a phone in one zone and a container with none, silently, on
+# all three faces at once. The master election
 # is held to the same rule: a "day later" has to be a number a test passes
 # in, not a moment the machine running the test happens to be at.
 # UsageLedger joins them because its join is a merge in exactly the same
 # sense - and see guard 44, which counts merge()'s parameters, because a
 # `today: String` argument would sail straight past the grep below while
 # being precisely the clock this rule exists to keep out.
-for clockless in ConfigMerge MasterElection UsageLedger; do
+for clockless in Budget ConfigMerge MasterElection UsageLedger; do
   if grep -qE "currentTimeMillis|Instant\.now|System\.nanoTime" \
       "core/src/main/kotlin/io/yosemitekids/app/data/$clockless.kt"; then
     guard_fail "$clockless.kt reads a clock. Take the time as a parameter (see ConfigStamp.stamped)."

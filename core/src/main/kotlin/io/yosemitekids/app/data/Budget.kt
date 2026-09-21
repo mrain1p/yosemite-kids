@@ -49,6 +49,110 @@ object Budget {
         legacyBonusMs + grants.sumOf { it.minutes } * 60_000L
 
     /**
+     * Today, as the four numbers anything drawing a day is made of.
+     *
+     * Milliseconds throughout, and that is the whole point of the type. The
+     * floor where a duration becomes a whole minute is the ledger's — see
+     * `UsageLedger`'s cell, "whole **counted** minutes, rounded down" — and
+     * every number above it should stay exact. The phone's own half is exact
+     * to the second and a minutes-shaped return would destroy it; the hub
+     * carries a sub-minute remainder of its own. Rounding is a thing a face
+     * does at the moment it writes a label, once, at the edge.
+     *
+     * ### Why this exists at all
+     *
+     * [dayMs] fuses base and bonus in its last expression and every caller
+     * throws the split away on the next line, so nothing anywhere could say
+     * "40 minutes, and 15 of them a grown-up gave you" without deriving it
+     * again. Two faces had already started: the hub recomputed base and bonus
+     * inside its policy and discarded both, and the parent console had a
+     * *JavaScript* copy of [bonusMs] keyed off the browser's own clock. That
+     * is the drift this module exists to prevent, and it was already shipped.
+     *
+     * ### What it will not take
+     *
+     * No clock, no zone, no `today: String`. The day of the week arrives as a
+     * number and the grants arrive already narrowed to this kid and this day
+     * by `Whitelist.grantsFor`, because a day key is a clock wearing a
+     * different hat — guard 44 names that exact parameter as the one that
+     * would sail past the clockless check at the top of the gate.
+     *
+     * No ledger either. Whose minutes count is [Limits.sharesBudget]'s
+     * question and it is answered in one place; a ledger here would need a
+     * device identity and a second answer to it.
+     *
+     * And no pause. Whether a child may watch *right now* is an enforcement
+     * decision made against an instant, with three other candidates beside it
+     * (the sitting cap, a bedtime window, a parent's pause), and the faces
+     * already take the minimum. This is the arithmetic of the day, which is
+     * true whether or not anyone is watching.
+     */
+    data class Today(
+        /** Sittings × length. Never null here: [today] returns null for "no rule". */
+        val baseMs: Long,
+        /** Grants, plus the legacy LAN bonus. */
+        val bonusMs: Long,
+        /** Counted and post-multiplier, as the ledger keeps it. */
+        val spentMs: Long
+    ) {
+        /** What the day allows in all — exactly what [dayMs] returns. */
+        val budgetMs: Long get() = baseMs + bonusMs
+
+        /** What is left of it, never below zero. */
+        val leftMs: Long get() = (budgetMs - spentMs).coerceAtLeast(0L)
+
+        /**
+         * How much of the day is gone, 0.0..1.0.
+         *
+         * Here and not in a face, because a fraction is arithmetic: a page
+         * that divided for itself would round differently from the hub's own
+         * cut-off and draw a full bar while the video still played.
+         */
+        val spentFraction: Double
+            get() = if (budgetMs <= 0L) 0.0 else (spentMs.toDouble() / budgetMs).coerceIn(0.0, 1.0)
+
+        /**
+         * How much of the day a grown-up added, 0.0..1.0 of the whole.
+         *
+         * Bonus extends the scale rather than sitting inside it — two phones
+         * can each grant and both land, so base+bonus has no ceiling. A bar
+         * drawn from these two fractions is therefore always the whole day,
+         * with the added part visible as a share of it.
+         */
+        val bonusFraction: Double
+            get() = if (budgetMs <= 0L) 0.0 else (bonusMs.toDouble() / budgetMs).coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * [Today] for one kid, from what a face already holds.
+     *
+     * @param limits the resolved rules — `Whitelist.limitsFor(kidId)`.
+     * @param dayOfWeek `Calendar`'s convention, Sunday = 1, as
+     *   `FamilyDay.clockAt` produces it. Taken rather than a Boolean so the
+     *   last weekend test leaves the faces too.
+     * @param legacyBonusMs the old LAN grant's prefs value; 0 on the hub,
+     *   which has never had one.
+     * @param grantsToday already narrowed to this kid and this day.
+     * @param spentMs summed by whoever owns the counter, because each face
+     *   owns a different one: the phone adds a live sub-minute tally to a
+     *   peers' mirror, the hub adds its meter's unsettled remainder to the
+     *   ledger's whole minutes.
+     * @return null when there is no budget at all, which is **not** zero: a
+     *   family with no rule draws no bar, rather than an empty one.
+     */
+    fun today(
+        limits: Limits,
+        dayOfWeek: Int,
+        legacyBonusMs: Long,
+        grantsToday: List<Grant>,
+        spentMs: Long
+    ): Today? {
+        val bonus = bonusMs(legacyBonusMs, grantsToday)
+        val budget = dayMs(limits, isWeekend(dayOfWeek), bonus) ?: return null
+        return Today(baseMs = budget - bonus, bonusMs = bonus, spentMs = spentMs.coerceAtLeast(0L))
+    }
+
+    /**
      * Whether a budget binds on **any** day of the week.
      *
      * "Has this family set a limit at all", asked without knowing what day it
