@@ -746,13 +746,20 @@ class MainViewModel(
      * player computes its own at the playing source's drain rate, which is a
      * different number on purpose.
      */
-    private fun screenTime(): ScreenTimeRead = ScreenTimeRead(
-        remaining = sessionGuard.remainingAll(100),
-        blockReason = sessionGuard.blockReason(100),
-        windows = sessionGuard.windows(),
-        watchedTodayMin = sessionGuard.watchedTodayMin(),
-        budgetTodayMin = sessionGuard.snapshot().budgetTodayMin
-    )
+    private fun screenTime(): ScreenTimeRead {
+        // One snapshot for the two day figures rather than two more reads.
+        // Every one of these methods rolls the day over and writes when it
+        // does, so five calls in one expression was up to five passes over
+        // the same prefs to answer one question.
+        val today = sessionGuard.snapshot()
+        return ScreenTimeRead(
+            remaining = sessionGuard.remainingAll(100),
+            blockReason = sessionGuard.blockReason(100),
+            windows = sessionGuard.windows(),
+            watchedTodayMin = today.watchedTodayMin,
+            budgetTodayMin = today.budgetTodayMin
+        )
+    }
 
     /** Update home-screen tiles without ever disturbing the screen the kid is on. */
     /** Playlist rows whose first page this session already asked YouTube for, so a row never fetches twice. */

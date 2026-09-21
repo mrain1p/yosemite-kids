@@ -748,7 +748,23 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         val sittingWatchedMin: Int,
         val sittingCapMin: Int?,
         val state: String,
-        val breakUntil: String?
+        val breakUntil: String?,
+        /**
+         * What is left of the day, with a parent's pause already applied.
+         *
+         * Here rather than left to the caller because the caller got it
+         * wrong: the parent's kid page subtracted `watchedTodayMin` from
+         * `budgetTodayMin` itself, which is the same arithmetic without the
+         * one line [remainingTodayMin] has always had — `if (isPaused(l))
+         * return 0` — so the card could offer a paused child twenty minutes
+         * while every enforcing path refused them. It also truncated both
+         * halves before subtracting, where the enforcer subtracts in
+         * milliseconds and truncates once: 90 minutes of budget against 44
+         * minutes 30 seconds spent read 45 there and 46 here.
+         *
+         * Null means no rule, never zero, exactly as [budgetTodayMin] does.
+         */
+        val remainingTodayMin: Int?
     )
 
     fun snapshot(): Snapshot {
@@ -775,6 +791,9 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         return Snapshot(
             watchedTodayMin = (watched / 60_000).toInt(),
             budgetTodayMin = budget?.let { (it / 60_000).toInt() },
+            remainingTodayMin = budget?.let {
+                if (isPaused(l)) 0 else (((it - watched).coerceAtLeast(0L)) / 60_000L).toInt()
+            },
             // Through the one sum, or the stats screen would count the LAN
             // grants and not the config-carried ones (guard 16).
             bonusTodayMin = (bonusMs() / 60_000).toInt(),

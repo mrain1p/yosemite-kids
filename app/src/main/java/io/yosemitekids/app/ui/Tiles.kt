@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import io.yosemitekids.app.ui.KidWords
 
 /**
  * One line, always the same tile height; scrolls sideways while focused.
@@ -376,7 +377,12 @@ internal fun SpecialTile(
 @Composable
 internal fun TimeChip(remainingMs: Long) {
     val tokens = kidTokens
-    val urgent = remainingMs <= 5 * 60_000L
+    // KidWords.LOW_SECONDS, not a literal: the amber is a promise about WHEN a
+    // warning starts, and the hub already reads that constant for the kid
+    // page's pill. Two faces disagreeing about it is two different products -
+    // a child told to hurry on the television and not on the tablet, in the
+    // same minute, in the same room.
+    val urgent = remainingMs <= KidWords.LOW_SECONDS * 1000L
     val label = if (urgent) tokens.timeWarning else MaterialTheme.colorScheme.onSurface
     Row(
         verticalAlignment = Alignment.CenterVertically,

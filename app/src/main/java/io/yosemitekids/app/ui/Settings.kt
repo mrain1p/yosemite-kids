@@ -49,6 +49,9 @@ import io.yosemitekids.app.data.YouTubeRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.getValue
+import kotlinx.coroutines.Dispatchers
 
 /** Holds the TV's running LAN server so the settings QR can reference it. */
 object LanServerHolder {
@@ -2358,19 +2361,26 @@ private fun KidErrandCard(
             io.yosemitekids.app.data.ProfileNamespace(context).suffixFor(kid.id)
         )
     }
-    // Keyed on the pause too: a grant or a resume must redraw the bar now, not
-    // on the next visit.
-    val budget = remember(kid.id, kid.limits, familyPausedUntil) {
-        runCatching { guard.dailyBudgetMin(kid.limits) }.getOrNull()
+    // One read, off the main thread, keyed on the pause too: a grant or a
+    // resume must redraw the bar now, not on the next visit.
+    //
+    // It was three `remember` blocks calling three guard methods, and every
+    // one of them can WRITE — `dailyBudgetMin` applies pending grants and the
+    // others roll the day over — so this card did up to three SharedPreferences
+    // writes from a composable body, on the main thread, which the house rules
+    // forbid in as many words. And the fourth line derived `remaining` by
+    // subtracting two already-truncated minutes without the pause check every
+    // enforcing path applies, so a paused child could be offered twenty
+    // minutes here and refused everywhere else.
+    val today by produceState<io.yosemitekids.app.data.SessionGuard.Snapshot?>(
+        null, kid.id, kid.limits, familyPausedUntil
+    ) {
+        value = withContext(Dispatchers.IO) { runCatching { guard.snapshot() }.getOrNull() }
     }
-    val watched = remember(kid.id, kid.limits, familyPausedUntil) {
-        runCatching { guard.watchedTodayMin() }.getOrDefault(0)
-    }
-    val remaining = budget?.let { (it - watched).coerceAtLeast(0) }
-    // Today's granted minutes, from the same guard the rest of the card reads.
-    val bonus = remember(kid.id, kid.limits, familyPausedUntil) {
-        runCatching { guard.snapshot().bonusTodayMin }.getOrDefault(0)
-    }
+    val budget = today?.budgetTodayMin
+    val watched = today?.watchedTodayMin ?: 0
+    val remaining = today?.remainingTodayMin
+    val bonus = today?.bonusTodayMin ?: 0
     // One tone for the label and the bar: they state the same fact, and two
     // thresholds drifting apart would say two different things about it.
     val leftTone = when {
