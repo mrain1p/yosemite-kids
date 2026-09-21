@@ -1028,22 +1028,34 @@ row below is one half of something already right.
   in three files and already wrong; one test runs nowhere at all; four tests
   turn on wall-clock sleeps or mtime granularity; the fixture that seeds a hub
   asserts nothing and runs on every gate.
-- **Medium, robustness (12, three closed):** the per-chunk gate re-parses the
-  whole config twice and every channel's index before every 2 MB; ✅ single-flight
-  on stream resolution (a monitor per video id, so an expired URL mid-video is one
-  extraction rather than eight); ✅ `/kid/thumb` narrowed to the poster hosts and
-  metered per browser; the device's HTTP server has no overall request deadline;
-  `LanClient` reads peer responses unbounded; the two-TV `peerBehind` race; ✅ the
-  playlist pass parks a deleted playlist until the daily refresh instead of asking
-  for it every fifteen minutes for ever.
-- **Medium, console (14, two closed):** ✅ removing a channel now confirms like
+- **Medium, robustness (12, eleven closed):** ✅ the per-chunk gate no longer
+  re-parses the family document before every 2 MB — HubStore keeps the last parse
+  against the file's own (mtime, length); ✅ single-flight on stream resolution (a
+  monitor per video id, so an expired URL mid-video is one extraction rather than
+  eight); ✅ `/kid/thumb` narrowed to the poster hosts and metered per browser;
+  ✅ the device's HTTP server has an overall request deadline, so a caller
+  dribbling a byte every nine seconds can no longer hold a worker thread for ever;
+  ✅ `LanClient` and `HubEnrolment` read a peer's reply through `peekBody` with
+  the server's own caps, and guard 75 names the nine internet clients that still
+  do not; ✅ the kid gate resolves a cookie and records the sighting in one read of
+  browsers.json rather than two; ✅ the playlist pass parks a deleted playlist until
+  the daily refresh instead of asking for it every fifteen minutes for ever.
+  **What is left:** the two-TV `peerBehind` race, which is the one row here whose
+  finding was never written down in enough detail to act on — re-derive it before
+  changing anything, because both merges are idempotent and converge on paper.
+- **Medium, console (14, twelve closed):** ✅ removing a channel now confirms like
   every other destructive action does; ✅ the two messages that were written onto
-  nodes the re-render threw away now survive it; per-kid rulings are one-way but
-  drawn as toggles; the page never refreshes itself; `/api/state` ships every
-  kid's plaintext PIN and password record to the browser; the manifest's declared
-  ranges are enforced only by HTML attributes; ✅ no `Content-Security-Policy`
-  and ✅ no `no-store` on `/api`; touch targets below the 44px floor the kid
-  page enforces.
+  nodes the re-render threw away now survive it; ✅ the per-kid rulings toggle, and
+  turning one on clears the other, because `isBlockedFor` beats `allowedFor`;
+  ✅ the page polls every twenty seconds — only in front, never over a focused
+  field, never while a write is out; ✅ `/api/state` hands the browser no
+  credential at all (the kid PIN, the password record, the master's pairing token
+  and a map keyed by device token all went out on every poll, and the page read
+  one bit of it); ✅ the manifest's declared ranges are clamped on the box, for
+  the family and for every kid; ✅ no `Content-Security-Policy` and ✅ no
+  `no-store` on `/api`; ✅ a 44px tap floor, held by guard 74 on both pages.
+  **What is left:** `index.html` is one 3,400-line file, and the page still
+  decides two or three things the hub should decide.
 - **Medium, docs (18):** `budgetScope` is documented as unbuilt in four places
   and shipped eight releases ago; §2A describes work that shipped in 1.10.0 and
   its anchor can never fire; `CLAUDE.md`'s release steps omit the two that broke

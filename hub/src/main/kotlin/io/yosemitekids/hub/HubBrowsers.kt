@@ -278,6 +278,42 @@ class HubBrowsers(dataDir: File) {
         }
     }
 
+    /**
+     * Resolve a cookie and record the sighting, in one pass.
+     *
+     * [resolve] and [noteSeen] were called back to back on every single kid
+     * request, and each of them read and parsed browsers.json off the disk.
+     * Every poster, every progress tick, every two megabytes of video was two
+     * reads of the same small file - and the second one exists only to write
+     * a timestamp that is deliberately thrown away for fifty-nine minutes out
+     * of every sixty ([SEEN_WRITE_INTERVAL_MS]).
+     *
+     * One lock, one read, and a write only when there is something to write.
+     * The answer is identical - including the [lastSeenAt] it reports, which
+     * is the value from before this sighting, exactly as the two calls in
+     * sequence gave. Both halves stay, because both are still called alone.
+     */
+    fun watching(token: String?, now: Long): Browser? = synchronized(lock) {
+        if (token.isNullOrBlank()) return null
+        val root = read()
+        val arr = root.optJSONArray("browsers") ?: return null
+        val given = token.toByteArray(Charsets.UTF_8)
+        for (i in 0 until arr.length()) {
+            val b = arr.optJSONObject(i) ?: continue
+            val stored = b.optString("token")
+            if (!MessageDigest.isEqual(given, stored.toByteArray(Charsets.UTF_8))) continue
+            val claimedAt = b.optLong("claimedAt")
+            val lastSeenAt = b.optLong("lastSeenAt")
+            if (now - lastUsed(claimedAt, lastSeenAt) >= CLAIM_TTL_MS) return null
+            if (now - lastSeenAt >= SEEN_WRITE_INTERVAL_MS) {
+                b.put("lastSeenAt", now)
+                write(root)
+            }
+            return Browser(stored, b.optString("kid"), claimedAt, lastSeenAt)
+        }
+        return null
+    }
+
     fun browsers(): List<Browser> {
         val arr = read().optJSONArray("browsers") ?: return emptyList()
         return (0 until arr.length()).mapNotNull { i ->

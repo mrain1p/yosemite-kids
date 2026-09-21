@@ -46,11 +46,27 @@ app/src/main/java/io/yosemitekids/app/
 │   │                         its companion — unit-testable without Android.
 │   ├── Profiles.kt           Kid profiles, ProfileNamespace (per-kid store suffix),
 │   │                         ActiveProfileStore (who's watching on this device)
+│   ├── KidPrefs.kt           What one kid chose on the chips (sort, order).
+│   │                         Device-local and per kid — a choice, not a rule
+│   ├── SettingsStore.kt      The parent gate: the PIN, stretched by :core's Pbkdf2,
+│   │                         never plaintext. Both legacy formats still verify
+│   ├── WhitelistRepository.kt  The form-managed config as the one source of truth
 │   ├── SessionGuard.kt       Screen-time enforcement (budget, sittings, breaks,
 │   │                         blocked windows, grants). Prefs-backed, per kid.
 │   ├── Pairing.kt            PairingStore (tokens, paired devices), LanServer (the
-│   │                         token-gated HTTP listener), LanClient (the phone side),
-│   │                         re-discovery sweep. See docs/LAN-API.md.
+│   │                         token-gated HTTP listener, bounded reads and a whole-
+│   │                         request deadline), LanClient (the phone side, replies
+│   │                         read through peekBody), re-discovery sweep.
+│   │                         See docs/LAN-API.md.
+│   ├── ConfigSync.kt         The config reconcile, off the ViewModel: the backstop
+│   │                         behind Settings.pushAll
+│   ├── ConfigSyncWorker.kt   The same sweep on a schedule, so a device nobody opens
+│   │                         still converges
+│   ├── HubEnrolment.kt       Joining a Docker hub: the device asks, then a human
+│   │                         with the admin secret approves the code. docs/HUB.md
+│   ├── UsageSync.kt          The half of a shared budget that moves — minutes out
+│   │                         to peers, minutes in, folded into what the player
+│   │                         enforces. Empty for a family on the default scope
 │   ├── WatchSync.kt          Cross-device merge of history + saved lists (LWW)
 │   ├── WatchHistory.kt       Resume points per video, per kid
 │   ├── SavedListStore.kt     Favorites + Watch later (TSV, tombstones)
@@ -66,12 +82,20 @@ app/src/main/java/io/yosemitekids/app/
 │   ├── ChunkedStreamDataSource.kt  Media3 data source that fetches googlevideo in
 │   │                         ranged chunks (defeats throttling)
 │   ├── SourceCache.kt / VideoCache.kt   Last-known channel tiles and feed pages
+│   ├── ChannelPlaylistsCache.kt  Which playlists a channel has, one fetch a day.
+│   │                         A saved empty list is a real answer
+│   ├── SourceFirstSeen.kt    When each source first turned up on THIS device, so a
+│   │                         channel added minutes ago reads as new, not missing
+│   ├── ContentWarm.kt        Refreshing the video caches with the app closed, and
+│   ├── ContentWarmWorker.kt  the worker that runs it
 │   ├── ChannelIndexAndroid.kt  ChannelIndex(context): the app's factory for :crawl's index
 │   ├── IndexCrawlWorker.kt   The 15-minute shell around :crawl's IndexCrawlRun,
 │   │                         master-only; every device runs its drop pass
 │   ├── IndexPull (in :crawl) Pulling the hub's index, called from ConfigSync.sweep
 │   ├── AiScreener.kt / Screening.kt / DeepCheck.kt / Captions.kt
 │   │                         Optional AI content screening (title pass, deep check)
+│   ├── ScreeningStoreAndroid.kt  The device's verdicts at filesDir/screening.json —
+│   │                         a function named like the constructor it replaced
 │   ├── Downloads.kt / DownloadService.kt / DownloadChecker.kt / LocalLibrary.kt
 │   │                         Offline copies with parent approval; sideloaded files
 │   ├── Backup.kt             Full backup/restore bundle (config + watch state + verdicts)
@@ -96,6 +120,10 @@ app/src/main/java/io/yosemitekids/app/
     ├── MainViewModel.kt      Home/channel/list state, refresh, LAN sync loops,
     │                         hold-menu actions, "Play on TV"
     ├── HomeState.kt          Screen sealed interface + UiState
+    ├── FormFactor.kt         Which of the two shapes this app takes. Almost every
+    │                         layout decision downstream is really this one
+    ├── ChannelShelves.kt     The ten-foot design unit in dp (tvUnits): 960/1280 of
+    │                         the handoff's TV frames
     ├── YosemiteScreen.kt     Screen container: transitions, titles, back, errors
     ├── TvNavRail.kt          The television's chrome: the rail, its two widths
     ├── HomeShelfCounts.kt    What each shelf has to show. All that stayed when
@@ -103,20 +131,39 @@ app/src/main/java/io/yosemitekids/app/
     ├── HomeShelves.kt        One home, both shapes: the shelf walk, the hero
     ├── HomeScreens.kt        Shared home pieces: rails, header, Channels tab
     ├── VideoGrid.kt          Poster grid, hold menu, queue list, watched shelf
+    ├── SearchField.kt        The kid-facing search field, whitelist-scoped: there is
+    │                         no "whole of YouTube" for it to leak into
+    ├── TimeLeft.kt           rememberTimeLeftMs, and the pill that draws it
     ├── Tiles.kt              Shared tile pieces: PosterImage, pressScale, chips
     ├── FocusHighlight.kt     TV focus ring + D-pad helpers (hold, throttle)
     ├── ProfilePicker.kt      "Who's watching?" + direction-PIN entry, and the kid's
     │                         browser password as a typed way past it (pickerGate)
     ├── PlayerActivity.kt     The player: gate, resolve, ExoPlayer, kid controls
     │                         overlay, end card, listen mode, remote keys
+    ├── PlayerCountdown.kt    PlayClock and the last-five-minutes ring: when the
+    │                         countdown shows, and how full it is
+    ├── PlayerGestures.kt     How a downward drag becomes "put it in the little
+    │                         window" — travel and velocity in dp
     ├── ListenService.kt      Foreground service for screen-off audio
     ├── LanService.kt         Televisions only: a foreground service that keeps the
     │                         process, and the LAN server in it, alive after the app
     │                         is closed; rebuilds the server if the system restarts it
     ├── LanServers.kt         buildLanServer: the LAN server wired to this device's
     │                         stores, called by MainActivity and by LanService
-    ├── Settings*.kt          Parent settings (PIN/biometric gate, sections)
+    ├── Settings.kt           Parent settings: the PIN/biometric gate, the page
+    │                         router, the Devices page and its "what went wrong"
+    ├── SettingsRows.kt       The two rows every settings page is built from
+    ├── SettingsAi.kt         The Screening page's AI connection row and its presets
+    ├── SettingsDiscovery.kt  AI discovery, and the community directory section
+    ├── SettingsDownloads.kt  What offline downloads are, for the page's "?"
+    ├── SettingsHomeRows.kt   The home-row editor: which shelves, in what order —
+    │                         every edit through HomeRows.withOrder
+    ├── SettingsHub.kt        Connecting this household to a self-hosted hub
+    ├── SettingsImportExport.kt  whitelist.txt in and out, and the directory offer
+    ├── SettingsScreenTime.kt The kid's recurring rules, in one card
     ├── KidsSettings.kt       Kid profile editor
+    ├── KidStats.kt           The ranges the stats chips offer — only what
+    │                         SessionGuard.history can honestly answer
     ├── StatsScreen.kt / DigestScreen.kt   Parent dashboards
     ├── Theme.kt              The Compose binding of :core's DesignTokens (the two
     │                         kid schemes, the type scale), the parent-facing
@@ -155,6 +202,13 @@ core/src/main/kotlin/io/yosemitekids/app/data/     the pure rules: no disk, no c
 │                       the phone's store and the hub's per-kid list both call it
 ├── Grants.kt / KidChoices.kt / Profile.kt / TimeWindows.kt / Tsv.kt
 ├── MasterElection.kt / MasterToken.kt   Who builds the search index (clock passed in)
+├── Budget.kt           How many ms a kid's rules allow in a day. Three lines of
+│                       arithmetic, shared because two faces now answer it
+├── HomeRows.kt         One row of a kid's home as the parent arranged it; the
+│                       shelves themselves are HOME_SHELVES in ui/
+├── PasswordRecord.kt   A stored password: never the password, only what verifies
+│                       one. Pbkdf2 is here, and the hub's admin password and a
+│                       kid's web password both derive through it
 └── BackupFile.kt       The backup envelope, so the phone and the hub write one shape
 
 core/src/main/kotlin/io/yosemitekids/app/ui/       what both faces draw, as data
@@ -166,6 +220,11 @@ core/src/main/kotlin/io/yosemitekids/app/ui/       what both faces draw, as data
 ├── DesignTokens.kt     The one palette and type scale, as ARGB ints and sp
 │                       numbers: KidHues, KID_DARK, KID_LIGHT, KidType, and the
 │                       colour maths that derives a signal colour for a ground
+├── KidSurface.kt       Every kid-facing surface: which faces draw it, what decides
+│                       its contents, where a child reaches it. NOT documentation —
+│                       guard 62 reads it and fails the build in both directions
+├── KidWords.kt         What a CHILD reads when something will not play, beside
+│                       HubPolicy.Decision's detail, which is what a PARENT reads
 └── KidTokensCss.kt     The same table as CSS custom properties. Run by
                         :hub:generateKidTokensCss; never checked in (guard 48)
 
@@ -195,6 +254,10 @@ crawl/src/main/kotlin/io/yosemitekids/app/data/    network, disk, clock — plai
 ├── SearchRank.kt / SearchOrder.kt   How good a hit is for this child, and the
 │                       orders the results screen can honestly offer, with their
 │                       words (label); "Newest" since the index kept its dates
+├── StreamChunker.kt    The range arithmetic googlevideo serves at speed, in one
+│                       place for everything that fetches a stream
+├── ui/KidOrder.kt      orderByPopularity / orderByWatched / orderChannels /
+│                       filterVideos: how a shelf is sorted, on every face
 └── QualityTargets.kt / PlaylistRef.kt / LocalUrls.kt / CrawlModule.kt
 
 hub/src/main/kotlin/io/yosemitekids/hub/          the Docker container

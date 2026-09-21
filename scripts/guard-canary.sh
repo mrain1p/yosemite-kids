@@ -254,6 +254,7 @@ HUBSRV=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 HUBHTTP=hub/src/main/kotlin/io/yosemitekids/hub/HubHttp.kt
 KIDPAGE=hub/src/main/resources/web/kid.html
 CONSOLE=hub/src/main/resources/web/index.html
+ARCH=docs/ARCHITECTURE.md
 PAIRING=app/src/main/java/io/yosemitekids/app/data/Pairing.kt
 HOMESTATE=app/src/main/java/io/yosemitekids/app/ui/HomeState.kt
 TILES=app/src/main/java/io/yosemitekids/app/ui/Tiles.kt
@@ -493,6 +494,12 @@ canary 75 "$PAIRING" \
   "the phone reading a peer reply with no limit on it" \
   "unbounded body read in Pairing.kt" \
   'sed -i "s/if (resp.isSuccessful) resp.text() else null/if (resp.isSuccessful) resp.body?.string() else null/" "$PAIRING"'
+
+
+canary 76 "$ARCH" \
+  "the map losing the file a daily limit is decided in" \
+  "does not name: Budget.kt" \
+  'sed -i "s/Budget[.]kt/BudgetGone.kt/" "$ARCH"'
 
 echo
 if [ "$failed" -gt 0 ]; then

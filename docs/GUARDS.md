@@ -91,3 +91,4 @@ can still fail (guard 65 requires one from 56 upward).
 | 73 | A heart pressed on the You tab redraws the You tab, on every face. | `app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt`, `hub/src/main/resources/web/kid.html` | yes |
 | 74 | Both pages a family touches declare the same floor under a tap target. | `hub/src/main/resources/web/kid.html`, `hub/src/main/resources/web/index.html` | yes |
 | 75 | A reply from somewhere else is read with a limit on it. | `app/src/main`, `crawl/src/main`, `core/src/main`, `hub/src/main` | yes |
+| 76 | The map names every file it is a map of. | `docs/ARCHITECTURE.md`, `app/src/main`, `core/src/main`, `crawl/src/main`, `hub/src/main` | yes |

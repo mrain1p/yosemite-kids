@@ -2718,6 +2718,33 @@ if ($bodySeen.Count -gt 0) {
     Write-Host "   guard 75: still reading a reply unbounded (internet clients, each wants a cap): $($bodySeen -join ' ')"
 }
 
+
+# 76. The map names every file it is a map of.
+#     docs/ARCHITECTURE.md exists so a session can answer "which file do I
+#     open for this?" without reading the tree. It is hand-maintained, and it
+#     had fallen thirty-four files behind: a parent-settings page split into
+#     nine files that the tree still called `Settings*.kt`, the whole config
+#     reconcile, hub enrolment, the shared-budget sync, the kid-facing search
+#     field, the player's countdown and its drag gesture, the surface manifest
+#     that FAILS THE BUILD, and `Budget.kt`, which is where a daily limit is
+#     decided on both faces.
+#
+#     Which is worse than a gap: a map missing a road reads exactly like a map
+#     of a place with no road there. Every one of those files landed in 1.9.0
+#     or later, so a session with only CLAUDE.md and the map skill could find
+#     the entry point for almost nothing added in three releases — and would
+#     then write a second one beside it.
+$archMap = Get-Content docs/ARCHITECTURE.md -Raw
+$unmapped = @(Get-ChildItem -Recurse -File -Filter *.kt app/src/main, core/src/main, crawl/src/main, hub/src/main |
+    Where-Object { -not $archMap.Contains($_.Name) } | ForEach-Object { $_.Name })
+if ($unmapped.Count -gt 0) {
+    Fail-Guard "docs/ARCHITECTURE.md does not name: $($unmapped -join ' ')
+That file is how a session finds where to make a change, and a map missing a road
+reads exactly like a map of a place with no road there — so the next person writes
+a second copy of what is already here. Add a line to the right module's tree
+saying what the file is for; grouping several on one line with slashes is fine."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

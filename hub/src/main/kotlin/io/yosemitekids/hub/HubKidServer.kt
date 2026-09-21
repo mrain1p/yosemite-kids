@@ -1267,12 +1267,14 @@ class HubKidServer(
      * kid cookie being nothing at all on `/api/`.
      */
     private fun watching(ex: HttpExchange): HubBrowsers.Browser? {
-        val browser = browsers.resolve(cookie(ex), now())
+        // Resolve and note the sighting in one read of browsers.json: this
+        // runs on every request a child's tablet makes, including one per two
+        // megabytes of video.
+        val browser = browsers.watching(cookie(ex), now())
         if (browser == null) {
             respond(ex, 401, JSONObject().put("error", "claim").toString())
             return null
         }
-        browsers.noteSeen(browser.token, now())
         return browser
     }
 

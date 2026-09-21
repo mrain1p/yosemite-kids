@@ -2413,6 +2413,42 @@ done
 [ -z "$body_seen" ] ||
   echo "   guard 75: still reading a reply unbounded (internet clients, each wants a cap):$body_seen"
 
+
+# 76. The map names every file it is a map of.
+#     docs/ARCHITECTURE.md exists so a session can answer "which file do I
+#     open for this?" without reading the tree. It is hand-maintained, and it
+#     had fallen thirty-four files behind: a parent-settings page split into
+#     nine files that the tree still called `Settings*.kt`, the whole config
+#     reconcile, hub enrolment, the shared-budget sync, the kid-facing search
+#     field, the player's countdown and its drag gesture, the surface manifest
+#     that FAILS THE BUILD, and `Budget.kt`, which is where a daily limit is
+#     decided on both faces.
+#
+#     Which is worse than a gap: a map that is missing a road reads exactly
+#     like a map of a place with no road there. Every one of those files
+#     landed in 1.9.0 or later, so a session with only CLAUDE.md and the map
+#     skill could find the entry point for almost nothing added in three
+#     releases - and would then write a second one beside it.
+#
+#     The basename is enough. A line may group several files with slashes,
+#     the way the tree already does, and a one-line entry that says what the
+#     file is for is the whole ask.
+arch_map=$(cat docs/ARCHITECTURE.md)
+unmapped=""
+for f in $(find app/src/main core/src/main crawl/src/main hub/src/main -name '*.kt'); do
+  b=${f##*/}
+  case "$arch_map" in
+    *"$b"*) ;;
+    *) unmapped="$unmapped $b" ;;
+  esac
+done
+[ -z "$unmapped" ] ||
+  guard_fail "docs/ARCHITECTURE.md does not name:$unmapped
+That file is how a session finds where to make a change, and a map missing a road
+reads exactly like a map of a place with no road there - so the next person writes
+a second copy of what is already here. Add a line to the right module's tree
+saying what the file is for; grouping several on one line with slashes is fine."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 
