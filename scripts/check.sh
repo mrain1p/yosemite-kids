@@ -2453,8 +2453,13 @@ if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 
 
-echo "== 1/6 compile (assembleDebug)"
-./gradlew --no-daemon -q assembleDebug
+echo "== 1/6 compile (assembleDebug, and every test source set)"
+# The tests are COMPILED here and not only in the steps that run them, so
+# --quick means what it says. A test that no longer compiles - a renamed
+# parameter, a moved constructor - was invisible to quick mode, which is the
+# mode used while iterating, which is exactly when a test stops compiling.
+./gradlew --no-daemon -q assembleDebug compileDebugUnitTestKotlin \
+  :core:compileTestKotlin :crawl:compileTestKotlin :hub:compileTestKotlin
 
 if [ "${1:-}" = "--quick" ]; then echo "compile OK (quick mode)"; exit 0; fi
 
@@ -2470,12 +2475,17 @@ echo "== 4/6 hub tests"
 echo "== 5/6 app unit tests (offline)"
 # Every test class except the live-YouTube canaries. Both reach real YouTube
 # unguarded, so a bot wall fails this gate for unrelated reasons.
+# Recursive, and the package comes from the PATH. The glob used to be one
+# directory deep and the class name was pasted onto a fixed package, so a test
+# in app/src/test/.../app/data/ would have been listed under the wrong package
+# and silently not run - which is the one failure a test list must not have.
 args=()
-for f in app/src/test/java/io/yosemitekids/app/*Test.kt; do
-  name=$(basename "$f" .kt)
+while IFS= read -r f; do
+  name=${f##*/}; name=${name%.kt}
   case "$name" in ExtractorSmokeTest|SingleChannelProbeTest) continue ;; esac
-  args+=(--tests "io.yosemitekids.app.$name")
-done
+  pkg=${f#app/src/test/java/}; pkg=${pkg%/*}; pkg=$(printf '%s' "$pkg" | tr '/' '.')
+  args+=(--tests "$pkg.$name")
+done < <(find app/src/test/java -name '*Test.kt' | sort)
 ./gradlew --no-daemon -q :app:testDebugUnitTest "${args[@]}"
 
 echo "== 6/6 worker tests"

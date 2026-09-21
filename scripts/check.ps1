@@ -2749,8 +2749,13 @@ if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 
 
 
 
-Write-Host "== 1/6 compile (assembleDebug)" -ForegroundColor Cyan
-& .\gradlew.bat --no-daemon -q assembleDebug
+Write-Host "== 1/6 compile (assembleDebug, and every test source set)" -ForegroundColor Cyan
+# The tests are COMPILED here and not only in the steps that run them, so
+# -Quick means what it says. A test that no longer compiles — a renamed
+# parameter, a moved constructor — was invisible to quick mode, which is the
+# mode used while iterating, which is exactly when a test stops compiling.
+& .\gradlew.bat --no-daemon -q assembleDebug compileDebugUnitTestKotlin `
+    :core:compileTestKotlin :crawl:compileTestKotlin :hub:compileTestKotlin
 if ($LASTEXITCODE -ne 0) { Write-Host "compile FAILED" -ForegroundColor Red; exit 1 }
 
 if ($Quick) { Write-Host "compile OK (quick mode)" -ForegroundColor Green; exit 0 }
@@ -2773,10 +2778,18 @@ Write-Host "== 5/6 app unit tests (offline)" -ForegroundColor Cyan
 # SingleChannelProbeTest calls ChannelInfo.getInfo with no runCatching and no
 # Assume, so a bot wall fails this gate for reasons unrelated to the change
 # being checked — the same reason ExtractorSmokeTest has always been out.
+# Recursive, and the package comes from the PATH. The listing used to be one
+# directory deep and the class name was pasted onto a fixed package, so a test
+# in a subpackage would have been listed under the wrong package and silently
+# not run - which is the one failure a test list must not have.
 $live = @("ExtractorSmokeTest", "SingleChannelProbeTest")
-$tests = Get-ChildItem app\src\test\java\io\yosemitekids\app -Filter *Test.kt |
+$testRoot = (Resolve-Path "app\src\test\java").Path
+$tests = Get-ChildItem -Recurse -File app\src\test\java -Filter *Test.kt |
     Where-Object { $live -notcontains $_.BaseName } |
-    ForEach-Object { "--tests"; "io.yosemitekids.app.$($_.BaseName)" }
+    ForEach-Object {
+        $pkg = (Split-Path $_.FullName -Parent).Substring($testRoot.Length).Trim('\').Replace('\', '.')
+        "--tests"; "$pkg.$($_.BaseName)"
+    }
 & .\gradlew.bat --no-daemon -q :app:testDebugUnitTest @tests
 if ($LASTEXITCODE -ne 0) { Write-Host "unit tests FAILED — see app\build\reports\tests\testDebugUnitTest\index.html" -ForegroundColor Red; exit 1 }
 

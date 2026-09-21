@@ -12,7 +12,25 @@ import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 
-/** Probe one problematic channel end-to-end: parse → info → tabs → videos. */
+/**
+ * Probe one problematic channel end-to-end: parse → info → tabs → videos.
+ *
+ * **A hand tool, and it runs nowhere on purpose.** Both gates and CI name it
+ * beside [ExtractorSmokeTest] in their live-YouTube exclusion, for the same
+ * reason: it calls `ChannelInfo.getInfo` with no `runCatching` and no
+ * `Assume`, so a bot wall would fail a gate for something the change being
+ * checked did not do. Unlike the smoke test it is also not a canary — the
+ * channel id below is whichever one someone was debugging, so a red run here
+ * says something about that channel and not about the extractor.
+ *
+ * It sits in the test source set because that is where the extractor, the
+ * downloader and the parser are already wired up. Run it by hand, against
+ * whatever channel is misbehaving:
+ *
+ *     gradlew :app:testDebugUnitTest --tests "*SingleChannelProbeTest" -i
+ *
+ * The `-i` is not optional: the point is the log, not the assertion.
+ */
 class SingleChannelProbeTest {
 
     @Test

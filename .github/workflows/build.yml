@@ -80,12 +80,17 @@ jobs:
       # tree so a new test file is in the gate without touching this list.
       - name: Unit tests (non-network)
         run: |
+          # Recursive, and the package comes from the path: the glob used to
+          # be one directory deep with the package pasted on, so a test in a
+          # subpackage would have been named wrong and silently not run.
           args=()
-          for f in app/src/test/java/io/yosemitekids/app/*Test.kt; do
-            name=$(basename "$f" .kt)
+          while IFS= read -r f; do
+            name=${f##*/}; name=${name%.kt}
             case "$name" in ExtractorSmokeTest|SingleChannelProbeTest) continue ;; esac
-            args+=(--tests "io.yosemitekids.app.$name")
-          done
+            pkg=${f#app/src/test/java/}; pkg=${pkg%/*}
+            pkg=$(printf '%s' "$pkg" | tr '/' '.')
+            args+=(--tests "$pkg.$name")
+          done < <(find app/src/test/java -name '*Test.kt' | sort)
           ./gradlew :app:testDebugUnitTest "${args[@]}"
 
       - uses: actions/setup-node@v4
