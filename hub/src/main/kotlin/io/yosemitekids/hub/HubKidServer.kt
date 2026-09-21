@@ -372,17 +372,7 @@ class HubKidServer(
         }
         outcome.fold(
             onSuccess = { claimed ->
-                // No Secure flag, for the reason /login once gave: this is
-                // plain HTTP on a home LAN, and Secure would stop the cookie
-                // being sent at all. HttpOnly and SameSite are the two that
-                // work here — and Path=/kid/ is the one that matters now that
-                // the console shares this origin: the browser never sends this
-                // cookie to /api, /login or the page at "/".
-                ex.responseHeaders.add(
-                    "Set-Cookie",
-                    "$CLAIM_COOKIE=${claimed.token}; HttpOnly; SameSite=Strict; Path=$KID_PATH/; Max-Age=" +
-                        (HubBrowsers.CLAIM_TTL_MS / 1000)
-                )
+                claimCookie(ex, claimed.token)
                 respond(ex, 200, JSONObject().put("ok", true).put("kid", nameOf(claimed.kid)).toString())
             },
             onFailure = {
@@ -1270,12 +1260,41 @@ class HubKidServer(
         // Resolve and note the sighting in one read of browsers.json: this
         // runs on every request a child's tablet makes, including one per two
         // megabytes of video.
-        val browser = browsers.watching(cookie(ex), now())
-        if (browser == null) {
+        val seen = browsers.watching(cookie(ex), now())
+        if (seen == null) {
             respond(ex, 401, JSONObject().put("error", "claim").toString())
             return null
         }
-        return browser
+        // And re-date the browser's own copy when the sighting was recorded.
+        //
+        // The server-side claim slides from the last request a browser made,
+        // which is what stops the tablet a child uses every day being cut off
+        // six months after it was set up. The COOKIE did not: it was issued
+        // once, at claim time, with a fixed Max-Age, and no other line in this
+        // file ever set it again. So the row stayed alive and the browser threw
+        // away the only thing that can address it, at exactly the old deadline
+        // — mid-afternoon, showing "Ask a grown-up", with the sliding window
+        // sitting there unobservable. At most one Set-Cookie an hour, because
+        // that is how often a sighting is written.
+        if (seen.renewed) claimCookie(ex, seen.browser.token)
+        return seen.browser
+    }
+
+    /**
+     * The claim cookie, issued and re-issued from one place.
+     *
+     * No Secure flag, for the reason /login once gave: this is plain HTTP on a
+     * home LAN, and Secure would stop the cookie being sent at all. HttpOnly
+     * and SameSite are the two that work here - and Path=/kid/ is the one that
+     * matters now that the console shares this origin: the browser never sends
+     * this cookie to /api, /login or the page at "/".
+     */
+    private fun claimCookie(ex: HttpExchange, token: String) {
+        ex.responseHeaders.add(
+            "Set-Cookie",
+            "$CLAIM_COOKIE=$token; HttpOnly; SameSite=Strict; Path=$KID_PATH/; Max-Age=" +
+                (HubBrowsers.CLAIM_TTL_MS / 1000)
+        )
     }
 
     private fun cookie(ex: HttpExchange): String? =

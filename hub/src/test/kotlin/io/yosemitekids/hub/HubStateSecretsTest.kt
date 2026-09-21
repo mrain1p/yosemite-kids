@@ -1,5 +1,6 @@
 package io.yosemitekids.hub
 
+import io.yosemitekids.app.data.ChannelIndex
 import io.yosemitekids.app.data.ConfigJson
 import io.yosemitekids.app.data.Pbkdf2
 import io.yosemitekids.app.data.Profile
@@ -50,6 +51,30 @@ class HubStateSecretsTest {
     private val deviceToken = "device-token-fedcba9876543210"
     private val now = 1_780_000_000_000L
 
+    /**
+     * A hub with something in every block of the reply.
+     *
+     * The sweep below is only as good as the document it walks, and the first
+     * version of it walked one where `index`, `devices`, `pending` and
+     * `browsers` were all empty or absent — so it swept the `config` block and
+     * called that "at any depth". Reverting the `index.master` redaction, for
+     * instance, put the master's whole pairing token back on the wire and this
+     * test stayed green.
+     *
+     * So: a real ChannelIndex, a HubTokens holding an enrolled device AND a
+     * code still waiting to be typed, and a HubBrowsers holding a claimed
+     * browser. Every one of those mints a credential of its own.
+     */
+    private class Populated(
+        val store: HubStore,
+        val tokens: HubTokens,
+        val index: ChannelIndex,
+        val browsers: HubBrowsers,
+        val deviceSecret: String,
+        val cookie: String,
+        val pendingCode: String
+    )
+
     private fun storeWithSecrets(): Pair<HubStore, Whitelist> {
         val dir = tmp.newFolder("hub")
         val store = HubStore(dir)
@@ -64,6 +89,21 @@ class HubStateSecretsTest {
         )
         store.edit("test", now) { config }
         return store to config
+    }
+
+    private fun populated(): Populated {
+        val (store, _) = storeWithSecrets()
+        val dir = tmp.newFolder("wired")
+        val tokens = HubTokens(dir)
+        val deviceSecret = tokens.approve(tokens.startEnrolment("Living Room TV", now)!!, now).getOrThrow()
+        tokens.notePull(deviceSecret, now)
+        val pendingCode = tokens.startEnrolment("Kitchen tablet", now)!!
+        val browsers = HubBrowsers(tmp.newFolder("claims"))
+        val cookie = browsers.claim(browsers.mint("ada", now)!!, now).getOrThrow().token
+        return Populated(
+            store, tokens, ChannelIndex(java.io.File(dir, "search-index")),
+            browsers, deviceSecret, cookie, pendingCode
+        )
     }
 
     /** Every string in a JSON tree, whatever nests it. */
@@ -83,24 +123,41 @@ class HubStateSecretsTest {
 
     @Test
     fun theConsoleIsHandedNoCredentialAtAnyDepth() {
-        val (store, config) = storeWithSecrets()
-        val tokens = HubTokens(tmp.newFolder("tokens"))
-        val reply = JSONObject(HubWeb.state(store, tokens, "/data", now))
+        val w = populated()
+        val reply = JSONObject(
+            HubWeb.state(w.store, w.tokens, "/data", now, w.index, browsers = w.browsers)
+        )
         val seen = strings(reply).toSet()
 
-        val record = config.profiles.first().webPassword!!
+        val record = w.store.load().profiles.first().webPassword!!
         listOf(
             pin to "a child's code for the television",
             record.key to "the hash behind a kid's browser password",
             record.salt to "the salt behind a kid's browser password",
             masterToken to "the pairing token of the phone that builds the index",
-            deviceToken to "a device's pairing token, as a deviceProfiles key"
+            deviceToken to "a device's pairing token, as a deviceProfiles key",
+            w.deviceSecret to "an enrolled device's own pairing token",
+            w.cookie to "the cookie a child's browser watches with"
         ).forEach { (secret, what) ->
             assertFalse(
                 "/api/state hands the browser $what",
                 seen.any { it.contains(secret) }
             )
         }
+
+        // The one secret that IS shown, and must be: a pending enrolment code
+        // exists to be read off this page and typed into a television. Stated
+        // here so the next person to widen the sweep does not "fix" it.
+        assertTrue(
+            "a pending code is what a parent reads out; it must still be here",
+            seen.contains(w.pendingCode)
+        )
+        // And the blocks really were populated - otherwise the sweep above
+        // proves nothing about them.
+        assertTrue(reply.getJSONArray("devices").length() > 0)
+        assertTrue(reply.getJSONArray("pending").length() > 0)
+        assertTrue(reply.getJSONArray("browsers").length() > 0)
+        assertFalse(reply.isNull("index"))
     }
 
     @Test

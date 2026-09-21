@@ -269,15 +269,6 @@ class HubBrowsers(dataDir: File) {
      */
     private fun lastUsed(claimedAt: Long, lastSeenAt: Long) = maxOf(claimedAt, lastSeenAt)
 
-    fun resolve(token: String?, now: Long): Browser? {
-        if (token.isNullOrBlank()) return null
-        val given = token.toByteArray(Charsets.UTF_8)
-        return browsers().firstOrNull {
-            MessageDigest.isEqual(given, it.token.toByteArray(Charsets.UTF_8)) &&
-                now - lastUsed(it.claimedAt, it.lastSeenAt) < CLAIM_TTL_MS
-        }
-    }
-
     /**
      * Resolve a cookie and record the sighting, in one pass.
      *
@@ -293,7 +284,18 @@ class HubBrowsers(dataDir: File) {
      * is the value from before this sighting, exactly as the two calls in
      * sequence gave. Both halves stay, because both are still called alone.
      */
-    fun watching(token: String?, now: Long): Browser? = synchronized(lock) {
+    /**
+     * A resolved claim, and whether this sighting renewed it.
+     *
+     * [renewed] is true at most once per [SEEN_WRITE_INTERVAL_MS], and it is
+     * the kid server's cue to re-date the browser's own cookie. Without that
+     * the sliding window below is unobservable: the server would keep a row
+     * alive for ever while the browser discarded the only thing that can
+     * address it, at exactly the old deadline.
+     */
+    data class Seen(val browser: Browser, val renewed: Boolean)
+
+    fun watching(token: String?, now: Long): Seen? = synchronized(lock) {
         if (token.isNullOrBlank()) return null
         val root = read()
         val arr = root.optJSONArray("browsers") ?: return null
@@ -305,11 +307,13 @@ class HubBrowsers(dataDir: File) {
             val claimedAt = b.optLong("claimedAt")
             val lastSeenAt = b.optLong("lastSeenAt")
             if (now - lastUsed(claimedAt, lastSeenAt) >= CLAIM_TTL_MS) return null
+            var renewed = false
             if (now - lastSeenAt >= SEEN_WRITE_INTERVAL_MS) {
                 b.put("lastSeenAt", now)
                 write(root)
+                renewed = true
             }
-            return Browser(stored, b.optString("kid"), claimedAt, lastSeenAt)
+            return Seen(Browser(stored, b.optString("kid"), claimedAt, lastSeenAt), renewed)
         }
         return null
     }
@@ -332,22 +336,6 @@ class HubBrowsers(dataDir: File) {
      * afternoon of video would otherwise rewrite this file every two
      * megabytes.
      */
-    fun noteSeen(token: String?, now: Long) {
-        if (token.isNullOrBlank()) return
-        synchronized(lock) {
-            val root = read()
-            val arr = root.optJSONArray("browsers") ?: return
-            for (i in 0 until arr.length()) {
-                val b = arr.optJSONObject(i) ?: continue
-                if (b.optString("token") != token) continue
-                if (now - b.optLong("lastSeenAt") < SEEN_WRITE_INTERVAL_MS) return
-                b.put("lastSeenAt", now)
-                write(root)
-                return
-            }
-        }
-    }
-
     /** Cut a browser off, by the short reference the admin page holds. */
     fun revoke(ref: String): Boolean = synchronized(lock) {
         val root = read()

@@ -148,13 +148,13 @@ fi
 # that is plainly present. That cost half an hour on gradlew during the hub's
 # first container build.
 #
-# The second: THIS SCRIPT READS THOSE FILES. `* text=auto` left 334 of 447
-# tracked files CRLF in a Windows checkout, and a guard's pattern - a `$`
-# anchor, an awk range ending `^}$`, a `case` on a `"…"\n` fragment - matches
-# a line that now ends in a character it was never written to expect. Eight
-# guards failed OPEN that way, reporting clean on a tree they could no longer
-# see into. A gate cannot notice that about itself, so it is checked here
-# before any guard runs.
+# The second: THIS SCRIPT READS THOSE FILES. `* text=auto` left 334 of the
+# 451 tracked text files CRLF in a Windows checkout (527 tracked in all, the
+# rest declared binary), and a guard's pattern - a `$` anchor, an awk range
+# ending `^}$`, a `case` on a `"…"\n` fragment - matches a line that now ends
+# in a character it was never written to expect. A guard that greps one
+# reports clean on a tree it cannot see into, and a gate cannot notice that
+# about itself, so it is checked here before any guard runs.
 #
 # git reports the working-tree ending directly, so this needs no escapes of
 # its own to look for. `.bat` is excluded because cmd.exe genuinely wants
@@ -165,8 +165,10 @@ if [ -n "$crlf" ]; then
   guard_fail "CRLF line endings in: $crlf
 A container cannot run a CRLF script, and this gate cannot READ a CRLF file the
 way its patterns expect - a guard that greps one reports clean on a tree it
-cannot see into. Check .gitattributes says eol=lf, then renormalise:
-  git rm --cached -r . && git reset --hard"
+cannot see into. Check .gitattributes says eol=lf, then renormalise the index in place:
+  git add --renormalize .
+NOT `git reset --hard`: this gate runs before a commit, which is exactly when
+there is uncommitted work for it to destroy."
 fi
 
 # The hub's container must be able to take ownership of its bind-mounted
@@ -1933,8 +1935,11 @@ A reason is what stops the next session re-deciding it, and what tells the owner
 #         This clause used to grep for each name and throw the result away -
 #         twenty-four recursive searches asserting nothing, reading in the file
 #         as a check. It was deliberate scaffolding for the day a surface flips
-#         to webReady, and the day came: eleven of seventeen surfaces are drawn
-#         in a browser now.
+#         to webReady, and the day arrived without anyone noticing: all sixteen
+#         surfaces are webReady today and none is `webReady = false`. So this
+#         clause covers the whole manifest, and clause (e) below - the one that
+#         NAMES what has not reached the browser - reports on an empty set and
+#         will until a surface is added that the browser does not draw.
 for id in $(grep -oE "id = ${q}[a-z-]+${q}," "$kidmanifest" | sed -E "s/id = ${q}//; s/${q},//" || true); do
   block=$(awk -v want="id = ${q}$id${q}," '
     index($0, want) { found = 1 }
@@ -1944,7 +1949,11 @@ for id in $(grep -oE "id = ${q}[a-z-]+${q}," "$kidmanifest" | sed -E "s/id = ${q
     *"webReady = true"*) ;;
     *) continue ;;
   esac
-  rules=$(printf '%s\n' "$block" | grep -oE "rules = listOf\([^)]*\)" | grep -oE "${q}[A-Za-z][A-Za-z0-9_.]*${q}" | tr -d "$q" || true)
+  # Flattened first. A `rules = listOf(...)` that wraps across lines - which is
+  # what a long one looks like - matched nothing at all through a line-based
+  # grep, so the clause silently checked an empty list and passed. The
+  # PowerShell half reads the block whole and always did.
+  rules=$(printf '%s\n' "$block" | tr '\n' ' ' | grep -oE "rules = listOf\([^)]*\)" | grep -oE "${q}[A-Za-z][A-Za-z0-9_.]*${q}" | tr -d "$q" || true)
   for fn in $rules; do
     leaf=${fn##*.}
     # Every shape a rule can take. The generic arm matters - `fun <S :
@@ -2433,12 +2442,18 @@ done
 #     The basename is enough. A line may group several files with slashes,
 #     the way the tree already does, and a one-line entry that says what the
 #     file is for is the whole ask.
-arch_map=$(cat docs/ARCHITECTURE.md)
+# Whole names, not substrings. `KidHome.kt` is inside `HubKidHome.kt` and
+# `Pins.kt` is inside `SettingsPins.kt`, so both passed for free while being
+# absent from the map - the guard reporting it complete on a tree where two
+# entry points a session most needs were missing, which is the exact failure it
+# was written for. Every character that cannot be part of a filename becomes a
+# space, so a name is a whole token or it is not there.
+arch_map=" $(tr -c 'A-Za-z0-9_.' ' ' < docs/ARCHITECTURE.md | tr -s ' ') "
 unmapped=""
 for f in $(find app/src/main core/src/main crawl/src/main hub/src/main -name '*.kt'); do
   b=${f##*/}
   case "$arch_map" in
-    *"$b"*) ;;
+    *" $b "*) ;;
     *) unmapped="$unmapped $b" ;;
   esac
 done

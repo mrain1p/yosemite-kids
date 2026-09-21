@@ -61,6 +61,34 @@ class HubStoreCacheTest {
         assertEquals("UCtwo", second.sources.single().id)
     }
 
+    /**
+     * The one thing the (mtime, length) stamp cannot do for itself.
+     *
+     * mtime granularity is a whole second on plenty of filesystems, so two
+     * writes of the same length inside one tick are indistinguishable by the
+     * stamp alone — a parent toggling one boolean twice is exactly that. That
+     * is why commit() clears the cache explicitly, and this is the case that
+     * fails if the clear is deleted: without it, load() keeps serving the
+     * pre-write document to the play gate, the console poll and the crawl.
+     */
+    @Test
+    fun aSecondWriteInsideOneMtimeTickIsStillSeen() {
+        val dir = tmp.newFolder("hub4")
+        val store = HubStore(dir)
+        val file = File(dir, "config.json")
+
+        store.edit("test", now) { withChannel("UCone") }
+        assertEquals("UCone", store.load().sources.single().id)
+        val stamp = file.lastModified()
+
+        // Same length, and forced back to the same mtime: the stamp cannot
+        // tell these two documents apart, so only the explicit clear can.
+        store.edit("test", now + 1000) { withChannel("UCtwo") }
+        file.setLastModified(stamp)
+
+        assertEquals("UCtwo", store.load().sources.single().id)
+    }
+
     @Test
     fun aFileReplacedUnderneathIsSeenByTheNextRead() {
         val dir = tmp.newFolder("hub2")

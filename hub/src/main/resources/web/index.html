@@ -118,7 +118,11 @@
      the target, and a 44px box is a different control - and the pills get
      inline-flex so the taller box centres its own label rather than sitting
      the text on top of the padding. */
-  button, select, textarea,
+  /* textarea is deliberately NOT in this list: it already has a taller floor
+     of its own above, and a later rule at equal specificity wins — so adding
+     it here shortened the Add-channels box from 78px to 44px, about one line,
+     which is the opposite of what this rule is for. */
+  button, select,
   input:not([type=checkbox]):not([type=radio]) { min-height: 44px; }
   button.primary, button.quiet, button.chip {
     display: inline-flex; align-items: center; justify-content: center; }
@@ -444,12 +448,19 @@
    * every caller has a form to put the reason next to.
    */
   function postSecret(path, body) {
+    // Counted like any other write. It was not, and the poller is only held
+    // off while `writesOut` is above zero: so a 20-second tick could land in
+    // the middle of a PBKDF2 round trip, rebuild the password card with three
+    // empty fields, and the refusal that came back was then written onto an
+    // orphaned node. A parent saw a cleared form and no message at all, and no
+    // way to tell a refusal from a success.
+    writesOut++;
     return fetch(path, {
       method: "POST",
       headers: authHeaders(),
       credentials: "same-origin",
       body: JSON.stringify(body)
-    }).then(function (r) {
+    }).finally(function () { writesOut--; }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
         // /login answers with the session; keep it before anyone reads the
         // reply, so the refresh that follows is already signed in.
@@ -1617,10 +1628,13 @@
       // No id: the hub mints it. A kid id is a merge key, and one taken from
       // the clock in here collides with one the phone minted the same
       // millisecond — which merges two children into one profile.
-      var next = kids().concat([{
-        name: n, color: 4293467747, avatar: "🙂", age: 6,
-        limits: { session: 15, weekdaySessions: 4, weekendSessions: 6, breakMinutes: 5 }
-      }]);
+      // No limits: a new kid inherits the family rules until a parent sets
+      // their own, which is what the phone does (KidsSettings builds a Profile
+      // with a default Limits, every field null). This used to seed four
+      // numbers, one of which - breakMinutes: 5 - was below the floor of 15
+      // the same repo declares in SettingsSurface and the hub now enforces, so
+      // every kid added here was created with a rule nobody chose.
+      var next = kids().concat([{ name: n, color: 4293467747, avatar: "🙂", age: 6 }]);
       return patch({ profiles: next });
     }));
     c.appendChild(add);
@@ -3351,6 +3365,14 @@
     host.innerHTML = "";
     host.appendChild(ROUTES[route.page](route.arg));
 
+    // What each field was drawn with, so the poller can tell a parent's typing
+    // from a value this page put there itself. Stamped here rather than in the
+    // dozen places a field is built, because "every field on the page" is the
+    // property that has to hold.
+    host.querySelectorAll("input, textarea, select").forEach(function (el) {
+      el.dataset.rendered = fieldValue(el);
+    });
+
     $("title").textContent = titleFor(route);
     var back = $("back");
     back.hidden = !route.page;
@@ -3366,8 +3388,25 @@
     }
   }
 
+  /**
+   * Reads of /api/state, in order. See [refresh].
+   */
+  var stateSeq = 0;
+
   function refresh() {
-    return api("/api/state").then(function (s) { state = s; render(); });
+    var mine = ++stateSeq;
+    return api("/api/state").then(function (s) {
+      // A reply a newer read has already overtaken is not an update, it is a
+      // rollback. `writesOut` stops a poll STARTING during a write; it does
+      // nothing about one already in flight, so a snapshot built before an
+      // edit can land after it — the chip springs back unpressed, and the next
+      // whole-object patch (a ruling, a pinned row) is computed from that
+      // stale copy and writes the edit out of the family document, stamped,
+      // to every device.
+      if (mine !== stateSeq) return;
+      state = s;
+      render();
+    });
   }
 
   /**
@@ -3398,10 +3437,41 @@
    * the page is read far more often than it is right.
    */
   var POLL_MS = 20000;
+  function fieldValue(el) {
+    return el.type === "checkbox" || el.type === "radio" ? String(el.checked) : el.value;
+  }
+
+  /**
+   * Has a parent typed something this page has not saved yet?
+   *
+   * Focus is not the question, and taking it for the question is how the first
+   * version of this poller lost work. Several controls here hold what was
+   * typed in a DOM node that a SEPARATE button reads later — the Add-channels
+   * box, the new kid's name, a kid's password, the three fields of the
+   * password card, the file chosen for a restore — and none of them holds
+   * focus once a parent looks away from it. Paste six channel URLs, tap the
+   * background to dismiss the keyboard, and twenty seconds later `render()`
+   * replaces the textarea with an empty one and says nothing.
+   *
+   * So the rule is the honest one: nothing on this page repaints itself while
+   * anything on it differs from what it was drawn with. A parent who leaves a
+   * stray character in a field stops the polling until they clear it or save —
+   * which is the right way round, because the alternative throws their work
+   * away to show them a number that was going to be a few seconds stale.
+   */
+  function typedInto() {
+    var fields = $("page").querySelectorAll("input, textarea, select");
+    for (var i = 0; i < fields.length; i++) {
+      if (fieldValue(fields[i]) !== (fields[i].dataset.rendered || "")) return true;
+    }
+    return false;
+  }
+
   function pollable() {
     if (document.visibilityState !== "visible") return false;
     if ($("app").hidden) return false;
     if (writesOut > 0) return false;
+    if (typedInto()) return false;
     var el = document.activeElement;
     if (!el) return true;
     var tag = (el.tagName || "").toLowerCase();

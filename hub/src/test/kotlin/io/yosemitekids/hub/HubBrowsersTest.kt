@@ -47,7 +47,7 @@ class HubBrowsersTest {
         val forBen = b.mint(BEN, T)!!
         val browser = b.claim(forBen, T).getOrThrow()
         assertEquals(BEN, browser.kid)
-        assertEquals(BEN, b.resolve(browser.token, T)!!.kid)
+        assertEquals(BEN, b.watching(browser.token, T)!!.browser.kid)
     }
 
     @Test
@@ -106,53 +106,81 @@ class HubBrowsersTest {
     fun `a cookie nobody minted resolves to nothing`() {
         val b = store()
         b.claim(b.mint(ADA, T)!!, T).getOrThrow()
-        assertNull(b.resolve("0".repeat(32), T))
-        assertNull(b.resolve("", T))
-        assertNull(b.resolve(null, T))
+        assertNull(b.watching("0".repeat(32), T))
+        assertNull(b.watching("", T))
+        assertNull(b.watching(null, T))
     }
 
     @Test
     fun `a claim lapses eventually, and not before`() {
-        val b = store()
-        val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
-        assertNotNull(b.resolve(token, T + HubBrowsers.CLAIM_TTL_MS - 1))
-        assertNull(b.resolve(token, T + HubBrowsers.CLAIM_TTL_MS))
+        // A fresh claim for each probe, because asking the question changes
+        // the answer: [HubBrowsers.watching] is what a real request calls, and
+        // a real request is exactly what the window slides from. Probing at
+        // TTL-1 through it renews the claim, so a second probe at TTL on the
+        // same row would be asking about a browser that had just been used.
+        store().let { b ->
+            val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
+            assertNotNull(b.watching(token, T + HubBrowsers.CLAIM_TTL_MS - 1))
+        }
+        store().let { b ->
+            val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
+            assertNull(b.watching(token, T + HubBrowsers.CLAIM_TTL_MS))
+        }
     }
 
     /**
      * The tablet a child actually uses.
      *
      * CLAIM_TTL_MS's own KDoc has said "without being used or renewed" since
-     * the day it was written, and `lastSeenAt` has been recorded since
-     * [HubBrowsers.noteSeen] was — but both places that judged a claim
-     * compared `now - claimedAt`. So the iPad a child picked up every single
-     * day stopped working exactly six months after it was set up, mid
-     * afternoon, showing "Ask a grown-up" with no reason on any screen; and
-     * the one left in a drawer the same week expired at the same moment,
-     * which is the only half that was behaving.
+     * the day it was written, and `lastSeenAt` has been recorded since the
+     * sighting write was — but both places that judged a claim compared
+     * `now - claimedAt`. So the iPad a child picked up every single day
+     * stopped working exactly six months after it was set up, mid afternoon,
+     * showing "Ask a grown-up" with no reason on any screen; and the one left
+     * in a drawer the same week expired at the same moment, which is the only
+     * half that was behaving.
+     *
+     * Driven through [HubBrowsers.watching], which is the only path a child's
+     * tablet takes. An earlier version of this test drove `resolve` and
+     * `noteSeen` instead — a pair with no production caller left — so it
+     * stayed green against a `watching` that still compared `claimedAt`.
      */
     @Test
     fun `a claim a child keeps using does not lapse`() {
-        val b = store()
-        val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
         // Five months in, they watch something. That is the renewal.
         val used = T + 150L * 24 * 60 * 60 * 1000L
-        b.noteSeen(token, used)
-        assertNotNull(
-            "six months after the claim, but one month after they last watched",
-            b.resolve(token, T + HubBrowsers.CLAIM_TTL_MS + 1)
-        )
-        assertNotNull(b.resolve(token, used + HubBrowsers.CLAIM_TTL_MS - 1))
-        assertNull("and it does lapse, six months after that", b.resolve(token, used + HubBrowsers.CLAIM_TTL_MS))
+        store().let { b ->
+            val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
+            assertTrue("watching records the sighting", b.watching(token, used)!!.renewed)
+            assertNotNull(
+                "six months after the claim, but one month after they last watched",
+                b.watching(token, T + HubBrowsers.CLAIM_TTL_MS + 1)
+            )
+        }
+        // And it does lapse, six months after that last use — on a claim
+        // nothing has probed in between, for the reason above.
+        store().let { b ->
+            val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
+            b.watching(token, used)
+            assertNull(
+                "six months after they last watched",
+                b.watching(token, used + HubBrowsers.CLAIM_TTL_MS)
+            )
+        }
     }
 
     @Test
     fun `a claim nobody ever used lapses from when it was claimed`() {
-        val b = store()
-        val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
         // lastSeenAt is 0 until a request arrives, and 0 is not "1970".
-        assertNotNull(b.resolve(token, T + HubBrowsers.CLAIM_TTL_MS - 1))
-        assertNull(b.resolve(token, T + HubBrowsers.CLAIM_TTL_MS))
+        // One claim per probe, for the reason above.
+        store().let { b ->
+            val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
+            assertNotNull(b.watching(token, T + HubBrowsers.CLAIM_TTL_MS - 1))
+        }
+        store().let { b ->
+            val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
+            assertNull(b.watching(token, T + HubBrowsers.CLAIM_TTL_MS))
+        }
     }
 
 
@@ -162,8 +190,8 @@ class HubBrowsersTest {
         val ada = b.claim(b.mint(ADA, T)!!, T).getOrThrow()
         val ben = b.claim(b.mint(BEN, T)!!, T).getOrThrow()
         assertTrue(b.revoke(ada.token.take(8)))
-        assertNull(b.resolve(ada.token, T))
-        assertNotNull(b.resolve(ben.token, T))
+        assertNull(b.watching(ada.token, T))
+        assertNotNull(b.watching(ben.token, T))
         // A reference nobody holds is a false, not an exception and not a
         // silent success the page would render as "removed".
         assertFalse(b.revoke("nosuchre"))
@@ -176,9 +204,9 @@ class HubBrowsersTest {
         val two = b.claim(b.mint(ADA, T)!!, T).getOrThrow()
         val other = b.claim(b.mint(BEN, T)!!, T).getOrThrow()
         assertEquals(2, b.revokeFor(ADA))
-        assertNull(b.resolve(one.token, T))
-        assertNull(b.resolve(two.token, T))
-        assertNotNull(b.resolve(other.token, T))
+        assertNull(b.watching(one.token, T))
+        assertNull(b.watching(two.token, T))
+        assertNotNull(b.watching(other.token, T))
     }
 
     @Test
@@ -206,19 +234,31 @@ class HubBrowsersTest {
         // every child back to a parent for a fresh code.
         val dir = tmp.newFolder()
         val token = HubBrowsers(dir).let { it.claim(it.mint(ADA, T)!!, T).getOrThrow().token }
-        assertEquals(ADA, HubBrowsers(dir).resolve(token, T)!!.kid)
+        assertEquals(ADA, HubBrowsers(dir).watching(token, T)!!.browser.kid)
     }
 
+    /**
+     * The write throttle, and the cookie renewal that rides on it.
+     *
+     * [HubBrowsers.watching] runs on every request a child's tablet makes,
+     * including one per two megabytes of video, so it must write browsers.json
+     * about once an hour and not once a chunk. `renewed` is the same signal
+     * the kid server re-dates the cookie from, so this pins both: a Set-Cookie
+     * on every response would be as wrong as a disk write on every response.
+     */
     @Test
-    fun `last seen is written at most once an hour`() {
+    fun `last seen is written at most once an hour, and that is when the cookie is renewed`() {
         val b = store()
         val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
-        b.noteSeen(token, T)
-        val first = b.resolve(token, T)!!.lastSeenAt
-        assertEquals(T, first)
-        b.noteSeen(token, T + 60_000)
-        assertEquals(first, b.resolve(token, T)!!.lastSeenAt)
-        b.noteSeen(token, T + HubBrowsers.SEEN_WRITE_INTERVAL_MS)
-        assertNotEquals(first, b.resolve(token, T)!!.lastSeenAt)
+
+        assertTrue("the first sighting is always recorded", b.watching(token, T)!!.renewed)
+        assertEquals(T, b.watching(token, T)!!.browser.lastSeenAt)
+
+        assertFalse("a minute later is not an hour later", b.watching(token, T + 60_000)!!.renewed)
+        assertEquals(T, b.watching(token, T + 60_000)!!.browser.lastSeenAt)
+
+        val later = T + HubBrowsers.SEEN_WRITE_INTERVAL_MS
+        assertTrue(b.watching(token, later)!!.renewed)
+        assertNotEquals(T, b.watching(token, later)!!.browser.lastSeenAt)
     }
 }

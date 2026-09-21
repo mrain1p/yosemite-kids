@@ -150,7 +150,14 @@ class SavedListConvergenceTest {
         // Then a cap's worth of newer removals pile up on top of it.
         val flood = (1..SavedListStore.MAX_ROWS).map { entry(it, 10_000L + it) }
         phone.merge(flood, emptyMap())
-        flood.forEach { phone.remove(it.video.url) }
+        // Each removal AFTER the last, which is the whole point: the
+        // tombstones are kept newest-first and truncated at MAX_ROWS, so
+        // video(0)'s has to be genuinely the oldest to be the one that falls
+        // off the end. Freezing the clock here made every flood removal share
+        // video(0)'s timestamp, a stable sort then kept video(0) first through
+        // all 200 rewrites, and the case passed with the floor deleted
+        // entirely - the exact regression it exists to catch.
+        flood.forEach { clock += 1; phone.remove(it.video.url) }
 
         // The television still remembers the original add, and syncs.
         repeat(3) { tv.merge(phone.loadEntries(), phone.removedMap()) }

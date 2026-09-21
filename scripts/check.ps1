@@ -116,11 +116,12 @@ if (-not (Test-Path "hub\src\test\kotlin\io\yosemitekids\hub\HubServerTest.kt"))
 # container build — and this check runs on Windows, which is where such a
 # file is created in the first place.
 #
-# The second: THE GATE READS THOSE FILES. `* text=auto` left 334 of 447
-# tracked files CRLF in a Windows checkout, and a bash guard's pattern — a
-# `$` anchor, an awk range ending `^}$` — matches a line that now ends in a
-# character it was never written to expect. Eight guards failed OPEN that
-# way, reporting clean on a tree they could no longer see into.
+# The second: THE GATE READS THOSE FILES. `* text=auto` left 334 of the 451
+# tracked text files CRLF in a Windows checkout (527 tracked in all, the rest
+# declared binary), and a bash guard's pattern — a `$` anchor, an awk range
+# ending `^}$` — matches a line that now ends in a character it was never
+# written to expect. A guard that greps one reports clean on a tree it cannot
+# see into.
 $crlf = @(git ls-files --eol) |
     Where-Object { $_ -match 'w/(crlf|mixed)' -and $_ -notmatch '\.bat$' } |
     ForEach-Object { ($_ -split "`t")[-1] }
@@ -128,8 +129,10 @@ if ($crlf) {
     Fail-Guard "CRLF line endings in: $($crlf -join ', ')
 A container cannot run a CRLF script, and the gate cannot READ a CRLF file the
 way its patterns expect - a guard that greps one reports clean on a tree it
-cannot see into. Check .gitattributes says eol=lf, then renormalise:
-  git rm --cached -r . && git reset --hard"
+cannot see into. Check .gitattributes says eol=lf, then renormalise the index in place:
+  git add --renormalize .
+NOT `git reset --hard`: this gate runs before a commit, which is exactly when
+there is uncommitted work for it to destroy."
 }
 
 # The hub's container must be able to take ownership of its bind-mounted
@@ -2734,9 +2737,13 @@ if ($bodySeen.Count -gt 0) {
 #     or later, so a session with only CLAUDE.md and the map skill could find
 #     the entry point for almost nothing added in three releases — and would
 #     then write a second one beside it.
-$archMap = Get-Content docs/ARCHITECTURE.md -Raw
+# Whole names, not substrings. `KidHome.kt` is inside `HubKidHome.kt` and
+# `Pins.kt` is inside `SettingsPins.kt`, so both passed for free while being
+# absent from the map.
+$archNames = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]((Get-Content docs/ARCHITECTURE.md -Raw) -split '[^A-Za-z0-9_.]+'))
 $unmapped = @(Get-ChildItem -Recurse -File -Filter *.kt app/src/main, core/src/main, crawl/src/main, hub/src/main |
-    Where-Object { -not $archMap.Contains($_.Name) } | ForEach-Object { $_.Name })
+    Where-Object { -not $archNames.Contains($_.Name) } | ForEach-Object { $_.Name })
 if ($unmapped.Count -gt 0) {
     Fail-Guard "docs/ARCHITECTURE.md does not name: $($unmapped -join ' ')
 That file is how a session finds where to make a change, and a map missing a road
@@ -2763,12 +2770,17 @@ saying what the file is for; grouping several on one line with slashes is fine."
 $extractorTests = @(Get-ChildItem -Recurse -File app\src\test\java -Filter *.kt |
     Select-String -Pattern 'org\.schabi\.newpipe\.extractor' | ForEach-Object { $_.Path } | Sort-Object -Unique)
 foreach ($f in $extractorTests) {
-    if ((Get-Content $f -Raw) -notmatch 'LIVE-YOUTUBE') {
+    # -cnotmatch, not -notmatch: PowerShell's comparison operators are
+    # case-insensitive by default, so the phrase "live-YouTube" in a KDoc
+    # satisfied this and the guard could not fire at all. The bash half is
+    # grep, which is case-sensitive - and the canary defaults to GATE=sh, so
+    # the half that was dead is the half the author runs before every commit.
+    if ((Get-Content $f -Raw) -cnotmatch 'LIVE-YOUTUBE') {
         Fail-Guard "$(Split-Path $f -Leaf) imports the extractor and carries no LIVE-YOUTUBE marker, so both gates and the PR build will run it against real YouTube. A bot wall would then fail a check for something the change being tested did not do. Put the marker in its first lines, beside ExtractorSmokeTest's."
     }
 }
 $liveMarked = @(Get-ChildItem -Recurse -File app\src\test\java -Filter *.kt |
-    Select-String -Pattern 'LIVE-YOUTUBE' | ForEach-Object { $_.Path } | Sort-Object -Unique)
+    Select-String -CaseSensitive -Pattern 'LIVE-YOUTUBE' | ForEach-Object { $_.Path } | Sort-Object -Unique)
 if ($liveMarked.Count -eq 0) {
     Fail-Guard "no test carries a LIVE-YOUTUBE marker any more, so the exclusion every gate derives from it now excludes nothing. If the live tests are gone, take the derivation out too rather than leaving a mechanism that reads as working."
 }
@@ -2815,7 +2827,7 @@ Write-Host "== 5/6 app unit tests (offline)" -ForegroundColor Cyan
 # not from a list of class names: the same two names were spelled out here, in
 # check.sh and in build.yml. Guard 77.
 $live = @(Get-ChildItem -Recurse -File app\src\test\java -Filter *.kt |
-    Select-String -Pattern 'LIVE-YOUTUBE' | ForEach-Object { $_.Path } | Sort-Object -Unique)
+    Select-String -CaseSensitive -Pattern 'LIVE-YOUTUBE' | ForEach-Object { $_.Path } | Sort-Object -Unique)
 $testRoot = (Resolve-Path "app\src\test\java").Path
 $tests = Get-ChildItem -Recurse -File app\src\test\java -Filter *Test.kt |
     Where-Object { $live -notcontains $_.FullName } |

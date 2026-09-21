@@ -11,14 +11,15 @@
 # acquiring them in the first place.
 #
 # LF EVERYWHERE, and not as a matter of taste. `* text=auto` left 334 of the
-# 447 tracked files CRLF in a Windows working tree, and scripts/check.sh reads
-# most of them: a pattern anchored with `$`, an `awk` range that ends on `^}$`,
-# a `case` on a `"…"\n` fragment — all of them match a line that now ends in a
-# carriage return they were never written to expect. Eight guards failed OPEN
-# that way, reporting clean on a tree they could no longer see into, and the
-# gate cannot report that it has gone blind. The blobs have always been LF
-# (checked: not one carries a CR), so this changes nothing in history and only
-# stops the checkout from rewriting them on the way out.
+# 451 tracked text files CRLF in a Windows working tree (527 tracked in all,
+# the rest declared binary), and scripts/check.sh reads most of them: a
+# pattern anchored with `$`, an `awk` range that ends on `^}$`, a `case` on a
+# `"…"\n` fragment — all of them match a line that now ends in a carriage
+# return they were never written to expect. A guard that greps one reports
+# clean on a tree it cannot see into, and the gate cannot report that it has
+# gone blind. The blobs have always been LF (checked: not one of the 451
+# carries a CR), so this changes nothing in history and only stops the
+# checkout from rewriting them on the way out.
 #
 # It cost hours in other ways too. Every session that edited a file after a
 # branch switch found its `\n` patterns silently defeated, and `cat -A` on

@@ -512,6 +512,18 @@ class LanServer(
         // poll shouldn't have to wait behind a slow config push either.
         .apply { allowCoreThreadTimeOut(true) }
 
+    /**
+     * Closes a socket whose connection has outlived [MAX_CONNECTION_MS].
+     *
+     * One daemon thread for the whole server. The task is not cancelled when a
+     * request finishes normally: `use` has already closed the socket by then
+     * and closing a closed socket is a no-op, so cancelling would buy nothing
+     * but a handle to keep.
+     */
+    private val watchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "YosemiteKids-lan-watchdog").apply { isDaemon = true }
+    }
+
     /** Last /pair-request per caller address — one every few seconds is plenty. */
     private val pairRequestAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
@@ -567,7 +579,13 @@ class LanServer(
         // request. Past it the next read throws the same SocketTimeoutException
         // a silent caller already threw, which the accept loop already swallows
         // and `use` already closes — no new failure path and no new words.
-        val deadline = System.nanoTime() + REQUEST_DEADLINE_MS * 1_000_000L
+        // Whatever this connection is doing, it stops eventually — including
+        // the reply write, which soTimeout does not reach. See MAX_CONNECTION_MS.
+        watchdog.schedule(
+            { runCatching { sock.close() } },
+            MAX_CONNECTION_MS, java.util.concurrent.TimeUnit.MILLISECONDS
+        )
+        var deadline = System.nanoTime() + REQUEST_DEADLINE_MS * 1_000_000L
         // Re-armed before every blocking read, including the per-byte ones in
         // readLine: a caller that dribbles WITHIN one header line would
         // otherwise get a fresh ten seconds per buffer refill, fifty headers
@@ -700,6 +718,13 @@ class LanServer(
             discardBody()
             respond(413, "too large")
             return
+        }
+        // A body that fits the cap buys the time to arrive at a floor rate.
+        // After the cap check, never before it: the declared number is
+        // attacker-controlled, and an unchecked one would buy an attacker an
+        // afternoon. See MIN_BODY_BYTES_PER_SECOND.
+        if (contentLength > 0) {
+            deadline += contentLength * 1_000_000_000L / MIN_BODY_BYTES_PER_SECOND
         }
 
         // "Something changed, come and look." Carries no data and grants
@@ -1121,6 +1146,40 @@ class LanServer(
         private const val REQUEST_DEADLINE_MS = 30_000L
 
         /**
+         * The slowest a declared body may arrive and still be waited for.
+         *
+         * [REQUEST_DEADLINE_MS] alone is not a rule about a body: `/index`
+         * pushes a deep channel's whole listing, up to [MAX_INDEX_BODY_BYTES],
+         * and eight megabytes inside thirty seconds needs 2.2 Mbit/s sustained
+         * across a house. A phone on the far side of a wall would be cut off
+         * mid-push, the accept loop would swallow the timeout by design, and
+         * the symptom is a television whose search index quietly stops
+         * advancing — no message on either screen.
+         *
+         * So a body that declares its size buys time at this rate. A caller
+         * dribbling to hold a thread still cannot: one byte every nine seconds
+         * buys nine bytes of allowance, and the clock runs out anyway.
+         */
+        private const val MIN_BODY_BYTES_PER_SECOND = 32L * 1024
+
+        /**
+         * The ceiling on one connection, whatever it is doing.
+         *
+         * `soTimeout` bounds reads and does not apply to WRITES. A caller that
+         * asks for `/index` and then locks its screen leaves this server's
+         * worker parked in `write(payload)` with nothing to wake it — four of
+         * those and the parent's phone cannot reach the television at all,
+         * which is the precise outcome [REQUEST_DEADLINE_MS] was introduced to
+         * prevent, on the half of the request it does not cover.
+         *
+         * Java offers no write timeout, so this is a watchdog that closes the
+         * socket; the blocked write then throws and the worker is free. It is
+         * deliberately far longer than any read deadline: it is a backstop for
+         * a hang, not a policy about speed.
+         */
+        private const val MAX_CONNECTION_MS = 300_000L
+
+        /**
          * How long the next blocking read may wait: whatever is left of the
          * request's budget, capped at one read's silence.
          *
@@ -1299,26 +1358,34 @@ object LanClient {
      * fifteen call sites. A peer that answers with an endless body takes the
      * phone down with it, and the phone is where a parent goes to fix things.
      *
-     * The numbers are the server's own ([MAX_BODY_BYTES], and
-     * [MAX_INDEX_BODY_BYTES] for the one route that carries a whole channel's
-     * video list), so this side accepts no more than the other side would
-     * have sent.
+     * The number is the server's own [MAX_INDEX_BODY_BYTES] — the largest
+     * body anything in this product sends — so this side accepts no more than
+     * the other side would have sent, and no legitimate reply is ever cut.
+     *
+     * It was briefly [MAX_BODY_BYTES] (1 MB), which is the peer's REQUEST cap
+     * and bounds none of the replies this reads: `/verdicts` and
+     * `/watchstate` pass a megabyte in an ordinary year of use, and a
+     * truncated one parses to nothing, silently, for ever — every device
+     * re-billing the AI provider for videos a peer had already judged, with
+     * no message on any screen. A cap that is wrong in the small direction
+     * fails quietly; this one only ever fails loudly.
      */
-    private const val REPLY_CAP = 1024L * 1024
-
-    /** For `/index`, which is a deep channel's whole listing. */
-    private const val INDEX_REPLY_CAP = 8L * 1024 * 1024
+    private const val REPLY_CAP = 8L * 1024 * 1024
 
     /**
-     * A peer's reply, bounded; null when it could not be read at all.
+     * A peer's reply, bounded.
      *
-     * `peekBody` reads at most [cap] bytes and no more. A body past the cap
-     * arrives truncated, which then fails to parse - and failing to parse is
-     * the right answer for a reply that long, because nothing this client
-     * asks for is that big.
+     * `peekBody` reads at most [cap] bytes and no more. It throws what
+     * `body.string()` threw — an IOException on a timeout or a reset — and
+     * that is deliberate: [probeHost] catches IOException and nothing else,
+     * and a version of this that swallowed the throw returned "" instead, so
+     * `JSONObject("")` raised a JSONException the catch could not take. It
+     * escaped the probe, cancelled the whole re-discovery sweep, and reached
+     * viewModelScope with no handler — the phone dying during exactly the
+     * flaky-network moment re-discovery exists to survive.
      */
-    private fun okhttp3.Response.text(cap: Long = REPLY_CAP): String? =
-        runCatching { peekBody(cap).string() }.getOrNull()
+    private fun okhttp3.Response.text(cap: Long = REPLY_CAP): String =
+        peekBody(cap).string()
 
     /**
      * This device's own pairing token, stamped on every outbound call as
@@ -1493,7 +1560,7 @@ object LanClient {
                         .build()
                 ).execute().use { resp ->
                     if (resp.isSuccessful) {
-                        val json = JSONObject(resp.text().orEmpty())
+                        val json = JSONObject(resp.text())
                         return (host to port) to json.optString("token").ifEmpty { null }
                     }
                     // Answered but refused us (403: another family's device, or
@@ -1534,6 +1601,16 @@ object LanClient {
     private const val CONNECT_PROBE_MS = 400
 
     /**
+     * The ceiling on one LAN call, end to end.
+     *
+     * Generous because `/index` carries a deep channel's whole listing over
+     * house wifi, and short enough that a peer which stops talking mid-reply
+     * cannot hold a sweep open for the life of the process. [updateClient]
+     * raises it, because that call waits on a download.
+     */
+    private const val LAN_CALL_TIMEOUT_S = 60L
+
+    /**
      * The LAN's own client. The shared [Http.client] is tuned for the
      * internet — 5 s connect, a retry interceptor, connection-failure retries
      * — which turns one call to a TV that is switched off into ~10 s of
@@ -1545,6 +1622,15 @@ object LanClient {
         .connectTimeout(1_500, java.util.concurrent.TimeUnit.MILLISECONDS)
         .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        // The whole call, not one read of it. A read timeout is reset by every
+        // byte, so a peer that trickles — a device asleep behind a NAT that
+        // holds the connection, or whatever squatted the port after a DHCP
+        // re-lease — answers `/status` with a 200 and then never finishes.
+        // `fullStatus` never returns, `reconcile`'s inFlight flag stays true,
+        // and config push, verdict exchange and the hub index pull are all
+        // silent no-ops until the app is force-stopped. This is the server's
+        // own REQUEST_DEADLINE_MS pointed the other way.
+        .callTimeout(LAN_CALL_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
         .retryOnConnectionFailure(false)
         .build()
 
@@ -1561,6 +1647,9 @@ object LanClient {
 
     private val updateClient = lanClient.newBuilder()
         .readTimeout(UPDATE_READ_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+        // And the call ceiling with it: this one waits on a device fetching an
+        // APK from GitHub, so the LAN default would cut it off mid-download.
+        .callTimeout(UPDATE_READ_TIMEOUT_S + 30L, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
     /**
@@ -1586,7 +1675,7 @@ object LanClient {
                         resp.code == 404 -> UpdateAnswer(NO_ROUTE, null, null)
                         !resp.isSuccessful -> null
                         else -> {
-                            val json = JSONObject(resp.text().orEmpty())
+                            val json = JSONObject(resp.text())
                             UpdateAnswer(
                                 json.getString("status"),
                                 json.optString("versionName").ifEmpty { null },
@@ -1610,7 +1699,7 @@ object LanClient {
                     )
                     return@withContext null
                 }
-                val json = JSONObject(resp.text().orEmpty())
+                val json = JSONObject(resp.text())
                 DeviceStatus(
                     json.getString("hash"),
                     json.optLong("updatedAt", 0L),
@@ -1748,7 +1837,7 @@ object LanClient {
                     JSONObject().put("name", myName).put("token", myToken).toString(), null
                 ).use { resp ->
                     if (!resp.isSuccessful) null
-                    else JSONObject(resp.text().orEmpty()).optString("status").ifEmpty { null }
+                    else JSONObject(resp.text()).optString("status").ifEmpty { null }
                 }
             }.getOrNull()
         }
@@ -1759,7 +1848,7 @@ object LanClient {
             runCatching {
                 raw(host, port, "GET", "/pair-status?me=$myToken", null, null).use { resp ->
                     if (!resp.isSuccessful) null
-                    else JSONObject(resp.text().orEmpty()).optString("status").ifEmpty { null }
+                    else JSONObject(resp.text()).optString("status").ifEmpty { null }
                 }
             }.getOrNull()
         }
@@ -1770,7 +1859,7 @@ object LanClient {
             runCatching {
                 request(device, "GET", "/pair-pending", null).use { resp ->
                     if (!resp.isSuccessful) return@withContext emptyList()
-                    val arr = org.json.JSONArray(resp.text().orEmpty())
+                    val arr = org.json.JSONArray(resp.text())
                     (0 until arr.length()).map { i ->
                         val o = arr.getJSONObject(i)
                         o.getString("name") to o.getString("token")
@@ -1911,8 +2000,7 @@ object LanClient {
         withContext(Dispatchers.IO) {
             runCatching {
                 request(device, "GET", "/index?source=$sourceId", null).use { resp ->
-                    // The one route that carries a whole channel listing.
-                    if (resp.isSuccessful) resp.text(INDEX_REPLY_CAP) else null
+                    if (resp.isSuccessful) resp.text() else null
                 }
             }.getOrNull()
         }
@@ -1931,7 +2019,7 @@ object LanClient {
             runCatching {
                 request(device, "GET", "/admins", null).use { resp ->
                     if (!resp.isSuccessful) return@withContext emptyList()
-                    val arr = org.json.JSONArray(resp.text().orEmpty())
+                    val arr = org.json.JSONArray(resp.text())
                     (0 until arr.length()).map { i ->
                         val o = arr.getJSONObject(i)
                         o.getString("name") to o.getString("token")

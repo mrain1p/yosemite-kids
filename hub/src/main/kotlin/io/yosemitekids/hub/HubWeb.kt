@@ -599,10 +599,23 @@ object HubWeb {
 
         store.edit(who, now) { current ->
             val doc = JSONObject(ConfigJson.toJson(current))
+            // Held to the manifest's ranges HERE, on the patch alone, before
+            // it is merged in.
+            //
+            // It ran over the merged document for one release, which is the
+            // whole family config: so any console action at all - lifting a
+            // pause, adding a channel, renaming a kid - silently rewrote every
+            // out-of-range number anywhere in it. And `edit` stamps what it
+            // changed, so a number the parent never touched was pushed to
+            // every device as a rule they had just set. `refuseDistantPauses`
+            // below states the same principle for its own field, and the
+            // `home` clause states it again: "running it on every patch would
+            // re-derive a row nobody touched".
+            withDeclaredRanges(patch)
             keys.forEach { if (patch.isNull(it)) doc.remove(it) else doc.put(it, patch.get(it)) }
             mintKidIds(doc)
             refuseDistantPauses(doc, current, now)
-            val next = ConfigJson.fromJson(withDeclaredRanges(scrubPatch(doc, current)).toString())
+            val next = ConfigJson.fromJson(scrubPatch(doc, current).toString())
             // Only when the patch actually named `home`. Running it on every
             // patch would re-derive a row nobody touched, and a row four cards
             // long from a build that allows four would be trimmed by an edit
@@ -871,6 +884,12 @@ object HubWeb {
     /**
      * Hold a patch to those ranges, at the family level and for every kid.
      *
+     * **The patch, and never the stored document.** Applied to the merged
+     * result instead, this rewrites numbers the edit never named - and
+     * [HubStore.edit] stamps what it changes, so the rewritten value is pushed
+     * to every device in the house as a rule the parent set, during an edit
+     * about something else. It went out that way once.
+     *
      * Clamped rather than refused: the rest of the patch is usually fine, the
      * console redraws from what was stored, and a parent who typed 500 then
      * sees 240 - which is the number that is actually in force. Refusing the
@@ -910,14 +929,20 @@ object HubWeb {
         // and the stamper would push the removal to every device in the house
         // before anyone noticed the television had stopped asking.
         //
-        // So these are not patchable, by construction rather than by a list:
-        // a kid's code comes from the phone, their browser password has a
-        // route of its own (/api/kid-password), and the other two are tokens
-        // no browser is shown. A console control for any of them needs a
-        // route of its own, which is the point.
+        // So a kid's code and their browser password are not patchable, by
+        // construction rather than by a list: the code comes from the phone
+        // and the password has a route of its own (/api/kid-password).
+        // `master` is held the same way because it is a bearer credential for
+        // the whole LAN API and nothing should ever set it through here.
+        //
+        // `deviceProfiles` is NOT held that way, though `/api/state` withholds
+        // it for the same reason (it is keyed by device token). It does not
+        // need to be: `doc` starts as the stored document, so a patch that
+        // omits the key keeps it by construction. Overwriting it here as well
+        // made the one case where a patch DOES name it - the `devices-kid`
+        // control the manifest declares - answer {"saved":true} for a write it
+        // had already thrown away.
         current.masterDeviceToken?.let { doc.put("master", it) } ?: doc.remove("master")
-        if (current.deviceProfiles.isEmpty()) doc.remove("deviceProfiles")
-        else doc.put("deviceProfiles", JSONObject(current.deviceProfiles as Map<String, String>))
         val stored = current.profiles.associateBy { it.id }
         val profiles = doc.optJSONArray("profiles") ?: return doc
         for (i in 0 until profiles.length()) {

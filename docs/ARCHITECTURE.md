@@ -206,6 +206,9 @@ core/src/main/kotlin/io/yosemitekids/app/data/     the pure rules: no disk, no c
 │                       arithmetic, shared because two faces now answer it
 ├── HomeRows.kt         One row of a kid's home as the parent arranged it; the
 │                       shelves themselves are HOME_SHELVES in ui/
+├── Pins.kt             The pinned hero's ranks: withRow is the ONLY place a
+│                       rank is minted, the cap applied, or an invisible
+│                       source refused (guard 42). Both editors go through it
 ├── PasswordRecord.kt   A stored password: never the password, only what verifies
 │                       one. Pbkdf2 is here, and the hub's admin password and a
 │                       kid's web password both derive through it
@@ -254,6 +257,10 @@ crawl/src/main/kotlin/io/yosemitekids/app/data/    network, disk, clock — plai
 ├── SearchRank.kt / SearchOrder.kt   How good a hit is for this child, and the
 │                       orders the results screen can honestly offer, with their
 │                       words (label); "Newest" since the index kept its dates
+├── KidHome.kt          What a kid's home is made of, for both faces: keep
+│                       watching, history, suggestions, interleave, and
+│                       FINISHED_FRACTION - the line between "watched" and "in
+│                       progress" that the shelves and the end card agree on
 ├── StreamChunker.kt    The range arithmetic googlevideo serves at speed, in one
 │                       place for everything that fetches a stream
 ├── ui/KidOrder.kt      orderByPopularity / orderByWatched / orderChannels /
