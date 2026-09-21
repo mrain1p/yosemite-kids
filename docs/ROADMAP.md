@@ -961,7 +961,7 @@ row below is one half of something already right.
 
 #### The gate's own blind spots
 
-12. **`check.ps1` has never been negative-tested.** Every canary case shells out
+12. ✅ **`check.ps1` has never been negative-tested.** Every canary case shells out
     to the bash gate, and guard 65 reads bash's headings — so the only gate that
     runs on Windows, and the one the author runs before committing, is the half
     with no canary.
@@ -1064,18 +1064,20 @@ Nothing found argued for a change of direction.
 closed, along with the one-sided disciplines and the dead code. What remains,
 in rough order of what it costs:
 
-- **The gate's own reach** (12, 15, 16, 18, 19): the Windows gate has still
-  never been negative-tested, ~18 checks carry no number and so are invisible
-  to every meta-guard, guard 62(d) still asserts nothing, step 0 still pays
-  ~150 process spawns in two per-file loops, and the bash gate still fails
-  open on eight guards under a CRLF checkout. Forty-five guards still have no
-  canary case, though the eight that protect the most now do.
-- **The hub's degraded read** (8) and **the per-entry config parse** (9): both
+- **The gate's own reach** (15, 16, 18, 19). ✅ 12 is closed: the Windows gate
+  is negative-tested now — `GATE=ps1` and `GATE=both` run the cases against it,
+  and all 33 fire there as well as in bash, so the mirror is behaving for every
+  case that exists. What is left: ~18 checks carry no number and so are invisible
+  to every meta-guard, guard 62(d) still asserts nothing, step 0 still pays ~150
+  process spawns in two per-file loops, and the bash gate still fails open on
+  eight guards under a CRLF checkout. Forty-four guards still have no canary
+  case, though the nine that protect the most now do.
+- ✅ **The hub's degraded read** (8) and **the per-entry config parse** (9): both
   are "a damaged document reads as an empty family", which the phone already
   solves and the hub does not.
-- **The extractor canary's honesty** (10): a run that tested nothing can close
+- ✅ **The extractor canary's honesty** (10): a run that tested nothing can close
   its own breakage issue, and it tests a path the hub does not use.
-- **`LanClient`'s silence** (11) and **the unread `Diag` ring**: a device
+- ✅ **`LanClient`'s silence** (11) and **the unread `Diag` ring**: a device
   cannot say why a push failed, and nothing on a device ever shows what it
   recorded.
 - **The console's medium list** (14 rows), of which the rule-deciding and the

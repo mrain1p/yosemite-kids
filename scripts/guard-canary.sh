@@ -126,7 +126,16 @@ gates() {
 run_gate() {
   case "$1" in
     sh) bash scripts/check.sh --guards 2>&1 ;;
-    ps1) powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 -Guards 2>&1 ;;
+    # pwsh first: it is what a Linux runner has, and what a Windows box with
+    # PowerShell 7 should be using anyway. `powershell` is the 5.1 fallback
+    # every Windows box still has.
+    ps1)
+      if command -v pwsh >/dev/null 2>&1; then
+        pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 -Guards 2>&1
+      else
+        powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 -Guards 2>&1
+      fi
+      ;;
   esac
 }
 

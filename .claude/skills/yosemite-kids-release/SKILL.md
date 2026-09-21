@@ -34,6 +34,19 @@ upstream's builds.
    Read the output for `all green`; do not trust the exit code. A PowerShell
    parse error in `check.ps1` exits 0 while running nothing.
 
+   **And once per release, the canary against both gates:**
+
+   ```bash
+   GATE=both bash scripts/guard-canary.sh
+   ```
+
+   It breaks each guard on purpose and asserts the gate notices — against the
+   bash script *and* the PowerShell one. A guard only one mirror enforces is a
+   guard half the rounds do not have, and a guard that has quietly stopped
+   covering anything still passes: only breaking it shows that. CI runs the
+   bash half on every push, which is why this is the release-time step and not
+   a per-commit one. Budget about a minute a case.
+
 3. Signing: `YOSEMITE_KIDS_KEYSTORE`, `YOSEMITE_KIDS_KEYSTORE_PASSWORD`,
    `YOSEMITE_KIDS_KEY_ALIAS`, `YOSEMITE_KIDS_KEY_PASSWORD` in `local.properties` or the
    environment. On this machine the fork's key is
