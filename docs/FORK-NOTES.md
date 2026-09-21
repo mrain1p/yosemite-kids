@@ -757,6 +757,121 @@ Verified: the JVM suites in `:core`, `:crawl`, `:hub` and `:app` (new:
 `IndexDurabilityTest`, `HomeZoneTest`), both gates, the canary in CI, and the
 new browser walk against a seeded hub.
 
+### The review's list, worked down (1.13.0)
+
+The round after 1.12.0, continuing through `docs/ROADMAP.md` §9G rather than
+adding features. Eleven of the review's findings closed, four of them with a
+guard so they cannot come back, and two of Phase 4's features landed on the
+way.
+
+**What a child or a parent will notice**
+
+- **The countdown's last minute stopped being a lie.** A child told "1 minute
+  left" watched it say so for sixty seconds and then stopped mid-sentence — the
+  ending happening *to* them rather than one they could see coming. It was
+  deferred for a good reason: `UsageLedger` counts whole minutes, so seconds in
+  the page would have been invented precision. The sub-minute time was in
+  `HubWatchMeter` all along — it accrues in milliseconds and credits only whole
+  minutes, so up to 59 seconds are watched, known, and not yet written down.
+  `unsettledMs` exposes that remainder read-only, and `KidWords.timeLeft`,
+  which could always count seconds under the last minute, finally has something
+  to count with. `/kid/progress` had built its own copy of these six fields
+  three lines under a comment warning that "two shapes for one pill is how a
+  countdown comes to say different things on the same screen a minute apart";
+  there were two shapes, and when the seconds arrived only one of them got
+  them. Both routes call one builder now.
+- **A child meets one vocabulary.** `KidWords` in `:core` exists so the
+  television, the phone and the tablet say the same thing about the same rule,
+  and only the hub ever called it. A child paused at teatime read "A parent
+  paused screen time for today" on the television and "A grown-up paused
+  watching" on the tablet, about one rule, in one afternoon. They cannot tell
+  those are the same thing; they can only tell that one device is wrong. Guard
+  51 holds it, with a canary case.
+- **The spinner is gone.** A spinner says "something is happening somewhere"; a
+  skeleton says what is coming and where it will be, so nothing moves under a
+  finger when it arrives. The home gets its own shape — a hero, then rails —
+  rather than a grid of cards, and the television, which had a spinner in the
+  middle of a 55-inch screen, gets both skeletons.
+- **A hub that cannot read its settings says so**, and refuses every save until
+  it is restored. See below; this is the one a family would have met as data
+  loss.
+- **Removing a channel asks first**, like every other destructive action on the
+  console. And two messages a parent needed — "nothing there was recognised as
+  a channel" and "too many codes are already out" — used to be written onto a
+  node that the same click's refresh threw away, so both arrived as a blank
+  card.
+
+**Things that could have lost or hidden data**
+
+- **A config the hub cannot read stopped being a family with nobody in it.**
+  `HubStore.load()` has always refused to serve an unparseable `config.json` as
+  an empty family, because that emptiness is what every device merges next —
+  and then every caller swallowed the refusal into a plausible answer. One of
+  them was dangerous: `edit()` read the config with a
+  `getOrElse { Whitelist(emptyList(), emptySet()) }`, so a parent looking at an
+  empty console and adding their channels back would have written that
+  emptiness over the file. That fallback is gone, every console save is refused
+  with a reason (except restoring, which is the way out), the console draws a
+  banner before a parent tries, and `GET /health` carries `configOk`.
+- **One unreadable channel costs that channel, not the family.** Every "bad
+  config" test in the repo used whole-file garbage; the case nobody held was
+  valid JSON with one element this build cannot read, which threw out of the
+  whole parse. The pins, the grants and the home rows have always been lenient
+  this way — the channels and the kids, the two that matter most, were not.
+- **The parent PIN uses the product's one key derivation.** `HubPassword`'s
+  KDoc has always said there is one KDF "rather than a hub copy and a phone
+  copy that drift apart in cost". There were two, and they had drifted: the PIN
+  guarding every setting in the house ran at 120,000 iterations beside the
+  shared 210,000. Both older formats still verify and are re-stored at the
+  shared cost on the spot, because a family locked out of the settings screen
+  cannot use the settings screen to fix it.
+
+**The alarm that could sleep through the fire**
+
+- **The extractor canary can no longer give a green light for a run that tested
+  nothing.** Every test in it skips itself when YouTube answers a datacenter IP
+  with a bot wall, which is correct — but a job whose tests all skip *succeeds*,
+  and the recovery step closed the breakage issue saying the canary was green
+  again. It now requires a marker the test prints only after asserting
+  something. It was also testing the app's requirements rather than the hub's:
+  YouTube dropping the muxed stream format would have left it green while every
+  video in every browser in the house returned 502. And the issue is assigned to
+  the owner by name.
+
+**Being a quieter neighbour**
+
+- **The poster route is metered and narrowed.** It was credential-gated and
+  host-checked, which stops a stranger and stops it being pointed at the house
+  network — but not a claimed tablet asking as fast as it can, and nothing
+  counted them. Its allow-list is the poster hosts now rather than the
+  crawler's whole list.
+- **Stream resolution has a single-flight.** dash.js opens every rendition's
+  index at once, so an expired twenty-minute URL mid-video meant up to eight
+  simultaneous extractions for one child pressing nothing.
+- **A deleted playlist is parked until the daily refresh** instead of being
+  asked for every fifteen minutes for ever.
+
+**Saying what went wrong**
+
+- **A device can say why it could not reach the television.** Six calls in
+  `LanClient` were `runCatching { … }.getOrDefault(false)`, which makes a 403 —
+  an approval dropped, where the only fix is re-pairing — indistinguishable
+  from a television that is asleep, where the fix is nothing.
+- **The diagnostic ring is readable on the device itself.** `Diag.entries()`
+  had no caller anywhere: the ring filled, capped itself, drained to a hub, and
+  a family without a hub — the documented default — could see none of it short
+  of `adb logcat`. The phone's Devices page shows the last few, beside Recent
+  changes: that card answers "did my edit stick", this one answers "and if it
+  did not, why not".
+
+**Housekeeping.** `SessionGuard` kept its own copy of `Budget`'s three
+functions beside the shared ones, which is a home screen promising forty
+minutes in front of a player that stops at ten; `:app` had *no* reference to
+`KidSurface` and spelled its four You shelves out by hand; thirteen
+declarations nothing called were deleted. Guards 50, 51 and 53 now exist —
+two files cited "guard 50" while no such guard did — each in both gates with a
+canary case, and eight of the oldest guards got their first cases.
+
 ## Next up, in order
 
 > Superseded in part by `docs/ROADMAP.md` §9, which carries the 2026-09-17
