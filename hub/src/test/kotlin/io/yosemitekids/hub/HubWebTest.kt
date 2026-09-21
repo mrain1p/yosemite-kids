@@ -805,7 +805,12 @@ class HubWebTest {
         assertTrue(ix.getBoolean("armed"))
         assertTrue(ix.getBoolean("masterIsMe"))
         assertTrue(ix.getBoolean("masterIsHub"))
-        assertEquals(tokens.selfToken(), ix.getString("master"))
+        // The REF, not the token. A pairing token is a bearer credential for
+        // every device route on the LAN, and this one used to go out whole to
+        // every signed-in tab; the page only ever tested it for truthiness.
+        // HubWeb.withoutCredentials is the rest of that argument.
+        assertEquals(HubWeb.deviceRef(tokens.selfToken()), ix.getString("master"))
+        assertFalse("and not the token itself", ix.getString("master") == tokens.selfToken())
         assertEquals(clock, ix.getLong("lastPullAt"))
         assertEquals(0, ix.getJSONObject("lastRun").getInt("pages"))
         assertTrue(ix.getString("election").contains("builds the search index"))

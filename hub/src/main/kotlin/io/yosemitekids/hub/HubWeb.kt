@@ -183,7 +183,12 @@ object HubWeb {
                     lastRun?.let { r -> JSONObject().put("at", r.atMillis).put("pages", r.pages).put("failed", r.failed) }
                         ?: JSONObject.NULL
                 )
-                .put("master", holder ?: "")
+                // The REF, not the token. A parent needs to know whether
+                // anyone is building the index and whether it is this box;
+                // the page tests this for truthiness and reads the two
+                // booleans below for the rest. Eight characters also match
+                // the Devices rows, which have always been refs.
+                .put("master", holder?.let { deviceRef(it) } ?: "")
                 .put("masterIsMe", holder != null && holder == tokens.selfToken())
                 .put("masterIsHub", MasterToken.isHub(holder))
                 .put("armed", tokens.armed(now))
@@ -291,7 +296,7 @@ object HubWeb {
             )
             // The document itself, minus its bookkeeping. The page renders from
             // this, so a control is only ever as stale as the last fetch.
-            .put("config", raw.apply { remove("sync") })
+            .put("config", withoutCredentials(raw.apply { remove("sync") }))
             // Which is why the feed is lifted out first: it lives inside that
             // bookkeeping, and until now nothing rendered it anywhere but the
             // phone. See [changesJson].
@@ -510,6 +515,49 @@ object HubWeb {
     fun deviceRef(token: String): String = token.take(8)
 
     /**
+     * The family document with every credential taken out of it.
+     *
+     * The console renders from the document, and the easiest way to render a
+     * page from a document is to ship the document. So this route did, and
+     * four credentials went out on every poll - to every signed-in tab, into
+     * every network log, and into every screenshot a parent pastes into a
+     * thread asking why their hub is slow:
+     *
+     *  - `profiles[].pin`, the four directions a child presses to reach
+     *    their own row on the television. The console has no control for it
+     *    - it is set on the phone - and never read it.
+     *  - `profiles[].web`, the PBKDF2 record behind a kid's browser
+     *    password. Not the password, but salt, iterations and hash for a
+     *    credential that may be four characters long, which makes it an
+     *    afternoon's offline guessing rather than a secret.
+     *  - `master`, the pairing token of the phone that builds the index: a
+     *    bearer credential for every device route on the LAN.
+     *  - `deviceProfiles`, which is keyed BY device token.
+     *
+     * What the page actually asks of the first two is "is there one": it
+     * draws "Set" or "Change" from `!!k.hasWeb` and nothing else. So that is
+     * what it gets, and the record stays on the box. Nothing reads the last
+     * two at all, and `devicePage`'s own KDoc says this hub "holds no
+     * credential" on a device - which was true of what it stores and false
+     * of what it served.
+     *
+     * [scrubPatch] is the other half: the page edits a kid by copying the
+     * profile it was given, so what is withheld here must not read as a
+     * removal on the way back.
+     */
+    private fun withoutCredentials(raw: JSONObject): JSONObject {
+        raw.remove("master")
+        raw.remove("deviceProfiles")
+        val profiles = raw.optJSONArray("profiles") ?: return raw
+        for (i in 0 until profiles.length()) {
+            val p = profiles.optJSONObject(i) ?: continue
+            p.remove("pin")
+            if (p.remove("web") != null) p.put("hasWeb", true)
+        }
+        return raw
+    }
+
+    /**
      * Apply a patch of root keys to the stored config.
      *
      * Returns false when the patch names nothing settable, so the caller can
@@ -553,7 +601,7 @@ object HubWeb {
             keys.forEach { if (patch.isNull(it)) doc.remove(it) else doc.put(it, patch.get(it)) }
             mintKidIds(doc)
             refuseDistantPauses(doc, current, now)
-            val next = ConfigJson.fromJson(scrubPatch(doc).toString())
+            val next = ConfigJson.fromJson(scrubPatch(doc, current).toString())
             // Only when the patch actually named `home`. Running it on every
             // patch would re-derive a row nobody touched, and a row four cards
             // long from a build that allows four would be trimmed by an edit
@@ -799,8 +847,35 @@ object HubWeb {
      * restart — and worse, it would ride out to every device in the next push
      * before vanishing, which is a credential travelling for no reason.
      */
-    private fun scrubPatch(doc: JSONObject): JSONObject {
+    private fun scrubPatch(doc: JSONObject, current: Whitelist): JSONObject {
         doc.optJSONObject("ai")?.remove("apiKey")
+        // Everything [withoutCredentials] withheld, taken from what is stored
+        // and never from what was sent.
+        //
+        // The page edits a kid by copying the profile object it was given and
+        // changing one field, and a patch is a replacement: the instant
+        // `/api/state` stops sending `pin`, a rename sends a profile that has
+        // none. Read as written that is a parent clearing their child's code,
+        // and the stamper would push the removal to every device in the house
+        // before anyone noticed the television had stopped asking.
+        //
+        // So these are not patchable, by construction rather than by a list:
+        // a kid's code comes from the phone, their browser password has a
+        // route of its own (/api/kid-password), and the other two are tokens
+        // no browser is shown. A console control for any of them needs a
+        // route of its own, which is the point.
+        current.masterDeviceToken?.let { doc.put("master", it) } ?: doc.remove("master")
+        if (current.deviceProfiles.isEmpty()) doc.remove("deviceProfiles")
+        else doc.put("deviceProfiles", JSONObject(current.deviceProfiles as Map<String, String>))
+        val stored = current.profiles.associateBy { it.id }
+        val profiles = doc.optJSONArray("profiles") ?: return doc
+        for (i in 0 until profiles.length()) {
+            val p = profiles.optJSONObject(i) ?: continue
+            p.remove("hasWeb")
+            val was = stored[p.optString("id")]
+            was?.pin?.let { p.put("pin", it) } ?: p.remove("pin")
+            was?.webPassword?.toJson()?.let { p.put("web", it) } ?: p.remove("web")
+        }
         return doc
     }
 

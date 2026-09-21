@@ -1660,10 +1660,12 @@
     // other control. The page never sees the record and never hashes
     // anything: /api/kid-password derives it on the box, and what lands in
     // the config is one field of this profile, which then syncs everywhere.
+    // `hasWeb` is a boolean the hub computes for exactly this line -
+    // HubWeb.withoutCredentials says why the record itself never leaves it.
     var web = card(controlById("kid-web-password").label, controlById("kid-web-password").sub);
     web.dataset.control = "kid-web-password";
     var webLine = el("div", "line");
-    var hasWeb = !!k.web;
+    var hasWeb = !!k.hasWeb;
     webLine.appendChild(el("div", "sub grow", hasWeb
       ? (k.name || "This kid") + " has a password and can sign in from \"Who's watching?\"."
       : "No password yet. " + (k.name || "This kid") + " signs in by your QR only."));
