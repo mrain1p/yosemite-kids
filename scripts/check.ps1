@@ -2745,6 +2745,34 @@ a second copy of what is already here. Add a line to the right module's tree
 saying what the file is for; grouping several on one line with slashes is fine."
 }
 
+
+# 77. A test that reaches real YouTube says so in its own first lines.
+#     Two tests here call the extractor against live YouTube, and both gates
+#     and the PR build exclude them: a bot wall must not fail a check for
+#     something the change being tested did not do.
+#
+#     That exclusion used to be two class names spelled out in check.sh, in
+#     check.ps1 and in build.yml. Three copies of one list is three chances
+#     for one of them to be a rename behind — and the consequence is not a
+#     failing gate but an intermittently failing one, blamed on the change in
+#     front of whoever is looking.
+#
+#     So the marker lives in the file that needs it and all three derive from
+#     it. This is the other end: the marker cannot be forgotten on a test that
+#     imports the extractor, which is the tell for reaching YouTube at all.
+$extractorTests = @(Get-ChildItem -Recurse -File app\src\test\java -Filter *.kt |
+    Select-String -Pattern 'org\.schabi\.newpipe\.extractor' | ForEach-Object { $_.Path } | Sort-Object -Unique)
+foreach ($f in $extractorTests) {
+    if ((Get-Content $f -Raw) -notmatch 'LIVE-YOUTUBE') {
+        Fail-Guard "$(Split-Path $f -Leaf) imports the extractor and carries no LIVE-YOUTUBE marker, so both gates and the PR build will run it against real YouTube. A bot wall would then fail a check for something the change being tested did not do. Put the marker in its first lines, beside ExtractorSmokeTest's."
+    }
+}
+$liveMarked = @(Get-ChildItem -Recurse -File app\src\test\java -Filter *.kt |
+    Select-String -Pattern 'LIVE-YOUTUBE' | ForEach-Object { $_.Path } | Sort-Object -Unique)
+if ($liveMarked.Count -eq 0) {
+    Fail-Guard "no test carries a LIVE-YOUTUBE marker any more, so the exclusion every gate derives from it now excludes nothing. If the live tests are gone, take the derivation out too rather than leaving a mechanism that reads as working."
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 
@@ -2782,10 +2810,15 @@ Write-Host "== 5/6 app unit tests (offline)" -ForegroundColor Cyan
 # directory deep and the class name was pasted onto a fixed package, so a test
 # in a subpackage would have been listed under the wrong package and silently
 # not run - which is the one failure a test list must not have.
-$live = @("ExtractorSmokeTest", "SingleChannelProbeTest")
+#
+# The live-YouTube exclusion is DERIVED from a marker in the files themselves,
+# not from a list of class names: the same two names were spelled out here, in
+# check.sh and in build.yml. Guard 77.
+$live = @(Get-ChildItem -Recurse -File app\src\test\java -Filter *.kt |
+    Select-String -Pattern 'LIVE-YOUTUBE' | ForEach-Object { $_.Path } | Sort-Object -Unique)
 $testRoot = (Resolve-Path "app\src\test\java").Path
 $tests = Get-ChildItem -Recurse -File app\src\test\java -Filter *Test.kt |
-    Where-Object { $live -notcontains $_.BaseName } |
+    Where-Object { $live -notcontains $_.FullName } |
     ForEach-Object {
         $pkg = (Split-Path $_.FullName -Parent).Substring($testRoot.Length).Trim('\').Replace('\', '.')
         "--tests"; "$pkg.$($_.BaseName)"

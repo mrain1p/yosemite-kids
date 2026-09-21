@@ -80,11 +80,15 @@ class ChannelIndexDateTest {
         assertEquals(25L, rows[0].viewCount)
         assertEquals("the first date stays: a date does not change, a re-parse of it might", T - DAY, rows[0].publishedAt)
         // And a crawl that knows nothing new about a known row writes nothing.
+        // Back-date the file rather than sleep. A rewrite moves the stamp to
+        // now, and a stamp still in 1970 cannot have been rewritten — where
+        // `sleep(5)` proved nothing at all on a filesystem that rounds mtime
+        // to the second, which is most of them.
         val file = File(dir, "UC1.json")
-        val before = file.lastModified()
-        Thread.sleep(5)
+        val backdated = 1_000_000L
+        file.setLastModified(backdated)
         index.addVideos("UC1", listOf(row("aaaaaaaaaaa", views = 25, at = T - DAY)))
-        assertEquals("nothing learned, nothing written", before, file.lastModified())
+        assertEquals("nothing learned, nothing written", backdated, file.lastModified())
         assertFalse(index.loadSource("UC1").isEmpty())
     }
 }

@@ -41,10 +41,21 @@ class SavedListConvergenceTest {
     }
 
     /** One device's store, in a directory of its own. */
+    /**
+     * One wall clock for the whole household, and the test moves it.
+     *
+     * These cases turn on "the later event wins", so the ORDER of an add and
+     * the removal after it is the subject rather than a detail. This used to
+     * be `Thread.sleep(2)`, which on Windows — where the system clock ticks
+     * about every 15 ms — could leave both on the same millisecond and make
+     * the outcome a coin toss.
+     */
+    private var clock = 1_000_000L
+
     private fun device(): SavedListStore {
         val dir = Files.createTempDirectory("saved").toFile().also { dirs += it }
         val (file, removed) = SavedListStore.filesIn(dir, SavedListStore.FAVORITES)
-        return SavedListStore(file, removed)
+        return SavedListStore(file, removed) { clock }
     }
 
     private fun video(n: Int) = Video(
@@ -102,8 +113,8 @@ class SavedListConvergenceTest {
         tv.merge(phone.loadEntries(), phone.removedMap())
         assertEquals(1, tv.loadEntries().size)
 
-        // ...then the child un-hearts it on the phone.
-        Thread.sleep(2)
+        // ...then the child un-hearts it on the phone, later.
+        clock += 1_000
         phone.remove(video(1).url)
 
         // The television syncs. Twice, because once is not the test.
@@ -133,7 +144,7 @@ class SavedListConvergenceTest {
         // One video the child hearts and then removes, long ago.
         phone.add(video(0))
         tv.merge(phone.loadEntries(), phone.removedMap())
-        Thread.sleep(2)
+        clock += 1_000
         phone.remove(video(0).url)
 
         // Then a cap's worth of newer removals pile up on top of it.

@@ -23,7 +23,7 @@ import java.io.File
  * the next round had to invent one again. This is that directory, written by
  * the real serializers so what the hub reads is what a hub reads.
  *
- *     gradlew :hub:test --tests '*SeedLocalHubTest'
+ *     YOSEMITE_KIDS_SEED=1 gradlew :hub:test --tests '*SeedLocalHubTest'
  *     YOSEMITE_KIDS_DATA=$PWD/hub/build/seed-hub \
  *       YOSEMITE_KIDS_PORT=8865 YOSEMITE_KIDS_KID_PORT=8866 \
  *       ./hub/build/install/hub/bin/hub
@@ -39,6 +39,14 @@ class SeedLocalHubTest {
 
     @Test
     fun seed() {
+        // Skipped unless asked for. It asserts nothing, so running it on every
+        // gate bought nothing and rewrote a directory each time - and a green
+        // line in the report for a case that cannot fail is a line that makes
+        // the whole report worth slightly less. The env var is the ask.
+        org.junit.Assume.assumeTrue(
+            "set YOSEMITE_KIDS_SEED=1 to write build/seed-hub",
+            System.getenv("YOSEMITE_KIDS_SEED") != null
+        )
         // Under the module build dir, so no property has to reach the test JVM
         // and nothing outside build/ is ever written.
         val dir = File("build/seed-hub").apply { deleteRecursively(); mkdirs() }

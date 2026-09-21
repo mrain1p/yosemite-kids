@@ -23,7 +23,22 @@ import java.io.File
  */
 class SavedListStore(
     private val file: File,
-    private val removedFile: File
+    private val removedFile: File,
+    /**
+     * The wall clock the add and remove stamps are taken from.
+     *
+     * A parameter so a convergence test can *decide* that a removal happened
+     * after an add, instead of sleeping two milliseconds and hoping. Windows
+     * ticks its system clock about every 15 ms, so those sleeps could leave
+     * both events on the same millisecond — and "the later event wins" with
+     * two events on the same millisecond is a coin toss, inside the test
+     * whose whole subject is a video a child un-hearted not coming back.
+     *
+     * [merge] still reads no clock at all and must not: that is what makes it
+     * idempotent and associative rather than accidentally so, and it is the
+     * same rule guard 44 holds ConfigMerge to.
+     */
+    private val now: () -> Long = System::currentTimeMillis
 ) {
 
     data class Entry(val video: Video, val addedAt: Long)
@@ -92,7 +107,7 @@ class SavedListStore(
 
     fun add(video: Video) = synchronized(LOCK) {
         saveEntries(
-            listOf(Entry(video, System.currentTimeMillis())) +
+            listOf(Entry(video, now())) +
                 loadEntries().filter { it.video.url != video.url }
         )
         saveRemoved(removedMap() - video.url - FLOOR_KEY, floor())
@@ -100,7 +115,7 @@ class SavedListStore(
 
     fun remove(videoUrl: String) = synchronized(LOCK) {
         saveEntries(loadEntries().filter { it.video.url != videoUrl })
-        saveRemoved(removedMap() + (videoUrl to System.currentTimeMillis()), floor())
+        saveRemoved(removedMap() + (videoUrl to now()), floor())
     }
 
     /** Merge another device's list: per video, the latest add/remove event wins. */

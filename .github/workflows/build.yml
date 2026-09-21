@@ -76,17 +76,20 @@ jobs:
       - name: Hub tests (the container's routes and enrolment)
         run: ./gradlew :hub:test
 
-      # Every test class except the live-YouTube canary, discovered from the
-      # tree so a new test file is in the gate without touching this list.
+      # Every test class except the ones that reach real YouTube, which say so
+      # in their own first lines (LIVE-YOUTUBE). Discovered from the tree, so a
+      # new test file is in the gate without touching this step, and a renamed
+      # live one cannot leave a stale class name behind here.
       - name: Unit tests (non-network)
         run: |
           # Recursive, and the package comes from the path: the glob used to
           # be one directory deep with the package pasted on, so a test in a
           # subpackage would have been named wrong and silently not run.
+          live=$(grep -rl "LIVE-YOUTUBE" app/src/test/java || true)
           args=()
           while IFS= read -r f; do
+            case "$live" in *"$f"*) continue ;; esac
             name=${f##*/}; name=${name%.kt}
-            case "$name" in ExtractorSmokeTest|SingleChannelProbeTest) continue ;; esac
             pkg=${f#app/src/test/java/}; pkg=${pkg%/*}
             pkg=$(printf '%s' "$pkg" | tr '/' '.')
             args+=(--tests "$pkg.$name")

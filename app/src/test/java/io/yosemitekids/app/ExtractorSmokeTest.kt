@@ -1,5 +1,11 @@
 package io.yosemitekids.app
 
+// LIVE-YOUTUBE. This file reaches real YouTube, so it is excluded from both
+// gates and from the PR build — a bot wall must not fail a check for something
+// the change being tested did not do. The exclusion is DERIVED from this line
+// rather than from a list of class names kept in three other files, so moving
+// or renaming this test cannot leave one of them behind. Guard 77.
+
 import io.yosemitekids.app.data.OkHttpDownloader
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeFalse

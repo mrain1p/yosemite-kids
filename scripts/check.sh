@@ -2449,6 +2449,29 @@ reads exactly like a map of a place with no road there - so the next person writ
 a second copy of what is already here. Add a line to the right module's tree
 saying what the file is for; grouping several on one line with slashes is fine."
 
+
+# 77. A test that reaches real YouTube says so in its own first lines.
+#     Two tests here call the extractor against live YouTube, and both gates
+#     and the PR build exclude them: a bot wall must not fail a check for
+#     something the change being tested did not do.
+#
+#     That exclusion used to be two class names spelled out in check.sh, in
+#     check.ps1 and in build.yml. Three copies of one list is three chances
+#     for one of them to be a rename behind - and the consequence is not a
+#     failing gate but an intermittently failing one, blamed on the change in
+#     front of whoever is looking.
+#
+#     So the marker lives in the file that needs it and all three derive from
+#     it. This is the other end: the marker cannot be forgotten on a test that
+#     imports the extractor, which is the tell for reaching YouTube at all.
+for f in $(grep -rl "org.schabi.newpipe.extractor" app/src/test/java || true); do
+  grep -q "LIVE-YOUTUBE" "$f" ||
+    guard_fail "${f##*/} imports the extractor and carries no LIVE-YOUTUBE marker, so both gates and the PR build will run it against real YouTube. A bot wall would then fail a check for something the change being tested did not do. Put the marker in its first lines, beside ExtractorSmokeTest's."
+done
+live_marked=$({ grep -rl "LIVE-YOUTUBE" app/src/test/java || true; } | wc -l | tr -d ' ')
+[ "$live_marked" -gt 0 ] ||
+  guard_fail "no test carries a LIVE-YOUTUBE marker any more, so the exclusion every gate derives from it now excludes nothing. If the live tests are gone, take the derivation out too rather than leaving a mechanism that reads as working."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 
@@ -2473,16 +2496,20 @@ echo "== 4/6 hub tests"
 ./gradlew --no-daemon -q :hub:test
 
 echo "== 5/6 app unit tests (offline)"
-# Every test class except the live-YouTube canaries. Both reach real YouTube
-# unguarded, so a bot wall fails this gate for unrelated reasons.
+# Every test class except the ones that reach real YouTube, which say so in
+# their own first lines (LIVE-YOUTUBE). Derived rather than listed: the same
+# two class names were spelled out here, in check.ps1 and in build.yml, and
+# three copies of a list is three chances for one of them to be a rename
+# behind. Guard 77 holds the marker to the files that need it.
 # Recursive, and the package comes from the PATH. The glob used to be one
 # directory deep and the class name was pasted onto a fixed package, so a test
 # in app/src/test/.../app/data/ would have been listed under the wrong package
 # and silently not run - which is the one failure a test list must not have.
+live=$(grep -rl "LIVE-YOUTUBE" app/src/test/java || true)
 args=()
 while IFS= read -r f; do
+  case "$live" in *"$f"*) continue ;; esac
   name=${f##*/}; name=${name%.kt}
-  case "$name" in ExtractorSmokeTest|SingleChannelProbeTest) continue ;; esac
   pkg=${f#app/src/test/java/}; pkg=${pkg%/*}; pkg=$(printf '%s' "$pkg" | tr '/' '.')
   args+=(--tests "$pkg.$name")
 done < <(find app/src/test/java -name '*Test.kt' | sort)

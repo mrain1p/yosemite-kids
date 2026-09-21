@@ -255,6 +255,7 @@ HUBHTTP=hub/src/main/kotlin/io/yosemitekids/hub/HubHttp.kt
 KIDPAGE=hub/src/main/resources/web/kid.html
 CONSOLE=hub/src/main/resources/web/index.html
 ARCH=docs/ARCHITECTURE.md
+PROBE=app/src/test/java/io/yosemitekids/app/SingleChannelProbeTest.kt
 PAIRING=app/src/main/java/io/yosemitekids/app/data/Pairing.kt
 HOMESTATE=app/src/main/java/io/yosemitekids/app/ui/HomeState.kt
 TILES=app/src/main/java/io/yosemitekids/app/ui/Tiles.kt
@@ -500,6 +501,12 @@ canary 76 "$ARCH" \
   "the map losing the file a daily limit is decided in" \
   "does not name: Budget.kt" \
   'sed -i "s/Budget[.]kt/BudgetGone.kt/" "$ARCH"'
+
+
+canary 77 "$PROBE" \
+  "a live-YouTube test losing the marker every gate excludes it by" \
+  "carries no LIVE-YOUTUBE marker" \
+  'sed -i "s/LIVE-YOUTUBE/LIVE-SOMETHING/" "$PROBE"'
 
 echo
 if [ "$failed" -gt 0 ]; then
