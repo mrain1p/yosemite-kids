@@ -138,15 +138,35 @@ pipe_lines=$(grep -nE 'printf .*\| *grep -[a-zA-Z]*q' "$0" | grep -vE "^[0-9]+: 
 if [ -n "$pipe_lines" ]; then
   guard_fail "check.sh line(s) $pipe_lines pipe printf into grep. When grep -q matches it exits, printf gets EPIPE, and pipefail turns a PASSING guard into a failing gate — silently, and only on Linux. Use a here-string: grep -q pattern <<<\"\$var\"."
 fi
-# Shell scripts must reach a container with LF endings. A CRLF script has a
-# shebang ending in a carriage return, which the kernel cannot resolve, and
-# the error it produces is "not found" for a file that is plainly present.
-# That cost half an hour on gradlew during the hub's first container build.
+# Every text file in the working tree ends its lines with LF, and only `.bat`
+# is allowed not to.
+#
+# Two failures, and the second is the one that hid.
+#
+# A CRLF shell script has a shebang ending in a carriage return, which the
+# kernel cannot resolve, and the error it produces is "not found" for a file
+# that is plainly present. That cost half an hour on gradlew during the hub's
+# first container build.
+#
+# The second: THIS SCRIPT READS THOSE FILES. `* text=auto` left 334 of 447
+# tracked files CRLF in a Windows checkout, and a guard's pattern - a `$`
+# anchor, an awk range ending `^}$`, a `case` on a `"…"\n` fragment - matches
+# a line that now ends in a character it was never written to expect. Eight
+# guards failed OPEN that way, reporting clean on a tree they could no longer
+# see into. A gate cannot notice that about itself, so it is checked here
+# before any guard runs.
+#
 # git reports the working-tree ending directly, so this needs no escapes of
-# its own to look for.
-crlf=$(git ls-files --eol -- '*.sh' gradlew | grep -E 'w/(crlf|mixed)' | awk '{printf "%s ", $NF}' || true)
+# its own to look for. `.bat` is excluded because cmd.exe genuinely wants
+# CRLF; everything else is held to LF by .gitattributes, and this is what
+# says so out loud when a checkout disagrees.
+crlf=$(git ls-files --eol | grep -E 'w/(crlf|mixed)' | grep -vE '[.]bat$' | awk -F'	' '{printf "%s ", $NF}' || true)
 if [ -n "$crlf" ]; then
-  guard_fail "CRLF line endings in: $crlf — a container cannot run these. See .gitattributes."
+  guard_fail "CRLF line endings in: $crlf
+A container cannot run a CRLF script, and this gate cannot READ a CRLF file the
+way its patterns expect - a guard that greps one reports clean on a tree it
+cannot see into. Check .gitattributes says eol=lf, then renormalise:
+  git rm --cached -r . && git reset --hard"
 fi
 
 # The hub's container must be able to take ownership of its bind-mounted

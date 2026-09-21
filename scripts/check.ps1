@@ -105,16 +105,31 @@ if (-not (Test-Path "hub\src\test\kotlin\io\yosemitekids\hub\HubServerTest.kt"))
     Fail-Guard "HubServerTest.kt is missing — it pins the /status wire contract with :app."
 }
 
-# Shell scripts must have LF endings. A CRLF script in a container has a
-# shebang of "#!/bin/sh<CR>", which the kernel cannot resolve, and the error
-# is "not found" for a file that is visibly present. This cost half an hour
-# on gradlew during the hub's first container build — and this check runs on
-# Windows, which is where such a file is created in the first place.
-$crlf = @(git ls-files '*.sh' gradlew) | Where-Object { Test-Path $_ } | Where-Object {
-    [System.IO.File]::ReadAllBytes($_) -contains 13
-}
+# Every text file in the working tree ends its lines with LF, and only `.bat`
+# is allowed not to.
+#
+# Two failures, and the second is the one that hid.
+#
+# A CRLF shell script has a shebang ending in a carriage return, which the
+# kernel cannot resolve, and the error is "not found" for a file that is
+# visibly present. That cost half an hour on gradlew during the hub's first
+# container build — and this check runs on Windows, which is where such a
+# file is created in the first place.
+#
+# The second: THE GATE READS THOSE FILES. `* text=auto` left 334 of 447
+# tracked files CRLF in a Windows checkout, and a bash guard's pattern — a
+# `$` anchor, an awk range ending `^}$` — matches a line that now ends in a
+# character it was never written to expect. Eight guards failed OPEN that
+# way, reporting clean on a tree they could no longer see into.
+$crlf = @(git ls-files --eol) |
+    Where-Object { $_ -match 'w/(crlf|mixed)' -and $_ -notmatch '\.bat$' } |
+    ForEach-Object { ($_ -split "`t")[-1] }
 if ($crlf) {
-    Fail-Guard "CRLF line endings in: $($crlf -join ', ') — a container cannot run these. See .gitattributes."
+    Fail-Guard "CRLF line endings in: $($crlf -join ', ')
+A container cannot run a CRLF script, and the gate cannot READ a CRLF file the
+way its patterns expect - a guard that greps one reports clean on a tree it
+cannot see into. Check .gitattributes says eol=lf, then renormalise:
+  git rm --cached -r . && git reset --hard"
 }
 
 # The hub's container must be able to take ownership of its bind-mounted
