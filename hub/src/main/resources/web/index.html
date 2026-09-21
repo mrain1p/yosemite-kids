@@ -106,6 +106,22 @@
     border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; font: inherit; }
   textarea { min-height: 78px; resize: vertical; }
   input[type=number] { width: 92px; }
+  /* The floor under anything a thumb has to hit.
+     44 is Android's minimum tap target, and iOS's 44pt agrees with it by
+     coincidence rather than by sharing - KidGeometry's own KDoc says why the
+     number is therefore not a shared token. It is still the one figure both
+     platforms name, and the kid page has enforced it since it was written.
+     This console never did: every control on it was between 25 and 39px
+     tall, on the page a parent uses one-handed, standing up, while a child
+     waits for the answer. A missed tap here is a rule not changed.
+     Checkboxes and radios keep their own size - the label row around them is
+     the target, and a 44px box is a different control - and the pills get
+     inline-flex so the taller box centres its own label rather than sitting
+     the text on top of the padding. */
+  button, select, textarea,
+  input:not([type=checkbox]):not([type=radio]) { min-height: 44px; }
+  button.primary, button.quiet, button.chip {
+    display: inline-flex; align-items: center; justify-content: center; }
   label.row { display: flex; align-items: center; gap: 12px; padding: 9px 0;
     border-top: 1px solid var(--line); }
   label.row:first-of-type { border-top: 0; }
@@ -391,6 +407,15 @@
   // Every request goes through here so "your session went away" is handled in
   // exactly one place. A hub restart drops all sessions, and a page that
   // responded to that by silently doing nothing would look broken.
+  /**
+   * Writes this tab has out.
+   *
+   * Only writes: a GET racing a GET loses nothing, but a poll that lands
+   * between a POST and the `refresh()` that follows it draws the state from
+   * before the edit, and the control springs back under the parent's finger.
+   */
+  var writesOut = 0;
+
   function api(path, body) {
     var opts = {
       method: body ? "POST" : "GET",
@@ -398,7 +423,8 @@
       credentials: "same-origin"
     };
     if (body) opts.body = JSON.stringify(body);
-    return fetch(path, opts).then(function (r) {
+    if (body) writesOut++;
+    return fetch(path, opts).finally(function () { if (body) writesOut--; }).then(function (r) {
       if (r.status === 401) { setSession(""); signedOut(); throw new Error("sign in"); }
       // Not every refusal is JSON - 405, 413 and the catch-all 500 answer in
       // bare words - and `r.json()` on those threw a parse error in place of
@@ -3314,6 +3340,52 @@
   function refresh() {
     return api("/api/state").then(function (s) { state = s; render(); });
   }
+
+  /**
+   * The page keeps up with the box.
+   *
+   * Everything here was drawn once, at sign-in, and then only after an edit
+   * this tab made itself. So a crawl running down its channels, a co-parent
+   * granting minutes from the kitchen, a tablet claiming a browser, a channel
+   * YouTube has just refused - none of it arrived. The page said what was
+   * true when it loaded, with nothing on it to say how long ago that was,
+   * which is worse than saying nothing: a parent reads "12 of 40 indexed" and
+   * believes it.
+   *
+   * Three rules, and each of them is a way this could make things worse:
+   *
+   *   - **Only when the tab is in front.** A console left open on a laptop
+   *     for a week is otherwise a request every twenty seconds, for ever,
+   *     against a Celeron that is also serving video.
+   *   - **Never over a field somebody is in.** `render()` rebuilds the page,
+   *     which throws away the node being typed into along with everything a
+   *     parent had half-entered. A focused input, textarea or select means
+   *     somebody is mid-thought; a focused button does not.
+   *   - **Never while a save is in flight**, or a reply could land between
+   *     the request and its `refresh()` and draw the state from before it.
+   *
+   * Twenty seconds because that is the crawl's own visible granularity. It
+   * is deliberately not a websocket: this box has four server threads and
+   * the page is read far more often than it is right.
+   */
+  var POLL_MS = 20000;
+  function pollable() {
+    if (document.visibilityState !== "visible") return false;
+    if ($("app").hidden) return false;
+    if (writesOut > 0) return false;
+    var el = document.activeElement;
+    if (!el) return true;
+    var tag = (el.tagName || "").toLowerCase();
+    return tag !== "input" && tag !== "textarea" && tag !== "select" && !el.isContentEditable;
+  }
+  setInterval(function () {
+    if (pollable()) refresh().catch(function () {});
+  }, POLL_MS);
+  // And immediately on coming back, because the first thing a parent does
+  // after switching away is look at what changed while they were gone.
+  document.addEventListener("visibilitychange", function () {
+    if (pollable()) refresh().catch(function () {});
+  });
 
   $("signin").onclick = signIn;
   $("token").addEventListener("keydown", function (e) { if (e.key === "Enter") signIn(); });

@@ -2659,6 +2659,27 @@ if (-not $listToggle.Contains('showTab("you")')) {
 }
 
 
+
+# 74. Both pages a family touches declare the same floor under a tap target.
+#     The kid page has said `min-height: 44px` since it was written, with the
+#     reason beside it: a five-year-old hits the thing they meant to hit.
+#     The parent console never did, and every control on it was between 25
+#     and 39px tall — on the page a parent uses one-handed, standing up,
+#     while a child waits for the answer. A missed tap there is a rule not
+#     changed, a pause not lifted, a bonus not granted.
+#
+#     Held to the literal number on both sides rather than to a shared token,
+#     and deliberately: KidGeometry's own KDoc says 44 is not a number the
+#     two faces share, it is a number two platforms happen to agree on
+#     (Android's dp guideline and iOS's 44pt), so it is a floor each page
+#     declares rather than a value :core hands down. What this checks is that
+#     neither page quietly stops declaring it.
+foreach ($page in @("hub/src/main/resources/web/kid.html", "hub/src/main/resources/web/index.html")) {
+    if ((Get-Content $page -Raw) -notmatch 'min-height: 44px') {
+        Fail-Guard "$(Split-Path $page -Leaf) no longer declares a 44px floor under its tap targets. Both pages are used by a hand in a hurry — a child's on a tablet, a parent's on a phone — and 44 is the one figure Android and iOS agree on. If a control genuinely cannot be that tall, say so beside it rather than dropping the rule for the page."
+    }
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

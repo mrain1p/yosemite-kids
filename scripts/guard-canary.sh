@@ -253,6 +253,7 @@ HUBSRV=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 # header would be added if anyone ever added one.
 HUBHTTP=hub/src/main/kotlin/io/yosemitekids/hub/HubHttp.kt
 KIDPAGE=hub/src/main/resources/web/kid.html
+CONSOLE=hub/src/main/resources/web/index.html
 HOMESTATE=app/src/main/java/io/yosemitekids/app/ui/HomeState.kt
 TILES=app/src/main/java/io/yosemitekids/app/ui/Tiles.kt
 CHUNKER=crawl/src/main/kotlin/io/yosemitekids/app/data/StreamChunker.kt
@@ -480,6 +481,12 @@ canary 73 "$KIDPAGE" \
   "no longer redraws the You tab" \
   'sed -i "s/          if (state.view === \"you\") showTab(\"you\");/          \/\/ canary/" "$KIDPAGE"'
 
+
+canary 74 "$CONSOLE" \
+  "the parent console dropping the floor under a tap target" \
+  "no longer declares a 44px floor" \
+  'sed -i "s/min-height: 44px/min-height: 33px/" "$CONSOLE"'
+
 echo
 if [ "$failed" -gt 0 ]; then
   echo "${RED}$failed of $((passed + failed)) canaries did not fire.${OFF}"
@@ -487,3 +494,4 @@ if [ "$failed" -gt 0 ]; then
   exit 1
 fi
 echo "${GREEN}all $passed canaries fired${OFF}${skipped:+ ($skipped skipped)}"
+
