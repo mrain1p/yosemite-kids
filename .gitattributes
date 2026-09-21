@@ -9,15 +9,30 @@
 # Windows working tree, and the Docker build failed at step 7 with exit 127.
 # The Dockerfile now strips CR defensively as well; this stops the file from
 # acquiring them in the first place.
+#
+# LF EVERYWHERE, and not as a matter of taste. `* text=auto` left 334 of the
+# 447 tracked files CRLF in a Windows working tree, and scripts/check.sh reads
+# most of them: a pattern anchored with `$`, an `awk` range that ends on `^}$`,
+# a `case` on a `"…"\n` fragment — all of them match a line that now ends in a
+# carriage return they were never written to expect. Eight guards failed OPEN
+# that way, reporting clean on a tree they could no longer see into, and the
+# gate cannot report that it has gone blind. The blobs have always been LF
+# (checked: not one carries a CR), so this changes nothing in history and only
+# stops the checkout from rewriting them on the way out.
+#
+# It cost hours in other ways too. Every session that edited a file after a
+# branch switch found its `\n` patterns silently defeated, and `cat -A` on
+# this MSYS build does not even show the CR — it took a perl hexdump to see.
 
-*           text=auto
-gradlew     text eol=lf
-*.sh        text eol=lf
-Dockerfile  text eol=lf
+*           text=auto eol=lf
 
 # Windows-only, and cmd.exe genuinely wants CRLF.
 *.bat       text eol=crlf
-*.ps1       text eol=crlf
+
+# PowerShell does not. It reads LF happily on 5.1 and on 7, and check.ps1 is
+# read by the bash gate (guard 10 holds the two mirrors' headings together),
+# where CRLF breaks the same patterns as anywhere else.
+*.ps1       text eol=lf
 
 # Never touched.
 *.png       binary
