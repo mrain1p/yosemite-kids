@@ -1036,13 +1036,14 @@ row below is one half of something already right.
   `LanClient` reads peer responses unbounded; the two-TV `peerBehind` race; ✅ the
   playlist pass parks a deleted playlist until the daily refresh instead of asking
   for it every fifteen minutes for ever.
-- **Medium, console (14):** removing a channel has no confirmation though every
-  other destructive action does; two error messages are written onto nodes the
-  re-render throws away; per-kid rulings are one-way but drawn as toggles; the
-  page never refreshes itself; `/api/state` ships every kid's plaintext PIN and
-  password record to the browser; the manifest's declared ranges are enforced
-  only by HTML attributes; ✅ no `Content-Security-Policy` and ✅ no `no-store`
-  on `/api`; touch targets below the 44px floor the kid page enforces.
+- **Medium, console (14, two closed):** ✅ removing a channel now confirms like
+  every other destructive action does; ✅ the two messages that were written onto
+  nodes the re-render threw away now survive it; per-kid rulings are one-way but
+  drawn as toggles; the page never refreshes itself; `/api/state` ships every
+  kid's plaintext PIN and password record to the browser; the manifest's declared
+  ranges are enforced only by HTML attributes; ✅ no `Content-Security-Policy`
+  and ✅ no `no-store` on `/api`; touch targets below the 44px floor the kid
+  page enforces.
 - **Medium, docs (18):** `budgetScope` is documented as unbuilt in four places
   and shipped eight releases ago; §2A describes work that shipped in 1.10.0 and
   its anchor can never fire; `CLAUDE.md`'s release steps omit the two that broke

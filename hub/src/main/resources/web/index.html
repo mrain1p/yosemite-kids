@@ -322,6 +322,20 @@
   // What the password card should say when it is next built. See cardPassword.
   var passwordNote = null;
 
+  /**
+   * The same trick for the two other messages this page used to lose.
+   *
+   * Both were written onto a node and then followed by refresh(), which
+   * rebuilds the card and replaces that node with an empty one - so a parent
+   * whose paste was not recognised, and a parent who hit the claim-code cap,
+   * each got a blank card and no idea why. It is the failure passwordNote and
+   * mintedClaim were both invented for, twice more.
+   *
+   * Cleared on read, like passwordNote: it is a reply to one action.
+   */
+  var addNote = null;
+  var mintNote = null;
+
   // The claim code a parent just minted, held until it expires.
   //
   // It has to live out here, and that is the whole bug it fixes. The code used
@@ -1742,12 +1756,16 @@
       addErr.textContent = "";
       if (!v) return Promise.resolve();
       return api("/api/channels", { add: v }).then(function (r) {
-        if (!r.added) addErr.textContent = "Nothing there was recognised as a channel, playlist or video.";
+        if (!r.added) addNote = "Nothing there was recognised as a channel, playlist or video.";
         else ta.value = "";
         return refresh();
       });
     }));
     addCard.appendChild(addRow);
+    if (addNote) {
+      addErr.textContent = addNote;
+      addNote = null;
+    }
     addCard.appendChild(addErr);
     addCard.appendChild(el("p", "hint",
       "Searching YouTube by name is on the phone only — it needs the video extractor, which the hub does not carry."));
@@ -1767,6 +1785,13 @@
       var gone = ((state.index || {}).gone || []).filter(function (g) { return g.id === e.id; })[0];
       if (gone) head.appendChild(el("span", "tag warn", "Not on YouTube"));
       head.appendChild(button("Remove", "quiet", function () {
+        // Confirmed like every other destructive action on this page - the
+        // kid, the device, the browser, the restore. This one takes a channel
+        // off every device in the house and was the only one that did it on a
+        // single tap of a 28px button.
+        if (!window.confirm("Remove " + (e.label || e.id) + " from every device?")) {
+          return Promise.resolve();
+        }
         return api("/api/channels", { remove: e.id }).then(refresh);
       }));
       li.appendChild(head);
@@ -2641,7 +2666,7 @@
               };
             } else {
               mintedClaim = null;
-              codeLine.textContent = r.why === "TOO_MANY_CODES"
+              mintNote = r.why === "TOO_MANY_CODES"
                 ? "Too many codes are already out. Wait for one to expire."
                 : "That kid is not on this hub yet.";
             }
@@ -2682,6 +2707,10 @@
             ? "It works once and expires in about a minute."
             : "It works once and expires in about " + left + " minutes."
         ));
+      }
+      if (mintNote) {
+        codeLine.textContent = mintNote;
+        mintNote = null;
       }
       c.appendChild(codeLine);
     }
