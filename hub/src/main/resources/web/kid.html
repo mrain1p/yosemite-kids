@@ -1528,9 +1528,17 @@
    */
   function showTime(time) {
     var pill = document.getElementById("time");
-    if (!time || typeof time.leftMinutes !== "number") { pill.hidden = true; return; }
+    // No sentence, no pill. The fallback here used to build one -
+    // `time.leftMinutes + " minutes left"` - which is the thing the house
+    // style names as the bug outright: a child-facing sentence assembled in a
+    // face. It was also already wrong against KidWords, which says "1 minute
+    // left" and "No time left" where this said "1 minutes left" and "0
+    // minutes left". A hub that cannot name a day or has no budget to report
+    // sends no `say`, and a pill with nothing true to put in it is a pill
+    // that should not be there.
+    if (!time || !time.say) { pill.hidden = true; return; }
     pill.hidden = false;
-    pill.textContent = time.say || (time.leftMinutes + " minutes left");
+    pill.textContent = time.say;
     pill.classList.toggle("low", !!time.low);
   }
 

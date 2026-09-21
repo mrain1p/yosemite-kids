@@ -80,7 +80,22 @@ class HubPolicy(
         val detail: String,
         val day: String? = null,
         val spentMinutes: Int? = null,
-        val budgetMinutes: Int? = null
+        val budgetMinutes: Int? = null,
+        /**
+         * The day this was decided against, unfused.
+         *
+         * [budgetMinutes] is base and bonus already added together — and the
+         * two halves existed separately, one line above where they were
+         * folded, and were thrown away. So nothing this hub emitted could say
+         * "forty minutes, and fifteen of them a grown-up gave you", and the
+         * parent console had started deriving the bonus for itself in
+         * JavaScript against the browser's own clock.
+         *
+         * Null for exactly the same reasons the three fields above are: no
+         * config, no day this hub may name, or no budget set at all. A caller
+         * with a bar to draw draws nothing.
+         */
+        val today: Budget.Today? = null
     )
 
     companion object {
@@ -197,15 +212,19 @@ class HubPolicy(
 
         val spent = spentMinutes(kidId, day, limits, viewer)
         val budgetMin = (budget / 60_000L).toInt()
+        // The same numbers, kept apart. Built from the ledger's whole minutes;
+        // a caller holding the watch meter adds its unsettled remainder with
+        // `copy(spentMs = …)`, which is why nothing here subtracts it.
+        val today = Budget.today(limits, dayOfWeek, 0L, config.grantsFor(kidId, day), spent * 60_000L)
         if (spent * 60_000L >= budget) {
             return no(
                 OUT_OF_TIME, "$spent of $budgetMin minutes used today",
-                day = day, spent = spent, budgetMin = budgetMin
+                day = day, spent = spent, budgetMin = budgetMin, today = today
             )
         }
         return yes(
             "${budgetMin - spent} minutes left today",
-            day = day, spent = spent, budgetMin = budgetMin
+            day = day, spent = spent, budgetMin = budgetMin, today = today
         )
     }
 
@@ -350,13 +369,15 @@ class HubPolicy(
         detail: String,
         day: String? = null,
         spent: Int? = null,
-        budgetMin: Int? = null
-    ) = Decision(false, reason, detail, day, spent, budgetMin)
+        budgetMin: Int? = null,
+        today: Budget.Today? = null
+    ) = Decision(false, reason, detail, day, spent, budgetMin, today)
 
     private fun yes(
         detail: String,
         day: String? = null,
         spent: Int? = null,
-        budgetMin: Int? = null
-    ) = Decision(true, OK, detail, day, spent, budgetMin)
+        budgetMin: Int? = null,
+        today: Budget.Today? = null
+    ) = Decision(true, OK, detail, day, spent, budgetMin, today)
 }

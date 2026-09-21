@@ -799,27 +799,40 @@ class HubKidHome(
      */
     internal fun timeJson(kidId: String, viewer: String?): Any {
         val verdict = policy.timeFor(kidId, viewer)
-        val budget = verdict.budgetMinutes ?: return JSONObject.NULL
-        val spent = verdict.spentMinutes ?: 0
-        val left = (budget - spent).coerceAtLeast(0)
+        val ledgered = verdict.today ?: return JSONObject.NULL
         // The seconds the ledger has not written down yet. Without them the
         // last minute is a lie: a child reads "1 minute left" for sixty
         // seconds and then stops mid-sentence.
+        //
+        // Folded into `spent` rather than subtracted from `left` afterwards,
+        // which is the whole repair here. It used to come off `leftSeconds`
+        // alone, so the seconds and the sentence beside them in the same
+        // payload were computed from two different numbers — a countdown
+        // saying two things on one screen, which is the exact failure this
+        // function was made `internal` to stop.
         val unsettled = viewer?.let { meter?.unsettledMs(it, kidId) } ?: 0L
-        val leftSeconds = (left * 60L - unsettled / 1000L).coerceAtLeast(0L)
+        val today = ledgered.copy(spentMs = ledgered.spentMs + unsettled)
+        val leftSeconds = today.leftMs / 1000L
         return JSONObject()
-            .put("budgetMinutes", budget)
-            .put("spentMinutes", spent)
-            .put("leftMinutes", left)
+            // Base and bonus apart, because "forty minutes, and fifteen of
+            // them a grown-up gave you" is a different sentence from "fifty
+            // five minutes", and only one of them is true about a day.
+            .put("baseMinutes", (today.baseMs / 60_000L).toInt())
+            .put("bonusMinutes", (today.bonusMs / 60_000L).toInt())
+            .put("budgetMinutes", (today.budgetMs / 60_000L).toInt())
+            .put("spentMinutes", (today.spentMs / 60_000L).toInt())
+            .put("leftMinutes", (today.leftMs / 60_000L).toInt())
             .put("leftSeconds", leftSeconds)
+            // The fractions come from :core too. A page that divided for
+            // itself would round differently from the hub's own cut-off and
+            // draw a full bar while the video was still playing.
+            .put("spentFraction", today.spentFraction)
+            .put("bonusFraction", today.bonusFraction)
             // The sentence, from :core, so the tablet and the television count
-            // down in the same words. Minutes rather than seconds, and that is
-            // honest rather than lazy: UsageLedger counts in whole minutes, so
-            // a seconds countdown here would be this page inventing precision
-            // the box does not have. Making it real means interpolating from
-            // HubWatchMeter's accrual — roadmap, not a one-line fudge.
-            .put("say", io.yosemitekids.app.ui.KidWords.timeLeft(left * 60L))
-            .put("low", left * 60L <= io.yosemitekids.app.ui.KidWords.LOW_SECONDS)
+            // down in the same words — and from the SAME seconds as the
+            // numbers above it.
+            .put("say", io.yosemitekids.app.ui.KidWords.timeLeft(leftSeconds))
+            .put("low", leftSeconds <= io.yosemitekids.app.ui.KidWords.LOW_SECONDS)
             .put("allowed", verdict.allowed)
             .put("reason", verdict.reason)
     }
