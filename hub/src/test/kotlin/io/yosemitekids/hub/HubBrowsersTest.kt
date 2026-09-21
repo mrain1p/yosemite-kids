@@ -119,6 +119,43 @@ class HubBrowsersTest {
         assertNull(b.resolve(token, T + HubBrowsers.CLAIM_TTL_MS))
     }
 
+    /**
+     * The tablet a child actually uses.
+     *
+     * CLAIM_TTL_MS's own KDoc has said "without being used or renewed" since
+     * the day it was written, and `lastSeenAt` has been recorded since
+     * [HubBrowsers.noteSeen] was — but both places that judged a claim
+     * compared `now - claimedAt`. So the iPad a child picked up every single
+     * day stopped working exactly six months after it was set up, mid
+     * afternoon, showing "Ask a grown-up" with no reason on any screen; and
+     * the one left in a drawer the same week expired at the same moment,
+     * which is the only half that was behaving.
+     */
+    @Test
+    fun `a claim a child keeps using does not lapse`() {
+        val b = store()
+        val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
+        // Five months in, they watch something. That is the renewal.
+        val used = T + 150L * 24 * 60 * 60 * 1000L
+        b.noteSeen(token, used)
+        assertNotNull(
+            "six months after the claim, but one month after they last watched",
+            b.resolve(token, T + HubBrowsers.CLAIM_TTL_MS + 1)
+        )
+        assertNotNull(b.resolve(token, used + HubBrowsers.CLAIM_TTL_MS - 1))
+        assertNull("and it does lapse, six months after that", b.resolve(token, used + HubBrowsers.CLAIM_TTL_MS))
+    }
+
+    @Test
+    fun `a claim nobody ever used lapses from when it was claimed`() {
+        val b = store()
+        val token = b.claim(b.mint(ADA, T)!!, T).getOrThrow().token
+        // lastSeenAt is 0 until a request arrives, and 0 is not "1970".
+        assertNotNull(b.resolve(token, T + HubBrowsers.CLAIM_TTL_MS - 1))
+        assertNull(b.resolve(token, T + HubBrowsers.CLAIM_TTL_MS))
+    }
+
+
     @Test
     fun `revoke cuts one browser off and leaves the rest`() {
         val b = store()

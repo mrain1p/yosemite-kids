@@ -563,7 +563,28 @@ class LanServer(
     }
 
     private fun handle(client: Socket) = client.use { sock ->
-        sock.soTimeout = 10_000
+        // See REQUEST_DEADLINE_MS: soTimeout bounds one read, this bounds the
+        // request. Past it the next read throws the same SocketTimeoutException
+        // a silent caller already threw, which the accept loop already swallows
+        // and `use` already closes — no new failure path and no new words.
+        val deadline = System.nanoTime() + REQUEST_DEADLINE_MS * 1_000_000L
+        // Re-armed before every blocking read, including the per-byte ones in
+        // readLine: a caller that dribbles WITHIN one header line would
+        // otherwise get a fresh ten seconds per buffer refill, fifty headers
+        // deep. Only when the number actually moves, though - setSoTimeout is
+        // a setsockopt, and eight thousand of them per header line is a cure
+        // with a cost of its own. While more than one read's worth of budget
+        // remains the value does not change at all, so a real client arms it
+        // once.
+        var armed = -1
+        fun armRead() {
+            val w = readWindowMs(System.nanoTime(), deadline)
+            if (w != armed) {
+                sock.soTimeout = w
+                armed = w
+            }
+        }
+        armRead()
         // Bytes, not a Reader: Content-Length counts bytes, and a Reader-based
         // body loop stalls forever on any multi-byte UTF-8 (kid-profile avatar
         // emoji were the first non-ASCII to ever enter a config push — every
@@ -576,6 +597,7 @@ class LanServer(
         fun readLine(): String? {
             val buf = java.io.ByteArrayOutputStream()
             while (true) {
+                armRead()
                 val b = input.read()
                 if (b == -1) return if (buf.size() == 0) null else buf.toString("UTF-8")
                 if (b == '\n'.code) break
@@ -643,6 +665,7 @@ class LanServer(
             val bytes = ByteArray(contentLength)
             var read = 0
             while (read < contentLength) {
+                armRead()
                 val n = input.read(bytes, read, contentLength - read)
                 if (n < 0) break
                 read += n
@@ -660,6 +683,7 @@ class LanServer(
             var left = minOf(contentLength, MAX_DISCARD_BYTES)
             val buf = ByteArray(8 * 1024)
             while (left > 0) {
+                armRead()
                 val n = runCatching { input.read(buf, 0, minOf(buf.size, left)) }.getOrDefault(-1)
                 if (n < 0) break
                 left -= n
@@ -1076,6 +1100,41 @@ class LanServer(
             private set
 
         /** Generous for a request line or header, far below anything harmful. */
+        /** One read's worth of silence before the socket gives up. */
+        private const val READ_TIMEOUT_MS = 10_000L
+
+        /**
+         * The whole request — request line, headers and body.
+         *
+         * Thirty seconds because `/index` pushes a deep channel's whole video
+         * list, a megabyte and more, from a phone that is crawling at the same
+         * time over house wifi; and because a television that refuses a real
+         * push is worse than one that is briefly busy.
+         *
+         * It exists because [READ_TIMEOUT_MS] bounds a READ and not a REQUEST.
+         * A caller dribbling one byte every nine seconds resets that clock for
+         * ever and holds a worker thread with it — and there are four of them,
+         * on a TV, facing the whole LAN before any token is checked. Four such
+         * connections and the parent's phone cannot reach the television at
+         * all, with nothing on either screen to say why.
+         */
+        private const val REQUEST_DEADLINE_MS = 30_000L
+
+        /**
+         * How long the next blocking read may wait: whatever is left of the
+         * request's budget, capped at one read's silence.
+         *
+         * Never zero — `Socket.setSoTimeout(0)` means *block for ever*, which
+         * would turn the deadline into its exact opposite at the moment it
+         * expires. Pure, and `internal`, because that inversion is the whole
+         * risk here and it is the one part a JVM test can reach: the server
+         * around it needs a ConfigStore, and therefore Android.
+         */
+        internal fun readWindowMs(nowNanos: Long, deadlineNanos: Long): Int {
+            val leftMs = (deadlineNanos - nowNanos) / 1_000_000L
+            return maxOf(1L, minOf(READ_TIMEOUT_MS, leftMs)).toInt()
+        }
+
         private const val MAX_LINE_BYTES = 8 * 1024
         private const val MAX_HEADERS = 50
 

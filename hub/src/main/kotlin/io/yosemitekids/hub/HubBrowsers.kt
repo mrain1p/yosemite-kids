@@ -100,12 +100,23 @@ class HubBrowsers(dataDir: File) {
         const val MAX_BROWSERS = 20
 
         /**
-         * How long a claim lasts without being used or renewed — six months.
+         * How long a claim lasts without being used — six months since the
+         * last request it made, not since it was claimed.
          *
          * Long by design: this is the cookie a child's browser carries, and
          * the failure a short one produces is a parent being asked for a fresh
          * code every Saturday morning. A browser that is *actually* lost is
          * cut off with [revoke], which takes effect on the next request.
+         *
+         * This KDoc said "without being used or renewed" from the day it was
+         * written, and [lastSeenAt] has been recorded since [noteSeen] was,
+         * but both places that judged a claim compared `now - claimedAt`.
+         * So the tablet a child uses every single day was cut off exactly six
+         * months after it was set up - in the middle of an afternoon, with
+         * "Ask a grown-up" and no reason on any screen - and the one
+         * abandoned in a drawer on the same day was cut off at the same
+         * moment, which is the only half that behaved. [lastUsed] is the
+         * comparison the words always described.
          */
         const val CLAIM_TTL_MS = 180L * 24 * 60 * 60 * 1000L
 
@@ -249,12 +260,21 @@ class HubBrowsers(dataDir: File) {
      * back: a read path that rewrote the file would turn every chunk of every
      * video into a disk write.
      */
+    /**
+     * When this claim was last any use to anybody.
+     *
+     * A browser that has never come back since it was claimed has a
+     * `lastSeenAt` of 0 - [noteSeen] only writes one when a request arrives -
+     * so the claim itself is the floor.
+     */
+    private fun lastUsed(claimedAt: Long, lastSeenAt: Long) = maxOf(claimedAt, lastSeenAt)
+
     fun resolve(token: String?, now: Long): Browser? {
         if (token.isNullOrBlank()) return null
         val given = token.toByteArray(Charsets.UTF_8)
         return browsers().firstOrNull {
             MessageDigest.isEqual(given, it.token.toByteArray(Charsets.UTF_8)) &&
-                now - it.claimedAt < CLAIM_TTL_MS
+                now - lastUsed(it.claimedAt, it.lastSeenAt) < CLAIM_TTL_MS
         }
     }
 
@@ -339,7 +359,8 @@ class HubBrowsers(dataDir: File) {
         val kept = JSONArray()
         for (i in 0 until arr.length()) {
             val b = arr.optJSONObject(i) ?: continue
-            if (now - b.optLong("claimedAt") < CLAIM_TTL_MS) kept.put(b)
+            val used = lastUsed(b.optLong("claimedAt"), b.optLong("lastSeenAt"))
+            if (now - used < CLAIM_TTL_MS) kept.put(b)
         }
         return kept
     }

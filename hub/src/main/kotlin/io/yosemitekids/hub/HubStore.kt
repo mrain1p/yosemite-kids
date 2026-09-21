@@ -67,9 +67,37 @@ class HubStore(
     }
 
     /** The stored config, or an empty one before anything has ever been written. */
+    /**
+     * The last parse, and the stamp of the file it came from.
+     *
+     * [load] is called far more often than this file changes. The play gate
+     * runs before **every two megabytes** a kid's browser fetches - that is
+     * what makes a parent's pause land mid-video - so a hundred-megabyte
+     * episode re-read and re-parsed the whole family document fifty times,
+     * on a Celeron that was also pumping the video. `/api/state` parses it
+     * twice a poll, and the crawl reads it once per channel.
+     *
+     * Keyed on the file's own (mtime, length) rather than on a flag, because
+     * [commit] is not the only way these bytes change: a restore, a hand-edit
+     * on the box, a volume rolled back underneath a running container. And
+     * [commit] clears it as well rather than trusting that stamp, because
+     * mtime granularity is a whole second on some filesystems, and two writes
+     * of the same length inside one second is what a busy evening looks like.
+     *
+     * Every reader is already under [lock], so this costs one comparison.
+     * `Whitelist` is immutable and every caller copies, so handing the same
+     * instance out twice is safe.
+     */
+    private var cachedStamp: Pair<Long, Long>? = null
+    private var cachedConfig: Whitelist? = null
+
+    private fun stamp(): Pair<Long, Long> = file.lastModified() to file.length()
+
     fun load(): Whitelist = synchronized(lock) {
+        val stamp = stamp()
+        cachedConfig?.let { if (cachedStamp == stamp) return it }
         val text = raw() ?: return Whitelist(emptyList(), emptySet())
-        runCatching { ConfigJson.fromJson(text) }.getOrElse {
+        runCatching { ConfigJson.fromJson(text).also { cachedConfig = it; cachedStamp = stamp } }.getOrElse {
             // A file that exists but will not parse must not read as "no
             // channels, no kids, no rules" — that emptiness would be merged
             // into every device that syncs next.
@@ -94,6 +122,9 @@ class HubStore(
      * The hub had one line on stderr.
      */
     fun degraded(): Boolean = synchronized(lock) {
+        // Bytes that have already parsed into the cache are not damaged, and
+        // this is asked on the way into every mutating route.
+        cachedConfig?.let { if (cachedStamp == stamp()) return false }
         val text = raw() ?: return false
         runCatching { ConfigJson.fromJson(text) }.isFailure
     }
@@ -240,6 +271,11 @@ class HubStore(
      * next one added forgets to do both.
      */
     private fun commit(json: String) {
+        // The parse this is about to displace. Cleared before the write and
+        // not after it, so a throw halfway through cannot leave a cache
+        // describing bytes that are no longer on the disk.
+        cachedConfig = null
+        cachedStamp = null
         val safe = ConfigJson.stripSecrets(json)
         // Keep what is about to be displaced, if it is worth keeping. Here
         // rather than in the callers because this is the only write path and
