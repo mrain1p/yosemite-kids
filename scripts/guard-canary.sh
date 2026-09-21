@@ -29,8 +29,9 @@
 # gate takes seconds (it is five minutes a run on a Windows bash, which is
 # why this never had a clean full run by hand).
 #
-#   bash scripts/guard-canary.sh          # every case
-#   bash scripts/guard-canary.sh 61 63    # only these
+#   bash scripts/guard-canary.sh              # every case, bash gate
+#   bash scripts/guard-canary.sh 61 63        # only these
+#   GATE=both bash scripts/guard-canary.sh    # against BOTH gates
 #
 # It works by breaking the tree on purpose, one mutation at a time, and
 # asserting the gate notices. Two safety rules follow from that and neither is
@@ -90,6 +91,45 @@ restore() {
 trap restore EXIT INT TERM
 
 WANT="$*"
+
+# WHICH GATE. The two scripts are mirrors (guard 10 holds their headings
+# together), and for a season only one of them was ever proved able to fail:
+# every case here shelled out to check.sh, and guard 65 reads check.sh's
+# headings. So the gate that runs on Windows - the one the author runs before
+# every commit, and the only one many rounds ever see - was the half with no
+# canary at all. Mirrored wording is not mirrored behaviour: the review found
+# fifteen clauses that differ in what they actually check.
+#
+#     scripts/guard-canary.sh                 # the bash gate, as always
+#     GATE=ps1 scripts/guard-canary.sh        # the PowerShell one
+#     GATE=both scripts/guard-canary.sh 57    # one case against both
+#
+# `both` is the honest default before a release and far too slow for a loop:
+# a PowerShell gate run is seconds where bash is tenths, times thirty-odd.
+GATE="${GATE:-sh}"
+case "$GATE" in
+  sh|ps1|both) ;;
+  *) echo "GATE must be sh, ps1 or both (got '$GATE')"; exit 2 ;;
+esac
+
+# Every gate this run judges by. A case fails if EITHER stays green: a guard
+# only one mirror enforces is a guard half the rounds do not have.
+gates() {
+  case "$GATE" in
+    sh) echo "sh" ;;
+    ps1) echo "ps1" ;;
+    both) echo "sh ps1" ;;
+  esac
+}
+
+# Run one gate's guards. Output is what it said; the exit code is its own.
+run_gate() {
+  case "$1" in
+    sh) bash scripts/check.sh --guards 2>&1 ;;
+    ps1) powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 -Guards 2>&1 ;;
+  esac
+}
+
 passed=0
 failed=0
 skipped=0
@@ -100,12 +140,18 @@ skipped=0
 # app sixteen times to find that out would make this a thing nobody runs.
 expect_guard() {
   local num="$1" file="$2" note="$3" expect="$4"
-  local out rc
-  out=$(bash scripts/check.sh --guards 2>&1)
-  rc=$?
+  local out rc g label
+  for g in $(gates); do
+    out=$(run_gate "$g")
+    rc=$?
+    # Named per gate when there is more than one, so a case that fires in bash
+    # and not in PowerShell says which half is missing rather than just "no".
+    label="$note"
+    [ "$GATE" = "both" ] && label="$note [$g]"
+    judge "$num" "$label" "$expect" "$out" "$rc"
+  done
   git checkout -- "$file" 2>/dev/null || true
   TOUCHED=""
-  judge "$num" "$note" "$expect" "$out" "$rc"
 }
 
 # The verdict, shared by the edit-a-file and the create-a-file cases.
@@ -151,12 +197,16 @@ canary_new() {
   CREATED="$file"
   printf "%s
 " "$content" > "$file"
-  local out rc
-  out=$(bash scripts/check.sh --guards 2>&1)
-  rc=$?
+  local out rc g label
+  for g in $(gates); do
+    out=$(run_gate "$g")
+    rc=$?
+    label="$note"
+    [ "$GATE" = "both" ] && label="$note [$g]"
+    judge "$num" "$label" "$expect" "$out" "$rc"
+  done
   rm -f "$file"
   CREATED=""
-  judge "$num" "$note" "$expect" "$out" "$rc"
 }
 
 # One case. `mutate` breaks $file; `expect` is a fragment of the message the
