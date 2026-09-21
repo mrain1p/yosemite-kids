@@ -74,11 +74,22 @@ object PlaylistCrawlRun {
         var fetches = 0
         var refreshed = 0
         var failures = 0
-        suspend fun <T> fetch(block: suspend () -> T): T? {
+        /**
+         * As [fetch], but the caller is handed the failure so it can tell a
+         * playlist YouTube has DELETED from one that timed out. Without that
+         * distinction a deleted playlist leaves `videoIds` null for ever, its
+         * channel's listing never reaches `complete`, `due` always contains
+         * it, and the pass re-fetches it every fifteen minutes until somebody
+         * notices - which is exactly the loop `IndexCrawlRun.goneReason` and
+         * `GONE_RETRY_MS` were written to stop for a channel's videos.
+         */
+        suspend fun <T> fetchOr(block: suspend () -> T, onError: (Throwable) -> T?): T? {
             if (fetches > 0) delay(delayMs)
             fetches++
-            return runCatching { block() }.getOrElse { onFailure(it); failures++; null }
+            return runCatching { block() }.getOrElse { onFailure(it); failures++; onError(it) }
         }
+
+        suspend fun <T> fetch(block: suspend () -> T): T? = fetchOr(block) { null }
         for ((source, held) in due) {
             if (fetches >= fetchesPerRun) break
             var listing = held?.takeIf { !it.complete }
@@ -98,7 +109,22 @@ object PlaylistCrawlRun {
                 if (playlists[i].videoIds != null) continue
                 if (fetches >= fetchesPerRun) break
                 val ref = playlists[i].let { PlaylistRef(it.id, it.url, it.name, it.thumbnailUrl, it.videoCount) }
-                val videos = fetch { playlistVideos(ref) } ?: continue
+                var gone = false
+                val videos = fetchOr({ playlistVideos(ref) }) { e ->
+                    // A playlist YouTube says is not there counts as answered
+                    // with nothing: the listing can complete, and the daily
+                    // refresh is when it gets asked again. A timeout or a
+                    // refused connection is not that, and is left for the
+                    // next run.
+                    if (IndexCrawlRun.goneReason(e) == null) null
+                    else {
+                        gone = true
+                        emptyList()
+                    }
+                } ?: continue
+                if (gone) {
+                    println("playlist  on  is gone from YouTube; parking it until the daily refresh")
+                }
                 playlists = playlists.toMutableList().also { list ->
                     list[i] = list[i].copy(videoIds = videos.mapNotNull { it.videoId }.distinct())
                 }

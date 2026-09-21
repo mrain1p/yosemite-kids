@@ -1028,13 +1028,14 @@ row below is one half of something already right.
   in three files and already wrong; one test runs nowhere at all; four tests
   turn on wall-clock sleeps or mtime granularity; the fixture that seeds a hub
   asserts nothing and runs on every gate.
-- **Medium, robustness (12):** the per-chunk gate re-parses the whole config
-  twice and every channel's index before every 2 MB; no single-flight on stream
-  resolution, so an expired URL mid-video means eight simultaneous extractions;
-  `/kid/thumb` is an unmetered YouTube fetcher for any claimed browser; the
-  device's HTTP server has no overall request deadline; `LanClient` reads peer
-  responses unbounded; the two-TV `peerBehind` race; the playlist pass has no
-  gone-handling and refetches a dead playlist every fifteen minutes for ever.
+- **Medium, robustness (12, three closed):** the per-chunk gate re-parses the
+  whole config twice and every channel's index before every 2 MB; ✅ single-flight
+  on stream resolution (a monitor per video id, so an expired URL mid-video is one
+  extraction rather than eight); ✅ `/kid/thumb` narrowed to the poster hosts and
+  metered per browser; the device's HTTP server has no overall request deadline;
+  `LanClient` reads peer responses unbounded; the two-TV `peerBehind` race; ✅ the
+  playlist pass parks a deleted playlist until the daily refresh instead of asking
+  for it every fifteen minutes for ever.
 - **Medium, console (14):** removing a channel has no confirmation though every
   other destructive action does; two error messages are written onto nodes the
   re-render throws away; per-kid rulings are one-way but drawn as toggles; the

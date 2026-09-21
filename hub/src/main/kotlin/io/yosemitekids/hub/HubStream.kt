@@ -98,6 +98,31 @@ class HubStream(
     private val lock = Any()
 
     /**
+     * One resolve per video at a time, across every request in flight.
+     *
+     * The cache is checked under [lock], the lock is released, and the
+     * extraction happens outside it - which is right, because an extraction
+     * takes seconds and holding a monitor across it would stall every other
+     * video in the house. What it left open is a thundering herd: dash.js
+     * opens the index of every rendition at once, so when a twenty-minute URL
+     * expires mid-video up to eight segment requests miss together and each
+     * runs its own full StreamInfo extraction. Eight of those at once, at the
+     * one endpoint that must not be hammered, for one child pressing nothing.
+     *
+     * A monitor per video id, taken outside [lock], so the first caller
+     * extracts and the rest wait and then find it in the cache. Cleared whole
+     * rather than reference-counted: it is allocated from request data, and a
+     * bounded map that occasionally forgets a monitor costs one extra resolve.
+     */
+    private val inFlight = LinkedHashMap<String, Any>()
+
+    private fun gateFor(videoId: String): Any = synchronized(lock) {
+        inFlight[videoId]?.let { return it }
+        if (inFlight.size > MAX_CACHED) inFlight.clear()
+        Any().also { inFlight[videoId] = it }
+    }
+
+    /**
      * One muxed stream for [videoId], from cache while it is fresh.
      *
      * `maxHeight = null` is not a shrug: it is what sends `resolvePlayback`
@@ -108,7 +133,7 @@ class HubStream(
      *
      * @throws Unplayable with a reason a route can distinguish.
      */
-    fun resolve(videoId: String): Resolved {
+    fun resolve(videoId: String): Resolved = synchronized(gateFor(videoId)) {
         synchronized(lock) {
             cache[videoId]?.let { if (now() - it.at < URL_TTL_MS) return it }
         }
@@ -212,7 +237,7 @@ class HubStream(
         return Resolved(s.url, total, set.title, now())
     }
 
-    private fun dashSet(videoId: String): YouTubeRepository.DashSet {
+    private fun dashSet(videoId: String): YouTubeRepository.DashSet = synchronized(gateFor("dash:" + videoId)) {
         synchronized(lock) {
             dashCache[videoId]?.let { if (now() - it.at < URL_TTL_MS) return it.set }
         }

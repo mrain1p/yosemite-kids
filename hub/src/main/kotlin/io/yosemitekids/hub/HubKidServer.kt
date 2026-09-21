@@ -134,6 +134,18 @@ class HubKidServer(
     private val claims = HubRate(MAX_CLAIMS_PER_WINDOW, CLAIM_WINDOW_MS)
 
     /**
+     * Posters, per claimed browser.
+     *
+     * The route is credential-gated and host-checked, which stops a stranger
+     * and stops it being pointed at the house network. What neither stops is a
+     * claimed tablet asking for posters as fast as it can: every one of those
+     * is this box fetching from YouTube on the family's own residential
+     * address, and nothing counted them. A grid of forty posters redrawn on
+     * every scroll is well inside this; a script in a loop is not.
+     */
+    private val thumbRates = java.util.concurrent.ConcurrentHashMap<String, HubRate>()
+
+    /**
      * The password throttle, per kid, behind [claims]. The bucket above
      * bounds how fast the LAN can knock; this bounds how far one child's
      * password can be guessed at all. Its own object for the reason
@@ -750,24 +762,34 @@ class HubKidServer(
      * business. The hub is already talking to those hosts on the family's
      * behalf; this keeps the number of things that do at one.
      *
-     * The URL is checked against the same allow-list the crawler is armed with
-     * ([Http.HUB_HOSTS], guard 7) before anything is opened, so this cannot be
-     * turned into a fetcher for arbitrary addresses on the house network — the
+     * The URL is checked before anything is opened, so this cannot be turned
+     * into a fetcher for arbitrary addresses on the house network — the
      * classic server-side request forgery, which a route that takes a URL from
-     * a request is exactly the shape of.
+     * a request is exactly the shape of. Against [POSTER_HOSTS] rather than
+     * the crawler's whole allow-list (guard 7): that list exists so the
+     * crawler can reach YouTube's API and its video servers, and a poster
+     * route has no business with either. Narrower is the point of having two.
      */
     private fun thumb(ex: HttpExchange) {
         if (ex.requestMethod != "GET") return respond(ex, 405, "no")
         // Behind the credential like everything else: an unclaimed browser must
         // not be able to make this box fetch anything at all.
-        watching(ex) ?: return
+        val browser = watching(ex) ?: return
+        val bucket = thumbRates.computeIfAbsent(browser.token) {
+            if (thumbRates.size > MAX_THUMB_BUCKETS) thumbRates.clear()
+            HubRate(MAX_THUMBS_PER_WINDOW, THUMB_WINDOW_MS)
+        }
+        if (!bucket.allow(now())) {
+            ex.responseHeaders.add("Retry-After", bucket.retryAfterSeconds(now()).toString())
+            return respond(ex, 429, JSONObject().put("error", "too many posters").toString())
+        }
         val raw = param(ex, "u")
             ?: return respond(ex, 400, JSONObject().put("error", "no url").toString())
         val url = runCatching { java.net.URI(raw) }.getOrNull()
             ?: return respond(ex, 400, JSONObject().put("error", "bad url").toString())
         val host = url.host
         if (url.scheme != "https" || host == null ||
-            !io.yosemitekids.app.data.Http.hostAllowed(host, io.yosemitekids.app.data.Http.HUB_HOSTS)
+            !io.yosemitekids.app.data.Http.hostAllowed(host, POSTER_HOSTS)
         ) {
             return respond(ex, 403, JSONObject().put("error", "not allowed").toString())
         }
@@ -1372,6 +1394,20 @@ class HubKidServer(
 
         /** Kid-and-reason pairs remembered for that quiet period. Small, and cleared whole. */
         private const val REFUSALS_REMEMBERED = 64
+
+        /**
+         * Where a poster may come from. A subset of the crawler's hosts on
+         * purpose: `googlevideo.com` serves video bytes and `youtube.com`
+         * serves the API, and neither is an image this page draws.
+         */
+        private val POSTER_HOSTS = setOf("ytimg.com", "ggpht.com", "googleusercontent.com")
+
+        /** Posters one browser may ask for in [THUMB_WINDOW_MS]. A full grid is about forty. */
+        private const val MAX_THUMBS_PER_WINDOW = 240
+        private const val THUMB_WINDOW_MS = 60_000L
+
+        /** Buckets held at once. Allocated from request data, so bounded and cleared whole. */
+        private const val MAX_THUMB_BUCKETS = 64
 
         const val MAX_CONCURRENT_STREAMS = 3
 

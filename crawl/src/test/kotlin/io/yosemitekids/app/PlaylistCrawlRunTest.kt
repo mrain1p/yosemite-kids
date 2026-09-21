@@ -115,4 +115,70 @@ class PlaylistCrawlRunTest {
         assertTrue("UC2 was still done", index.loadPlaylists("UC2")!!.complete)
         assertEquals("playlists: 3 fetches, 1 channel(s) refreshed, 1 failed", out.summary)
     }
+
+    @Test
+    fun `a playlist YouTube has deleted is parked rather than re-fetched for ever`() = runBlocking {
+        val index = newIndex()
+        val asked = mutableListOf<String>()
+        val gone = org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException(
+            "Got error: \"The playlist does not exist.\""
+        )
+        val out = PlaylistCrawlRun.run(
+            index, listOf(channel("UC1")),
+            listPlaylists = { listOf(ref("PL1", "Songs"), ref("PLDEAD", "Gone")) },
+            playlistVideos = { r ->
+                asked += r.id
+                if (r.id == "PLDEAD") throw gone else listOf(video("aaaaaaaaaaa"))
+            },
+            delayMs = 0, now = { 1_000L }
+        )
+
+        assertEquals("both were asked once", listOf("PL1", "PLDEAD"), asked)
+        assertEquals("and the deleted one is still counted a failure", 1, out.failures)
+
+        // The point: the listing COMPLETES. Before this, videoIds stayed null
+        // for the dead playlist, the listing never completed, `due` always
+        // held this channel, and the pass asked YouTube for a playlist that
+        // does not exist every fifteen minutes until somebody noticed.
+        val listing = index.loadPlaylists("UC1")!!
+        assertTrue("the channel's listing is finished", listing.complete)
+        assertEquals(listOf("aaaaaaaaaaa"), listing.playlists.first { it.id == "PL1" }.videoIds)
+        assertEquals(
+            "the dead one is answered with nothing, not left unanswered",
+            emptyList<String>(), listing.playlists.first { it.id == "PLDEAD" }.videoIds
+        )
+
+        // And the next run leaves it alone until the daily refresh is due.
+        val again = PlaylistCrawlRun.run(
+            index, listOf(channel("UC1")),
+            listPlaylists = { throw IllegalStateException("must not re-list") },
+            playlistVideos = { throw IllegalStateException("must not re-fetch") },
+            delayMs = 0, now = { 2_000L }
+        )
+        assertEquals(0, again.fetches)
+    }
+
+    @Test
+    fun `a playlist that merely timed out is tried again on the next run`() = runBlocking {
+        val index = newIndex()
+        var attempts = 0
+        PlaylistCrawlRun.run(
+            index, listOf(channel("UC1")),
+            listPlaylists = { listOf(ref("PL1", "Songs")) },
+            playlistVideos = { attempts++; throw java.io.IOException("timed out") },
+            delayMs = 0, now = { 1_000L }
+        )
+        val listing = index.loadPlaylists("UC1")!!
+        assertFalse("a timeout is not an answer, so the listing is unfinished", listing.complete)
+        assertNull(listing.playlists.first().videoIds)
+
+        PlaylistCrawlRun.run(
+            index, listOf(channel("UC1")),
+            listPlaylists = { listOf(ref("PL1", "Songs")) },
+            playlistVideos = { attempts++; listOf(video("aaaaaaaaaaa")) },
+            delayMs = 0, now = { 2_000L }
+        )
+        assertEquals("asked again", 2, attempts)
+        assertTrue(index.loadPlaylists("UC1")!!.complete)
+    }
 }
