@@ -1581,6 +1581,55 @@ private fun AdminScreen(
                             }
                         }
                     }
+                    // What went wrong on THIS device, from the diagnostic ring.
+                    //
+                    // The ring has existed since 1.0.x and nothing on a device
+                    // ever read it: `Diag.entries()` had no caller, and the
+                    // ring drains only to a hub. A family without a hub - the
+                    // documented default - had no way to see what went wrong
+                    // short of adb logcat, which is not a thing a parent has.
+                    //
+                    // Beside Recent changes on purpose: that card answers "did
+                    // my edit stick", this one answers "and if it did not, why
+                    // not". Warnings and errors only; Diag.i never enters the
+                    // ring at all.
+                    Spacer(Modifier.height(18.dp))
+                    SettingsCard(padded = false) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
+                            Text(
+                                "What went wrong",
+                                fontSize = 12.5.sp, fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(9.dp))
+                            val trouble = remember(currentHash) {
+                                io.yosemitekids.app.data.Diag.entries()
+                                    .filter { it.level != "i" }
+                                    .takeLast(5).reversed()
+                            }
+                            if (trouble.isEmpty()) {
+                                Text(
+                                    "Nothing has gone wrong on this device.",
+                                    fontSize = 12.5.sp, lineHeight = 19.sp,
+                                    color = SettingsTextSecondary
+                                )
+                            } else trouble.forEachIndexed { i, entry ->
+                                if (i > 0) Spacer(Modifier.height(7.dp))
+                                Text(
+                                    buildAnnotatedString {
+                                        append(entry.message)
+                                        changeAge(entry.at)?.let { age ->
+                                            withStyle(SpanStyle(color = SettingsPlaceholder)) {
+                                                append("  ·  $age")
+                                            }
+                                        }
+                                    },
+                                    fontSize = 12.5.sp, lineHeight = 19.sp,
+                                    color = SettingsTextSecondary
+                                )
+                            }
+                        }
+                    }
                     // Which settings these are, and when they were last
                     // edited — under the card as a footer, where a fingerprint
                     // being read out loud belongs.

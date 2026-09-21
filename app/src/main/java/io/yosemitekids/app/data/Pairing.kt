@@ -1536,11 +1536,39 @@ object LanClient {
         }.getOrNull()
     }
 
+    /**
+     * Make [call] against [device] and record WHY it failed.
+     *
+     * Every one of these used to be `runCatching { … }.getOrDefault(false)`,
+     * which makes a 403 - an approval this device has dropped, where the only
+     * fix is re-pairing - indistinguishable from a television that is asleep,
+     * where the fix is nothing at all. Neither reached `Diag`, so "why did the
+     * TV not update?" left no trace on the phone and none on the hub, which
+     * the ring drains to.
+     *
+     * Still a Boolean to every caller: the sweep's shape does not change. What
+     * changes is that a refusal is now written down, with its code, beside the
+     * device it came from.
+     */
+    private fun attempt(device: PairedDevice, what: String, call: () -> okhttp3.Response): Boolean =
+        runCatching {
+            call().use { resp ->
+                if (!resp.isSuccessful) {
+                    Diag.w(" to  was refused with HTTP ")
+                }
+                resp.isSuccessful
+            }
+        }.onFailure {
+            // Unreachable is ordinary for a sleeping television, so this is a
+            // warning and not an error - but it is the difference between "it
+            // is asleep" and "it stopped trusting this phone", and a parent
+            // reading the device page deserves to be able to tell.
+            Diag.w(" to  could not be sent: ", it)
+        }.getOrDefault(false)
+
     suspend fun pushConfig(device: PairedDevice, configJson: String): Boolean =
         withContext(Dispatchers.IO) {
-            runCatching {
-                request(device, "POST", "/config", configJson).use { it.isSuccessful }
-            }.getOrDefault(false)
+            attempt(device, "the settings") { request(device, "POST", "/config", configJson) }
         }
 
     /**
@@ -1551,6 +1579,9 @@ object LanClient {
      */
     suspend fun report(device: PairedDevice, body: String): Boolean =
         withContext(Dispatchers.IO) {
+            // Deliberately NOT through attempt(): this is what drains the ring,
+            // and a failure that wrote to the ring would refill what it is
+            // emptying - once per sweep, for ever, on a hub that is down.
             runCatching {
                 request(device, "POST", "/report", body).use { it.isSuccessful }
             }.getOrDefault(false)
@@ -1569,19 +1600,15 @@ object LanClient {
         hubPort: Int,
         hubToken: String
     ): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            val body = JSONObject()
-                .put("host", hubHost).put("port", hubPort).put("token", hubToken)
-                .toString()
-            request(device, "POST", "/join-hub", body).use { it.isSuccessful }
-        }.getOrDefault(false)
+        val body = JSONObject()
+            .put("host", hubHost).put("port", hubPort).put("token", hubToken)
+            .toString()
+        attempt(device, "the hub's address") { request(device, "POST", "/join-hub", body) }
     }
 
     /** Undo the above. Best effort: a TV that is off simply keeps its copy. */
     suspend fun clearHub(device: PairedDevice): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            request(device, "POST", "/leave-hub", "{}").use { it.isSuccessful }
-        }.getOrDefault(false)
+        attempt(device, "leaving the hub") { request(device, "POST", "/leave-hub", "{}") }
     }
 
     /** The device's full config JSON (channels, blocks, safe-list, rules), or null. */
@@ -1596,9 +1623,7 @@ object LanClient {
     /** Pause/resume what the TV is playing. False when unreachable or idle. */
     suspend fun playerCommand(device: PairedDevice, cmd: String): Boolean =
         withContext(Dispatchers.IO) {
-            runCatching {
-                request(device, "POST", "/player?cmd=$cmd", "").use { it.isSuccessful }
-            }.getOrDefault(false)
+            attempt(device, "the player command") { request(device, "POST", "/player?cmd=$cmd", "") }
         }
 
     /**
@@ -1615,10 +1640,9 @@ object LanClient {
         withContext(Dispatchers.IO) {
             val profileParam = profileId?.let { "&profile=$it" } ?: ""
             val grantParam = grant?.let { "&id=${it.id}&date=${it.date}&at=${it.at}" } ?: ""
-            runCatching {
+            attempt(device, "the extra minutes") {
                 request(device, "POST", "/grant?minutes=$minutes$profileParam$grantParam", "")
-                    .use { it.isSuccessful }
-            }.getOrDefault(false)
+            }
         }
 
     /** Ask a TV to pair; returns "approved", "pending", or null (unreachable). */
@@ -1694,9 +1718,7 @@ object LanClient {
                 .put("thumb", req.thumb ?: "")
                 .put("timePercent", req.timePercent)
                 .toString()
-            runCatching {
-                request(device, "POST", "/play", body).use { it.isSuccessful }
-            }.getOrDefault(false)
+            attempt(device, "the video to play") { request(device, "POST", "/play", body) }
         }
 
     /**

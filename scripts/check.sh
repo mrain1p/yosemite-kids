@@ -2133,6 +2133,14 @@ grep -q "createContext(${q}/report${q})" hub/src/main/kotlin/io/yosemitekids/hub
 grep -q "println(${q}report " hub/src/main/kotlin/io/yosemitekids/hub/HubReports.kt ||
   guard_fail "HubReports no longer prints each report to stdout. The container log is the half of this that survives a restart, and the half a parent without the console can reach."
 
+#     AND THE RING IS READ ON THE DEVICE ITSELF. It drains to a hub, and the
+#     documented default is a family without one - so for those families
+#     everything above wrote to a file nobody could open. Diag.entries() had
+#     no caller anywhere in :app: the ring existed, filled, capped itself and
+#     was never shown to the person it was recorded for.
+grep -rq "Diag.entries()" app/src/main/java/io/yosemitekids/app/ui --include=*.kt ||
+  guard_fail "nothing in app/.../ui reads Diag.entries(). The ring drains to a hub, and a family without one - which is the default - then has no way to see what went wrong short of adb logcat. The Devices page shows the last few."
+
 # 69. A setting a child's screen obeys is obeyed on every face that draws it, or says why not.
 #     SettingsSurface.where says who can SET a control; honouredBy says which
 #     kid faces OBEY it, and that half went unwatched: "Videos before Show

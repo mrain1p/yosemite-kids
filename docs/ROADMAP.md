@@ -953,7 +953,7 @@ row below is one half of something already right.
     path the hub does not use: it asserts muxed **or** adaptive streams while
     `HubStream.resolve` requires muxed, so YouTube dropping itag 18 leaves the
     canary green while every browser video 502s. And it notifies nobody by name.
-11. **`LanClient` discards every push and pull failure.** Seven methods are
+11. ✅ **`LanClient` discards every push and pull failure.** Seven methods are
     `runCatching { … }.getOrDefault(false)`, so a 403 (approval dropped, and
     re-pairing the only fix) is indistinguishable from a sleeping TV, and
     nothing reaches `Diag` — which is itself never read on a device, because
