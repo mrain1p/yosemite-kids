@@ -79,6 +79,39 @@
     min-height: 100vh;
   }
 
+  /* Today's screen time. Every length is a KidGeometry token (guard 63), and
+     no signal colour: a day that is fully spent is a fact, not a failure, and
+     the house style says a refusal on a child's screen is drawn in ordinary
+     ink with the card doing the work. So the fill is the same ink the page
+     writes with, at a weight that reads as "this much is gone".
+
+     The mark is where the day's own rules ended and a grown-up's extra
+     minutes began. It exists because bonus EXTENDS the scale rather than
+     sitting inside it - two phones can each grant and both land, so base plus
+     bonus has no ceiling - and without it a longer bar would just look like a
+     bigger limit. */
+  .daybar { padding: 0 var(--yk-page-gutter) var(--yk-day-bar-gap); }
+  .daybar-track {
+    position: relative;
+    height: var(--yk-day-bar-height);
+    border-radius: var(--yk-day-bar-radius);
+    background: var(--yk-surface-container-high);
+    overflow: hidden;
+  }
+  .daybar-spent {
+    height: 100%;
+    border-radius: var(--yk-day-bar-radius);
+    background: var(--yk-on-surface-variant);
+    transition: width .3s ease;
+  }
+  .daybar-mark {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    width: var(--yk-day-bar-bonus-mark);
+    background: var(--yk-surface);
+  }
+
   /* Touch targets a five-year-old hits first time. 44px is the floor
      everywhere, and the play control is deliberately much bigger. */
   button, input { font: inherit; color: inherit; }
@@ -531,6 +564,21 @@
     <span class="pill" id="time" hidden></span>
     <button class="icon-btn" id="look" aria-label="Change the colours"></button>
   </header>
+
+  <!--
+    Today, as one bar. KidSurface's "time-today" row says what it is and why
+    the phone and the television say the same thing in words instead.
+
+    Not a control: it draws a state and cannot change it, so it is not a
+    button, has no tabindex, and carries its meaning for a screen reader in
+    the sentence the hub already wrote rather than in a number of its own.
+  -->
+  <div class="daybar" id="daybar" hidden>
+    <div class="daybar-track">
+      <div class="daybar-spent" id="daybarSpent"></div>
+      <div class="daybar-mark" id="daybarMark" hidden></div>
+    </div>
+  </div>
 
   <div class="searchrow" id="searchrow">
     <input id="q" type="search" placeholder="Search" enterkeyhint="search">
@@ -1526,7 +1574,38 @@
    * them, because the amber is a promise about when a warning starts and two
    * faces disagreeing about that is two different products.
    */
+  /**
+   * Today's bar. See KidSurface's "time-today" row.
+   *
+   * There is no arithmetic here and there must not be: `spentFraction` and
+   * `bonusFraction` come from Budget.today in :core, on the hub, from the same
+   * call the countdown beside them comes from. A page that divided for itself
+   * would round differently from the hub's own cut-off and draw a full bar
+   * while the video was still playing - the two faces disagreeing about the
+   * same instant.
+   *
+   * No budget means no bar, never an empty one: a child with no limit has not
+   * run out of anything.
+   */
+  function showDayBar(time) {
+    var bar = document.getElementById("daybar");
+    if (!time || typeof time.spentFraction !== "number") { bar.hidden = true; return; }
+    bar.hidden = false;
+    document.getElementById("daybarSpent").style.width =
+      Math.round(time.spentFraction * 1000) / 10 + "%";
+    var mark = document.getElementById("daybarMark");
+    var bonus = time.bonusFraction || 0;
+    // The tick sits where the rules ended: the whole bar less the given part.
+    if (bonus > 0) {
+      mark.hidden = false;
+      mark.style.left = Math.round((1 - bonus) * 1000) / 10 + "%";
+    } else {
+      mark.hidden = true;
+    }
+  }
+
   function showTime(time) {
+    showDayBar(time);
     var pill = document.getElementById("time");
     // No sentence, no pill. The fallback here used to build one -
     // `time.leftMinutes + " minutes left"` - which is the thing the house

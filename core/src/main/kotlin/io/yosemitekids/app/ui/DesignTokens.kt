@@ -459,6 +459,26 @@ object KidGeometry {
     const val PROGRESS_HEIGHT = 4
 
     /**
+     * Today's screen time, drawn as one bar.
+     *
+     * Its own numbers rather than [PROGRESS_HEIGHT]'s, deliberately: that one
+     * is the watched bar across a poster, and binding two unrelated drawings
+     * to one number means changing either of them changes both. This bar is
+     * read across a room and at arm's length, so it is taller; it is a
+     * statement rather than a sliver of progress on a thumbnail.
+     *
+     * [DAY_BAR_BONUS_MARK] is the width of the tick that shows where the
+     * day's own rules ended and a grown-up's extra minutes began — because
+     * bonus EXTENDS the scale (two phones can each grant and both land, so
+     * base+bonus has no ceiling) and a bar with no mark on it cannot say
+     * which part of the day was given.
+     */
+    const val DAY_BAR_HEIGHT = 10
+    const val DAY_BAR_RADIUS = 5
+    const val DAY_BAR_BONUS_MARK = 2
+    const val DAY_BAR_GAP = 8
+
+    /**
      * How far back a finished card sits.
      *
      * Far enough that "seen it" reads at a glance, near enough that it is still
@@ -524,6 +544,10 @@ object KidGeometry {
         "badge-pad-x" to BADGE_PAD_X,
         "badge-pad-y" to BADGE_PAD_Y,
         "progress-height" to PROGRESS_HEIGHT,
+        "day-bar-height" to DAY_BAR_HEIGHT,
+        "day-bar-radius" to DAY_BAR_RADIUS,
+        "day-bar-bonus-mark" to DAY_BAR_BONUS_MARK,
+        "day-bar-gap" to DAY_BAR_GAP,
         "meta-top" to META_TOP,
         "meta-side" to META_SIDE,
         "sub-gap" to SUB_GAP,

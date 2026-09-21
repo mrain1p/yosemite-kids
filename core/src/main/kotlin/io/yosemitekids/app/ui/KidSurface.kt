@@ -190,6 +190,33 @@ object KidSurface {
 
     val surfaces: List<KidSurfaceDef> = listOf(
         KidSurfaceDef(
+            id = "time-today",
+            title = "Today",
+            kind = SurfaceKind.CHROME,
+            rules = listOf("Budget.today", "KidWords.timeLeft"),
+            face = KidFace.WEB,
+            webReady = true,
+            onTv = false,
+            why = "Today's screen time as one bar: how long the rules allow, how much of " +
+                "that a grown-up added, how much is gone. The phone and the television say " +
+                "the same thing in words instead - the countdown pill and the time chip, " +
+                "both from KidWords.timeLeft over the same seconds - because a bar is a " +
+                "drawing you read at a glance and a pill is one you read while something " +
+                "else is happening, and a child on a tablet is sitting still with the whole " +
+                "page in front of them. Every number in it comes from Budget.today in :core, " +
+                "including the fractions: a face that divided for itself would round " +
+                "differently from the hub's own cut-off and draw a full bar while the video " +
+                "was still playing. The parent's own faces draw their own bar from the same " +
+                "arithmetic (SessionGuard.Snapshot on the phone, /api/state's today block on " +
+                "the console), which is a parent's question - how much has this kid watched " +
+                "today, on every screen - and deliberately a different number from the one a " +
+                "child's own tablet shows under a per-device budget.",
+            tvWhy = "The television has the time chip in the player's chrome and the rail has " +
+                "no room for a bar; a ten-foot reading of a proportion is a shape nobody " +
+                "walks across the room to check. TimeChip in Tiles.kt, amber at the same " +
+                "KidWords.LOW_SECONDS the browser uses."
+        ),
+        KidSurfaceDef(
             id = "home",
             title = "Home",
             kind = SurfaceKind.SCREEN,

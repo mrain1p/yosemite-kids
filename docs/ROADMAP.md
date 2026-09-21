@@ -682,19 +682,51 @@ mapping and its environment line come out of the NAS compose file.
   tombstone `grant|<id>` (the merge already deletes those — `ConfigStamp`
   tombstones expired ones on every save), fast-path the awake devices, and give
   `SessionGuard` the reverse of `applyGrants` — drop the id from its prefs copy
-  and shrink `windowPassUntil` by the same minutes, never below now. Four
-  decisions to make first, which is why this is deferred rather than ported:
-  which grant "take back 15" removes when the day holds a 5 and a 15; whether a
-  partial take-back exists at all; what the hub's console offers beside its own
-  grant editor; and the kid's notice, which is parent-attributed like the pause
-  (`KidNotices.takeBack`) or the countdown just shrinks and reads as the device
-  miscounting.
-- **Today's screen time as one bar** (upstream 4e0d328, same sync). Base
-  minutes, bonus, watched and what is left, on the parent's kid page and in
-  Stats. The fork's kid page already carries a Today section and "N of M min"
-  in words, so this is a legibility upgrade, not a missing feature — and it is
-  a drawing a child may also meet, so it needs a `KidSurface` row and its
-  numbers out of `KidGeometry` before either face draws it, not after.
+  and shrink `windowPassUntil` by the same minutes, never below now.
+
+  **Three of the four decisions are made** (2026-09-21), and writing the fork's
+  own shape down is what made them stop being questions:
+
+  1. *Which grant "take back 15" removes when the day holds a 5 and a 15.*
+     Neither — a parent does not take back **minutes**, they take back **a
+     grant**. The undo is removing the grant unit, and every grant already
+     carries an id the merge tombstones. So the control is a list of today's
+     grants, each with its minutes and the time it was given, each with an
+     undo. The question only arises if the control is a number field, and a
+     number field is upstream's shape: the one that cannot reach a sleeping
+     television.
+  2. *Whether a partial take-back exists at all.* No. It would be a grant of
+     negative minutes, and the merge has no unit for one — two devices would
+     each apply it, or neither would, depending which saw it first, which is
+     the arithmetic config-carried grants exist to avoid. It also makes the
+     change feed unreadable, because "gave 15" and "took back 5" do not sum to
+     anything a parent can see. A parent who wants ten of fifteen back undoes
+     the fifteen and grants five: two taps, two entries, both true.
+  3. *What the hub's console offers beside its own grant editor.* The same
+     list and nothing else. A grant made from the kitchen has to be undoable
+     from wherever the parent is standing, and the id goes out in a patch that
+     removes the unit — something `/api/config` can already express.
+
+  **The fourth is the owner's**, and it is still open: the kid's notice is
+  either parent-attributed the way a pause is (`KidNotices.takeBack`), which is
+  honest and may invite an argument in the room, or the countdown simply
+  shrinks, which is quiet and teaches a child that the number on their screen
+  is not reliable. That is a decision about what happens in a room, so it is
+  not one to make from the code.
+- ~~**Today's screen time as one bar**~~ (upstream 4e0d328, same sync).
+  **Done 2026-09-21**, and in the order §8E asked for: `Budget.today` in
+  `:core` first (base, bonus, spent, left and the fractions, so no face
+  divides), then the `KidGeometry` numbers and the `KidSurface` row
+  (`time-today`, the manifest's first `CHROME` entry and its first
+  `KidFace.WEB` one), then the drawing.
+
+  Asking where those numbers already lived is what made the item worth doing:
+  the arithmetic had escaped twice. `dayMs` fuses base and bonus and every
+  caller threw the split away, so the hub could not report a bonus at all —
+  and the parent console had grown a **JavaScript** copy of `Budget.bonusMs`
+  keyed off the browser's clock rather than `homeZone`. Guard 78 holds both
+  pages now. What is left is the console's own bar: it has the numbers
+  (`/api/state`'s `today` block) and draws them in words.
 
 ### 8F. A house style, and who checks the checkers
 
@@ -843,8 +875,10 @@ Added by the round itself, found while clearing the review's list:
    now serves the television too. The spinner is gone from both faces — it
    said "something is happening somewhere", where a skeleton says what is
    coming and where, so nothing moves under a finger when it lands.
-3. Today's screen time as one bar (§8E), with its `KidSurface` row and its
-   numbers in `KidGeometry` first.
+3. ~~Today's screen time as one bar (§8E), with its `KidSurface` row and its
+   numbers in `KidGeometry` first.~~ Done: `Budget.today` in `:core`, the
+   `day-bar-*` tokens, the `time-today` surface row, and the bar on the kid
+   page. The console has the numbers and still says them in words.
 4. A kid-scale search page on the phone, to match what the browser has.
 5. The swipe-down-into-the-floating-player gesture.
 6. Kid → parent requests, and take back a grant — after the four decisions
