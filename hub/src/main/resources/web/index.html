@@ -35,6 +35,25 @@
   Channels & playlists, Content screening, Devices, Playback, Backup & app —
   because a parent who knows one face should not have to learn the other.
 -->
+<!--
+  The generated token sheet, for its LENGTHS.
+
+  Not for its palette: a parent's console is a different product surface from
+  a child's page and Theme.kt has owned that split since it was written - the
+  kid schemes on one side, the parent-facing palette on the other. The colours
+  below are this page's own and stay that way.
+
+  But a number that describes the SHAPE of a drawing both faces make is
+  KidGeometry's, and the day bar is the first thing on this page that is also
+  on the kid's. Linking the sheet is how those numbers arrive without being
+  retyped here, which is the failure KidGeometry's own KDoc was written for
+  (the progress track 40% white in the app against 80% black in the browser).
+  It declares nothing but custom properties on :root, and it is linked BEFORE
+  this page's own style block, so every rule here still wins - including
+  `color-scheme`, which the sheet sets to dark for the kid page and this page
+  immediately sets back.
+-->
+<link rel="stylesheet" href="/kid-tokens.css">
 <style>
   :root {
     color-scheme: light dark;
@@ -106,6 +125,31 @@
     border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; font: inherit; }
   textarea { min-height: 78px; resize: vertical; }
   input[type=number] { width: 92px; }
+  /* Today's screen time. The lengths are KidGeometry's, through the sheet
+     linked above, so this bar and the one on the kid's page are the same
+     shape. The colours are this page's, which is the recorded difference:
+     a parent is reading a report, a child is reading their own afternoon. */
+  .daybar { margin-top: 10px; }
+  .daybar-track {
+    position: relative;
+    height: var(--yk-day-bar-height);
+    border-radius: var(--yk-day-bar-radius);
+    background: var(--sunk);
+    overflow: hidden;
+  }
+  .daybar-spent {
+    height: 100%;
+    border-radius: var(--yk-day-bar-radius);
+    background: var(--brand);
+  }
+  .daybar-mark {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    width: var(--yk-day-bar-bonus-mark);
+    background: var(--card);
+  }
+  .daybar-legend { display: flex; justify-content: space-between; margin-top: 6px; }
   /* The floor under anything a thumb has to hit.
      44 is Android's minimum tap target, and iOS's 44pt agrees with it by
      coincidence rather than by sharing - KidGeometry's own KDoc says why the
@@ -1768,6 +1812,7 @@
     // Their own limits and not the family block, because Whitelist.limitsFor
     // takes a kid's outright the moment they exist.
     var rules = card("Screen time", null);
+    rules.appendChild(todayBar(k));
     groupControls("screen-time-rules", kidScope(k, idx), rules, "limits.");
     out.appendChild(rules);
 
@@ -2462,6 +2507,46 @@
       body[other] = overlayWith(other, id, kidId, false);
     }
     return patch(body);
+  }
+
+  /**
+   * Today, for one kid, as the hub is enforcing it.
+   *
+   * Every number comes off `/api/state`'s `today` block, which the hub builds
+   * with the same `Budget.today` the child's own countdown comes from — no
+   * arithmetic here, and none allowed (guard 78). An empty fragment when the
+   * kid has no budget, because null is not zero: a child with no limit has
+   * not run out of anything, and a bar would say they had.
+   *
+   * **It counts every screen, not one.** That is a parent's question and the
+   * right answer to it; a child's own tablet shows a smaller number under the
+   * default per-device budget, and the line underneath says so rather than
+   * leaving two numbers to be compared in silence.
+   */
+  function todayBar(k) {
+    var t = todayFor(k.id);
+    if (!t || typeof t.spentFraction !== "number") return document.createDocumentFragment();
+
+    var box = el("div", "daybar");
+    var track = el("div", "daybar-track");
+    var spent = el("div", "daybar-spent");
+    spent.style.width = Math.round(t.spentFraction * 1000) / 10 + "%";
+    track.appendChild(spent);
+    if (t.bonusFraction > 0) {
+      var mark = el("div", "daybar-mark");
+      mark.style.left = Math.round((1 - t.bonusFraction) * 1000) / 10 + "%";
+      track.appendChild(mark);
+    }
+    box.appendChild(track);
+
+    var legend = el("div", "daybar-legend");
+    var used = t.spentMinutes + " of " + t.budgetMinutes + " min used";
+    if (t.bonusMinutes > 0) used += " (" + t.bonusMinutes + " of them given)";
+    legend.appendChild(el("div", "sub", used));
+    legend.appendChild(el("div", "sub",
+      t.shared ? "Across every screen, shared" : "Across every screen"));
+    box.appendChild(legend);
+    return box;
   }
 
   /** "held for Dave · fine for Katy" — the phone's own words for a per-kid verdict. */

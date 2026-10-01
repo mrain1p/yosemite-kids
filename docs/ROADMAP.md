@@ -707,12 +707,17 @@ mapping and its environment line come out of the NAS compose file.
      from wherever the parent is standing, and the id goes out in a patch that
      removes the unit — something `/api/config` can already express.
 
-  **The fourth is the owner's**, and it is still open: the kid's notice is
-  either parent-attributed the way a pause is (`KidNotices.takeBack`), which is
-  honest and may invite an argument in the room, or the countdown simply
-  shrinks, which is quiet and teaches a child that the number on their screen
-  is not reliable. That is a decision about what happens in a room, so it is
-  not one to make from the code.
+  4. *The kid's notice.* **The owner's call, 2026-10-01: no notice.** The
+     countdown simply shrinks; there is no `KidNotices.takeBack`, and nothing
+     on a child's screen attributes the change to a grown-up the way a pause
+     is attributed.
+
+     Written down because the trade is real and a future session will
+     otherwise re-open it: the quiet version costs a child a little trust in
+     the number on their screen, which is the thing every other decision in
+     this product spends effort protecting. It was weighed and chosen anyway,
+     and the place to revisit it is a room, not a diff. Build the take-back
+     without a notice; do not add one on your own initiative.
 - ~~**Today's screen time as one bar**~~ (upstream 4e0d328, same sync).
   **Done 2026-09-21**, and in the order §8E asked for: `Budget.today` in
   `:core` first (base, bonus, spent, left and the fractions, so no face
@@ -725,8 +730,15 @@ mapping and its environment line come out of the NAS compose file.
   caller threw the split away, so the hub could not report a bonus at all —
   and the parent console had grown a **JavaScript** copy of `Budget.bonusMs`
   keyed off the browser's clock rather than `homeZone`. Guard 78 holds both
-  pages now. What is left is the console's own bar: it has the numbers
-  (`/api/state`'s `today` block) and draws them in words.
+  pages now.
+
+  Drawn on the kid's page and on the parent console, from one set of lengths:
+  the console links the generated token sheet for `KidGeometry`'s numbers and
+  keeps its own palette, which is the split `Theme.kt` has owned since it was
+  written — a parent is reading a report, a child is reading their own
+  afternoon. The console's legend says "across every screen", because
+  `timeFor` with no viewer counts every device and a child's own tablet shows
+  a smaller number under the default per-device budget.
 
 ### 8F. A house style, and who checks the checkers
 
@@ -878,7 +890,7 @@ Added by the round itself, found while clearing the review's list:
 3. ~~Today's screen time as one bar (§8E), with its `KidSurface` row and its
    numbers in `KidGeometry` first.~~ Done: `Budget.today` in `:core`, the
    `day-bar-*` tokens, the `time-today` surface row, and the bar on the kid
-   page. The console has the numbers and still says them in words.
+   page and the parent console.
 4. A kid-scale search page on the phone, to match what the browser has.
 5. The swipe-down-into-the-floating-player gesture.
 6. Kid → parent requests, and take back a grant — after the four decisions
