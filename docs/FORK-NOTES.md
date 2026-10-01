@@ -992,3 +992,94 @@ Considered and rejected: hashing admin tokens in `/admins`. Every admin can
 already do everything (push config, revoke others), so impersonation gains
 nothing; the change would only have complicated master election.
 
+
+### A limit you can type, a screen you can turn off, and two guards that caught both (1.15.0)
+
+All three of these came out of the owner looking at the real phone and saying
+what was missing. The guards came out of the first two being wrong in ways
+nothing else could see.
+
+- **The daily limit was a readout.** The card had a "Daily limit" row that
+  printed `sittings × length`, derived, so there was nothing to tap: setting
+  ninety minutes meant finding a pair of other rules that multiplies to it, and
+  two rules multiply to ninety four different ways. The owner, twice: "I don't
+  see an area for daily limits", then "I still don't see a spot where to **add**
+  a daily limit. I see a line item for daily limit on the profile page but not
+  an option to set it."
+
+  So the cap is its own rule — `Limits.weekdayMinutes` / `weekendMinutes`, two
+  tappable rows at the top of Screen-time rules, declared in `SettingsSurface`
+  so the console renders the same two fields with the same bounds. Where both
+  kinds of rule are set, `Budget.dayMs` takes the **tighter**: a cap is a
+  ceiling and a second ceiling in the same room cannot raise the first, which is
+  also the only composition that stays right however the two are edited. What
+  the day comes to moved under the card, where the summary line already was.
+
+- **Guard 79, because that change shipped a dead setting.** `SessionGuard` does
+  not read the config; it rebuilds its rules from a SharedPreferences mirror,
+  and `limits()` knew nothing about the new field. The cap was therefore
+  correct through `toJson`, `fromJson`, the fingerprint, the stamp, the merge,
+  the hub and both consoles — and the phone's player went on allowing
+  `sittings × length`. The compile was clean. Every test passed. Nothing said a
+  word.
+
+  Guard 49(b) says exactly this, in prose, for one field. Prose did not stop
+  it. Guard 79 now parses the fields off `Limits` and fails the build if any is
+  missing from `limitsToJson`, `limitsFromJson`, `limitsCanon`,
+  `ConfigStamp.sameRules` or either half of the prefs mirror. Exemptions are
+  per **place** rather than per field, because the three fields that own merge
+  units are each deliberately absent from exactly one, and a blanket exemption
+  would stop checking the other four for them.
+
+- **A pause belongs to a screen as well as to a child.** The owner: "we have
+  the ability to freeze or turn off watching for profiles but we should also be
+  able to have it for devces as well." A pause on a kid follows the child
+  wherever they go; this one stays with the television in the lounge, whoever
+  sits at it, and says nothing about anybody's rules.
+
+  The round before had deferred it as "a new merge unit, serialisation, a merge
+  rule and `SessionGuard` reading it — a round of its own". Two of those four
+  turned out to be unnecessary: `Whitelist.limitsFor` already took the later of
+  the family's pause and the kid's, so a device pause is a **third term in that
+  max**, and it reaches every enforcement path AS a pause. The player, the
+  mirror and the hub learned nothing. What it did need was the unit
+  (`dev.pause|<token>`, ABSENT-safe, tombstoned on resume so a co-parent still
+  holding the freeze cannot re-assert it every sweep), the serialisation, and
+  the two faces' controls.
+
+  Three things in it that are not obvious:
+
+  - **Its own change-log line, not the `settings` one** that carries the device
+    assignment three lines away. An assignment is a setup action taken once;
+    turning a screen off is a daily one, far likelier to land while a co-parent
+    has the settings form open — and riding `settings` would make the two
+    collide for nothing, because the freeze already has units of its own.
+  - **`devicePaused` is not patchable at all.** A page holds an enrolment
+    `ref`; the map is keyed by the token each device announces on
+    `X-Device-Id`. That resolution lives in `HubWeb.pauseDevice` and nowhere
+    else, because the same mistake has already been made here: an assignment
+    filed under the enrolment token was filed where nothing would ever look,
+    and "This device is for Emma" did nothing for a season, silently.
+  - **"Until a grown-up turns it back on" travels as a name.**
+    `PAUSE_UNTIL_RESUMED` is `Long.MAX_VALUE`, which JavaScript cannot hold: it
+    reaches a browser as `9223372036854776000` and can never be sent back
+    exactly, so a console that posted the sentinel would post a *different*
+    number, past the horizon, and have its own freeze refused. It is a named
+    state anyway — the field's own comment says so — so it goes as `open: true`
+    and no number the page produces is ever compared against the sentinel.
+
+- **Guard 80.** `limitsFor`'s device argument has to default to null, because
+  the hub serves browsers and a browser is not a paired device with a token. On
+  a phone or a television that default is always wrong and has no symptom: a
+  parent turns off the lounge television, the config syncs, the fingerprint
+  moves, the merge resolves — and the television rebuilds its rules without
+  ever asking whether it is the device that was turned off. So `:app` does not
+  call `limitsFor`; it calls `Whitelist.limitsHere` or `SessionGuard.rulesFor`,
+  and guard 80 holds it there. `UsageSync.sharedKids` is the one exemption and
+  it is structural: a pure function with no Context, reading only
+  `sharesBudget`, which no pause can change.
+
+Also here: `docs/LAN-API.md` finally has a row for `POST /api/devices`. `/api/`
+is one `createContext` and guard 30 sees the prefix, so every sub-route under it
+is documented by hand — and this one never had been, since before the freeze
+existed.

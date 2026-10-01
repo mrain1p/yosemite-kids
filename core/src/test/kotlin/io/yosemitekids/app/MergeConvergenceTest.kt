@@ -47,6 +47,9 @@ class MergeConvergenceTest {
     )
 
     /** A config as bytes, with an explicit sync blob so stamps are exact. */
+    /** One device, by its own pairing token. */
+    private val DEVICE = "aa11bb22cc33dd44ee55ff6600112233"
+
     private fun doc(
         sources: List<WhitelistEntry> = emptyList(),
         blocked: Set<String> = emptySet(),
@@ -57,6 +60,7 @@ class MergeConvergenceTest {
         autoplay: Boolean = true,
         master: String? = null,
         pins: List<Pin> = emptyList(),
+        devicePaused: Map<String, Long> = emptyMap(),
         at: Map<String, Long> = emptyMap(),
         gone: Map<String, Long> = emptyMap()
     ): String = pinUpdatedAt(
@@ -71,6 +75,7 @@ class MergeConvergenceTest {
                 autoplayNext = autoplay,
                 masterDeviceToken = master,
                 pins = pins,
+                devicePaused = devicePaused,
                 sync = if (at.isEmpty() && gone.isEmpty()) SyncMeta.EMPTY
                 else SyncMeta(docAt = (at.values + gone.values + 0L).max(), at = at, gone = gone)
             )
@@ -175,6 +180,30 @@ class MergeConvergenceTest {
             "family limits with no stamp on either side",
             doc(limits = Limits(sessionMinutes = 45), at = mapOf(ConfigStamp.SETTINGS to T)),
             doc(limits = Limits(sessionMinutes = 30), at = mapOf(ConfigStamp.SETTINGS to T))
+        ),
+        // A frozen SCREEN. Keyed by device and tombstoned on resume, so the
+        // pair that matters is a freeze against a RESUME: the tombstone has to
+        // win on its stamp, and the merged copy has to keep carrying it, or the
+        // peer still holding the freeze re-asserts it on the next sweep and the
+        // television a parent turned back on goes dark again every sweep.
+        Triple(
+            "one phone freezing a screen and the other resuming it",
+            doc(
+                devicePaused = mapOf(DEVICE to T + 3_600_000),
+                at = mapOf(ConfigStamp.devPause(DEVICE) to T)
+            ),
+            doc(gone = mapOf(ConfigStamp.devPause(DEVICE) to T + 1))
+        ),
+        Triple(
+            "two freezes on the same screen that disagree about when it comes back",
+            doc(
+                devicePaused = mapOf(DEVICE to T + 3_600_000),
+                at = mapOf(ConfigStamp.devPause(DEVICE) to T)
+            ),
+            doc(
+                devicePaused = mapOf(DEVICE to Long.MAX_VALUE),
+                at = mapOf(ConfigStamp.devPause(DEVICE) to T)
+            )
         ),
         // The plain daily cap, which is the rules scalar a parent is most
         // likely to set on two phones in the same minute: both of them want

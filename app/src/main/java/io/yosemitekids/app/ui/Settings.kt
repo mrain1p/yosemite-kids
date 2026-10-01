@@ -545,6 +545,7 @@ private fun AdminScreen(
     var blockedFor by remember(initial) { mutableStateOf(initial.blockedFor) }
     var allowedFor by remember(initial) { mutableStateOf(initial.allowedFor) }
     var deviceProfiles by remember(initial) { mutableStateOf(initial.deviceProfiles) }
+    var devicePaused by remember(initial) { mutableStateOf(initial.devicePaused) }
     var masterToken by remember(initial) { mutableStateOf(initial.masterDeviceToken) }
     var sponsorSkip by remember(initial) { mutableStateOf(initial.sponsorSkip) }
     var autoplayNext by remember(initial) { mutableStateOf(initial.autoplayNext) }
@@ -675,6 +676,7 @@ private fun AdminScreen(
             blockedFor = blockedFor,
             allowedFor = allowedFor,
             deviceProfiles = deviceProfiles,
+            devicePaused = devicePaused,
             masterDeviceToken = masterToken,
             sponsorSkip = sponsorSkip,
             autoplayNext = autoplayNext,
@@ -717,6 +719,7 @@ private fun AdminScreen(
             blockedFor = f.blockedFor
             allowedFor = f.allowedFor
             deviceProfiles = f.deviceProfiles
+            devicePaused = f.devicePaused
             masterToken = f.masterDeviceToken
             sponsorSkip = f.sponsorSkip
             autoplayNext = f.autoplayNext
@@ -955,6 +958,7 @@ private fun AdminScreen(
                 configStore = configStore,
                 profiles = profiles,
                 deviceProfiles = deviceProfiles,
+                devicePaused = devicePaused,
                 // The form's fingerprint, not the file's: between an edit and
                 // its auto-save, "in sync ✓" measured against disk would be a
                 // lie for a beat.
@@ -974,6 +978,14 @@ private fun AdminScreen(
                     deviceProfiles =
                         if (profileId == null) deviceProfiles - token
                         else deviceProfiles + (token to profileId)
+                },
+                onPauseDevice = { token, until ->
+                    // Removed rather than stored as zero: absent IS resumed, so
+                    // the stamper writes a tombstone and a co-parent carrying the
+                    // old freeze cannot re-assert it on the next sweep.
+                    devicePaused =
+                        if (until == null) devicePaused - token
+                        else devicePaused + (token to until)
                 },
                 masterToken = masterToken,
                 onMakeMaster = { token -> masterToken = token },

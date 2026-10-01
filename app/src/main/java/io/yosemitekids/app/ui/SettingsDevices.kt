@@ -979,6 +979,8 @@ internal fun DevicePage(
     configStore: ConfigStore,
     profiles: List<io.yosemitekids.app.data.Profile>,
     deviceProfiles: Map<String, String>,
+    /** Which screens are turned off, by device token. See `Whitelist.devicePaused`. */
+    devicePaused: Map<String, Long>,
     localHash: String,
     localSecretlessHash: String,
     localSyncHash: String,
@@ -986,6 +988,11 @@ internal fun DevicePage(
     saveCurrent: () -> String,
     /** Assign a device (by its own token) to a kid; null = shared (picker). */
     onAssign: (String, String?) -> Unit,
+    /**
+     * Turn watching off on one device (by its own token) until that instant;
+     * null resumes it. [PAUSE_UNTIL_RESUMED] for "until a grown-up says so".
+     */
+    onPauseDevice: (String, Long?) -> Unit,
     masterToken: String?,
     /** Promote an admin phone to master (it takes over indexing). */
     onMakeMaster: (String) -> Unit,
@@ -1231,6 +1238,36 @@ internal fun DevicePage(
                     )
                     Spacer(Modifier.height(8.dp))
                 }
+            }
+            // Outside the profiles check above: a one-kid household still wants
+            // the lounge television off at dinner, and that has nothing to do
+            // with how many children are in the config.
+            //
+            // Keyed by the token the device REPORTS, like the row above it, so
+            // it needs a device that has answered at least once. That is the
+            // same constraint "Watching:" already has and it is said the same
+            // way — and a device nobody can reach is not playing anything.
+            SettingsDivider()
+            val myToken = last?.deviceToken
+            if (myToken == null) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(
+                        "Turn off watching here",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "Device must be online to set this",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                PauseTodayRow(
+                    pausedUntil = devicePaused[myToken],
+                    subject = PauseSubject.Device(device.name),
+                    onChanged = { until -> onPauseDevice(myToken, until) }
+                )
             }
         }
 

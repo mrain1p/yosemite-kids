@@ -422,7 +422,7 @@ internal fun KidPage(
                 SettingsDivider()
                 PauseTodayRow(
                     pausedUntil = limits.pausedUntilMillis,
-                    kidName = built.name,
+                    subject = PauseSubject.Kid(built.name),
                     onChanged = { until -> limits = limits.copy(pausedUntilMillis = until) }
                 )
             }

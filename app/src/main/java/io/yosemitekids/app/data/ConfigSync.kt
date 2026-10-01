@@ -439,9 +439,9 @@ object ConfigSync {
         // quarter of an hour". Nothing happens for any other scope.
         UsageSync.mirror(context, after)
 
-        val fresh = after.limitsFor(kid)
+        val fresh = after.limitsHere(context, kid)
         KidNotices.configChange(
-            before.limitsFor(kid), fresh, guard.remainingTodayMin(fresh)
+            before.limitsHere(context, kid), fresh, guard.remainingTodayMin(fresh)
         )?.let { KidNotices.post(it) }
 
         // Same sentence the fast path posts, so a kid cannot tell which route

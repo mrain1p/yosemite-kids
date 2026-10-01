@@ -32,6 +32,8 @@ internal data class SettingsForm(
     val blockedFor: Map<String, Set<String>>,
     val allowedFor: Map<String, Set<String>>,
     val deviceProfiles: Map<String, String>,
+    /** Which screens are turned off. See `Whitelist.devicePaused`. */
+    val devicePaused: Map<String, Long>,
     val masterDeviceToken: String?,
     val sponsorSkip: Boolean,
     val autoplayNext: Boolean,
@@ -111,6 +113,11 @@ internal data class SettingsForm(
             blockedFor = scrub(blockedFor),
             allowedFor = scrub(allowedFor),
             deviceProfiles = deviceProfiles.filterValues { it in validIds },
+            // Not scrubbed against the kids: a freeze is about a SCREEN and
+            // outlives any child who happens to be assigned to it — filtering
+            // it by profile would quietly thaw a television when a kid was
+            // removed.
+            devicePaused = devicePaused,
             masterDeviceToken = masterDeviceToken,
             sponsorSkip = sponsorSkip,
             autoplayNext = autoplayNext,
@@ -149,6 +156,7 @@ internal data class SettingsForm(
             blockedFor = c.blockedFor,
             allowedFor = c.allowedFor,
             deviceProfiles = c.deviceProfiles,
+            devicePaused = c.devicePaused,
             masterDeviceToken = c.masterDeviceToken,
             sponsorSkip = c.sponsorSkip,
             autoplayNext = c.autoplayNext,

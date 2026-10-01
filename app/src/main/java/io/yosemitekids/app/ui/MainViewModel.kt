@@ -1105,7 +1105,7 @@ class MainViewModel(
                 // ("is this video blocked?") stays a plain membership test.
                 blockedVideoIds = list.blockedVideoIds +
                     list.blockedFor.filterValues { activeProfileId in it }.keys
-                minVideoSeconds = (list.limitsFor(activeProfileId).minVideoMinutes ?: 0) * 60L
+                minVideoSeconds = (sessionGuard.rulesFor(list, activeProfileId).minVideoMinutes ?: 0) * 60L
                 screener?.config = list.ai
                 screener?.profiles = list.profiles
                 screener?.activeProfileId = activeProfileId
@@ -1136,7 +1136,7 @@ class MainViewModel(
                 // that kid's real rules every time a push lands on the picker.
                 // Their own refresh writes them properly the moment they're picked.
                 if (activeProfileId != null || list.profiles.isEmpty()) {
-                    sessionGuard.saveLimits(list.limitsFor(activeProfileId))
+                    sessionGuard.saveLimits(sessionGuard.rulesFor(list, activeProfileId))
                 }
                 // Fast publish: entries merged with cached tile artwork (keyed by URL,
                 // which survives id canonicalization). Adds/removes land right here.

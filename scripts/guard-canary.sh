@@ -520,6 +520,12 @@ canary 79 "$STAMP" \
   "is not compared by ConfigStamp.sameRules" \
   'sed -i "/a[.]weekendMinutes == b[.]weekendMinutes/d" "$STAMP"'
 
+
+canary 80 "$VM" \
+  "the phone resolving its rules for no device in particular" \
+  "resolves rules without saying which device it is" \
+  'sed -i "s/sessionGuard.rulesFor(list, activeProfileId)/list.limitsFor(activeProfileId)/" "$VM"'
+
 echo
 if [ "$failed" -gt 0 ]; then
   echo "${RED}$failed of $((passed + failed)) canaries did not fire.${OFF}"

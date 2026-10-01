@@ -234,6 +234,9 @@ object HubWeb {
                     // By the device's own identity, which is the key every
                     // device reads this map by — see [assignDevice].
                     .put("kid", it.deviceId?.let { id -> config.deviceProfiles[id] } ?: "")
+                    // Zero means "watching is on here", which is how the page
+                    // reads an absent entry too - see `Whitelist.devicePaused`.
+                    .put("pausedUntil", it.deviceId?.let { id -> config.devicePaused[id] } ?: 0L)
                     // Whether it has ever said who it is. Until it has, the
                     // page offers no kid chips rather than offering an
                     // assignment that would be filed nowhere.
@@ -764,6 +767,11 @@ object HubWeb {
      * Refuse a pause the browser has just pushed further out than
      * [PAUSE_MAX_AHEAD_MS], and leave every other pause exactly as it was.
      *
+     * A frozen SCREEN is bounded by the same horizon somewhere else: it is not
+     * patchable at all, because a page holds an enrolment ref and the map is
+     * keyed by the device's own token, so it arrives through
+     * [pauseDevice] — which applies the bound where it resolves the key.
+     *
      * Comparing against what is already stored is the whole subtlety. A blanket
      * clamp over the document would also judge pauses a *phone* set against a
      * clock this container may not agree with — so an unrelated edit made on
@@ -1084,8 +1092,17 @@ object HubWeb {
         return found
     }
 
-    /** What an assignment did, so the page can say something true when it did nothing. */
-    enum class Assigned { OK, NO_SUCH_DEVICE, NEVER_CALLED }
+    /**
+     * What an assignment or a freeze did, so the page can say something true
+     * when it did nothing.
+     *
+     * [BAD_UNTIL] is the freeze's only: an instant further out than
+     * [PAUSE_MAX_AHEAD_MS]. It is its own value rather than folded into
+     * [NO_SUCH_DEVICE] because the two send whoever is reading them to opposite
+     * ends of the problem — one is a device that is not there, the other is a
+     * device that is.
+     */
+    enum class Assigned { OK, NO_SUCH_DEVICE, NEVER_CALLED, BAD_UNTIL }
 
     /**
      * Dedicate a device to one kid, or hand it back to the picker with "".
@@ -1123,6 +1140,54 @@ object HubWeb {
             val cleared = current.deviceProfiles - device.token - id
             current.copy(
                 deviceProfiles = if (kidId.isBlank()) cleared else cleared + (id to kidId)
+            )
+        }
+        return Assigned.OK
+    }
+
+    /**
+     * Turn watching off on one device, or back on with a null [until].
+     *
+     * Keyed by the device's **own** pairing token for exactly the reason
+     * [assignDevice] is, and the same silence is on offer if it is not: a freeze
+     * filed under the enrolment token this hub minted sits in the config
+     * forever, propagates to the whole fleet, and stops nothing — because every
+     * device resolves this map by the token it announces on `X-Device-Id`.
+     *
+     * So this is not a config patch, and `devicePaused` is deliberately not in
+     * [PATCHABLE]: a browser holds a *ref*, the resolution from ref to identity
+     * lives here, and there is no route that lets a page choose the key.
+     *
+     * Bounded like every pause a browser can set — see
+     * [PAUSE_MAX_AHEAD_MS]. The container reads no calendar, so "until
+     * midnight" is computed in the parent's browser and arrives as an instant;
+     * [PAUSE_UNTIL_RESUMED] is the one value past the horizon, because it is a
+     * named state and not a mistyped number.
+     */
+    fun pauseDevice(
+        store: HubStore,
+        tokens: HubTokens,
+        who: String,
+        now: Long,
+        ref: String,
+        until: Long?
+    ): Assigned {
+        val device = tokens.devices().singleOrNull { deviceRef(it.token) == ref }
+            ?: return Assigned.NO_SUCH_DEVICE
+        val id = device.deviceId ?: return Assigned.NEVER_CALLED
+        val bounded = when {
+            until == null -> null
+            until == PAUSE_UNTIL_RESUMED -> until
+            until in 1..(now + PAUSE_MAX_AHEAD_MS) -> until
+            else -> return Assigned.BAD_UNTIL
+        }
+        store.edit(who, now) { current ->
+            // The enrolment token comes off with it, as the assignment does:
+            // an entry written under that key before this existed names no
+            // device and is inert, but it is a unit in the sync blob for ever.
+            val cleared = current.devicePaused - device.token - id
+            current.copy(
+                devicePaused = if (bounded == null) cleared else cleared + (id to bounded)
             )
         }
         return Assigned.OK

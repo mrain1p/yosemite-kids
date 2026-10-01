@@ -96,6 +96,23 @@ fun interpolateRemainingMs(reads: List<Remaining>, sinceMs: Long, playedMs: Long
  *  - Rules left unset simply don't apply — no rule has a hidden default; the
  *    parent's settings screen is the whole truth.
  */
+/**
+ * This device's rules for one kid: the family's, the kid's own, and whether
+ * this SCREEN has been turned off — resolved together by
+ * [Whitelist.limitsFor], which takes the latest of the three pauses.
+ *
+ * Every rule read in :app goes through here or through [SessionGuard.rulesFor],
+ * and guard 80 is what keeps it that way. `limitsFor`'s device argument has to
+ * default to null, because the hub serves browsers and has no device to name;
+ * on a phone or a television that default is always wrong and has no symptom.
+ *
+ * The identity is [PairingStore.deviceToken] — the key `deviceProfiles` is
+ * already keyed by and the one `X-Device-Id` carries, so there is no second
+ * notion anywhere of who this device is.
+ */
+internal fun Whitelist.limitsHere(context: Context, profileId: String?): Limits =
+    limitsFor(profileId, PairingStore(context).deviceToken())
+
 class SessionGuard(context: Context, private val profileSuffix: String = "") {
 
     private val appContext = context.applicationContext
@@ -177,6 +194,15 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         internal fun peerMs(l: Limits, mirroredMs: Long): Long =
             if (l.sharesBudget) mirroredMs else 0L
     }
+
+    /**
+     * This device's resolved rules for a kid — [Whitelist.limitsHere] against
+     * the Context this guard was built with. Here so a caller holding a guard
+     * does not have to find a Context of its own to ask a question the guard is
+     * already the right object to answer.
+     */
+    fun rulesFor(config: Whitelist, profileId: String?): Limits =
+        config.limitsHere(appContext, profileId)
 
     // ---- limits config (persisted at whitelist refresh) ----
 

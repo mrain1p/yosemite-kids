@@ -31,6 +31,14 @@ object ConfigStamp {
     fun blk(id: String) = "blk|$id"
     fun allow(id: String) = "allow|$id"
     fun dev(token: String) = "dev|$token"
+
+    /**
+     * One screen frozen. Split from [dev] exactly as [kidPause] is from [kid]:
+     * a parent reassigning the lounge television to another child and a parent
+     * turning it off for the evening are two edits, and on one unit the later
+     * stamp would silently discard the other.
+     */
+    fun devPause(token: String) = "dev.pause|$token"
     /** One "Add time" tap. Its own unit so two phones' taps on one day both land. */
     fun grant(id: String) = "grant|$id"
 
@@ -397,6 +405,26 @@ object ConfigStamp {
             previous.deviceProfiles, base.deviceProfiles, next.deviceProfiles,
             ::dev, at, gone, mint
         )
+        // Through mapUnit like the assignment above, so a resume writes a
+        // TOMBSTONE rather than just dropping the entry: without one, a
+        // co-parent whose phone still carries the freeze re-asserts it on the
+        // next sweep and the screen a parent just turned back on goes dark
+        // again, every quarter of an hour, forever.
+        val devicePaused = mapUnit(
+            previous.devicePaused, base.devicePaused, next.devicePaused,
+            ::devPause, at, gone, mint
+        )
+        // Its own change line, and deliberately NOT the settings one that
+        // carries the device assignment a few lines up. An assignment is a setup
+        // action taken once; turning a screen off is a daily one, far likelier to
+        // land while a co-parent has the settings form open — and riding the
+        // `settings` unit would make the two collide for no reason, because this
+        // already has units of its own. A parent also wants to read THIS one as
+        // itself in Recent changes: "turned a screen off" is one of the most
+        // consequential things the other grown-up can do.
+        if (base.devicePaused != next.devicePaused) {
+            changes += line("dev.pause", "turned watching off on a device, or back on", who, by, mint)
+        }
 
         // --- Sections ---------------------------------------------------
         val limits = section3(previous.limits, base.limits, next.limits)
@@ -454,6 +482,7 @@ object ConfigStamp {
             blockedFor = blockedFor,
             allowedFor = allowedFor,
             deviceProfiles = deviceProfiles,
+            devicePaused = devicePaused,
             limits = limits,
             ai = ai,
             masterDeviceToken = master,
@@ -589,17 +618,28 @@ object ConfigStamp {
     }
 
     /** Which kid a device is dedicated to, one unit per device token. */
-    private fun mapUnit(
-        previous: Map<String, String>,
-        base: Map<String, String>,
-        next: Map<String, String>,
+    /**
+     * One unit per key of a device-keyed map: a stamp where the value moved, a
+     * tombstone where the key went, and anything the editor never saw carried
+     * through from [previous].
+     *
+     * Generic in the value because two maps ride this now and they hold
+     * different things - which kid a device is for, and until when it is turned
+     * off. A second copy of these four lines for the second map is the shape
+     * that drifts: the carry pass is the half a reader forgets, and forgetting
+     * it drops a co-parent's edit that this save never had in hand.
+     */
+    private fun <V> mapUnit(
+        previous: Map<String, V>,
+        base: Map<String, V>,
+        next: Map<String, V>,
         key: (String) -> String,
         at: MutableMap<String, Long>,
         gone: MutableMap<String, Long>,
         mint: Long
-    ): Map<String, String> {
+    ): Map<String, V> {
         val out = LinkedHashMap(next)
-        next.forEach { (token, kid) -> if (base[token] != kid) at[key(token)] = mint }
+        next.forEach { (token, value) -> if (base[token] != value) at[key(token)] = mint }
         (base.keys - next.keys).forEach { at.remove(key(it)); gone[key(it)] = mint }
         (previous.keys - base.keys - next.keys).forEach { out[it] = previous.getValue(it) }
         return out

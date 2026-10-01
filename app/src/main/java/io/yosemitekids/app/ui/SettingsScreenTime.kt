@@ -1155,8 +1155,57 @@ private data class GrantReceipt(val text: String, val at: Long = System.currentT
  * reverses in one tap, and it made the most-pressed lever on the page a
  * three-tap errand.
  */
+/**
+ * Who or what a pause is about.
+ *
+ * Three subjects, three different claims, and the words differ in more than a
+ * name: "stops on every device" is true of the first two and false of the
+ * third, which is the whole point of the third. A pair of nullable name
+ * strings would let a caller set both, which nobody would ever mean.
+ */
+internal sealed interface PauseSubject {
+    /** Every kid, every screen. */
+    data object Everyone : PauseSubject
+
+    /** One child, wherever they go. */
+    data class Kid(val name: String) : PauseSubject
+
+    /**
+     * One screen, whoever sits at it — the television in the lounge goes off
+     * for the evening without touching anybody's rules.
+     */
+    data class Device(val name: String) : PauseSubject
+}
+
+/** The row's heading for a subject. */
+private fun PauseSubject.heading(): String = when (this) {
+    PauseSubject.Everyone -> ctl("rules-pause").label
+    is PauseSubject.Kid -> "Turn off $name's watching"
+    is PauseSubject.Device -> "Turn off watching here"
+}
+
+/** The dialog's title. */
+private fun PauseSubject.dialogTitle(): String = when (this) {
+    PauseSubject.Everyone -> "Turn off watching"
+    is PauseSubject.Kid -> "Turn off $name's watching"
+    is PauseSubject.Device -> "Turn off watching on $name"
+}
+
+/** What the pause will actually do, which is not the same for all three. */
+private fun PauseSubject.dialogBody(): String = when (this) {
+    PauseSubject.Everyone, is PauseSubject.Kid ->
+        "Watching stops right away on every device. Choose when it comes back."
+    is PauseSubject.Device ->
+        "Watching stops on $name only. Other devices carry on, and nobody's " +
+            "rules change. Choose when it comes back."
+}
+
 @Composable
-internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChanged: (Long?) -> Unit) {
+internal fun PauseTodayRow(
+    pausedUntil: Long?,
+    subject: PauseSubject = PauseSubject.Everyone,
+    onChanged: (Long?) -> Unit
+) {
     val active = pausedUntil != null && pausedUntil > System.currentTimeMillis()
     val openEnded = pausedUntil == io.yosemitekids.app.data.PAUSE_UNTIL_RESUMED
     var asking by remember { mutableStateOf(false) }
@@ -1168,8 +1217,8 @@ internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChange
         // expire overnight.
         AlertDialog(
             onDismissRequest = { asking = false },
-            title = { Text(if (kidName == null) "Turn off watching" else "Turn off $kidName's watching") },
-            text = { Text("Watching stops right away on every device. Choose when it comes back.") },
+            title = { Text(subject.dialogTitle()) },
+            text = { Text(subject.dialogBody()) },
             confirmButton = {
                 TextButton(onClick = {
                     asking = false
@@ -1190,7 +1239,7 @@ internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChange
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                if (kidName == null) ctl("rules-pause").label else "Turn off $kidName's watching",
+                subject.heading(),
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(Modifier.height(2.dp))

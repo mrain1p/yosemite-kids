@@ -37,19 +37,26 @@ class ConfigStampTest {
         kind = SourceKind.CHANNEL
     )
 
+    /** A device's own pairing token — 32 hex, the shape PairingStore mints. */
+    private val DEV = "aa11bb22cc33dd44ee55ff6600112233"
+
     private fun config(
         sources: List<WhitelistEntry> = emptyList(),
         blocked: Set<String> = emptySet(),
         profiles: List<Profile> = emptyList(),
         limits: Limits = Limits(),
         sync: SyncMeta = SyncMeta.EMPTY,
-        autoplay: Boolean = true
+        autoplay: Boolean = true,
+        deviceProfiles: Map<String, String> = emptyMap(),
+        devicePaused: Map<String, Long> = emptyMap()
     ) = Whitelist(
         sources = sources,
         blockedVideoIds = blocked,
         limits = limits,
         profiles = profiles,
         autoplayNext = autoplay,
+        deviceProfiles = deviceProfiles,
+        devicePaused = devicePaused,
         sync = sync
     )
 
@@ -193,6 +200,45 @@ class ConfigStampTest {
     }
 
     // --- deletes -------------------------------------------------------
+
+    @Test
+    fun freezingAScreenStampsItsOwnUnitAndNothingElse() {
+        // The unit is dev.pause|<token>, split from dev|<token> for the reason
+        // kid.pause is split from kid: one parent reassigning the lounge TV and
+        // one turning it off are different edits, and on one unit the later
+        // stamp would silently discard the other.
+        //
+        // And NOT `settings`, which is where the device assignment a few lines
+        // away reports itself: a freeze is a daily action, far likelier to land
+        // while a co-parent has the form open, and it already has units of
+        // its own to resolve by.
+        val base = config(deviceProfiles = mapOf(DEV to "k1"))
+        val frozen = base.copy(devicePaused = mapOf(DEV to T0 + 3_600_000))
+        assertEquals(
+            setOf(ConfigStamp.devPause(DEV)),
+            stamp(base, base, frozen).config.sync.at.keys
+        )
+    }
+
+    @Test
+    fun resumingAScreenWritesATombstone() {
+        // Without one, a co-parent whose phone still carries the freeze
+        // re-asserts it on the next sweep: the screen a parent just turned back
+        // on goes dark again, every quarter of an hour, for ever. Absence is the
+        // resumed state, so absence needs the evidence.
+        val frozen = config(devicePaused = mapOf(DEV to T0 + 3_600_000))
+        val stamped = stamp(frozen, config(), frozen).config
+        assertTrue(stamped.sync.at.containsKey(ConfigStamp.devPause(DEV)))
+
+        val resumed = stamp(
+            stamped, stamped, stamped.copy(devicePaused = emptyMap()), now = T0 + 1000
+        ).config.sync
+        assertNull(
+            "keeping both would let the freeze satisfy its own causality check",
+            resumed.at[ConfigStamp.devPause(DEV)]
+        )
+        assertEquals(T0 + 1000, resumed.gone.getValue(ConfigStamp.devPause(DEV)))
+    }
 
     @Test
     fun aRemovalWritesATombstoneAndDropsTheStamp() {

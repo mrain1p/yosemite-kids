@@ -513,7 +513,7 @@ object SettingsSurface {
 
         // --- Devices --------------------------------------------------------
         SettingsSection("devices", "Devices", Page.DEVICES, "PhoneDevicesSection",
-            listOf("deviceProfiles", "masterDeviceToken"), Where.BOTH, true,
+            listOf("deviceProfiles", "devicePaused", "masterDeviceToken"), Where.BOTH, true,
             "Both faces list devices, but they are not the same page: the phone " +
                 "lists what it paired, the hub lists everything enrolled with it " +
                 "and approves or revokes. Dedicating a device to one kid is " +
@@ -523,6 +523,20 @@ object SettingsSurface {
                     "devices-kid", "This device is for",
                     sub = "One kid, or anyone — which decides whether the picker shows.",
                     kind = ControlKind.CUSTOM, writes = "deviceProfiles"
+                ),
+                SettingsControl(
+                    "devices-pause", "Turn off watching here",
+                    sub = "This screen only, until midnight or until a grown-up says so.",
+                    kind = ControlKind.CUSTOM, writes = "devicePaused",
+                    // A pause on a kid follows the child; this one stays with the
+                    // screen, whoever sits at it, and changes nobody's rules.
+                    honouredBy = listOf(FACE_PHONE, FACE_TV),
+                    honourWhy = "Keyed by a device's pairing token, and a browser has " +
+                        "none — it is a page on the hub, not a paired device. The hub " +
+                        "therefore resolves rules with no device named (guard 80 holds " +
+                        ":app to the other side of that), and the console says so rather " +
+                        "than offering a switch that would do nothing. To stop a " +
+                        "browser, pause the kid or pause everyone."
                 )
             )),
         SettingsSection("stats", "Stats", Page.DEVICES, "StatsSection",

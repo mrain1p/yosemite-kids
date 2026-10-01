@@ -136,6 +136,15 @@ object ConfigJson {
                     w.deviceProfiles.entries.sortedBy { it.key }
                         .forEach { (t, p) -> append("$t=$p;") }
                 }
+                // Same shape, and present only while a screen is actually
+                // frozen: a family that never uses it keeps the hash it had,
+                // and one that does must move it or the reconcile never carries
+                // the freeze to the television it is meant to stop.
+                if (w.devicePaused.isNotEmpty()) {
+                    append(";DQ:")
+                    w.devicePaused.entries.sortedBy { it.key }
+                        .forEach { (t, until) -> append("$t=$until;") }
+                }
                 // Append-only-when-set, same reasoning as pauses: the offline
                 // reconcile only re-pushes on a mismatch, so a master change
                 // that didn't move the hash would never reach a sleeping TV.
@@ -292,6 +301,19 @@ object ConfigJson {
             if (w.allowedFor.isNotEmpty()) root.put("allowedFor", overlayJson(w.allowedFor))
             if (w.deviceProfiles.isNotEmpty()) {
                 root.put("deviceProfiles", JSONObject(w.deviceProfiles as Map<String, String>))
+            }
+            // Omitted while empty, so a household that never freezes a screen
+            // keeps its bytes and its fingerprint across the build that added
+            // this. Keys sorted: an insertion-ordered object hashes differently
+            // on two phones and they read "differs" forever.
+            if (w.devicePaused.isNotEmpty()) {
+                root.put(
+                    "devicePaused",
+                    JSONObject().also { o ->
+                        w.devicePaused.entries.sortedBy { it.key }
+                            .forEach { (token, until) -> o.put(token, until) }
+                    }
+                )
             }
             // Written only when chosen — absent means unclaimed (older builds).
             w.masterDeviceToken?.let { root.put("master", it) }
@@ -741,6 +763,18 @@ object ConfigJson {
             val deviceProfiles = root.optJSONObject("deviceProfiles")?.let { o ->
                 o.keys().asSequence().associateWith { o.getString(it) }
             } ?: emptyMap()
+            // Carried exactly as written, lapsed entries included. `> 0` is a
+            // validity test and NOT an expiry one: dropping a pause whose
+            // instant has passed would mean reading a clock in fromJson, and a
+            // document that parsed to something re-serialising differently
+            // merges against itself as "changed" and the sweep pushes forever.
+            // A lapsed freeze is harmless to every reader - the comparison is
+            // `now < until` - and the entry goes when a parent resumes.
+            val devicePaused = root.optJSONObject("devicePaused")?.let { o ->
+                o.keys().asSequence()
+                    .mapNotNull { t -> o.optLong(t, 0L).takeIf { it > 0L }?.let { t to it } }
+                    .toMap()
+            } ?: emptyMap()
 
             return Whitelist(
                 sources = entries.distinctBy { it.id },
@@ -752,6 +786,7 @@ object ConfigJson {
                 blockedFor = overlay("blockedFor"),
                 allowedFor = overlay("allowedFor"),
                 deviceProfiles = deviceProfiles,
+                devicePaused = devicePaused,
                 masterDeviceToken = root.optString("master").ifEmpty { null },
                 sponsorSkip = root.optBoolean("sponsorSkip", true),
                 autoplayNext = root.optBoolean("autoplay", true),

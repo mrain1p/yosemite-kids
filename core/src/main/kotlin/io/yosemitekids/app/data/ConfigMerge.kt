@@ -832,6 +832,32 @@ object ConfigMerge {
         mergeOverlay(L.root, R.root, out, locRoot, "blockedFor", "for", ::decide, at, gone)
         mergeOverlay(L.root, R.root, out, locRoot, "allowedFor", "afor", ::decide, at, gone)
 
+        // --- which screens are frozen ------------------------------------
+        //
+        // On a stamp tie the LATER instant wins. Deterministic (so the merge
+        // stays idempotent and associative) and the safe direction for a rule
+        // whose job is to stop a screen: two parents who both froze the lounge
+        // TV disagree about when it comes back, not about whether it should.
+        run {
+            val lm = longMap(L.root, "devicePaused")
+            val rm = longMap(R.root, "devicePaused")
+            val o = JSONObject()
+            (lm.keys + rm.keys).sorted().forEach { token ->
+                val key = ConfigStamp.devPause(token)
+                val d = decide(key)
+                if (!d.present) { if (d.gone > 0) gone[key] = d.gone; return@forEach }
+                val v = when (d.fromLocal) {
+                    true -> lm[token]
+                    false -> rm[token]
+                    null -> listOfNotNull(lm[token], rm[token]).maxOrNull()
+                } ?: return@forEach
+                at[key] = d.at
+                if (d.gone > 0) gone[key] = d.gone
+                o.put(token, v)
+            }
+            putLike(out, locRoot, "devicePaused", o)
+        }
+
         // --- device assignments ------------------------------------------
         run {
             val lm = strMap(L.root, "deviceProfiles")
@@ -1074,6 +1100,7 @@ object ConfigMerge {
         overlayKeys(root, "blockedFor").forEach { at["for|$it"] = 1L }
         overlayKeys(root, "allowedFor").forEach { at["afor|$it"] = 1L }
         strMap(root, "deviceProfiles").keys.forEach { at[ConfigStamp.dev(it)] = 1L }
+        longMap(root, "devicePaused").keys.forEach { at[ConfigStamp.devPause(it)] = 1L }
         return Side(root, SyncMeta(at = at), legacy = true)
     }
 
@@ -1151,6 +1178,19 @@ object ConfigMerge {
     private fun strsOf(root: JSONObject, field: String): List<String> {
         val arr = root.optJSONArray(field) ?: return emptyList()
         return (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
+    }
+
+    /**
+     * A `token -> instant` object, the shape a device pause is on the wire.
+     *
+     * Non-positive values are dropped as invalid, exactly as a blank is in
+     * [strMap], and NOT because they have lapsed: this file reads no clock.
+     */
+    private fun longMap(root: JSONObject, field: String): Map<String, Long> {
+        val o = root.optJSONObject(field) ?: return emptyMap()
+        val out = LinkedHashMap<String, Long>()
+        o.keys().forEach { k -> o.optLong(k, 0L).takeIf { it > 0L }?.let { out[k] = it } }
+        return out
     }
 
     private fun strMap(root: JSONObject, field: String): Map<String, String> {

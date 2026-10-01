@@ -2648,6 +2648,39 @@ phone carrying the OLD value wins the next sweep and silently undoes the edit." 
   fi
 done
 
+# 80. On a device, rules are resolved FOR that device.
+#     Whitelist.limitsFor(profileId, deviceId) has to default deviceId to
+#     null, because the hub serves browsers and a browser is not a paired
+#     device with a token. On a phone or a television that default is always
+#     wrong, and it is wrong in silence: a parent turns off the lounge
+#     television, the config syncs, the fingerprint moves, the merge resolves
+#     - and the television rebuilds its rules without ever asking whether it
+#     is the device that was turned off. Everything reports success.
+#
+#     So :app does not call limitsFor. It calls Whitelist.limitsHere or
+#     SessionGuard.rulesFor, which resolve PairingStore.deviceToken() - the
+#     same identity deviceProfiles is keyed by and X-Device-Id carries, so
+#     there is no second notion of which device this is.
+#
+#     A call that names a device explicitly is fine, which is what the
+#     deviceToken() test below allows: limitsHere is itself one.
+# UsageSync.sharedKids is the one exemption, and it is structural rather than
+# a preference: it is a pure function over a config, it holds no Context to
+# resolve an identity with, and the only field it reads is sharesBudget - a
+# rules scalar that no pause of any kind can change. Threading a Context
+# through it to reach a field a freeze cannot touch would be worse code for
+# no behaviour at all. Anything added here needs that whole argument, not
+# just the first clause.
+dev_rules=$(grep -rn "limitsFor(" app/src/main --include=*.kt |
+  grep -v "deviceToken()" |
+  grep -v "app/src/main/java/io/yosemitekids/app/data/UsageSync.kt" || true)
+[ -z "$dev_rules" ] ||
+  guard_fail ":app resolves rules without saying which device it is:
+$dev_rules
+limitsFor's deviceId defaults to null for the hub's sake, and on a device that
+default means "no screen is turned off" however many are. Use
+Whitelist.limitsHere(context, kid) or SessionGuard.rulesFor(config, kid)."
+
 if [ "${1:-}" = "--guards" ]; then echo "source invariants OK"; exit 0; fi
 
 

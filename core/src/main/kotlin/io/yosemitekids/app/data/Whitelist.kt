@@ -340,6 +340,33 @@ data class Whitelist(
      */
     val deviceProfiles: Map<String, String> = emptyMap(),
     /**
+     * Watching is off on these devices until the instant named, keyed by the
+     * device's own pairing token — the same key [deviceProfiles] uses, which is
+     * what every device already reads itself out of the config by.
+     *
+     * A pause on a kid stops that child wherever they go; this stops one
+     * SCREEN, whoever sits down at it. The television in the lounge goes off
+     * for the evening without touching anybody's rules, which is a different
+     * sentence from "Ada may not watch" and was the owner's ask: "we have the
+     * ability to freeze or turn off watching for profiles but we should also be
+     * able to have it for devces as well."
+     *
+     * [PAUSE_UNTIL_RESUMED] works here exactly as it does on a kid, so a screen
+     * can be off until someone turns it back on rather than until midnight.
+     *
+     * Resolved by [limitsFor], and by nothing else: it arrives at every
+     * enforcement path AS a pause, so no face has to learn a second kind. A
+     * browser is not a paired device and has no token in here — the hub
+     * therefore resolves with no device, and the console says so rather than
+     * offering a switch that would do nothing.
+     *
+     * Its own merge unit, `dev.pause|<token>`, with ABSENT as the safe state and
+     * a tombstone on resume: two parents, one pausing the lounge TV and one
+     * reassigning it to another kid, must not collide on one stamp — which is
+     * exactly why `kid` and `kid.pause` are two units and not one.
+     */
+    val devicePaused: Map<String, Long> = emptyMap(),
+    /**
      * The one parent device that builds the search index (its YouTube crawl is
      * rate-limit-expensive — doing it once per family, not once per admin
      * phone). null = never chosen: the next admin phone to see that claims it.
@@ -488,11 +515,22 @@ data class Whitelist(
      * everyone". Whichever runs later wins — a per-kid Resume must not undo a
      * whole-family timeout, and vice versa.
      */
-    fun limitsFor(profileId: String?): Limits {
-        val p = profile(profileId) ?: return limits
-        val family = limits.pausedUntilMillis ?: return p.limits
-        val own = p.limits.pausedUntilMillis ?: 0L
-        return p.limits.copy(pausedUntilMillis = maxOf(family, own))
+    fun limitsFor(profileId: String?, deviceId: String? = null): Limits {
+        val base = profile(profileId)?.limits ?: limits
+        // Three pauses can be in force at once and the LATEST wins, which is
+        // the rule this function already applied to the first two: a parent who
+        // stops one child until Sunday is not undone by the family pause ending
+        // at midnight, and neither is undone by the lounge television being on.
+        //
+        // The family's only counts when a kid resolved - with no profile, `base`
+        // IS the family's limits and its pause is already in there.
+        val family = if (profile(profileId) == null) 0L else (limits.pausedUntilMillis ?: 0L)
+        val own = base.pausedUntilMillis ?: 0L
+        val device = deviceId?.let { devicePaused[it] } ?: 0L
+        val latest = maxOf(family, own, device)
+        // Unchanged when nothing is paused, so the common path still hands back
+        // the very object the caller would have got before this existed.
+        return if (latest <= 0L) base else base.copy(pausedUntilMillis = latest)
     }
 
     /**

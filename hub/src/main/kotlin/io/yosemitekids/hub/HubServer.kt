@@ -2,6 +2,7 @@ package io.yosemitekids.hub
 
 import java.io.File
 
+import io.yosemitekids.app.data.PAUSE_UNTIL_RESUMED
 import io.yosemitekids.app.data.ChannelIndex
 
 import com.sun.net.httpserver.HttpExchange
@@ -924,6 +925,35 @@ class HubServer(
                     )
                     body.has("revoke") -> JSONObject()
                         .put("revoked", HubWeb.revokeDevice(tokens, body.getString("revoke")))
+                    body.has("pause") -> {
+                        val p = body.getJSONObject("pause")
+                        // Three answers, and the open-ended one arrives as a
+                        // NAME rather than as a number. PAUSE_UNTIL_RESUMED is
+                        // Long.MAX_VALUE, which JavaScript cannot represent: it
+                        // round-trips through JSON as 9223372036854776000, so a
+                        // browser that sent the sentinel would send a DIFFERENT
+                        // number past the horizon and have it refused. It is a
+                        // named state anyway — that is what the field's own
+                        // comment says — so it travels as one.
+                        //
+                        // Nothing at all means resume. The instant for "until
+                        // midnight" comes from the parent's browser because this
+                        // container reads no calendar; pauseDevice bounds it.
+                        val until = when {
+                            p.optBoolean("open", false) -> PAUSE_UNTIL_RESUMED
+                            p.has("until") -> p.optLong("until", 0L).takeIf { it > 0L }
+                            else -> null
+                        }
+                        val outcome = HubWeb.pauseDevice(
+                            store, tokens, WHO, now(), p.getString("ref"), until
+                        )
+                        // Named like the assignment below it, and for the same
+                        // reason: "never called here" and "no such device" send
+                        // a parent to different places.
+                        JSONObject()
+                            .put("paused", outcome == HubWeb.Assigned.OK)
+                            .put("why", outcome.name)
+                    }
                     body.has("assign") -> {
                         val a = body.getJSONObject("assign")
                         val outcome = HubWeb.assignDevice(

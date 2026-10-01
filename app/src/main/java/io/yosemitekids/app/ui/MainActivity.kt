@@ -15,6 +15,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.yosemitekids.app.data.limitsHere
 import io.yosemitekids.app.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -188,7 +189,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         ?: f.profiles.singleOrNull()?.id
                         ?: activeProfiles.activeId()?.takeIf { pid ->
                             f.profile(pid) != null &&
-                                !activeProfiles.needsReask(f.limitsFor(pid).breakMinutes)
+                                !activeProfiles.needsReask(f.limitsHere(appContext, pid).breakMinutes)
                         }
                 }
 
@@ -245,7 +246,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 // sitting". With the rule off, the who's-watching ask
                                 // happens once per launch (resolveActive) instead of
                                 // ever re-asking mid-session.
-                                val breakMin = family.limitsFor(activeProfileId).breakMinutes
+                                val breakMin = family.limitsHere(appContext, activeProfileId).breakMinutes
                                 if (family.profiles.size >= 2 && assignedId(family) == null &&
                                     breakMin != null && activeProfiles.needsReask(breakMin)
                                 ) activeProfileId = null
@@ -543,7 +544,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         value = withContext(Dispatchers.IO) {
                             family.profiles.associate { p ->
                                 p.id to SessionGuard(appContext, profileNs.suffixFor(p.id))
-                                    .remainingTodayMin(family.limitsFor(p.id))
+                                    .remainingTodayMin(family.limitsHere(appContext, p.id))
                             }
                         }
                     }

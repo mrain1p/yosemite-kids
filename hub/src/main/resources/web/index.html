@@ -2997,6 +2997,58 @@
     }
     out.appendChild(kidCard);
 
+    // Turning this one screen off. A pause on a kid follows the child
+    // wherever they go; this stays with the device, whoever sits at it, and
+    // changes nobody's rules.
+    //
+    // Through /api/devices and not a config patch: this page holds an
+    // enrolment ref, and the map the devices read is keyed by the pairing
+    // token each one announces. HubWeb.pauseDevice owns that resolution, which
+    // is why devicePaused is not patchable at all - a freeze filed under the
+    // wrong key sits in the config for ever and stops nothing, silently.
+    var pauseCard = card(controlById("devices-pause").label, controlById("devices-pause").sub);
+    pauseCard.dataset.control = "devices-pause";
+    if (!dev.known) {
+      pauseCard.appendChild(el("p", "sub",
+        "This device has not synced with the hub yet, so there is no way to tell it " +
+        "apart from any other. Open Yosemite Kids on it once."));
+    } else {
+      var frozenUntil = dev.pausedUntil || 0;
+      var frozen = frozenUntil > Date.now();
+      // PAUSE_UNTIL_RESUMED is Long.MAX_VALUE, which this language cannot
+      // hold: it arrives from the hub as 9223372036854776000 and could never be
+      // sent back exactly. So it is RECOGNISED loosely here and SENT by name
+      // ({ open: true }), and no number this page produces is ever compared
+      // against the sentinel. A year out is well past any real "until
+      // midnight" and well short of the sentinel.
+      var openEnded = frozenUntil > Date.now() + 365 * 24 * 3600 * 1000;
+      var post = function (pause) {
+        return api("/api/devices", { pause: pause })
+          .then(function () { flashSaved(); return refresh(); });
+      };
+      var prow = el("div", "line");
+      prow.appendChild(el("div", "sub grow",
+        frozen
+          ? (openEnded
+              ? "Watching is off here until you turn it back on."
+              : "Watching is off here until midnight.")
+          : "Watching is on. Other devices are not affected either way."));
+      if (frozen) {
+        prow.appendChild(button("Turn watching back on", "primary", function () {
+          return post({ ref: dev.ref });
+        }));
+      } else {
+        prow.appendChild(button("Until midnight", "primary", function () {
+          return post({ ref: dev.ref, until: endOfTodayLocal() });
+        }));
+        prow.appendChild(button("Until I turn it back on", "quiet", function () {
+          return post({ ref: dev.ref, open: true });
+        }));
+      }
+      pauseCard.appendChild(prow);
+    }
+    out.appendChild(pauseCard);
+
     var danger = card(null, null);
     var line = el("div", "line");
     line.appendChild(el("div", "sub grow",
