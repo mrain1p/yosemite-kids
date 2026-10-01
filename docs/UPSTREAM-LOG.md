@@ -1,4 +1,4 @@
-
+ **skip** — Upstream site and setup docs for the above. The fork ships its own. |**skip** — Upstream release chore pointing their version.json at their own APK. The fork self-updates from its own manifest. |**port by hand, later** — v0.9.0 wholesale: 67 files, 17 of them fork-modified (PlayerActivity, MainViewModel, Settings, Pairing, ConfigStore, SessionGuard…). Two features inside it — network libraries and per-session content groups — and the fork has its own answer to neither. **Not a cherry-pick under any circumstances.** Triaged 2026-10-01 before the 1.14.0 release: extractor is v0.26.4 on both sides, so nothing here is holding playback, which is the only thing that would make it urgent. Read it feature by feature in a round of its own. |
 ## 2026-09-02 — upstream/main 30ef89f, 4 new commit(s)
 
 Upstream version.json: `{ "versionCode": 29, "versionName": "0.8.0", "apkUrl": "https://github.com/itcon-pty-au/pickwick/releases/download/v0.8.0/pickwick.apk"}`
@@ -92,3 +92,16 @@ The `GET /stats?profile=` half of that commit is already in the fork:
 `LanServer` has taken a `profileId` on `/stats` and passed it to
 `statsProvider` since the profiles work, so a shared TV showing a sibling
 already answers for the kid asked about.
+
+## 2026-10-01 — upstream/main faf863c, 3 new commit(s)
+
+Upstream version.json: `{ "versionCode": 31, "versionName": "0.9.0", "apkUrl": "https://github.com/itcon-pty-au/pickwick/releases/download/v0.9.0/pickwick.apk"}`
+
+Upstream extractor: `newpipeextractor = "v0.26.4"
+newpipeextractor = { group = "com.github.TeamNewPipe", name = "NewPipeExtractor", version.ref = "newpipeextractor" }`
+
+| Commit | Subject | Files | Touches fork files | Action |
+| --- | --- | --- | --- | --- |
+| `231f55a` | Release v0.9.0: network libraries and per-session content groups | 67 | ⚠️ README.md app/build.gradle.kts app/src/main/java/io/yosemitekids/app/data/ConfigStore.kt app/src/main/java/io/yosemitekids/app/data/Pairing.kt app/src/main/java/io/yosemitekids/app/data/SecretStore.kt app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt app/src/main/java/io/yosemitekids/app/data/VideoCache.kt app/src/main/java/io/yosemitekids/app/ui/HomeScreens.kt app/src/main/java/io/yosemitekids/app/ui/HomeState.kt app/src/main/java/io/yosemitekids/app/ui/KidsSettings.kt app/src/main/java/io/yosemitekids/app/ui/MainActivity.kt app/src/main/java/io/yosemitekids/app/ui/MainViewModel.kt app/src/main/java/io/yosemitekids/app/ui/PlayerActivity.kt app/src/main/java/io/yosemitekids/app/ui/Settings.kt app/src/main/java/io/yosemitekids/app/ui/SettingsChannels.kt app/src/main/java/io/yosemitekids/app/ui/VideoGrid.kt app/src/main/java/io/yosemitekids/app/ui/YosemiteScreen.kt  | |
+| `4ef4616` | Enable self-update to v0.9.0 | 1 | ⚠️ version.json  || **skip** - upstream release chore pointing their version.json at their own APK. The fork self-updates from its own manifest. |
+| `faf863c` | Document network libraries and content groups on site and setup guides | 5 | ⚠️ README.md docs/SETUP.md site/index.html  || **skip** - upstream site and setup docs for v0.9.0. The fork ships its own. |
