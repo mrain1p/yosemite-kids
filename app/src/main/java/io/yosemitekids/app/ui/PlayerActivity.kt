@@ -1364,7 +1364,34 @@ class PlayerActivity : ComponentActivity() {
                 // disappear with the row. A second copy of a control, one
                 // scroll below the first, is a row of page a parent reported
                 // as wasted space before they ever reached what is on it.
-                item { PlayerTabRow(tabs, tab) { portraitTab.value = it } }
+                item {
+                    PlayerTabRow(
+                        tabs, tab,
+                        trailing = {
+                            val tokens = kidTokens
+                            val ceiling by qualityCeiling
+                            // Icon alone: its own state is the tint, the
+                            // description carries the words for a reader, and
+                            // "Stopping after this" beside two tabs and a
+                            // quality number does not fit a phone - it drew
+                            // clipped the first time it was looked at.
+                            PlayerLineButton(
+                                YosemiteIcons.Moon,
+                                if (stopAfter) "Stopping after this" else "Stop after this",
+                                tint = if (stopAfter) tokens.action
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                showLabel = false,
+                                onClick = ::toggleStopAfter
+                            )
+                            PlayerLineButton(
+                                YosemiteIcons.Quality,
+                                io.yosemitekids.app.data.qualityLabel(ceiling),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                onClick = { qualityPickerOpen.value = true }
+                            )
+                        }
+                    ) { portraitTab.value = it }
+                }
                 val rowMod = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp)
                 when (tab) {
                     PlayerTab.UpNext -> items(upNext) { j ->
@@ -1484,12 +1511,28 @@ class PlayerActivity : ComponentActivity() {
 
     /** The underlined tabs over the list; the hairline under them runs edge to edge. */
     @Composable
-    private fun PlayerTabRow(tabs: List<PlayerTab>, active: PlayerTab, onPick: (PlayerTab) -> Unit) {
+    private fun PlayerTabRow(
+        tabs: List<PlayerTab>,
+        active: PlayerTab,
+        /**
+         * The kid's two levers, on this line rather than a row of their own.
+         *
+         * They were a chip row between the action tiles and these tabs, which
+         * is a row of page before anything to watch — reported as exactly
+         * that. The landscape overlay carries them as tiles, but portrait has
+         * no overlay tiles at all (see the `!compact` branch there), so
+         * deleting the row outright would have left a phone held upright with
+         * no way to reach either.
+         */
+        trailing: (@Composable () -> Unit)? = null,
+        onPick: (PlayerTab) -> Unit
+    ) {
         val scheme = MaterialTheme.colorScheme
-        Column(Modifier.padding(top = 16.dp)) {
+        Column(Modifier.padding(top = 8.dp)) {
             Row(
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(22.dp),
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             ) {
                 tabs.forEach { t ->
                     val on = t == active
@@ -1519,8 +1562,49 @@ class PlayerActivity : ComponentActivity() {
                         )
                     }
                 }
+                if (trailing != null) {
+                    Spacer(Modifier.weight(1f))
+                    trailing()
+                }
             }
             androidx.compose.material3.HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.6f))
+        }
+    }
+
+    /**
+     * A small icon-and-label button for the tab line.
+     *
+     * Not a [YosemiteChip]: a chip is a filter that can be selected, and these
+     * two are a toggle and a picker sitting beside tabs that ARE selectable.
+     * Quiet by default, lit only when the moon is armed.
+     */
+    @Composable
+    private fun PlayerLineButton(
+        icon: androidx.compose.ui.graphics.vector.ImageVector,
+        label: String,
+        tint: Color,
+        /** False draws the icon alone; [label] still describes it to a reader. */
+        showLabel: Boolean = true,
+        onClick: () -> Unit
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .height(44.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 6.dp)
+        ) {
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(18.dp))
+            if (showLabel) {
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    label,
+                    color = tint,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
         }
     }
 
