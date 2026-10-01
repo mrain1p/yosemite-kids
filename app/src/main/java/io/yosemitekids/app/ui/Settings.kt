@@ -2043,36 +2043,46 @@ private fun AdminScreen(
         SectionTitle(
             "Everyone at once",
             help = "Bonus minutes and a single kid's pause are on that kid's page. This " +
-                "one stops every kid at once, until midnight."
+                "one stops every kid at once — until midnight, or until you turn it " +
+                "back on."
         )
         val pauseAllActive = (limits.pausedUntilMillis ?: 0L) > System.currentTimeMillis()
         var confirmPauseAll by remember { mutableStateOf(false) }
         if (confirmPauseAll) {
             AlertDialog(
                 onDismissRequest = { confirmPauseAll = false },
-                title = { Text("Pause screen time for everyone for the rest of today?") },
+                title = { Text("Pause screen time for everyone?") },
                 text = {
                     Text(
-                        "All watching stops right away on every device and stays off " +
-                            "until midnight. Normal limits return tomorrow. You can " +
-                            "resume any time."
+                        "All watching stops right away on every device. Until midnight, " +
+                            "normal limits return tomorrow; the other way it stays off " +
+                            "until you turn it back on. You can resume any time."
                     )
                 },
                 confirmButton = {
+                    TextButton(onClick = {
+                        confirmPauseAll = false
+                        limits = limits.copy(
+                            pausedUntilMillis = io.yosemitekids.app.data.PAUSE_UNTIL_RESUMED
+                        )
+                    }) { Text("Until I turn it back on") }
+                },
+                dismissButton = {
                     Button(onClick = {
                         confirmPauseAll = false
                         limits = limits.copy(pausedUntilMillis = endOfToday())
-                    }) { Text("Pause") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { confirmPauseAll = false }) { Text("Cancel") }
+                    }) { Text("Until midnight") }
                 }
             )
         }
         SettingsCard(padded = false) {
             ToggleRow(
                 "Turn off all watching",
-                if (pauseAllActive) "Paused until midnight" else "Every kid, every device",
+                when {
+                    pauseAllActive && limits.pausedIndefinitely -> "Paused until you turn it back on"
+                    pauseAllActive -> "Paused until midnight"
+                    else -> "Every kid, every device"
+                },
                 checked = pauseAllActive,
                 // Stopping every device is worth a confirm; lifting it is not,
                 // so the switch only waits on the way on.

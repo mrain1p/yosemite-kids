@@ -1204,6 +1204,8 @@ class PlayerActivity : ComponentActivity() {
                     onToggleQueue = ::toggleQueue,
                     stopAfterThis = stopAfterThis.value,
                     onToggleStopAfter = ::toggleStopAfter,
+                    qualityLabel = io.yosemitekids.app.data.qualityLabel(qualityCeiling.value),
+                    onOpenQuality = { qualityPickerOpen.value = true },
                     onBack = { finish() },
                     onTogglePlay = ::togglePlayPause,
                     onSeekBy = { seekBy(it, showFeedback = false) },
@@ -1335,7 +1337,7 @@ class PlayerActivity : ComponentActivity() {
                 item {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(horizontal = 16.dp).padding(top = 14.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp).padding(top = 8.dp)
                     ) {
                         val tokens = kidTokens
                         ActionTile(
@@ -1355,29 +1357,13 @@ class PlayerActivity : ComponentActivity() {
                         )
                     }
                 }
-                item {
-                    // The kid's own levers, as chips: the moon is theirs (the
-                    // Autoplay pill on the video is the parent's), and the
-                    // quality pick is for the session.
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(horizontal = 16.dp).padding(top = 10.dp)
-                    ) {
-                        YosemiteChip(
-                            if (stopAfter) "Stopping after this" else "Stop after this",
-                            selected = stopAfter,
-                            icon = YosemiteIcons.Moon,
-                            onClick = ::toggleStopAfter
-                        )
-                        val ceiling by qualityCeiling
-                        YosemiteChip(
-                            io.yosemitekids.app.data.qualityLabel(ceiling),
-                            selected = false,
-                            icon = YosemiteIcons.Quality,
-                            onClick = { qualityPickerOpen.value = true }
-                        )
-                    }
-                }
+                // No chip row here. It held the moon and the quality pick,
+                // and BOTH already live on the video itself: "Stop after this
+                // one" has been an overlay tile beside Favorite and Up next
+                // all along, and the quality tile joined it rather than
+                // disappear with the row. A second copy of a control, one
+                // scroll below the first, is a row of page a parent reported
+                // as wasted space before they ever reached what is on it.
                 item { PlayerTabRow(tabs, tab) { portraitTab.value = it } }
                 val rowMod = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp)
                 when (tab) {
@@ -3748,6 +3734,9 @@ private fun BoxScope.PlayerControlsOverlay(
     onToggleQueue: () -> Unit,
     stopAfterThis: Boolean,
     onToggleStopAfter: () -> Unit,
+    /** The session's quality ceiling, and the way to change it. */
+    qualityLabel: String,
+    onOpenQuality: () -> Unit,
     onBack: () -> Unit,
     onTogglePlay: () -> Unit,
     onSeekBy: (Int) -> Unit,
@@ -4121,6 +4110,15 @@ private fun BoxScope.PlayerControlsOverlay(
                                 isTv = false, highlighted = false, onClick = onToggleStopAfter,
                                 tint = if (stopAfterThis) tokens.action else onArtwork
                             ) { glyph, _ -> Icon(YosemiteIcons.Moon, null, tint = glyph, modifier = Modifier.size(22.dp)) }
+                            // Quality, on the video rather than a row below
+                            // it. The label says where it is now, because the
+                            // tile is the only place that number appears once
+                            // the detail page's chip row is gone.
+                            OverlayTile(
+                                "Quality: $qualityLabel",
+                                isTv = false, highlighted = false, onClick = onOpenQuality,
+                                tint = onArtwork
+                            ) { glyph, _ -> Icon(YosemiteIcons.Quality, null, tint = glyph, modifier = Modifier.size(22.dp)) }
                         }
                         if (!isTv && onToggleFullscreen != null) {
                             OverlayTile(

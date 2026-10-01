@@ -160,6 +160,27 @@ data class TimeWindow(
  */
 const val BUDGET_SCOPE_SHARED = "shared"
 
+/**
+ * [Limits.pausedUntilMillis] for a pause with no end: nothing lifts it but a
+ * parent turning watching back on.
+ *
+ * The product shipped with pauses that always ended at midnight, and the
+ * comment on `endOfToday` said why — "an unbounded pause is one a parent
+ * forgets". That is a real risk and it is still true; the owner asked for the
+ * open-ended one anyway (2026-10-01), because the case it is for is not
+ * forgetfulness but a consequence: *no screens until we have talked about
+ * this*, which has no hour attached to it and should not quietly expire
+ * overnight.
+ *
+ * So: an instant, like every other pause, and `Long.MAX_VALUE` rather than a
+ * flag beside the field — every comparison in the product is already
+ * `now < pausedUntilMillis`, every merge already treats this unit as one
+ * value, and a second field would be a second thing to get wrong. The one
+ * place that has to know the difference is anything that puts the pause into
+ * WORDS, because "see you tomorrow" is a lie about this one.
+ */
+const val PAUSE_UNTIL_RESUMED = Long.MAX_VALUE
+
 /** Screen-time rules, set in the parent settings UI. All optional. */
 data class Limits(
     val sessionMinutes: Int? = null,
@@ -220,6 +241,13 @@ data class Limits(
      */
     val budgetScope: String? = null
 ) {
+    /**
+     * Paused with no end — see [PAUSE_UNTIL_RESUMED].
+     *
+     * Asked in one place so no face re-spells the comparison; the same move
+     * [sharesBudget] made, and for the same reason guard 49 exists.
+     */
+    val pausedIndefinitely: Boolean get() = pausedUntilMillis == PAUSE_UNTIL_RESUMED
     /**
      * The one question anything enforcing may ask of [budgetScope].
      *

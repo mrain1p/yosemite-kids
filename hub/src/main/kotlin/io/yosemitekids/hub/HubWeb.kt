@@ -10,6 +10,7 @@ import io.yosemitekids.app.data.ControlKind
 import io.yosemitekids.app.data.Grant
 import io.yosemitekids.app.data.FamilyDay
 import io.yosemitekids.app.data.Page
+import io.yosemitekids.app.data.PAUSE_UNTIL_RESUMED
 import io.yosemitekids.app.data.Pin
 import io.yosemitekids.app.data.Pins
 import io.yosemitekids.app.data.Profile
@@ -774,6 +775,11 @@ object HubWeb {
             limits ?: return
             if (!limits.has("pausedUntil")) return
             val until = limits.optLong("pausedUntil", 0L)
+            // The open-ended pause is a NAMED state, not a mistyped instant:
+            // it is the one value past the horizon this is allowed to carry,
+            // and refusing it would make the console the one face that cannot
+            // say "until I turn it back on".
+            if (until == PAUSE_UNTIL_RESUMED) return
             if (until <= now + PAUSE_MAX_AHEAD_MS || until == was) return
             if (was == null) limits.remove("pausedUntil") else limits.put("pausedUntil", was)
         }

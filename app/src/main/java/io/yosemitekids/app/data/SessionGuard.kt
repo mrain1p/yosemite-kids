@@ -113,6 +113,13 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
          */
         private val PAUSED_MESSAGE = KidWords.refusal("paused")
 
+        /** A pause with no end says nothing about when — see [PAUSE_UNTIL_RESUMED]. */
+        private val PAUSED_OPEN_MESSAGE = KidWords.refusal("paused-open")
+
+        /** Which of the two a kid reads, from the one question :core answers. */
+        internal fun pausedMessage(l: Limits): String =
+            if (l.pausedIndefinitely) PAUSED_OPEN_MESSAGE else PAUSED_MESSAGE
+
         /**
          * Where a window pass ends after another grant of [minutes]. Grants
          * stack: a second 15 during bedtime buys 30, matching the daily bonus
@@ -420,7 +427,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         val l = limits()
         val now = System.currentTimeMillis()
 
-        if (isPaused(l)) return PAUSED_MESSAGE
+        if (isPaused(l)) return pausedMessage(l)
         activeWindow(l, listening)?.let { return windowMessage(l, it, listening) }
 
         val lockUntil = prefs.getLong("lockUntil", 0)
@@ -476,7 +483,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         prefs.edit().putLong("lastWatchAt", now).apply()
 
         // Mid-playback too: the pushed config lands, the next tick stops the video.
-        if (isPaused(l)) return PAUSED_MESSAGE
+        if (isPaused(l)) return pausedMessage(l)
         activeWindow(l, listening)?.let { return windowMessage(l, it, listening) }
 
         // The read half of the one write. Everything else in this file asks
@@ -592,7 +599,7 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         rolloverIfNewDay()
         val l = limits()
         val now = System.currentTimeMillis()
-        if (isPaused(l)) return PAUSED_MESSAGE
+        if (isPaused(l)) return pausedMessage(l)
         activeWindow(l)?.let { return windowMessage(l, it) }
         val lockUntil = prefs.getLong("lockUntil", 0)
         if (l.breakMinutes != null && now < lockUntil && !breakPassActive(l)) {

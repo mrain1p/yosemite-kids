@@ -1033,7 +1033,7 @@ class HubKidServer(
             // says so in its own KDoc; the page was putting it in front of a
             // five-year-old. One vocabulary in :core, so the television and the
             // tablet refuse in the same words.
-            .put("say", io.yosemitekids.app.ui.KidWords.refusal(verdict.reason))
+            .put("say", io.yosemitekids.app.ui.KidWords.refusal(verdict.sayKey))
             .apply {
                 verdict.spentMinutes?.let { put("spentMinutes", it) }
                 verdict.budgetMinutes?.let { put("budgetMinutes", it) }

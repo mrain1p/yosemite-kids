@@ -41,6 +41,11 @@ object KidWords {
      */
     fun refusal(reason: String): String = when (reason) {
         "paused" -> "A grown-up paused watching for today. See you tomorrow 💛"
+        // The open-ended pause says nothing about when, because nothing knows:
+        // it ends when a grown-up turns it back on. Promising tomorrow would
+        // be the app telling a child something it cannot know, which is the
+        // one thing a refusal on a child's screen must never do.
+        "paused-open" -> "A grown-up paused watching. Ask them about it 💛"
         "window" -> "It is not watching time right now."
         "out-of-time" -> "That is all the watching for today 🌟"
         "blocked" -> "A grown-up chose to hide this one."

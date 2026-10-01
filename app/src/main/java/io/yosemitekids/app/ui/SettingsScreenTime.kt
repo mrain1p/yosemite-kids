@@ -1171,6 +1171,29 @@ private data class GrantReceipt(val text: String, val at: Long = System.currentT
 @Composable
 internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChanged: (Long?) -> Unit) {
     val active = pausedUntil != null && pausedUntil > System.currentTimeMillis()
+    val openEnded = pausedUntil == io.yosemitekids.app.data.PAUSE_UNTIL_RESUMED
+    var asking by remember { mutableStateOf(false) }
+    if (asking) {
+        // Asked rather than assumed. Until midnight is the common case and
+        // stays the default action; "until I turn it back on" is the one with
+        // no hour attached to it — *no screens until we have talked about
+        // this* — and a parent who means that should not have it quietly
+        // expire overnight.
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            title = { Text(if (kidName == null) "Turn off watching" else "Turn off $kidName's watching") },
+            text = { Text("Watching stops right away on every device. Choose when it comes back.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    asking = false
+                    onChanged(io.yosemitekids.app.data.PAUSE_UNTIL_RESUMED)
+                }) { Text("Until I turn it back on") }
+            },
+            dismissButton = {
+                Button(onClick = { asking = false; onChanged(endOfToday()) }) { Text("Until midnight") }
+            }
+        )
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -1187,7 +1210,11 @@ internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChange
             Text(
                 // The root card's own wording for the same state, so the two
                 // places a parent can read it cannot drift.
-                if (active) "Paused until midnight" else "Until midnight",
+                when {
+                    active && openEnded -> "Paused until you turn it back on"
+                    active -> "Paused until midnight"
+                    else -> "Until midnight, or until you turn it back on"
+                },
                 style = MaterialTheme.typography.bodySmall
                     .copy(fontSize = 12.sp, lineHeight = 17.sp),
                 color = if (active) MaterialTheme.colorScheme.primary
@@ -1198,7 +1225,7 @@ internal fun PauseTodayRow(pausedUntil: Long?, kidName: String? = null, onChange
         Switch(
             modifier = Modifier.tvFocusHighlight(),
             checked = active,
-            onCheckedChange = { onChanged(if (it) endOfToday() else null) },
+            onCheckedChange = { on -> if (on) asking = true else onChanged(null) },
             // The design's switch, spelled the same way ToggleRow spells it.
             colors = SwitchDefaults.colors(
                 checkedTrackColor = MaterialTheme.colorScheme.primary,

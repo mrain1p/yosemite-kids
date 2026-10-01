@@ -400,7 +400,7 @@ private fun PhoneHomeGrid(
             columns = columns,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
-            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 16.dp)
+            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 0.dp, bottom = 16.dp)
         ) {
             item(key = "app-header", span = { GridItemSpan(maxLineSpan) }) { header() }
             GridPage(this, metrics).drawShelves(state, actions, firstFocus = null, focusShelf = null)
@@ -439,8 +439,11 @@ private fun TvHomeColumn(
         }
     }
     LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        contentPadding = PaddingValues(vertical = 8.dp)
+        // The page's own rhythm, and it was loose: 8 above the header, 4
+        // between every block, 10 over each heading and 8 over each rule
+        // compounded into a screenful of gaps between four shelves.
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        contentPadding = PaddingValues(top = 0.dp, bottom = 8.dp)
     ) {
         item(key = "header") { header() }
         ColumnPage(this, metrics, feedColumns = 3)
@@ -469,7 +472,7 @@ internal fun ShelfHeader(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp)
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp)
     ) {
         Text(
             title,
@@ -536,7 +539,7 @@ internal fun ShelfRule() {
         color = MaterialTheme.colorScheme.outlineVariant,
         // No inset of its own: the block it sits in is already at the page
         // gutter, so the rule runs exactly the width of the shelves it parts.
-        modifier = Modifier.padding(top = 8.dp)
+        modifier = Modifier.padding(top = 4.dp)
     )
 }
 

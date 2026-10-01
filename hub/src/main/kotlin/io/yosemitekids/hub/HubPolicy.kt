@@ -95,7 +95,17 @@ class HubPolicy(
          * config, no day this hub may name, or no budget set at all. A caller
          * with a bar to draw draws nothing.
          */
-        val today: Budget.Today? = null
+        val today: Budget.Today? = null,
+        /**
+         * Which KidWords sentence a CHILD is given.
+         *
+         * Defaults to [reason], because for almost every refusal the
+         * machine code and the words are one to one. A pause is the
+         * exception: the code stays the same for everything that branches
+         * on it, and the words have to stop promising tomorrow when there
+         * is no tomorrow attached to the pause.
+         */
+        val sayKey: String = reason
     )
 
     companion object {
@@ -179,7 +189,15 @@ class HubPolicy(
         // refused to honour a pause because nobody had set a timezone would be
         // failing OPEN on the strictest rule the app has.
         if (now() < (limits.pausedUntilMillis ?: 0L)) {
-            return no(PAUSED, "a parent has paused watching")
+            // The parent's own log line. The child's words come from
+            // KidWords.refusal, which the kid routes pick by the same
+            // question — a pause with no end must not promise tomorrow.
+            return no(
+                PAUSED,
+                if (limits.pausedIndefinitely) "a parent has paused watching until they turn it back on"
+                else "a parent has paused watching",
+                sayKey = if (limits.pausedIndefinitely) "paused-open" else PAUSED
+            )
         }
 
         val zone = FamilyDay.zoneOrNull(config.homeZone)
@@ -370,8 +388,9 @@ class HubPolicy(
         day: String? = null,
         spent: Int? = null,
         budgetMin: Int? = null,
-        today: Budget.Today? = null
-    ) = Decision(false, reason, detail, day, spent, budgetMin, today)
+        today: Budget.Today? = null,
+        sayKey: String = reason
+    ) = Decision(false, reason, detail, day, spent, budgetMin, today, sayKey)
 
     private fun yes(
         detail: String,

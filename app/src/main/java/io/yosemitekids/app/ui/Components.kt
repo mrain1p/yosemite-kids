@@ -124,12 +124,20 @@ internal fun PhoneTopBar(
     busy: Boolean = false
 ) {
     val tokens = kidTokens
+    // Tight. This bar is the first thing on every tab, and on a phone its own
+    // padding plus the gap between its five elements was pushing the first
+    // shelf heading a third of the way down the screen — the owner's words
+    // looking at a real phone were "a lot of wasted space near the top" and
+    // "the space to the left and right of the elements is too much as well".
+    //
+    // The 44 dp hit targets below are untouched: what shrinks is the space
+    // around them, not the thing a thumb has to land on.
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp)
+            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
     ) {
         AppMarkTile()
         Column(Modifier.weight(1f)) {
