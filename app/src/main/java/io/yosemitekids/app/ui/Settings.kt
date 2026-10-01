@@ -1397,7 +1397,7 @@ private fun AdminScreen(
                                         "Re-mixed on every visit, so nothing stays buried."
                                     CHANNEL_ORDER_LATEST ->
                                         "Whoever uploaded most recently leads."
-                                    else -> "The kid's favourites lead."
+                                    else -> "The kid's favorites lead."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant

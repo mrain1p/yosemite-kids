@@ -149,7 +149,21 @@ So, before shipping a control:
 | Hold | long-press (to a child) |
 | put away / hidden | blocked (to a child; "blocked" is the parent's word) |
 | The hub | the server, the container (to a parent) |
+| color | colour (ON SCREEN only — see below) |
 | did not answer | timed out, unreachable (to a child) |
+
+### Spelling
+
+**US spelling on every screen; British in the prose.** The family who runs
+this reads `color`, `favorites` and `canceled`, and a product that spells
+them the other way looks like it was written for somewhere else. The comments,
+the KDoc and the commit messages go on saying `colour` and `favourite` —
+nobody reading those is a user, and rewriting a decade of prose to match a
+label would be churn with no reader.
+
+So the rule is about **string literals a person sees**, nothing else. A
+`THEME_COLOR -> "My colour"` is the bug; `// the kid's colour` one line above
+it is not.
 
 ## Where the words live
 

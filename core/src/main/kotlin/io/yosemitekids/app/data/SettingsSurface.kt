@@ -213,12 +213,12 @@ object SettingsSurface {
                     json = "limits.session", min = 5, max = 240, unit = "min"
                 ),
                 SettingsControl(
-                    "rules-weekday-sessions", "Sessions on weekdays",
+                    "rules-weekday-sessions", "Number of sessions on weekdays",
                     kind = ControlKind.NUMBER, writes = "limits.weekdaySessions",
                     min = 1, max = 12
                 ),
                 SettingsControl(
-                    "rules-weekend-sessions", "Sessions on weekends",
+                    "rules-weekend-sessions", "Number of sessions on weekends",
                     kind = ControlKind.NUMBER, writes = "limits.weekendSessions",
                     min = 1, max = 12
                 ),

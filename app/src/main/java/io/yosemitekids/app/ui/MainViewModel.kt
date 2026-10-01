@@ -873,7 +873,10 @@ class MainViewModel(
             val p = history.progress(video.url)
             if (p?.isFinished == true) null else VideoItem(video, p?.fraction)
         }
-        return filterVideos(mixed, effectiveHomeFilter(), homeShuffleSeed)
+        // mixed = true: this list is one page from each channel, interleaved,
+        // so it has no arrival order worth keeping and "New" has to mean the
+        // newest upload rather than the newest of whichever channel is first.
+        return filterVideos(mixed, effectiveHomeFilter(), homeShuffleSeed, mixed = true)
     }
 
     /**

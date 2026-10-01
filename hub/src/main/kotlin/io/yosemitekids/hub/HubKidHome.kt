@@ -251,10 +251,17 @@ class HubKidHome(
         out.put(
             "videos",
             videosJson(
-                KidHome.interleave(
-                    catalogue.map { it.videos.map { row -> row.toVideo() }.take(KidHome.FEED_PER_CHANNEL) },
-                    KidHome.FEED_MAX
-                ) { it.url }
+                // Newest first, across every channel — the same answer the
+                // phone's home gives under its default chip. Interleaving
+                // caps what any one channel contributes; it does not order
+                // what survives, and before this the shelf opened on the
+                // newest video of whichever channel came first in the list.
+                io.yosemitekids.app.ui.byNewest(
+                    KidHome.interleave(
+                        catalogue.map { it.videos.map { row -> row.toVideo() }.take(KidHome.FEED_PER_CHANNEL) },
+                        KidHome.FEED_MAX
+                    ) { it.url }
+                ) { it.publishedAt }
                     // A finished video leaves the feed, exactly as it does on
                     // the phone; a half-watched one keeps its bar.
                     .mapNotNull { v ->

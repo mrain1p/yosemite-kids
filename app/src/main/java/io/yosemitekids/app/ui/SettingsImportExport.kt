@@ -105,7 +105,7 @@ internal fun ExportSection(
                     "Made $when_: ${summary.channels} channel(s)/playlist(s), " +
                         "${summary.kids} kid profile(s), ${summary.verdicts} AI verdict(s). " +
                         "This phone's channels, kids, rules, blocks and safe-list will be " +
-                        "replaced by the backup; watch history and favourites are merged in. " +
+                        "replaced by the backup; watch history and favorites are merged in. " +
                         "Push to the kid devices afterwards."
                 )
             },
@@ -273,7 +273,7 @@ internal fun ExportSection(
         "Full backup",
         help = "Everything on this phone — channels, kids and their rules, " +
             "blocked and allowed videos, AI screening settings without the key, " +
-            "every kid's resume points and favourites, and the AI verdict cache. " +
+            "every kid's resume points and favorites, and the AI verdict cache. " +
             "Restore it on a fresh install and push to the kid devices."
     )
     SettingsCard(padded = false) {

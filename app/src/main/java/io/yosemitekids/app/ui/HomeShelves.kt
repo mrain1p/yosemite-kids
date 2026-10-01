@@ -557,19 +557,25 @@ internal fun FeedControlRow(
     extras: (@Composable RowScope.() -> Unit)? = null,
     formFactor: FormFactor = LocalFormFactor.current
 ) {
+    // Tight on purpose. This row sits between the page title and the feed,
+    // and on a phone the three controls plus their gaps pushed the first
+    // poster most of a thumb's width down the screen — the owner's words were
+    // "too much padding between them", looking at a real phone. The
+    // television keeps its own breathing room through the chip height, which
+    // is what a focus ring needs; what shrinks here is the space BETWEEN.
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 4.dp, bottom = 6.dp)
+            .padding(top = 2.dp, bottom = 4.dp)
             .horizontalScroll(rememberScrollState())
     ) {
         SurprisePill(onSurprise, formFactor)
         Box(
             Modifier
                 .width(1.dp)
-                .height(24.dp)
+                .height(20.dp)
                 .background(MaterialTheme.colorScheme.outlineVariant)
         )
         if (onFilter != null) {
@@ -595,15 +601,15 @@ private fun SurprisePill(onSurprise: () -> Unit, formFactor: FormFactor) {
             .clip(RoundedCornerShape(18.dp))
             .border(1.5.dp, tokens.action, RoundedCornerShape(18.dp))
             .clickable(interactionSource = interaction, indication = LocalIndication.current) { onSurprise() }
-            .padding(horizontal = 14.dp)
+            .padding(horizontal = 11.dp)
     ) {
         androidx.compose.material3.Icon(
             YosemiteIcons.Dice,
             contentDescription = null,
             tint = tokens.action,
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(16.dp)
         )
-        Spacer(Modifier.width(7.dp))
+        Spacer(Modifier.width(5.dp))
         Text(
             "Surprise me",
             color = tokens.action,

@@ -243,33 +243,15 @@ internal fun YouScreen(
                 }
             }
         }
-        item(key = "you-strip", span = { GridItemSpan(maxLineSpan) }) {
-            // Wraps rather than scrolls. This is a FIXED, small set of the
-            // kid's own shelves, and a horizontal scroller hid the last of
-            // them off the right edge with nothing to say it was there — the
-            // reported symptom was "Up next" clipped mid-word, which reads as
-            // a layout fault rather than as something to swipe. A row that can
-            // grow without bound (the blocked-window pills below) still
-            // scrolls, because wrapping those would push the page down.
-            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-            androidx.compose.foundation.layout.FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                shelves.forEach { shelf ->
-                    YosemiteChip(
-                        shelf.title,
-                        selected = expanded == shelf.screen,
-                        icon = shelfIcon(shelf.screen),
-                        onClick = {
-                            expanded = if (shelf.items.isNotEmpty()) shelf.screen else null
-                            scope.launch { grid.animateScrollToItem(indexOf(shelf.screen)) }
-                        }
-                    )
-                }
-            }
-        }
+        // No chip strip. There was one — four chips naming the four shelves,
+        // each scrolling to the shelf it named — and on a phone it cost two
+        // rows at the top of the page to reach things that were already on
+        // the page, a thumb-flick below. Every shelf header carries its own
+        // "See all", which is the same control in the place it acts on.
+        //
+        // The chips survived a redesign because they were the handoff's
+        // shape, not because anyone used them; the owner reported them as
+        // noise the first time they looked at the page on a real phone.
         shelves.forEach { shelf ->
             val open = expanded == shelf.screen && shelf.items.isNotEmpty()
             val downloads = shelf.screen == Screen.Downloads

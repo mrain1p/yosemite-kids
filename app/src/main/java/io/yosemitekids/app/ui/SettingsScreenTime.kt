@@ -208,7 +208,35 @@ private fun RuleRow(
 
 // Not named formatClock: Theme.kt's formatClock(Long) formats a *duration*,
 // and an Int seconds value passed here would silently print garbage.
-internal fun formatMinuteOfDay(minOfDay: Int): String = "%d:%02d".format(minOfDay / 60, minOfDay % 60)
+/**
+ * A minute of the day, the way this household's clocks read.
+ *
+ * It printed a bare 24-hour "19:30" to a parent on a phone whose own clock
+ * says 7:30 PM — the owner's words were "use AM and PM, not 17:00". The
+ * household's convention already existed one file away: `SessionGuard.timeOf`
+ * formats the block messages with `h:mm a` behind `DateFormat.is24HourFormat`,
+ * so a bedtime announced to a child as "7:30 PM" was being set on a screen
+ * that called it 19:30. One rule now, and the device decides which.
+ *
+ * Uppercase with a space, matching `timeOf`. The kid page's own
+ * [clockLabel] stays lowercase and unspaced on purpose: it draws into an
+ * 11 sp mono micro-label where capitals shout.
+ */
+internal fun formatMinuteOfDay(minOfDay: Int, use24h: Boolean): String {
+    val m = ((minOfDay % 1440) + 1440) % 1440
+    val mm = (m % 60).toString().padStart(2, '0')
+    if (use24h) return "${m / 60}:$mm"
+    val h = m / 60
+    val hour12 = if (h % 12 == 0) 12 else h % 12
+    return "$hour12:$mm ${if (h < 12) "AM" else "PM"}"
+}
+
+/** Whether this device's own clock is a 24-hour one. */
+@Composable
+internal fun rememberUse24h(): Boolean {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return remember(context) { android.text.format.DateFormat.is24HourFormat(context) }
+}
 
 /**
  * The blocked-clock-window list: bedtime, school hours, homework. A list
@@ -346,13 +374,14 @@ private fun TimeWindowRow(window: TimeWindow, onOpen: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(Modifier.height(2.dp))
+            val use24h = rememberUse24h()
             // Days first, then the hours: "which days" is what a parent scans
             // a list of windows for, and two windows differ by it more often
             // than by the clock.
             Text(
                 listOfNotNull(
                     daySummary(window.days),
-                    "${formatMinuteOfDay(window.startMin)} → ${formatMinuteOfDay(window.endMin)}",
+                    "${formatMinuteOfDay(window.startMin, use24h)} → ${formatMinuteOfDay(window.endMin, use24h)}",
                     if (window.allowListening) "listening allowed" else null,
                     if (skipped) "skipped once" else null
                 ).joinToString(" · "),
@@ -397,6 +426,7 @@ private fun TimeWindowEditor(
     onRemove: () -> Unit,
     onCollapse: () -> Unit
 ) {
+    val use24h = rememberUse24h()
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         // The card is unpadded, so the expanded editor supplies the inset its
@@ -419,12 +449,12 @@ private fun TimeWindowEditor(
         // reachable times.
         StepperRow(
             label = "Starts", value = window.startMin, step = 30, min = 0, max = 24 * 60 - 1,
-            allowOff = false, format = ::formatMinuteOfDay, picker = StepperPicker.Clock,
+            allowOff = false, format = { formatMinuteOfDay(it, use24h) }, picker = StepperPicker.Clock,
             onChanged = { onChanged(window.copy(startMin = it ?: window.startMin)) }
         )
         StepperRow(
             label = "Ends", value = window.endMin, step = 30, min = 0, max = 24 * 60 - 1,
-            allowOff = false, format = ::formatMinuteOfDay, picker = StepperPicker.Clock,
+            allowOff = false, format = { formatMinuteOfDay(it, use24h) }, picker = StepperPicker.Clock,
             onChanged = { onChanged(window.copy(endMin = it ?: window.endMin)) }
         )
         DayChips(window.days) { onChanged(window.copy(days = it)) }
@@ -759,10 +789,12 @@ private fun StepperValue(
 }
 
 /**
- * Always 24-hour, matching how [formatMinuteOfDay] prints the row behind it —
- * a dialog that says 7:45 PM over a row that says 19:45 reads like two
- * different times. Keypad rather than the dial: four digits beats spinning a
- * ring to one particular minute, which is the whole point of the picker.
+ * Follows the device's own clock, matching how [formatMinuteOfDay] prints the
+ * row behind it — a dialog that says 7:45 PM over a row that says 19:45 reads
+ * like two different times, which is why this was pinned to 24-hour when the
+ * row was. Now that the row follows `DateFormat.is24HourFormat`, so does
+ * this. Keypad rather than the dial: four digits beats spinning a ring to one
+ * particular minute, which is the whole point of the picker.
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -775,7 +807,7 @@ private fun ExactClockDialog(
     val state = rememberTimePickerState(
         initialHour = initialMin / 60,
         initialMinute = initialMin % 60,
-        is24Hour = true
+        is24Hour = rememberUse24h()
     )
     AlertDialog(
         onDismissRequest = onDismiss,

@@ -68,11 +68,14 @@ internal fun YosemiteChip(
             .clip(RoundedCornerShape(18.dp))
             .background(bg)
             .clickable(interactionSource = interaction, indication = LocalIndication.current) { onClick() }
-            .padding(horizontal = if (icon != null) 12.dp else 14.dp)
+            // Snug: these sit three-across above the feed, and the row's own
+            // gap does the separating. The 36dp height is untouched — that is
+            // the tap target and the television's focus ring.
+            .padding(horizontal = if (icon != null) 9.dp else 11.dp)
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
+            Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(5.dp))
         }
         Text(
             label,

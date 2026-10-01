@@ -78,7 +78,7 @@ val KID_THEMES = listOf(THEME_DARK, THEME_LIGHT, THEME_COLOR)
 
 fun themeLabel(theme: String): String = when (theme) {
     THEME_LIGHT -> "Light"
-    THEME_COLOR -> "My colour"
+    THEME_COLOR -> "My color"
     else -> "Dark"
 }
 

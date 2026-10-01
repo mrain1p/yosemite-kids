@@ -30,6 +30,20 @@ import io.yosemitekids.app.data.Video
 /** A video plus its local watch progress (0..1), null if never watched. */
 data class VideoItem(val video: Video, val progress: Float?)
 
+/**
+ * Newest upload first; anything the extractor had no date for, last.
+ *
+ * Generic over what is being sorted because the two faces hold the mix in
+ * different shapes — the phone a [VideoItem], the hub a video paired with its
+ * watch fraction — and the ORDER is the thing that must not differ.
+ *
+ * A missing date sorts last rather than first: an undated video is not a new
+ * one. Last also means a list where nothing is dated comes back untouched,
+ * because the sort is stable and every key is equal.
+ */
+fun <T> byNewest(items: List<T>, publishedAt: (T) -> Long?): List<T> =
+    items.sortedByDescending { publishedAt(it) ?: Long.MIN_VALUE }
+
 /** "Popular first": by YouTube view count, unknown counts last, ties keep upload order. */
 fun orderByPopularity(items: List<VideoItem>): List<VideoItem> =
     items.sortedByDescending { it.video.viewCount ?: -1L }
@@ -84,14 +98,33 @@ fun orderChannels(
 }
 
 /**
- * A video list in the order the kid's chip asks for: newest keeps the list's
- * own order (feeds arrive newest-first), random is a seeded shuffle that
- * holds until the next refresh, popular is [orderByPopularity].
+ * A video list in the order the kid's chip asks for: random is a seeded
+ * shuffle that holds until the next refresh, popular is [orderByPopularity],
+ * and *New* depends on where the list came from — see [mixed].
+ *
+ * @param mixed whether [items] came from more than one channel.
+ *
+ *   **This is the whole subtlety, and getting it wrong is visible either
+ *   way.** One channel's feed arrives from YouTube newest-first and its dates
+ *   are patchy, so arrival order is the better answer and sorting by date
+ *   would shuffle every undated video to the end of a list that was already
+ *   right. A HOME feed has no such order: it interleaves one page from each
+ *   channel, so the first card under *New* was the newest video of whichever
+ *   channel came first — three years old if that channel has not posted
+ *   since, sitting above something from last week. That is what a parent saw
+ *   on a phone with seventy-six videos on the shelf, and it is why the flag
+ *   exists rather than one rule for both.
  */
-fun filterVideos(items: List<VideoItem>, filter: String?, seed: Long): List<VideoItem> =
+fun filterVideos(
+    items: List<VideoItem>,
+    filter: String?,
+    seed: Long,
+    mixed: Boolean = false
+): List<VideoItem> =
     when (filter) {
         VIDEO_FILTER_RANDOM -> items.shuffled(kotlin.random.Random(seed))
         VIDEO_FILTER_POPULAR -> orderByPopularity(items)
+        VIDEO_FILTER_NEW -> if (mixed) byNewest(items) { it.video.publishedAt } else items
         else -> items
     }
 
