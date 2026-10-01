@@ -110,6 +110,22 @@ internal data class HomeMetrics(
     val gutter: Dp
 )
 
+/**
+ * The gutter for the face in front of the kid.
+ *
+ * The phone's is [PhoneGutter], shared with the top bar so a shelf heading
+ * lines up with the page title above it. The television keeps the 8 dp its
+ * rails have always had: [HomeMetrics.gutter] says a TV gutter may never drop
+ * below 33 dp because panels overscan, and the ten-foot page does not honour
+ * that today — its header and its headings are drawn flush to the panel edge.
+ * That is a pre-existing bug with a visible fix, and it is deliberately not
+ * fixed here, because nothing in this change can be checked against a real
+ * television and a wrong answer there is a wrong answer on every family's TV.
+ */
+@Composable
+internal fun shelfGutter(formFactor: FormFactor = LocalFormFactor.current): Dp =
+    if (formFactor.isTv) 8.dp else PhoneGutter
+
 internal fun homeMetrics(formFactor: FormFactor): HomeMetrics =
     if (formFactor.isTv) HomeMetrics(
         channelArt = 93.dp, channelColumn = 98.dp, newDot = 15.dp,
@@ -152,8 +168,26 @@ internal class HomeActions(
 internal interface HomePage {
     val metrics: HomeMetrics
 
-    /** A full-width block: a heading, a rail, a control row, a rule. */
+    /**
+     * A full-width block at the page gutter: a heading, a control row, a rule.
+     *
+     * The gutter is paid HERE and not by the container, so that [bleed] can
+     * exist beside it. One `block` that did for both is what put a heading at
+     * 8 dp and the rail under it at 16: the container paid, and the rail paid
+     * again in its own contentPadding.
+     */
     fun block(key: String, content: @Composable () -> Unit)
+
+    /**
+     * A full-width block that reaches the screen edge: a rail.
+     *
+     * A rail pays the gutter as its own `contentPadding` instead, which looks
+     * identical at rest and is not the same thing — content padding insets
+     * the cards without insetting the viewport, so the last card scrolls off
+     * the edge of the screen rather than stopping short of it. A rail inside a
+     * [block] is a rail in a box, and a kid can see where the box ends.
+     */
+    fun bleed(key: String, content: @Composable () -> Unit)
 
     /** The pinned hero. Snap carousel under a thumb, static row under a remote. */
     fun hero(items: List<PinnedItem<Source>>, firstFocus: FocusRequester?, onOpen: (Source) -> Unit)
@@ -204,14 +238,14 @@ private fun HomePage.drawShelves(
                 block("channels-head") {
                     ShelfHeader("Channels", count, "See all", actions.onShowAllChannels)
                 }
-                block("channels") {
+                bleed("channels") {
                     ChannelRail(state.channels, state.newBadges, metrics, focus, actions.onOpen)
                 }
             }
             HomeShelf.KEEP_WATCHING -> {
                 rule()
                 block("kw-head") { ShelfHeader("Keep watching", count) }
-                block("kw") {
+                bleed("kw") {
                     KeepWatchingRow(
                         state.keepWatching,
                         onPlay = actions.onPlay,
@@ -225,7 +259,7 @@ private fun HomePage.drawShelves(
             HomeShelf.SUGGESTED -> {
                 rule()
                 block("sg-head") { ShelfHeader("More like what you watch", count) }
-                block("sg") {
+                bleed("sg") {
                     KeepWatchingRow(
                         state.suggested,
                         onPlay = actions.onPlay,
@@ -271,7 +305,7 @@ private fun HomePage.drawShelves(
                 block("history-head") {
                     ShelfHeader("Watched lately", count, "See all", actions.onOpenHistory)
                 }
-                block("history") {
+                bleed("history") {
                     KeepWatchingRow(
                         state.recentHistory,
                         onPlay = actions.onPlay,
@@ -290,7 +324,7 @@ private fun HomePage.drawShelves(
                 block("${section.id}-head") {
                     ShelfHeader(state.customRowTitles[section.id] ?: "Playlist", count)
                 }
-                block(section.id) {
+                bleed(section.id) {
                     KeepWatchingRow(
                         state.customRows[section.id].orEmpty(),
                         onPlay = actions.onPlay,
@@ -335,18 +369,29 @@ private class GridPage(
     override val metrics: HomeMetrics
 ) : HomePage {
     override fun block(key: String, content: @Composable () -> Unit) =
+        scope.item(key = key, span = { GridItemSpan(maxLineSpan) }) {
+            Box(Modifier.padding(horizontal = PhoneGutter)) { content() }
+        }
+
+    override fun bleed(key: String, content: @Composable () -> Unit) =
         scope.item(key = key, span = { GridItemSpan(maxLineSpan) }) { content() }
 
+    // The carousel pays its own gutter and snaps to it, so it bleeds.
     override fun hero(items: List<PinnedItem<Source>>, firstFocus: FocusRequester?, onOpen: (Source) -> Unit) =
-        block("hero") { PinnedHeroCarousel(items, metrics, firstFocus, onOpen) }
+        bleed("hero") { PinnedHeroCarousel(items, metrics, firstFocus, onOpen) }
 
     // The phone's page is itself the feed's grid — one card to a line, or as
-    // many as fit on a tablet — so the feed's items are the page's own cells.
+    // many as fit on a tablet — so the feed's items are the page's own cells,
+    // and each pays the gutter the way a block does.
     override fun feed(items: List<VideoItem>, card: @Composable (VideoItem) -> Unit) =
-        scope.items(items, key = { it.video.url }) { card(it) }
+        scope.items(items, key = { it.video.url }) {
+            Box(Modifier.padding(horizontal = PhoneGutter)) { card(it) }
+        }
 
     override fun skeleton(count: Int) =
-        scope.items(count, key = { "skeleton-$it" }) { SkeletonCard() }
+        scope.items(count, key = { "skeleton-$it" }) {
+            Box(Modifier.padding(horizontal = PhoneGutter)) { SkeletonCard() }
+        }
 }
 
 private class ColumnPage(
@@ -354,7 +399,13 @@ private class ColumnPage(
     override val metrics: HomeMetrics,
     private val feedColumns: Int
 ) : HomePage {
+    // No gutter on either: the ten-foot page draws its header and headings
+    // flush to the panel edge today, and shelfGutter() says why that is left
+    // alone rather than corrected blind.
     override fun block(key: String, content: @Composable () -> Unit) =
+        scope.item(key = key) { content() }
+
+    override fun bleed(key: String, content: @Composable () -> Unit) =
         scope.item(key = key) { content() }
 
     override fun hero(items: List<PinnedItem<Source>>, firstFocus: FocusRequester?, onOpen: (Source) -> Unit) =
@@ -400,7 +451,10 @@ private fun PhoneHomeGrid(
             columns = columns,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
-            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 0.dp, bottom = 16.dp)
+            // No horizontal inset: every child draws itself at PhoneGutter, and
+            // a container that paid as well would double it - which is exactly
+            // what put this page's title 20 dp in and its headings at 8.
+            contentPadding = PaddingValues(top = 0.dp, bottom = 16.dp)
         ) {
             item(key = "app-header", span = { GridItemSpan(maxLineSpan) }) { header() }
             GridPage(this, metrics).drawShelves(state, actions, firstFocus = null, focusShelf = null)
@@ -572,6 +626,9 @@ internal fun FeedControlRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 2.dp, bottom = 4.dp)
+            // No gutter of its own: this is drawn through HomePage.block,
+            // which pays it, and a second inset here would put the first pill
+            // further in than the "Videos" heading directly above it.
             .horizontalScroll(rememberScrollState())
     ) {
         SurprisePill(onSurprise, formFactor)
@@ -642,10 +699,10 @@ private fun ChannelRail(
 ) {
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        // Inset like the rest of the page: a first tile flush against the edge
-        // looked cut off, and on a television the focus ring needs somewhere
-        // to go.
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        // Inset like the rest of the page, from the same number: a first tile
+        // flush against the edge looked cut off, and on a television the focus
+        // ring needs somewhere to go.
+        contentPadding = PaddingValues(horizontal = shelfGutter(), vertical = 4.dp),
         modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
     ) {
         items(channels.size, key = { channels[it].id }) { i ->

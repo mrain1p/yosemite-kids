@@ -254,18 +254,21 @@ private fun PhoneChannelsList(
 ) {
     // No horizontal contentPadding: the sticky bar is full-bleed (it is a
     // surface of its own, like the tab bar) and everything else pays its own
-    // 4 dp, which puts it at the design's 16 dp gutter once the page's own
-    // 12 dp is counted.
+    // gutter. The note here used to say that 4 dp "puts it at the design's
+    // 16 dp gutter once the page's own 12 dp is counted" - there is no outer
+    // 12 dp anywhere above this screen, so every row on it had been sitting at
+    // 4 dp since that was written, a third of the way in from where the top bar
+    // above it starts.
     LazyColumn(
         contentPadding = PaddingValues(bottom = 16.dp),
         modifier = Modifier.fillMaxSize()
     ) {
         item(key = "surprise") {
-            Box(Modifier.padding(horizontal = 4.dp)) { SurpriseCard(onSurprise) }
+            Box(Modifier.padding(horizontal = shelfGutter())) { SurpriseCard(onSurprise) }
         }
         if (state.pinned.isNotEmpty()) {
             item(key = "pinned-head") {
-                Box(Modifier.padding(horizontal = 4.dp)) {
+                Box(Modifier.padding(horizontal = shelfGutter())) {
                     ShelfHeader("Pinned", state.pinned.size)
                 }
             }
@@ -287,7 +290,7 @@ private fun PhoneChannelsList(
                 metrics = metrics,
                 onOpen = onOpen,
                 onPlay = onPlay,
-                modifier = Modifier.padding(horizontal = 4.dp),
+                modifier = Modifier.padding(horizontal = shelfGutter()),
                 isFavourite = channel.url in state.favouriteChannels,
                 onHold = onHold
             )
@@ -444,7 +447,14 @@ private fun ChannelListRow(
                         onLongClick = onHold?.let { hold -> { hold(channel) } }
                     )
                     .then(if (onHold != null) Modifier.dpadLongPress { onHold(channel) } else Modifier)
-                    .padding(horizontal = 4.dp, vertical = 4.dp)
+                    // Vertical only. The 4 dp of horizontal inset this used to
+                    // add sat INSIDE the page gutter, so a channel row started
+                    // 4 dp right of the Surprise card and the sort chips above
+                    // it - the one step left on this page once the gutter was
+                    // one number, and visible as a ragged left edge on a real
+                    // phone. The ripple still has its rounded corners and its
+                    // vertical breathing room.
+                    .padding(vertical = 4.dp)
             ) {
                 ChannelArt(channel.avatarUrl, channel.name, size = metrics.art)
                 Spacer(Modifier.width(12.dp))
@@ -734,7 +744,7 @@ private fun PinnedSourceRail(
 ) {
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(metrics.gap),
-        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+        contentPadding = PaddingValues(horizontal = shelfGutter(), vertical = 6.dp),
         modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
     ) {
         items(items.size, key = { items[it].source.id }) { i ->
@@ -812,7 +822,7 @@ private fun ChannelFilterBar(
     shelfChips: @Composable RowScope.() -> Unit
 ) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer)) {
-        Box(Modifier.padding(horizontal = 4.dp, vertical = 6.dp)) {
+        Box(Modifier.padding(horizontal = shelfGutter(), vertical = 6.dp)) {
             ChannelSortChips(sort, onSort ?: {}, extras = shelfChips)
         }
         HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)

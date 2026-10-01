@@ -86,8 +86,11 @@ internal fun KeepWatchingRow(
     }
     androidx.compose.foundation.lazy.LazyRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        // Room for the focus glow so it isn't clipped by the row bounds.
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        // The page gutter, and room for the focus glow so it is not clipped by
+        // the row bounds. The same number as the heading above it: this row
+        // used to add 8 on top of the grid's own 8 and sat twice as far in as
+        // the words it belonged to.
+        contentPadding = PaddingValues(horizontal = shelfGutter(), vertical = 4.dp),
         // Held ◀/▶ paces itself so leftward steps (nothing pre-composed behind
         // the pivot) stop sticking mid-scroll.
         modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)

@@ -102,6 +102,34 @@ internal fun YosemiteChip(
  * Leaf, not container: it takes what it draws, so a preview or a test can
  * render any state of it without a view model.
  */
+/**
+ * The phone gutter: how far from the screen edge anything at the top level of
+ * a page is drawn.
+ *
+ * One number, because the three tabs were four numbers. [PhoneTopBar] is the
+ * same object on Home, Channels and You, and each page put it at a different
+ * distance from the edge by what it wrapped the bar in. Home's grid added 8 to
+ * the bar's own 12, so its title sat 20 in while the other two tabs' sat at 12
+ * — and on Home the shelf headings UNDER that title sat at 8, with the rail
+ * cards beside them at 16. The owner, looking at the three tabs: "the home
+ * screen header, vs the you and channel row headers are slightly inconsistent
+ * with spacing/padding ... we are looking for consistent feel across the app".
+ *
+ * 12 because it is the bar's own number, already tightened once on the owner's
+ * word ("the space to the left and right of the elements is too much as well"),
+ * and the page title is the thing everything under it has to line up with.
+ * ChannelShelves carried a comment claiming its 4 dp "puts it at the design's
+ * 16 dp gutter once the page's own 12 dp is counted" — there is no outer 12,
+ * so that content had been sitting at 4 since it was written.
+ *
+ * **A lazy container on these pages must not pay it.** Horizontal
+ * contentPadding on the container plus a gutter-aware child is how the inset
+ * doubled in the first place, so the containers carry none and each child
+ * brings this number — which is also what lets a rail bleed its last card off
+ * the screen edge while the heading above it lines up.
+ */
+internal val PhoneGutter = 12.dp
+
 @Composable
 internal fun PhoneTopBar(
     /** The page's own name: "Hi, Amelia", "Channels", the kid's name on You. */
@@ -137,7 +165,7 @@ internal fun PhoneTopBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+            .padding(start = PhoneGutter, end = PhoneGutter, top = 8.dp, bottom = 8.dp)
     ) {
         AppMarkTile()
         Column(Modifier.weight(1f)) {

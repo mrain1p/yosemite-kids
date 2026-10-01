@@ -184,7 +184,7 @@ internal fun YouScreen(
                         busy = state.refreshing || state.syncing
                     )
                     state.blockReason?.let {
-                        Box(Modifier.padding(horizontal = 16.dp)) { BlockedBanner(it) }
+                        Box(Modifier.padding(horizontal = shelfGutter())) { BlockedBanner(it) }
                     }
                 }
                 return@item
@@ -227,7 +227,7 @@ internal fun YouScreen(
         }
         if (state.timeWindows.isNotEmpty()) {
             item(key = "you-windows", span = { GridItemSpan(maxLineSpan) }) {
-                Box(Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                Box(Modifier.padding(horizontal = shelfGutter(), vertical = 2.dp)) {
                     BlockedWindowsCard(
                         windows = state.timeWindows,
                         watchedMin = state.watchedTodayMin,
@@ -238,7 +238,7 @@ internal fun YouScreen(
         }
         if (state.offline) {
             item(key = "you-offline", span = { GridItemSpan(maxLineSpan) }) {
-                Box(Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                Box(Modifier.padding(horizontal = shelfGutter(), vertical = 2.dp)) {
                     OfflineBanner(state.downloaded.size)
                 }
             }
@@ -268,10 +268,10 @@ internal fun YouScreen(
             fun alphaFor(item: VideoItem): Float =
                 if (shelf.screen == Screen.History && !item.isFinished()) 0.7f else 1f
             item(key = "you-divider-${shelf.title}", span = { GridItemSpan(maxLineSpan) }) {
-                Column(Modifier.padding(horizontal = 8.dp)) { ShelfRule() }
+                Column(Modifier.padding(horizontal = shelfGutter())) { ShelfRule() }
             }
             item(key = "you-title-${shelf.title}", span = { GridItemSpan(maxLineSpan) }) {
-                Column(Modifier.padding(horizontal = 8.dp)) {
+                Column(Modifier.padding(horizontal = shelfGutter())) {
                     ShelfHeader(
                         title = shelf.title,
                         count = shelf.items.size,
@@ -299,7 +299,7 @@ internal fun YouScreen(
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = shelfGutter(), vertical = 6.dp)
                     )
                 }
             } else if (open) {
@@ -320,7 +320,7 @@ internal fun YouScreen(
                             avatarUrl = state.channelAvatars[item.video.channelName],
                             onPlay = onPlay,
                             onOpenMenu = onOpenMenu,
-                            modifier = Modifier.padding(horizontal = 4.dp)
+                            modifier = Modifier.padding(horizontal = shelfGutter())
                                 .graphicsLayer { alpha = alphaFor(item) }
                         )
                     }
@@ -333,7 +333,7 @@ internal fun YouScreen(
                         val preview = shelf.items.take(ROW_PREVIEW)
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(if (isTv) 14.dp else 10.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(horizontal = shelfGutter(), vertical = 6.dp),
                             modifier = Modifier.dpadHeldScrollThrottle(keys = DPAD_HORIZONTAL)
                         ) {
                             items(preview.size, key = { preview[it].video.url }) { i ->
@@ -355,7 +355,7 @@ internal fun YouScreen(
             }
         }
         item(key = "you-request", span = { GridItemSpan(maxLineSpan) }) {
-            Box(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) { RequestTile() }
+            Box(Modifier.padding(horizontal = shelfGutter(), vertical = 6.dp)) { RequestTile() }
         }
     }
 }
