@@ -2949,7 +2949,13 @@ $devRules = @(Get-ChildItem -Recurse -Include *.kt -Path app/src/main | ForEach-
     $df = $_
     $rel = $df.FullName.Replace((Get-Location).Path + "\", "").Replace("\", "/")
     if ($rel -eq "app/src/main/java/io/yosemitekids/app/data/UsageSync.kt") { return }
-    Get-Content $df.FullName | Select-String -Pattern "limitsFor\(" -SimpleMatch |
+    # -SimpleMatch takes the pattern LITERALLY, so an escaped paren here hunts
+    # for a backslash and matches nothing: this guard was vacuous on the
+    # PowerShell side from the moment it was written, and nothing but
+    # GATE=both could show that - the bash half fired correctly the whole
+    # time, so the canary passed and the gate passed. The -notmatch below IS
+    # a regex, which is why its escapes are right and these were not.
+    Get-Content $df.FullName | Select-String -Pattern "limitsFor(" -SimpleMatch |
         Where-Object { $_.Line -notmatch "deviceToken\(\)" } |
         ForEach-Object { "${rel}:$($_.LineNumber): $($_.Line.Trim())" }
 })
