@@ -138,14 +138,19 @@ fun KidsSection(
 }
 
 /** The screen-time rules a kid's page can set, each one either set or not. */
-internal const val KID_RULE_COUNT = 5
+internal const val KID_RULE_COUNT = 7
 
 /**
- * How many of the five per-kid rules are set. Blocked windows and the pause
- * are not rules in this sense — a window is a schedule, the pause is today's
- * state — so the count stays "N of 5" whatever else the kid has.
+ * How many of the per-kid rules are set. Blocked windows and the pause are not
+ * rules in this sense — a window is a schedule, the pause is today's state
+ * — so the count ignores them whatever else the kid has.
+ *
+ * The list is the whole of [KID_RULE_COUNT]: a rule added to the card and not
+ * to this list makes a fully configured kid read "5 of 7", which looks like an
+ * unfinished setup to the parent who has just finished it.
  */
 internal fun rulesSet(l: Limits): Int = listOf(
+    l.weekdayMinutes, l.weekendMinutes,
     l.sessionMinutes, l.weekdaySessions, l.weekendSessions, l.breakMinutes, l.minVideoMinutes
 ).count { it != null }
 

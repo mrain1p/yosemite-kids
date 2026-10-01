@@ -329,6 +329,12 @@ object ConfigMerge {
         if (o.weekendSessions != n.weekendSessions) {
             out += Change(code, "changes $whose weekend sittings ${count(o.weekendSessions)} to ${count(n.weekendSessions)}")
         }
+        if (o.weekdayMinutes != n.weekdayMinutes) {
+            out += Change(code, "changes $whose weekday limit ${mins(o.weekdayMinutes)} to ${mins(n.weekdayMinutes)}")
+        }
+        if (o.weekendMinutes != n.weekendMinutes) {
+            out += Change(code, "changes $whose weekend limit ${mins(o.weekendMinutes)} to ${mins(n.weekendMinutes)}")
+        }
         if (o.breakMinutes != n.breakMinutes) {
             out += Change(code, "changes $whose break ${mins(o.breakMinutes)} to ${mins(n.breakMinutes)}")
         }
@@ -1364,6 +1370,10 @@ object ConfigMerge {
 
     private val LIMITS_RULES_KEYS = listOf(
         "session", "weekdaySessions", "weekendSessions", "breakMinutes", "minVideoMinutes",
+        // The plain daily cap. Owned for the same reason budgetScope is: two
+        // parents who each set one must resolve by the rules stamp, not by
+        // whichever document happened to be carrying the object.
+        "weekdayMinutes", "weekendMinutes",
         // A scalar like the rest, so it rides `kid.rules|<id>` and `lim.rules`
         // and needs no unit of its own. Owned rather than passed through: two
         // parents who set it differently must resolve by the rules stamp like

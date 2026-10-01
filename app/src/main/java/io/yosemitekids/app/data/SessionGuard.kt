@@ -185,7 +185,8 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
         // still blocking" report, and invisible without this line.
         android.util.Log.i("YosemiteKids",
             "limits[$profileSuffix] <- session=${l.sessionMinutes} " +
-                "wd=${l.weekdaySessions} we=${l.weekendSessions} break=${l.breakMinutes} " +
+                "wd=${l.weekdaySessions} we=${l.weekendSessions} " +
+                "cap=${l.weekdayMinutes}/${l.weekendMinutes} break=${l.breakMinutes} " +
                 "breakPass=${l.breakPassUntilMillis} " +
                 "windows=${l.windows.joinToString { it.label }} paused=${l.pausedUntilMillis}"
         )
@@ -193,6 +194,12 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             .putInt("l_session", l.sessionMinutes ?: -1)
             .putInt("l_wd", l.weekdaySessions ?: -1)
             .putInt("l_we", l.weekendSessions ?: -1)
+            // The plain daily cap. Here for the reason the scope below is:
+            // every enforcement path reads its rules from this mirror and not
+            // from the config, so a cap that stopped at the config would be a
+            // limit a parent set and watched do nothing.
+            .putInt("l_wdmin", l.weekdayMinutes ?: -1)
+            .putInt("l_wemin", l.weekendMinutes ?: -1)
             .putInt("l_break", l.breakMinutes ?: -1)
             .putString("l_windows", ConfigJson.windowsToJson(l.windows))
             .putLong("l_paused", l.pausedUntilMillis ?: -1L)
@@ -211,6 +218,8 @@ class SessionGuard(context: Context, private val profileSuffix: String = "") {
             sessionMinutes = get("l_session"),
             weekdaySessions = get("l_wd"),
             weekendSessions = get("l_we"),
+            weekdayMinutes = get("l_wdmin"),
+            weekendMinutes = get("l_wemin"),
             breakMinutes = get("l_break"),
             windows = ConfigJson.windowsFromJson(prefs.getString("l_windows", null)),
             pausedUntilMillis = prefs.getLong("l_paused", -1L).takeIf { it > 0 },

@@ -23,18 +23,38 @@ import java.util.Calendar
 object Budget {
 
     /**
-     * The day's allowance: sittings × length, plus [bonusMs]. Null when the
-     * parent has set no budget — and null means **no rule**, never zero.
+     * The day's allowance, plus [bonusMs]. Null when the parent has set no
+     * budget at all — and null means **no rule**, never zero.
      *
-     * Both halves are required. A session length with no session count is not
-     * a budget of one sitting; it is a rule the settings screen has not
-     * finished collecting, and guessing at the missing half would invent a
-     * limit a parent never set.
+     * Two rules can cap a day and a family may set either, or both:
+     *
+     * - **sittings × length** ([Limits.sessionMinutes] with the day's session
+     *   count). Both halves are required. A session length with no session
+     *   count is not a budget of one sitting; it is a rule the settings
+     *   screen has not finished collecting, and guessing at the missing half
+     *   would invent a limit a parent never set.
+     * - **a plain daily cap** ([Limits.weekdayMinutes] / [Limits.weekendMinutes]),
+     *   which is the number a parent actually says out loud.
+     *
+     * With both set the answer is the **smaller** one. Not a precedence order:
+     * a cap is a ceiling, and a second ceiling in the same room cannot raise
+     * the first. `min` is also the only rule that stays right however the two
+     * are edited — a parent who tightens either has tightened the day — and it
+     * is what lets the pacing rule and the total coexist, which is the whole
+     * reason there are two of them.
+     *
+     * This is the only place that composition is written. A face that read one
+     * of the two rules on its own would stop a child early or late depending
+     * on which screen they happened to be sitting at, and guard 50 is what
+     * holds the hub to this function.
      */
     fun dayMs(l: Limits, weekend: Boolean, bonusMs: Long): Long? {
-        val perSession = l.sessionMinutes ?: return null
-        val count = (if (weekend) l.weekendSessions else l.weekdaySessions) ?: return null
-        return perSession * count * 60_000L + bonusMs
+        val sittings = l.sessionMinutes?.let { per ->
+            (if (weekend) l.weekendSessions else l.weekdaySessions)?.let { per * it }
+        }
+        val capped = if (weekend) l.weekendMinutes else l.weekdayMinutes
+        val minutes = listOfNotNull(sittings, capped).minOrNull() ?: return null
+        return minutes * 60_000L + bonusMs
     }
 
     /**

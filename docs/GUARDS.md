@@ -94,3 +94,4 @@ can still fail (guard 65 requires one from 56 upward).
 | 76 | The map names every file it is a map of. | `docs/ARCHITECTURE.md`, `app/src/main`, `core/src/main`, `crawl/src/main`, `hub/src/main` | yes |
 | 77 | A test that reaches real YouTube says so in its own first lines. | `app/src/test/java` | yes |
 | 78 | Neither page works out a day for itself. | `hub/src/main/resources/web/kid.html`, `hub/src/main/resources/web/index.html` | yes |
+| 79 | Every scalar on Limits reaches all five places that carry it. | `core/src/main/kotlin/io/yosemitekids/app/data/ConfigJson.kt`, `core/src/main/kotlin/io/yosemitekids/app/data/ConfigStamp.kt`, `core/src/main/kotlin/io/yosemitekids/app/data/Whitelist.kt`, `app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt` | yes |

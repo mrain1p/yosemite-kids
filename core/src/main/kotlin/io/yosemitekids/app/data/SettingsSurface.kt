@@ -203,10 +203,28 @@ object SettingsSurface {
             listOf("limits", "profiles"), Where.BOTH, true,
             "Family policy, not device state. Per kid and for everyone.",
             controls = listOf(
-                // The five recurring rules. Per kid through Profile.limits and,
-                // for a family with no kids added yet, through Whitelist.limits
-                // — Whitelist.limitsFor picks between them, and neither face
+                // The recurring rules. Per kid through Profile.limits and, for
+                // a family with no kids added yet, through Whitelist.limits —
+                // Whitelist.limitsFor picks between them, and neither face
                 // gets to have its own opinion about which.
+                //
+                // The day's total comes first because it is the rule a parent
+                // arrives with ("ninety minutes a day"), and until these two
+                // existed the only way to say it was to find a pair of the
+                // rules below that multiplies to it. Both kinds may be set and
+                // Budget.dayMs takes the tighter — declared here so the hub's
+                // number fields carry the same name and the same bounds, which
+                // is the whole reason this manifest exists.
+                SettingsControl(
+                    "rules-weekday-minutes", "Daily limit on weekdays",
+                    kind = ControlKind.NUMBER, writes = "limits.weekdayMinutes",
+                    json = "limits.weekdayMinutes", min = 5, max = 720, unit = "min"
+                ),
+                SettingsControl(
+                    "rules-weekend-minutes", "Daily limit at weekends",
+                    kind = ControlKind.NUMBER, writes = "limits.weekendMinutes",
+                    json = "limits.weekendMinutes", min = 5, max = 720, unit = "min"
+                ),
                 SettingsControl(
                     "rules-session", "Time per session",
                     kind = ControlKind.NUMBER, writes = "limits.sessionMinutes",

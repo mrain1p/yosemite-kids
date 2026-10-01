@@ -248,6 +248,7 @@ canary() {
 }
 
 KIDSRV=hub/src/main/kotlin/io/yosemitekids/hub/HubKidServer.kt
+STAMP=core/src/main/kotlin/io/yosemitekids/app/data/ConfigStamp.kt
 HUBSRV=hub/src/main/kotlin/io/yosemitekids/hub/HubServer.kt
 # Where both faces baseline headers live since 1.12.0, which is where a CORS
 # header would be added if anyone ever added one.
@@ -513,6 +514,11 @@ canary 78 "$CONSOLE" \
   "the console working out a day for itself again" \
   "reads the grant list" \
   'sed -i "s/var BONUS_PRESETS = /var canaryGrants = state.config.grants; var BONUS_PRESETS = /" "$CONSOLE"'
+
+canary 79 "$STAMP" \
+  "a daily limit the stamper stops noticing" \
+  "is not compared by ConfigStamp.sameRules" \
+  'sed -i "/a[.]weekendMinutes == b[.]weekendMinutes/d" "$STAMP"'
 
 echo
 if [ "$failed" -gt 0 ]; then

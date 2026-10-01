@@ -377,20 +377,33 @@ object ConfigJson {
             // nothing, so it cannot differ from null here and agree with it in
             // `fromJson`.
             val scope = l.budgetScope?.takeIf { it.isNotBlank() }?.let { ";BS:$it" } ?: ""
-            if (legacy != null || l.windows.isEmpty()) return base + breakPass + minVideo + scope
+            // And again at the tail, per rule 6: a family that caps the day
+            // by sittings alone keeps the hash it had across the build that
+            // added these, and one that sets a cap must move it or the
+            // reconcile never pushes the tighter day to a sleeping TV.
+            val daily = listOfNotNull(
+                l.weekdayMinutes?.let { "DM:$it" },
+                l.weekendMinutes?.let { "DE:$it" }
+            ).joinToString("").let { if (it.isEmpty()) "" else ";$it" }
+            val tail = breakPass + minVideo + scope + daily
+            if (legacy != null || l.windows.isEmpty()) return base + tail
             return base + l.windows.joinToString(";", prefix = ";W:") { w ->
                 // Parent-typed text is scrubbed of this format's separators so
                 // two different window lists can't canonicalize identically.
                 "${w.id},${w.label.replace(Regex("[,;]"), " ")},${w.startMin},${w.endMin}," +
                     "${w.days.sorted().joinToString(".")},${w.passUntilMillis ?: 0}," +
                     if (w.allowListening) "1" else "0"
-            } + breakPass + minVideo + scope
+            } + tail
         }
 
         private fun limitsToJson(l: Limits) = JSONObject().apply {
             l.sessionMinutes?.let { put("session", it) }
             l.weekdaySessions?.let { put("weekdaySessions", it) }
             l.weekendSessions?.let { put("weekendSessions", it) }
+            // Omitted at null like every other rule, so a family that never
+            // sets a daily cap keeps its bytes and its fingerprint.
+            l.weekdayMinutes?.let { put("weekdayMinutes", it) }
+            l.weekendMinutes?.let { put("weekendMinutes", it) }
             l.breakMinutes?.let { put("breakMinutes", it) }
             l.minVideoMinutes?.let { put("minVideoMinutes", it) }
             if (l.windows.isNotEmpty()) put("windows", JSONArray(windowsToJson(l.windows)))
@@ -618,6 +631,8 @@ object ConfigJson {
                 sessionMinutes = opt("session"),
                 weekdaySessions = opt("weekdaySessions"),
                 weekendSessions = opt("weekendSessions"),
+                weekdayMinutes = opt("weekdayMinutes"),
+                weekendMinutes = opt("weekendMinutes"),
                 breakMinutes = opt("breakMinutes"),
                 minVideoMinutes = opt("minVideoMinutes"),
                 windows = windows,

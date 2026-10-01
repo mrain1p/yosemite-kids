@@ -63,15 +63,30 @@ internal fun RulesSection(
             "as regular videos."
     )
     SettingsCard(padded = false) {
-        // The number a parent actually has in their head, first.
+        // The number a parent actually has in their head, first — and as a
+        // field they can type into.
         //
-        // It is DERIVED — sittings × length — so it is not a field and cannot
-        // be typed into; what a parent sets is the two rows beneath it. But it
-        // was only ever said in a sentence UNDER the card, after five rows of
-        // inputs, and the owner's words looking at a real phone were "I don't
-        // see an area for daily limits in the child's settings — this should
-        // be priority one on top of the screen-time rules".
-        DailyLimitRow(limits)
+        // It was a DERIVED row here, sittings × length, read-only because that
+        // product is what the day came to. The owner, sent back to look again:
+        // "I still don't see a spot where to add a daily limit. I see a line
+        // item for daily limit on the profile page but not an option to set
+        // it." Which is the right reading of it — a number you cannot change
+        // is a readout, and they came to this card to set ninety minutes.
+        //
+        // So the cap is its own rule now (Limits.weekdayMinutes), and the day
+        // is the tighter of the two (Budget.dayMs). What the day comes to in
+        // the end moved under the card, where the summary line already was.
+        RuleRow(
+            control = ctl("rules-weekday-minutes"),
+            value = limits.weekdayMinutes,
+            onChanged = { onChanged(limits.copy(weekdayMinutes = it)) }
+        )
+        SettingsDivider()
+        RuleRow(
+            control = ctl("rules-weekend-minutes"),
+            value = limits.weekendMinutes,
+            onChanged = { onChanged(limits.copy(weekendMinutes = it)) }
+        )
         SettingsDivider()
         // Label, range and unit from the manifest, so the hub's number fields
         // are the same rule with the same name and the same bounds. They were
@@ -122,9 +137,9 @@ internal fun RulesSection(
         Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) { trailing() }
     }
 
-    // Under the card, not in it: it describes the five rows above rather than
-    // being a sixth one, and it moved out from between Break and Hide, where
-    // it read as a note on the row it happened to follow.
+    // Under the card, not in it: it describes the rows above rather than being
+    // one more of them, and it moved out from between Break and Hide, where it
+    // read as a note on the row it happened to follow.
     val set = rulesSet(limits)
     val summary = buildString {
         if (set == 0) {
@@ -135,11 +150,13 @@ internal fun RulesSection(
                 else "No minute limits — the blocked times below still apply."
             )
         } else {
-            // The day's totals used to be spelled out again here, by
-            // multiplying session × sessions inline — a hand copy of
-            // Budget.dayMs that guard 50's grep does not reach, and the second
-            // place this product worked out a daily limit. The row at the top
-            // of the card says it now, through Budget itself.
+            // What the day actually comes to, which is not necessarily either
+            // rule on its own: a parent can cap the day at 90 and also pace it
+            // as 2 × 30, and the answer is 60. Asked of Budget.dayMs and never
+            // multiplied here — an inline session × sessions was exactly the
+            // hand copy guard 50's grep does not reach, and it is the
+            // arithmetic the hub refuses a kid with.
+            dayTotals(limits)?.let { append(it); append(" ") }
             append("$set of $KID_RULE_COUNT rules set.")
         }
     }
@@ -250,59 +267,29 @@ internal fun rememberUse24h(): Boolean {
 }
 
 /**
- * The day's allowance, as one line at the top of the rules.
+ * What the day comes to, as a sentence for under the card.
  *
  * Read from [Budget.dayMs] and never multiplied here: the hub refuses a kid
- * who is out of minutes with that function, the player stops them with it,
- * and the bar on both browsers draws it — a sixth copy on the screen where a
- * parent SETS the thing would be the one that quietly disagrees.
+ * who is out of minutes with that function, the player stops them with it, and
+ * the bar on both browsers draws it — a sixth copy on the screen where a
+ * parent SETS the thing would be the one that quietly disagrees. It is also the
+ * only place that knows which of the two caps is biting, which is why the rows
+ * above do not try to say.
  *
- * Not a control, so it is not drawn as one: no chevron, no tap, nothing that
- * suggests a value lives here. What a parent changes is the two rows below.
+ * Null when no rule produces a day at all; the caller has its own sentence for
+ * that case, and that one has to mention the blocked times.
  */
-@Composable
-private fun DailyLimitRow(limits: Limits) {
+private fun dayTotals(limits: Limits): String? {
     val weekday = Budget.dayMs(limits, weekend = false, bonusMs = 0L)
     val weekend = Budget.dayMs(limits, weekend = true, bonusMs = 0L)
     fun mins(ms: Long?) = ms?.let { "${it / 60_000L} min" }
-    val value = when {
-        weekday == null && weekend == null -> "Not set"
-        weekday == weekend -> mins(weekday) ?: "Not set"
-        else -> "${mins(weekday) ?: "off"} · ${mins(weekend) ?: "off"} at weekends"
-    }
-    val how = limits.sessionMinutes?.let { s ->
-        listOfNotNull(
-            limits.weekdaySessions?.let { "$it × $s min on weekdays" },
-            limits.weekendSessions?.let { "$it × $s min at weekends" }
-        ).joinToString(", ").ifBlank { null }
-    }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 64.dp)
-            .padding(horizontal = 12.dp, vertical = 9.dp)
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("Daily limit", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                how ?: "Set a session length and how many sessions a day",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Text(
-            value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (weekday == null && weekend == null) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            }
-        )
+    return when {
+        weekday == null && weekend == null -> null
+        weekday == weekend -> "${mins(weekday)} a day."
+        else -> "${mins(weekday) ?: "No limit"} on weekdays, " +
+            "${mins(weekend) ?: "no limit"} at weekends."
     }
 }
-
 /**
  * The blocked-clock-window list: bedtime, school hours, homework. A list
  * rather than a single bedtime switch because the ordinary cases need more

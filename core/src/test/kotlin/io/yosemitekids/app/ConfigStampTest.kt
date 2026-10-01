@@ -151,6 +151,38 @@ class ConfigStampTest {
     }
 
     @Test
+    fun cappingTheDayIsARulesEditAndNothingElse() {
+        // Same contract as the scope below it, and the same trap: the cap is a
+        // limits scalar, so it stamps the unit the rest of the rules ride. Left
+        // out of ConfigStamp.sameRules it mints NOTHING, which is worse than a
+        // spurious unit — the save looks clean and the new limit never leaves
+        // the phone, so a parent sets ninety minutes and the television never
+        // hears about it.
+        val kid = Profile(id = "k1", name = "Leo", limits = Limits(sessionMinutes = 45))
+        val base = config(profiles = listOf(kid))
+        val next = config(profiles = listOf(kid.copy(limits = kid.limits.copy(weekdayMinutes = 90))))
+        assertEquals(
+            setOf(ConfigStamp.kidRules("k1")),
+            stamp(base, base, next).config.sync.at.keys
+        )
+
+        // The weekend half is its own value on the same unit.
+        val weekend = config(profiles = listOf(kid.copy(limits = kid.limits.copy(weekendMinutes = 120))))
+        assertEquals(
+            setOf(ConfigStamp.kidRules("k1")),
+            stamp(base, base, weekend).config.sync.at.keys
+        )
+
+        // And the family-wide cap lands on lim.rules, for the same reason.
+        val famBase = config(limits = Limits(sessionMinutes = 45))
+        val famNext = famBase.copy(limits = famBase.limits.copy(weekdayMinutes = 60))
+        assertEquals(
+            setOf(ConfigStamp.LIM_RULES),
+            stamp(famBase, famBase, famNext).config.sync.at.keys
+        )
+    }
+
+    @Test
     fun aScopeThisBuildDoesNotKnowStillMovesTheStamp() {
         // Two values that both mean "count per device" here are still two
         // different parent choices. Comparing through Limits.sharesBudget

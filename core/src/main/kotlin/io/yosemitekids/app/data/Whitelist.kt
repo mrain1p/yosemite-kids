@@ -186,6 +186,30 @@ data class Limits(
     val sessionMinutes: Int? = null,
     val weekdaySessions: Int? = null,
     val weekendSessions: Int? = null,
+    /**
+     * A plain cap on the day: this many minutes of watching, and no more.
+     *
+     * The three rules above express a day as sittings × length, which is how
+     * a parent PACES an afternoon — and it is not the number they have in
+     * their head. The owner, looking at this card on a real phone: "I don't
+     * see a spot where to add a daily limit." Setting 90 meant finding the
+     * pair that multiplies to it, and two rules multiply to 90 four
+     * different ways.
+     *
+     * Both rules may be set, and then **the tighter one wins** — see
+     * [Budget.dayMs], which is the only place that is decided. A cap does not
+     * loosen because another cap exists, so the composition is `min` and
+     * never a precedence order a parent would have to learn. Null means no
+     * cap of this kind, never zero.
+     *
+     * Weekday and weekend are independent and neither falls back to the
+     * other, exactly as the two session counts are: a fallback here would be
+     * an unwritten rule inside the arithmetic, and the screen that collects
+     * them is where "the same on both" belongs.
+     */
+    val weekdayMinutes: Int? = null,
+    /** The same cap for a Saturday or Sunday — see [weekdayMinutes]. */
+    val weekendMinutes: Int? = null,
     val breakMinutes: Int? = null,
     /**
      * Parent pass over the next break — the film that runs past the sitting

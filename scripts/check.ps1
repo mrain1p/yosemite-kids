@@ -2824,6 +2824,104 @@ missing half would invent a limit a parent never set."
     }
 }
 
+# 79. Every scalar on Limits reaches all five places that carry it.
+#     A rule added to the data class and left out of one of them fails
+#     SILENTLY, differently per place, and all four failures are in the sync
+#     skill's "what breaks silently" table:
+#
+#       limitsToJson    the value never leaves the device at all.
+#       limitsFromJson  it round-trips to null, so the parent's NEXT save
+#                       erases the rule they set a minute earlier.
+#       limitsCanon     the fingerprint does not move, so the offline
+#                       reconcile never re-pushes and a television that slept
+#                       through the push enforces the old rule forever.
+#       sameRules       the stamper mints nothing, so the merge has no stamp
+#                       to resolve by and a co-parent's stale copy wins the
+#                       next sweep.
+#       the prefs mirror  SessionGuard rebuilds its rules from SharedPreferences,
+#                       not from the config, so a rule that stops at the
+#                       document is one a parent sets and then watches do
+#                       nothing on the box that does the stopping.
+#
+#     That last one is not hypothetical and not old: guard 49(b) says it in
+#     prose for ONE field, and the daily cap walked into it anyway with the
+#     document side perfect - wire, fingerprint, stamp, hub, both consoles -
+#     while the phone went on allowing sittings x length. Nothing failed. The
+#     compile was clean, every test passed, and the only symptom would have
+#     been a parent reporting that the limit does not work.
+#
+#     The daily cap (weekdayMinutes/weekendMinutes) is why this exists: it
+#     needed all five, and nothing on any screen would have looked wrong if
+#     one had been missed. The PROPERTY name is what is greppable in all
+#     all of them - sessionMinutes is written `session` on the wire, so the JSON key
+#     is no use here.
+#
+#     Exemptions are per place rather than per field, because the three
+#     fields that have merge units of their own are each deliberately absent
+#     from exactly one place, and a blanket exemption would stop checking the
+#     other three for them.
+$cj = "core/src/main/kotlin/io/yosemitekids/app/data/ConfigJson.kt"
+$cs = "core/src/main/kotlin/io/yosemitekids/app/data/ConfigStamp.kt"
+$limSrc = "core/src/main/kotlin/io/yosemitekids/app/data/Whitelist.kt"
+$limBlock = [regex]::Match((Get-Content $limSrc -Raw), '(?sm)^data class Limits\(.*?\n\) \{')
+if (-not $limBlock.Success) {
+    Fail-Guard "could not read the fields of Limits from $limSrc. The regex (data class Limits( .. ) {) no longer matches, so this guard was checking nothing at all. Fix the regex rather than deleting the guard."
+}
+$limFields = @([regex]::Matches($limBlock.Value, '(?m)^    val ([a-zA-Z]+)') | ForEach-Object { $_.Groups[1].Value })
+if ($limFields.Count -eq 0) { Fail-Guard "no fields parsed out of Limits in $limSrc" }
+function Kt-Section($path, $start, $end) {
+    $m = [regex]::Match((Get-Content $path -Raw), "(?s)private fun $start" + $end)
+    return $m.Value
+}
+$limToJson = Kt-Section $cj 'limitsToJson' '.*?\n        \}'
+$limFromJson = Kt-Section $cj 'limitsFromJson' '.*?\n        \}'
+$limCanon = Kt-Section $cj 'limitsCanon' '.*?\n        \}'
+$limSame = Kt-Section $cs 'sameRules' '.*?\n\r?\n'
+$limSg = "app/src/main/java/io/yosemitekids/app/data/SessionGuard.kt"
+$limSgText = Get-Content $limSg -Raw
+$limSave = [regex]::Match($limSgText, '(?s)fun saveLimits\(.*?\n    \}').Value
+$limRead = [regex]::Match($limSgText, '(?s)private fun limits\(\).*?\n    \}').Value
+if (-not $limSave -or -not $limRead) {
+    Fail-Guard "guard 79 could not find SessionGuard.saveLimits or SessionGuard.limits(). A rename makes this guard pass vacuously, which is worse than failing: the prefs mirror is the only copy of the rules the player actually enforces."
+}
+foreach ($sec in @($limToJson, $limFromJson, $limCanon, $limSame)) {
+    if (-not $sec) { Fail-Guard "guard 79 could not find one of limitsToJson / limitsFromJson / limitsCanon / sameRules. A renamed or reformatted function makes this guard pass vacuously, which is worse than it failing." }
+}
+# The pause is hashed at the Whitelist level, in one term over every kid, so
+# limitsCanon does not name it. And neither the pause nor the break pass nor
+# the window list is a recurring RULE: sameRules must not see them, or an
+# ordinary pause would stamp lim.rules and read to every peer as a parent
+# rewriting the schedule.
+foreach ($name in $limFields) {
+    $skipCanon = $name -eq 'pausedUntilMillis'
+    $skipSame = $name -in @('pausedUntilMillis', 'breakPassUntilMillis', 'windows')
+    # minVideoMinutes filters a LISTING - it hides short videos in the grids -
+    # and never stops a session, so the enforcer has no use for it. A new rule
+    # belongs on this list only if the same is true of it, and the reason goes
+    # here beside it rather than in a commit message.
+    $skipMirror = $name -eq 'minVideoMinutes'
+    if (-not $limToJson.Contains("l.$name")) {
+        Fail-Guard "Limits.$name is not written by ConfigJson.limitsToJson. The value never leaves the device: no peer, no backup and no hub ever sees it. Write it omitted at its default, as every other scalar there is."
+    }
+    if (-not $limFromJson.Contains("$name = ")) {
+        Fail-Guard "Limits.$name is not read back by ConfigJson.limitsFromJson. It round-trips to null, so the NEXT save a parent makes erases the rule they set a minute ago - and ConfigStore.save round-trips on every save."
+    }
+    if (-not $skipCanon -and -not $limCanon.Contains("l.$name")) {
+        Fail-Guard "Limits.$name is not in ConfigJson.limitsCanon. The fingerprint does not move when it changes, and SyncDecision only re-pushes on a mismatch - so a television that slept through the push enforces the old rule forever. Append it at the tail, only when set (rule 6 of the sync skill)."
+    }
+    if (-not $skipMirror) {
+        if (-not $limSave.Contains("l.$name")) {
+            Fail-Guard "Limits.$name never reaches the prefs mirror: SessionGuard.saveLimits does not write it. Every enforcement path rebuilds its rules from that mirror and not from the config, so this is a rule a parent sets, watches sync, and watches do nothing."
+        }
+        if (-not $limRead.Contains("$name = ")) {
+            Fail-Guard "Limits.$name is written to the prefs mirror and never read back: SessionGuard.limits() does not name it. The value is in SharedPreferences and the rule the player enforces is built without it, which is the same silence as not storing it at all."
+        }
+    }
+    if (-not $skipSame -and -not $limSame.Contains("a.$name")) {
+        Fail-Guard "Limits.$name is not compared by ConfigStamp.sameRules. The save mints no stamp, so the merge has nothing to resolve by: the phone of a co-parent, carrying the OLD value, wins the next sweep and silently undoes the edit."
+    }
+}
+
 if ($Guards) { Write-Host "source invariants OK" -ForegroundColor Green; exit 0 }
 
 

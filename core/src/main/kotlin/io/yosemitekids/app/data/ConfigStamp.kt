@@ -510,6 +510,8 @@ object ConfigStamp {
         a.sessionMinutes == b.sessionMinutes &&
             a.weekdaySessions == b.weekdaySessions &&
             a.weekendSessions == b.weekendSessions &&
+            a.weekdayMinutes == b.weekdayMinutes &&
+            a.weekendMinutes == b.weekendMinutes &&
             a.breakMinutes == b.breakMinutes &&
             a.minVideoMinutes == b.minVideoMinutes &&
             // Compared as written, not through Limits.sharesBudget: two scopes

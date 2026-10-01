@@ -176,6 +176,35 @@ class MergeConvergenceTest {
             doc(limits = Limits(sessionMinutes = 45), at = mapOf(ConfigStamp.SETTINGS to T)),
             doc(limits = Limits(sessionMinutes = 30), at = mapOf(ConfigStamp.SETTINGS to T))
         ),
+        // The plain daily cap, which is the rules scalar a parent is most
+        // likely to set on two phones in the same minute: both of them want
+        // the day shorter, and they disagree about by how much. It must
+        // settle on the stamp like sessionMinutes above and NOT take a min of
+        // the two sides — a join here would make the merge non-idempotent
+        // against a peer that keeps re-offering its own number, and the pair
+        // would ratchet the family's day down a step per sweep.
+        Triple(
+            "two caps on the same day, equal stamps",
+            doc(
+                limits = Limits(sessionMinutes = 45, weekdayMinutes = 60),
+                at = mapOf(ConfigStamp.LIM_RULES to T)
+            ),
+            doc(
+                limits = Limits(sessionMinutes = 45, weekdayMinutes = 90),
+                at = mapOf(ConfigStamp.LIM_RULES to T)
+            )
+        ),
+        Triple(
+            "a kid capped on one phone and not on the other",
+            doc(
+                profiles = listOf(kid.copy(limits = Limits(sessionMinutes = 20, weekendMinutes = 120))),
+                at = mapOf(ConfigStamp.kid("k1") to T, ConfigStamp.kidRules("k1") to T + 1)
+            ),
+            doc(
+                profiles = listOf(kid.copy(limits = Limits(sessionMinutes = 20))),
+                at = mapOf(ConfigStamp.kid("k1") to T, ConfigStamp.kidRules("k1") to T)
+            )
+        ),
         // budgetScope is a limits scalar riding lim.rules / kid.rules, so it
         // must settle exactly like the sessionMinutes pair above. Both shapes,
         // because the family default and a kid's own copy take different code
