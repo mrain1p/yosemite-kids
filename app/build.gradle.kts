@@ -46,8 +46,8 @@ android {
         // travels with it: config-carried grants are finally applied on
         // arrival, the settings screens take their words from the shared
         // manifest, and a phone asks a hub what to call its secret.
-        versionCode = 23
-        versionName = "1.14.0"
+        versionCode = 24
+        versionName = "1.15.0"
 
         // Every outbound URL the app talks to, overridable per build so a fork
         // never phones upstream by accident. Set in local.properties or the
