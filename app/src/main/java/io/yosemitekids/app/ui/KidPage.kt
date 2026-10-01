@@ -88,6 +88,7 @@ internal fun KidPage(
     var settingWeb by remember { mutableStateOf(false) }
     var limits by remember { mutableStateOf(profile.limits) }
     var editingAge by remember { mutableStateOf(false) }
+    var editingLook by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
 
     val built = profile.copy(
@@ -214,19 +215,53 @@ internal fun KidPage(
                 )
             }
             SettingsDivider()
-            // The same picker the kid gets behind "Change my look" (ProfileHub.kt).
-            // A parent's choice here stamps lookAt too, so it beats an older
-            // choice waiting on a device — newest wins on both sides.
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                // The card is unpadded so its rows can run edge to edge; the
-                // picker is not a row, so it brings the inset itself.
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            // One row, opened on a tap — not eight colour dots and twenty-two
+            // avatars laid out on arrival.
+            //
+            // Expanded by default this was two thirds of the first screen of a
+            // kid's page, above the name, the age, the lock and every
+            // screen-time rule, for a choice most parents make once and the
+            // KID can make for themselves behind "Change my look". The row
+            // shows what is currently picked, which is the only thing that
+            // needed to be visible without asking.
+            //
+            // The dialog is ProfileHub's own LookDialog — the same picker on
+            // the same set, so a kid restyling themselves and a parent doing
+            // it for them never choose from two different grids. A parent's
+            // choice stamps lookAt, so it beats an older choice waiting on a
+            // device: newest wins on both sides.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 64.dp)
+                    .tvFocusHighlight()
+                    .clickable { editingLook = true }
+                    .padding(horizontal = 12.dp, vertical = 9.dp)
             ) {
-                LookPicker(
-                    color, avatar,
-                    onColor = { color = it; lookAt = System.currentTimeMillis() },
-                    onAvatar = { avatar = it; lookAt = System.currentTimeMillis() }
+                Column(Modifier.weight(1f)) {
+                    Text("Color and avatar", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "What this kid looks like on the picker",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                ProfileAvatar(
+                    Profile(id = "preview", name = name, colorArgb = color, avatar = avatar),
+                    size = 36
+                )
+            }
+            if (editingLook) {
+                LookDialog(
+                    Profile(id = "preview", name = name, colorArgb = color, avatar = avatar),
+                    onDone = { a, c ->
+                        editingLook = false
+                        avatar = a
+                        color = c
+                        lookAt = System.currentTimeMillis()
+                    },
+                    onDismiss = { editingLook = false }
                 )
             }
             SettingsDivider()
@@ -488,13 +523,15 @@ private fun KidOverview(profile: Profile) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     when (range) {
-                        StatsRange.WEEK -> weekSummary(data.stats)
                         // Today has no days to count, so its line is the one
                         // the TV is enforcing right now.
                         StatsRange.TODAY -> data.today.state + (
                             data.today.budgetTodayMin?.let { " · ${data.today.watchedTodayMin} of $it min" }
                                 ?: " · no daily limit"
                             )
+                        // Every other range is a span of days, and the same
+                        // sentence answers all of them.
+                        else -> weekSummary(data.stats)
                     },
                     style = MaterialTheme.typography.bodySmall
                         .copy(fontSize = 12.5.sp, lineHeight = 19.sp),
@@ -515,7 +552,7 @@ private fun KidOverview(profile: Profile) {
             if (data != null && channels.isEmpty()) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Nothing watched ${if (range == StatsRange.TODAY) "today" else "this week"} yet.",
+                    "Nothing watched ${if (range == StatsRange.TODAY) "today" else "in this stretch"} yet.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -554,6 +591,40 @@ private fun KidOverview(profile: Profile) {
                             .fillMaxWidth(count.toFloat() / max)
                             .fillMaxHeight()
                             .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
+        }
+        // What was actually watched, not just where the time went.
+        //
+        // The ranking above answers "which channels is she on"; a parent asking
+        // "what has she been watching" wants the titles, and until now the page
+        // could not answer that at all — which is what the owner reported after
+        // looking at it on a phone. Newest first, capped, and a plain report: no
+        // tap target, because there is nothing here to change.
+        val recent = data?.stats?.recent.orEmpty()
+        if (recent.isNotEmpty()) {
+            SettingsDivider()
+            Column(Modifier.padding(12.dp)) {
+                Text(
+                    "Watched",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                recent.forEach { row ->
+                    Spacer(Modifier.height(9.dp))
+                    Text(
+                        row.title,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        listOfNotNull(row.channel, changeAge(row.watchedAt)).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

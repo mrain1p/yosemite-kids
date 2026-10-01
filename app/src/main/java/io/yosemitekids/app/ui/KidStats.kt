@@ -22,12 +22,19 @@ import java.util.Locale
 // ---------------------------------------------------------------------------
 
 /**
- * The ranges the chips offer. Only what the device can honestly answer:
- * [SessionGuard.history] keeps about sixty days, so there is no year.
+ * The ranges the chips offer. Only what the device can honestly answer.
+ *
+ * [SessionGuard.history] keeps the last 59 archived days plus today, so
+ * **All** is sixty and there is no year — offering one would be a chip that
+ * silently means the same as this one. Today and Week were the only two for
+ * a while, which is a month of a child's watching the page could not show
+ * and a parent asked for the first time they looked.
  */
 internal enum class StatsRange(val label: String, val days: Int) {
     TODAY("Today", 1),
-    WEEK("Week", 7)
+    WEEK("Week", 7),
+    MONTH("Month", 30),
+    ALL("All", 60)
 }
 
 internal data class KidStats(
@@ -39,7 +46,23 @@ internal data class KidStats(
     val daysWatched: Int,
     val days: Int,
     /** Channel → videos watched in the range, biggest first. */
-    val channels: List<Pair<String, Int>>
+    val channels: List<Pair<String, Int>>,
+    /**
+     * What was actually watched, newest first — the history itself rather
+     * than a ranking of the channels it came from.
+     *
+     * A parent asking "what has she been watching" wants the titles; the
+     * channel ranking answers "where is the time going", which is a different
+     * question and was the only one this page could answer.
+     */
+    val recent: List<WatchedVideo> = emptyList()
+)
+
+/** One row of the watched list: what it was, whose channel, and when. */
+internal data class WatchedVideo(
+    val title: String,
+    val channel: String?,
+    val watchedAt: Long
 )
 
 /**
@@ -48,6 +71,11 @@ internal data class KidStats(
  *   only when the next one starts), so its minutes arrive as [todayMinutes].
  * @param watched (lastWatchedAt, channel) per history row; a null channel is
  *   a video no cached source lists any more and counts towards the total only.
+ * @param titles the same rows' titles, by the same index — kept apart so the
+ *   existing arithmetic and its test are untouched by a column that only the
+ *   list needs. A row with no title is one no cached feed still lists, and it
+ *   is left out of the list rather than drawn as a blank.
+ * @param recentMax how many rows the watched list shows.
  */
 internal fun kidStats(
     dayKeys: List<String>,
@@ -55,7 +83,9 @@ internal fun kidStats(
     history: List<Pair<String, Int>>,
     rangeStartMs: Long,
     watched: List<Pair<Long, String?>>,
-    topChannels: Int = 5
+    topChannels: Int = 5,
+    titles: List<String?> = emptyList(),
+    recentMax: Int = 30
 ): KidStats {
     val past = dayKeys.dropLast(1).toSet()
     val archived = history.filter { (day, _) -> day in past }
@@ -69,7 +99,12 @@ internal fun kidStats(
             .groupingBy { it }.eachCount()
             .entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .take(topChannels)
-            .map { it.key to it.value }
+            .map { it.key to it.value },
+        recent = watched.indices
+            .filter { watched[it].first >= rangeStartMs && titles.getOrNull(it) != null }
+            .sortedByDescending { watched[it].first }
+            .take(recentMax)
+            .map { WatchedVideo(titles[it]!!, watched[it].second, watched[it].first) }
     )
 }
 
@@ -122,8 +157,12 @@ internal fun loadKidStats(context: Context, profileId: String, range: StatsRange
     val channelByUrl = SourceCache(app).load()
         .flatMap { videoCache.load(it.id) }
         .associate { it.url to it.channelName }
-    val watched = WatchHistoryStore(app, suffix).all()
-        .map { (url, p) -> p.lastWatchedAt to channelByUrl[url] }
+    val titleByUrl = SourceCache(app).load()
+        .flatMap { videoCache.load(it.id) }
+        .associate { it.url to it.title }
+    val rows = WatchHistoryStore(app, suffix).all()
+    val watched = rows.map { (url, p) -> p.lastWatchedAt to channelByUrl[url] }
+    val titles = rows.map { (url, _) -> titleByUrl[url] }
     val now = System.currentTimeMillis()
     return KidStatsLoaded(
         kidStats(
@@ -131,7 +170,8 @@ internal fun loadKidStats(context: Context, profileId: String, range: StatsRange
             todayMinutes = snap.watchedTodayMin,
             history = guard.history(),
             rangeStartMs = rangeStartMs(range.days, now),
-            watched = watched
+            watched = watched,
+            titles = titles
         ),
         snap
     )

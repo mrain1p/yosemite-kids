@@ -35,6 +35,7 @@ import io.yosemitekids.app.data.TimeWindow
 import io.yosemitekids.app.data.TimeWindows
 import io.yosemitekids.app.data.WEEKDAYS
 import kotlinx.coroutines.launch
+import io.yosemitekids.app.data.Budget
 
 // --- Screen time ------------------------------------------------------------
 
@@ -62,6 +63,16 @@ internal fun RulesSection(
             "as regular videos."
     )
     SettingsCard(padded = false) {
+        // The number a parent actually has in their head, first.
+        //
+        // It is DERIVED — sittings × length — so it is not a field and cannot
+        // be typed into; what a parent sets is the two rows beneath it. But it
+        // was only ever said in a sentence UNDER the card, after five rows of
+        // inputs, and the owner's words looking at a real phone were "I don't
+        // see an area for daily limits in the child's settings — this should
+        // be priority one on top of the screen-time rules".
+        DailyLimitRow(limits)
+        SettingsDivider()
         // Label, range and unit from the manifest, so the hub's number fields
         // are the same rule with the same name and the same bounds. They were
         // not: "Time per session" was "Minutes a session" over there, with a
@@ -124,12 +135,12 @@ internal fun RulesSection(
                 else "No minute limits — the blocked times below still apply."
             )
         } else {
+            // The day's totals used to be spelled out again here, by
+            // multiplying session × sessions inline — a hand copy of
+            // Budget.dayMs that guard 50's grep does not reach, and the second
+            // place this product worked out a daily limit. The row at the top
+            // of the card says it now, through Budget itself.
             append("$set of $KID_RULE_COUNT rules set.")
-            val s = limits.sessionMinutes
-            val wd = limits.weekdaySessions
-            val we = limits.weekendSessions
-            if (s != null && wd != null) append(" Weekdays: up to ${s * wd} min total.")
-            if (s != null && we != null) append(" Weekends: up to ${s * we} min total.")
         }
     }
     Text(
@@ -239,6 +250,60 @@ internal fun rememberUse24h(): Boolean {
 }
 
 /**
+ * The day's allowance, as one line at the top of the rules.
+ *
+ * Read from [Budget.dayMs] and never multiplied here: the hub refuses a kid
+ * who is out of minutes with that function, the player stops them with it,
+ * and the bar on both browsers draws it — a sixth copy on the screen where a
+ * parent SETS the thing would be the one that quietly disagrees.
+ *
+ * Not a control, so it is not drawn as one: no chevron, no tap, nothing that
+ * suggests a value lives here. What a parent changes is the two rows below.
+ */
+@Composable
+private fun DailyLimitRow(limits: Limits) {
+    val weekday = Budget.dayMs(limits, weekend = false, bonusMs = 0L)
+    val weekend = Budget.dayMs(limits, weekend = true, bonusMs = 0L)
+    fun mins(ms: Long?) = ms?.let { "${it / 60_000L} min" }
+    val value = when {
+        weekday == null && weekend == null -> "Not set"
+        weekday == weekend -> mins(weekday) ?: "Not set"
+        else -> "${mins(weekday) ?: "off"} · ${mins(weekend) ?: "off"} at weekends"
+    }
+    val how = limits.sessionMinutes?.let { s ->
+        listOfNotNull(
+            limits.weekdaySessions?.let { "$it × $s min on weekdays" },
+            limits.weekendSessions?.let { "$it × $s min at weekends" }
+        ).joinToString(", ").ifBlank { null }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 12.dp, vertical = 9.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Daily limit", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                how ?: "Set a session length and how many sessions a day",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (weekday == null && weekend == null) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            }
+        )
+    }
+}
+
+/**
  * The blocked-clock-window list: bedtime, school hours, homework. A list
  * rather than a single bedtime switch because the ordinary cases need more
  * than one window and need different days each. Empty is a real state — no
@@ -262,7 +327,6 @@ internal fun BlockedTimesSection(
     SectionTitle(ctl("blocked-times-windows").label)
     SettingsCard(padded = false) {
         var expandedId by remember { mutableStateOf<String?>(null) }
-        var adding by remember { mutableStateOf(false) }
 
         if (windows.isEmpty()) {
             Text(
@@ -293,56 +357,80 @@ internal fun BlockedTimesSection(
         }
         if (windows.isNotEmpty()) SettingsDivider()
 
-        // One Add with three starting points behind it rather than three
-        // buttons: a window has to start with *some* times, and naming the
-        // presets is more honest than inventing a schedule behind a blank
-        // "Add" — but they don't need to sit on the screen until asked for.
-        Box {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 52.dp)
-                    .tvFocusHighlight()
-                    .clickable { adding = true }
-                    .padding(horizontal = 12.dp, vertical = 9.dp)
-            ) {
+        // The starting points, on the card rather than behind a menu.
+        //
+        // They used to live in a DropdownMenu behind "+ Add blocked time", so
+        // a parent who had never opened it could not know that Bedtime and
+        // School hours existed, let alone what hours they would arrive with.
+        // The owner's words: "Blocked times shows Bedtime and school hours
+        // but only after clicking add blocked time — if they are not set it
+        // should show them in line, similar to how Copy rules from
+        // prepopulates with the other child's name."
+        //
+        // A preset already on the list stops being offered: it is a starting
+        // point, not a duplicate button. Custom never goes away, and keeps
+        // its deliberate placeholder — blank name, neutral midday span — that
+        // reads as "yours to fill in" rather than a schedule we invented.
+        val use24h = rememberUse24h()
+        fun add(label: String, startMin: Int, endMin: Int, days: Set<Int>) {
+            val id = newWindowId(windows)
+            onChanged(windows + TimeWindow(id = id, label = label, startMin = startMin, endMin = endMin, days = days))
+            expandedId = id
+        }
+        val taken = windows.map { it.label.lowercase() }.toSet()
+        PresetRow("Bedtime", 19 * 60 + 30, 7 * 60, ALL_DAYS, taken, use24h, ::add)
+        PresetRow("School hours", 8 * 60 + 30, 15 * 60, WEEKDAYS, taken, use24h, ::add)
+        AddRow("Custom blocked time", null) { add("", 12 * 60, 14 * 60, ALL_DAYS) }
+    }
+}
+
+/** One suggested window: its name, when it would run, and nothing if it already exists. */
+@Composable
+private fun PresetRow(
+    label: String,
+    startMin: Int,
+    endMin: Int,
+    days: Set<Int>,
+    taken: Set<String>,
+    use24h: Boolean,
+    add: (String, Int, Int, Set<Int>) -> Unit
+) {
+    if (label.lowercase() in taken) return
+    AddRow(
+        label,
+        "${daySummary(days)} · ${formatMinuteOfDay(startMin, use24h)} → ${formatMinuteOfDay(endMin, use24h)}"
+    ) { add(label, startMin, endMin, days) }
+}
+
+/** The card's "+ something" line, in the one shape all of them use. */
+@Composable
+private fun AddRow(label: String, sub: String?, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .tvFocusHighlight()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 9.dp)
+    ) {
+        Text(
+            "+",
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp),
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp),
+                color = MaterialTheme.colorScheme.primary
+            )
+            if (sub != null) {
                 Text(
-                    "+",
-                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp),
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    "Add blocked time",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            androidx.compose.material3.DropdownMenu(
-                expanded = adding,
-                onDismissRequest = { adding = false }
-            ) {
-                fun add(label: String, startMin: Int, endMin: Int, days: Set<Int>) {
-                    adding = false
-                    val id = newWindowId(windows)
-                    onChanged(windows + TimeWindow(id = id, label = label, startMin = startMin, endMin = endMin, days = days))
-                    expandedId = id
-                }
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("Bedtime") },
-                    onClick = { add("Bedtime", 19 * 60 + 30, 7 * 60, ALL_DAYS) }
-                )
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("School hours") },
-                    onClick = { add("School hours", 8 * 60 + 30, 15 * 60, WEEKDAYS) }
-                )
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("Custom") },
-                    // A deliberate placeholder — blank name, neutral midday
-                    // span — that reads as "yours to fill in", not a schedule
-                    // we invented.
-                    onClick = { add("", 12 * 60, 14 * 60, ALL_DAYS) }
+                    sub,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
