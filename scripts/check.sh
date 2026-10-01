@@ -2671,9 +2671,13 @@ done
 # through it to reach a field a freeze cannot touch would be worse code for
 # no behaviour at all. Anything added here needs that whole argument, not
 # just the first clause.
-dev_rules=$(grep -rn "limitsFor(" app/src/main --include=*.kt |
-  grep -v "deviceToken()" |
-  grep -v "app/src/main/java/io/yosemitekids/app/data/UsageSync.kt" || true)
+# One line, and that is not style: the guard above this one is line-based, so a
+# pipeline whose `|| true` sits on a later line reads as a capture without one.
+# This was shipped wrong once: the canary caught it, not the gate, because the
+# full gate had been run with check.ps1 - which has no such guard - while CI runs
+# THIS script. That is the hole the guard above describes in its own comment, and
+# walking into it is what wrapping this pipeline for readability costs.
+dev_rules=$(grep -rn "limitsFor(" app/src/main --include=*.kt | grep -v "deviceToken()" | grep -v "data/UsageSync.kt" || true)
 [ -z "$dev_rules" ] ||
   guard_fail ":app resolves rules without saying which device it is:
 $dev_rules
